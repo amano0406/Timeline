@@ -1,0 +1,100 @@
+@page "/audio/files"
+@inject TimelineHelperClient Timeline
+
+<PageTitle>音声ファイル - Timeline</PageTitle>
+
+<section class="tln-page-head">
+    <div>
+        <div class="tln-kicker">TimelineForAudio</div>
+        <h1 class="tln-title">音声ファイル</h1>
+    </div>
+    <button class="tln-button-secondary" @onclick="LoadAsync" disabled="@_loading">
+        <FaIcon Name="@(_loading ? "spinner" : "rotate")" Class="@(_loading ? "fa-spin" : "")" />
+        <span>更新</span>
+    </button>
+</section>
+
+<section class="tln-panel tln-panel-pad">
+    <div class="tln-table-head">
+        <div>
+            <div class="tln-card-label">検出ファイル</div>
+            <div class="tln-metric">@(_files?.Total ?? 0)</div>
+        </div>
+        @if (_files?.Truncated == true)
+        {
+            <div class="tln-status-warn">500件まで表示</div>
+        }
+    </div>
+
+    <div class="tln-table-wrap">
+        <table class="tln-table">
+            <thead>
+                <tr>
+                    <th>パス</th>
+                    <th>日時</th>
+                    <th>サイズ</th>
+                    <th>状態</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var file in _files?.Files ?? [])
+                {
+                    <tr>
+                        <td>
+                            <div class="tln-path">@file.DisplayPath</div>
+                        </td>
+                        <td>@file.ModifiedAt</td>
+                        <td>@FormatBytes(file.SizeBytes)</td>
+                        <td><span class="tln-status">@StatusLabel(file.Status)</span></td>
+                    </tr>
+                }
+                @if ((_files?.Files.Count ?? 0) == 0 && !_loading)
+                {
+                    <tr>
+                        <td colspan="4" class="tln-muted">音声ファイルがありません。</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</section>
+
+@code {
+    private AudioFileListResult? _files;
+    private bool _loading;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        try
+        {
+            _files = await Timeline.GetAudioFilesAsync();
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private static string FormatBytes(long bytes)
+    {
+        string[] units = ["B", "KB", "MB", "GB", "TB"];
+        var value = (double)Math.Max(0, bytes);
+        var unit = 0;
+        while (value >= 1024 && unit < units.Length - 1)
+        {
+            value /= 1024;
+            unit++;
+        }
+        return $"{value:0.#} {units[unit]}";
+    }
+
+    private static string StatusLabel(string status) =>
+        status.ToLowerInvariant() switch
+        {
+            "detected" => "検出",
+            _ => status,
+        };
+}

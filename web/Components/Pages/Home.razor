@@ -1,0 +1,92 @@
+@page "/"
+@inject TimelineHelperClient Timeline
+
+<PageTitle>Timeline</PageTitle>
+
+<section class="tln-page-head">
+    <div>
+        <div class="tln-kicker">TimelineForAudio</div>
+        <h1 class="tln-title">状態</h1>
+    </div>
+    <button class="tln-button-secondary" @onclick="LoadAsync" disabled="@_loading">
+        <FaIcon Name="@(_loading ? "spinner" : "rotate")" Class="@(_loading ? "fa-spin" : "")" />
+        <span>更新</span>
+    </button>
+</section>
+
+@if (_error is not null)
+{
+    <div class="tln-alert-danger">
+        <FaIcon Name="triangle-exclamation" />
+        <span>@_error</span>
+    </div>
+}
+
+<section class="tln-grid-4">
+    <article class="tln-panel">
+        <div class="tln-card-label">ローカル製品</div>
+        <div class="tln-metric">@(_overview?.ProductFound == true ? "接続済み" : "未検出")</div>
+        <div class="tln-muted tln-path">@(_overview?.ProductPath ?? @"C:\apps\TimelineForAudio")</div>
+    </article>
+    <article class="tln-panel">
+        <div class="tln-card-label">音声ファイル</div>
+        <div class="tln-metric">@(_overview?.AudioFileCount ?? 0)</div>
+        <a class="tln-inline-link" href="audio/files">一覧</a>
+    </article>
+    <article class="tln-panel">
+        <div class="tln-card-label">Worker</div>
+        <div class="tln-metric">@WorkerStateLabel(_overview?.WorkerState)</div>
+        <div class="tln-muted">TimelineForAudio 側の状態</div>
+    </article>
+    <article class="tln-panel">
+        <div class="tln-card-label">Hugging Face</div>
+        <div class="tln-metric">@(_overview?.HasToken == true ? "設定済み" : "未設定")</div>
+        <a class="tln-inline-link" href="audio/settings">設定</a>
+    </article>
+</section>
+
+<section class="tln-panel tln-panel-pad">
+    <h2 class="tln-section-title">現在の設定</h2>
+    <div class="tln-definition-grid">
+        <div>AI処理方法</div>
+        <div>@(_overview?.ComputeMode?.ToUpperInvariant() ?? "-")</div>
+        <div>入力ディレクトリ</div>
+        <div>@(_overview?.InputRoots.Count ?? 0)</div>
+        <div>出力ディレクトリ</div>
+        <div class="tln-path">@(_overview?.OutputRoot?.Path ?? "-")</div>
+    </div>
+</section>
+
+@code {
+    private TimelineProductOverview? _overview;
+    private bool _loading;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _error = null;
+        try
+        {
+            _overview = await Timeline.GetAudioOverviewAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private static string WorkerStateLabel(string? state) =>
+        state?.ToLowerInvariant() switch
+        {
+            "running" => "稼働中",
+            "stopped" => "停止中",
+            _ => "未確認",
+        };
+}

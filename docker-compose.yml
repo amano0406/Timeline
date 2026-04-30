@@ -1,0 +1,13 @@
+name: timeline
+
+services:
+  web:
+    image: timeline-web:latest
+    build:
+      context: .
+      dockerfile: web/Dockerfile
+    environment:
+      ASPNETCORE_URLS: http://+:8080
+      Timeline__HelperBaseUrl: http://host.docker.internal:19001
+    ports:
+      - "19000:8080"

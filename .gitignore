@@ -1,0 +1,16 @@
+.vs/
+.vscode/
+.idea/
+.docker/
+.playwright-cli/
+bin/
+obj/
+release/
+output/
+web/bin/
+web/obj/
+web/node_modules/
+web/wwwroot/vendor/
+settings.local.json
+*.user
+*.suo

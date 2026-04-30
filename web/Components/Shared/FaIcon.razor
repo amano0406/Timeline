@@ -1,0 +1,11 @@
+<i class="@CssClass" aria-hidden="true"></i>
+
+@code {
+    [Parameter]
+    public string Name { get; set; } = "";
+
+    [Parameter]
+    public string Class { get; set; } = "";
+
+    private string CssClass => $"fa-solid fa-{Name} {Class}".Trim();
+}

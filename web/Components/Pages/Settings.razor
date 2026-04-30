@@ -1,0 +1,395 @@
+@page "/audio/settings"
+@inject TimelineHelperClient Timeline
+@inject IJSRuntime Js
+
+<PageTitle>設定 - Timeline</PageTitle>
+
+<section class="tln-page-head">
+    <div>
+        <div class="tln-kicker">TimelineForAudio</div>
+        <h1 class="tln-title">設定</h1>
+    </div>
+</section>
+
+@if (_error is not null)
+{
+    <div class="tln-alert-danger">
+        <FaIcon Name="triangle-exclamation" />
+        <span>@_error</span>
+    </div>
+}
+
+@if (_saved)
+{
+    <div class="tln-alert-info">
+        <FaIcon Name="circle-check" />
+        <span>設定を保存しました。ディレクトリやAI処理方法の反映には TimelineForAudio の再起動が必要な場合があります。</span>
+    </div>
+}
+
+<section class="tln-panel tln-panel-pad">
+    <h2 class="tln-section-title">
+        <FaIcon Name="key" />
+        <span>Hugging Face トークン</span>
+    </h2>
+    <div class="tln-setting-row">
+        <div>
+            <div class="tln-state-line">
+                <FaIcon Name="@(_overview?.HasToken == true ? "circle-check" : "circle-minus")" />
+                <span>@(_overview?.HasToken == true ? "設定済み" : "未設定")</span>
+            </div>
+            <div class="tln-token">@TokenDisplay</div>
+        </div>
+        <button class="tln-button-secondary" @onclick="OpenTokenModal">
+            <FaIcon Name="key" />
+            <span>登録</span>
+        </button>
+    </div>
+    <div class="tln-help-line">
+        <span>トークンの作成:</span>
+        <a href="https://huggingface.co/settings/tokens" target="_blank">Hugging Face tokens</a>
+        <span>/</span>
+        <a href="https://huggingface.co/pyannote/speaker-diarization-community-1" target="_blank">モデル利用条件</a>
+    </div>
+</section>
+
+<section class="tln-panel tln-panel-pad">
+    <h2 class="tln-section-title">
+        <FaIcon Name="microchip" />
+        <span>AI処理方法</span>
+    </h2>
+    <select class="tln-input tln-select" @bind="_computeMode" aria-label="AI処理方法">
+        <option value="cpu">CPU</option>
+        <option value="gpu">GPU</option>
+    </select>
+</section>
+
+<section class="tln-panel tln-panel-pad">
+    <h2 class="tln-section-title">
+        <FaIcon Name="folder" />
+        <span>入力ディレクトリ</span>
+    </h2>
+
+    <div class="tln-list">
+        @foreach (var root in _inputRoots)
+        {
+            <div class="tln-directory-row">
+                <div class="tln-directory-path">@DirectoryDisplay(root.Path)</div>
+                <div class="tln-directory-actions">
+                    <label class="tln-check">
+                        <input type="checkbox" @bind="root.Enabled" />
+                        <span>使用</span>
+                    </label>
+                    <button class="tln-button-secondary" @onclick="() => AskRemoveInputRoot(root)" disabled="@(_inputRoots.Count <= 1)">
+                        <FaIcon Name="xmark" />
+                        <span>対象から外す</span>
+                    </button>
+                </div>
+            </div>
+        }
+    </div>
+
+    <div class="tln-list-footer">
+        <button class="tln-button-secondary" @onclick="AddInputDirectory">
+            <FaIcon Name="plus" />
+            <span>追加</span>
+        </button>
+    </div>
+</section>
+
+<section class="tln-panel tln-panel-pad">
+    <h2 class="tln-section-title">
+        <FaIcon Name="folder-open" />
+        <span>出力ディレクトリ</span>
+    </h2>
+
+    <div class="tln-directory-row">
+        <div class="tln-directory-path">@DirectoryDisplay(_outputRoot.Path)</div>
+        <button class="tln-button-secondary" @onclick="ChangeOutputDirectory">
+            <FaIcon Name="folder-open" />
+            <span>変更</span>
+        </button>
+    </div>
+</section>
+
+<div class="tln-actions">
+    <button class="tln-button-primary" @onclick="SaveAsync" disabled="@_saving">
+        <FaIcon Name="@(_saving ? "spinner" : "floppy-disk")" Class="@(_saving ? "fa-spin" : "")" />
+        <span>保存</span>
+    </button>
+</div>
+
+@if (_tokenModalOpen)
+{
+    <div class="tln-modal-backdrop">
+        <section class="tln-modal">
+            <header class="tln-modal-head">
+                <h2>Hugging Face トークンを登録</h2>
+            </header>
+            <div class="tln-modal-body">
+                @if (_tokenError is not null)
+                {
+                    <div class="tln-alert-danger">
+                        <FaIcon Name="triangle-exclamation" />
+                        <span>@_tokenError</span>
+                    </div>
+                }
+                <label class="tln-label" for="token-input">Hugging Face token</label>
+                <input id="token-input" class="tln-input tln-token-input" type="password" @bind="_tokenDraft" placeholder="hf_..." autocomplete="off" />
+            </div>
+            <footer class="tln-modal-actions">
+                <button class="tln-button-secondary" @onclick="CloseTokenModal">キャンセル</button>
+                <button class="tln-button-primary" @onclick="SaveTokenDraft">確認して保存</button>
+            </footer>
+        </section>
+    </div>
+}
+
+@if (_removeTarget is not null)
+{
+    <div class="tln-modal-backdrop">
+        <section class="tln-modal">
+            <header class="tln-modal-head">
+                <h2>入力ディレクトリを対象から外す</h2>
+            </header>
+            <div class="tln-modal-body">
+                <p class="tln-path">@_removeTarget.Path</p>
+                <p class="tln-muted">この入力ディレクトリを処理対象から外します。元の音声ファイルと生成済みデータは削除されません。不要な生成済みデータは出力ディレクトリ側で整理してください。</p>
+            </div>
+            <footer class="tln-modal-actions">
+                <button class="tln-button-secondary" @onclick="CancelRemoveInputRoot">キャンセル</button>
+                <button class="tln-button-primary" @onclick="ConfirmRemoveInputRoot">対象から外す</button>
+            </footer>
+        </section>
+    </div>
+}
+
+@code {
+    private TimelineProductOverview? _overview;
+    private readonly List<RootRow> _inputRoots = [];
+    private RootRow _outputRoot = new() { Id = "master", DisplayName = "TimelineForAudio Master", Enabled = true };
+    private string _computeMode = "cpu";
+    private string? _tokenDraft;
+    private string? _tokenToSave;
+    private string? _tokenError;
+    private string? _error;
+    private bool _saved;
+    private bool _saving;
+    private bool _tokenModalOpen;
+    private RootRow? _removeTarget;
+
+    private string TokenDisplay =>
+        _tokenToSave is { Length: > 0 }
+            ? MaskToken(_tokenToSave)
+            : _overview?.HasToken == true
+                ? _overview.TokenPreview
+                : "未設定";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _error = null;
+        _overview = await Timeline.GetAudioOverviewAsync();
+        _computeMode = string.IsNullOrWhiteSpace(_overview.ComputeMode) ? "cpu" : _overview.ComputeMode;
+        _inputRoots.Clear();
+        _inputRoots.AddRange(_overview.InputRoots.Select(CloneRoot));
+        if (_inputRoots.Count == 0)
+        {
+            _inputRoots.Add(new RootRow { Id = "audio-1", DisplayName = "Audio", Enabled = true });
+        }
+
+        _outputRoot = CloneRoot(_overview.OutputRoot ?? new RootRow
+        {
+            Id = "master",
+            DisplayName = "TimelineForAudio Master",
+            Enabled = true,
+        });
+    }
+
+    private void OpenTokenModal()
+    {
+        _tokenDraft = "";
+        _tokenError = null;
+        _tokenModalOpen = true;
+    }
+
+    private void CloseTokenModal()
+    {
+        _tokenModalOpen = false;
+        _tokenDraft = null;
+        _tokenError = null;
+    }
+
+    private void SaveTokenDraft()
+    {
+        var token = _tokenDraft?.Trim() ?? "";
+        if (string.IsNullOrWhiteSpace(token))
+        {
+            _tokenError = "トークンを入力してください。";
+            return;
+        }
+        if (!token.StartsWith("hf_", StringComparison.Ordinal) || token.Length < 12)
+        {
+            _tokenError = "Hugging Face token の形式を確認してください。";
+            return;
+        }
+
+        _tokenToSave = token;
+        CloseTokenModal();
+    }
+
+    private async Task AddInputDirectory()
+    {
+        var path = await PickDirectoryAsync("入力ディレクトリを選択", "");
+        if (path is null)
+        {
+            return;
+        }
+
+        _inputRoots.Add(new RootRow
+        {
+            Id = NextInputRootId(),
+            DisplayName = DirectoryNameFromPath(path),
+            Path = path,
+            Enabled = true,
+        });
+    }
+
+    private async Task ChangeOutputDirectory()
+    {
+        var path = await PickDirectoryAsync("出力ディレクトリを選択", _outputRoot.Path);
+        if (path is null)
+        {
+            return;
+        }
+
+        _outputRoot.Path = path;
+        _outputRoot.DisplayName = DirectoryNameFromPath(path);
+    }
+
+    private async Task<string?> PickDirectoryAsync(string title, string initialPath)
+    {
+        _error = null;
+        _saved = false;
+        try
+        {
+            return await Js.InvokeAsync<string?>("timelineDirectoryPicker.pick", title, initialPath);
+        }
+        catch (JSException ex)
+        {
+            _error = ex.Message;
+            return null;
+        }
+    }
+
+    private void AskRemoveInputRoot(RootRow root)
+    {
+        _removeTarget = root;
+    }
+
+    private void CancelRemoveInputRoot()
+    {
+        _removeTarget = null;
+    }
+
+    private void ConfirmRemoveInputRoot()
+    {
+        if (_removeTarget is not null && _inputRoots.Count > 1)
+        {
+            _inputRoots.Remove(_removeTarget);
+        }
+        _removeTarget = null;
+    }
+
+    private async Task SaveAsync()
+    {
+        _saving = true;
+        _saved = false;
+        _error = null;
+        try
+        {
+            Validate();
+            _overview = await Timeline.SaveAudioSettingsAsync(new AudioSettingsSaveRequest
+            {
+                Token = _tokenToSave,
+                ComputeMode = _computeMode,
+                InputRoots = _inputRoots
+                    .Where(root => !string.IsNullOrWhiteSpace(root.Path))
+                    .Select(CloneRoot)
+                    .ToList(),
+                OutputRoot = CloneRoot(_outputRoot),
+                OutputPath = _outputRoot.Path,
+            });
+            _tokenToSave = null;
+            _saved = true;
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private void Validate()
+    {
+        if (_inputRoots.Count == 0 || _inputRoots.All(root => string.IsNullOrWhiteSpace(root.Path)))
+        {
+            throw new InvalidOperationException("入力ディレクトリを1件以上設定してください。");
+        }
+        if (string.IsNullOrWhiteSpace(_outputRoot.Path))
+        {
+            throw new InvalidOperationException("出力ディレクトリを設定してください。");
+        }
+    }
+
+    private string NextInputRootId()
+    {
+        var index = _inputRoots.Count + 1;
+        var candidate = $"audio-{index}";
+        while (_inputRoots.Any(root => root.Id.Equals(candidate, StringComparison.OrdinalIgnoreCase)))
+        {
+            index++;
+            candidate = $"audio-{index}";
+        }
+        return candidate;
+    }
+
+    private static RootRow CloneRoot(RootRow root) => new()
+    {
+        Id = root.Id,
+        DisplayName = root.DisplayName,
+        Path = root.Path,
+        Enabled = root.Enabled,
+    };
+
+    private static string DirectoryDisplay(string path) =>
+        string.IsNullOrWhiteSpace(path) ? "未設定" : path;
+
+    private static string DirectoryNameFromPath(string path, string fallback = "Directory")
+    {
+        var text = path.Trim().TrimEnd('\\', '/');
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return fallback;
+        }
+        var separator = Math.Max(text.LastIndexOf('\\'), text.LastIndexOf('/'));
+        return separator >= 0 && separator + 1 < text.Length ? text[(separator + 1)..] : text;
+    }
+
+    private static string MaskToken(string token)
+    {
+        var value = token.Trim();
+        if (value.Length <= 8)
+        {
+            return new string('•', value.Length);
+        }
+        return $"{value[..4]}{new string('•', Math.Max(4, value.Length - 8))}{value[^4..]}";
+    }
+}

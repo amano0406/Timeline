@@ -1,0 +1,10 @@
+.git
+.docker
+.playwright-cli
+output
+release
+web/bin
+web/obj
+web/node_modules
+web/wwwroot/vendor
+settings.local.json
