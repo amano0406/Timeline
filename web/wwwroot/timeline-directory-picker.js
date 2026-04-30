@@ -1,4 +1,4 @@
-window.timelineDirectoryPicker = {
+const timelineDirectoryPicker = {
   async pick(title, initialPath) {
     const params = new URLSearchParams({
       title: title || "Select directory",
@@ -27,5 +27,18 @@ window.timelineDirectoryPicker = {
       throw new Error("ディレクトリを選択できませんでした。");
     }
     return payload.path;
+  },
+};
+
+window.timelineDirectoryPicker = timelineDirectoryPicker;
+window.timelineForAudioDirectoryPicker = timelineDirectoryPicker;
+window.timelineForAudioPlayer = {
+  seek(id, seconds) {
+    const element = document.getElementById(id);
+    if (!element) {
+      return;
+    }
+    element.currentTime = seconds || 0;
+    element.play();
   },
 };

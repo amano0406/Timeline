@@ -36,17 +36,27 @@ public sealed class AudioFileRow
 {
     public string SourceId { get; set; } = "";
     public string SourceDisplayName { get; set; } = "";
+    public string SourceName { get; set; } = "";
     public string RootPath { get; set; } = "";
     public string DisplayPath { get; set; } = "";
     public string RelativePath { get; set; } = "";
+    public string Directory { get; set; } = "";
     public string FileName { get; set; } = "";
     public long SizeBytes { get; set; }
     public string ModifiedAt { get; set; } = "";
+    public double? DurationSec { get; set; }
     public string Status { get; set; } = "";
+    public bool HasTimeline { get; set; }
+    public bool HasAudio { get; set; }
+    public string RunId { get; set; } = "";
+    public string MediaId { get; set; } = "";
+    public int TurnCount { get; set; }
+    public int SpeakerCount { get; set; }
 }
 
 public sealed class AudioSettingsSaveRequest
 {
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Token { get; set; }
     public string ComputeMode { get; set; } = "cpu";
     public List<RootRow> InputRoots { get; set; } = [];

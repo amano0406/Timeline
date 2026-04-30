@@ -160,7 +160,10 @@ function Write-TimelineAudioSettings {
 
     $token = [string]$current.huggingfaceToken
     if ($Request.PSObject.Properties.Name -contains "token") {
-        $token = [string](Get-PropertyValue -Object $Request -Name "token" -Default "")
+        $requestToken = Get-PropertyValue -Object $Request -Name "token" -Default $null
+        if ($null -ne $requestToken) {
+            $token = [string]$requestToken
+        }
     }
 
     $payload = [ordered]@{
@@ -242,16 +245,29 @@ function Get-TimelineAudioFiles {
             if ($file.FullName.StartsWith($rootPath, [System.StringComparison]::OrdinalIgnoreCase)) {
                 $relativePath = $file.FullName.Substring($rootPath.Length).TrimStart('\', '/')
             }
+            $directory = [System.IO.Path]::GetDirectoryName($relativePath)
+            if ($null -eq $directory) {
+                $directory = ""
+            }
             $rows += [ordered]@{
                 sourceId = [string]$root.id
                 sourceDisplayName = [string]$root.displayName
+                sourceName = [string]$root.displayName
                 rootPath = [string]$root.path
                 displayPath = $file.FullName
                 relativePath = $relativePath
+                directory = $directory
                 fileName = $file.Name
                 sizeBytes = [int64]$file.Length
                 modifiedAt = $file.LastWriteTime.ToString("yyyy-MM-dd HH:mm:ss")
                 status = "detected"
+                durationSec = $null
+                hasTimeline = $false
+                hasAudio = $false
+                runId = ""
+                mediaId = ""
+                turnCount = 0
+                speakerCount = 0
             }
         }
     }

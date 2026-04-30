@@ -1,0 +1,222 @@
+@page "/audio/file-detail"
+@page "/file-detail"
+@inject TimelineHelperClient Timeline
+
+<PageTitle>音声詳細 - Timeline</PageTitle>
+
+<div class="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+    <div>
+        <div class="tfa-kicker">Audio detail</div>
+        <h1 class="tfa-title flex items-center gap-2">
+            <FaIcon Name="file-audio" Class="tfa-icon text-accent" />
+            <span>@(_file?.FileName ?? "音声詳細")</span>
+        </h1>
+        @if (_file is not null)
+        {
+            <p class="mt-2 break-all font-mono text-sm text-slate-600">@_file.DisplayPath</p>
+        }
+    </div>
+    <a class="tfa-button-secondary gap-2" href="">
+        <FaIcon Name="arrow-left" Class="tfa-icon" />
+        <span>一覧に戻る</span>
+    </a>
+</div>
+
+@if (_error is not null)
+{
+    <div class="tfa-alert-danger mb-5 flex items-start gap-2">
+        <FaIcon Name="triangle-exclamation" Class="tfa-icon mt-0.5" />
+        <span>@_error</span>
+    </div>
+}
+
+@if (_file is null && _error is null)
+{
+    <section class="tfa-card tfa-card-pad text-sm text-slate-600">
+        <div class="flex items-center gap-2">
+            <FaIcon Name="spinner" Class="tfa-icon fa-spin" />
+            <span>音声ファイルを読み込んでいます。</span>
+        </div>
+    </section>
+}
+else if (_file is not null)
+{
+    var file = _file;
+    <div class="grid gap-5 xl:grid-cols-[360px_1fr]">
+        <aside class="grid gap-5">
+            <section class="tfa-card tfa-card-pad">
+                <h2 class="flex items-center gap-2 text-lg font-semibold">
+                    <FaIcon Name="circle-info" Class="tfa-icon text-accent" />
+                    <span>ファイル情報</span>
+                </h2>
+                <dl class="mt-4 grid grid-cols-2 gap-2 text-sm">
+                    <dt class="text-slate-500">状態</dt>
+                    <dd>
+                        <span class="@StatusPill(file.Status)">
+                            <FaIcon Name="@StatusIcon(file.Status)" Class="tfa-icon !h-3 !w-3" />
+                            <span>@StatusLabel(file.Status)</span>
+                        </span>
+                    </dd>
+                    <dt class="text-slate-500">日時</dt>
+                    <dd class="inline-flex items-center gap-1.5">
+                        <FaIcon Name="clock" Class="tfa-icon !h-3 !w-3 text-slate-400" />
+                        @UiFormat.ShortDate(file.ModifiedAt)
+                    </dd>
+                    <dt class="text-slate-500">記録時間</dt>
+                    <dd class="inline-flex items-center gap-1.5">
+                        <FaIcon Name="stopwatch" Class="tfa-icon !h-3 !w-3 text-slate-400" />
+                        @DurationLabel(file.DurationSec)
+                    </dd>
+                    <dt class="text-slate-500">サイズ</dt>
+                    <dd class="inline-flex items-center gap-1.5">
+                        <FaIcon Name="hard-drive" Class="tfa-icon !h-3 !w-3 text-slate-400" />
+                        @UiFormat.Bytes(file.SizeBytes)
+                    </dd>
+                    <dt class="text-slate-500">話者</dt>
+                    <dd class="inline-flex items-center gap-1.5">
+                        <FaIcon Name="users" Class="tfa-icon !h-3 !w-3 text-slate-400" />
+                        @(file.HasTimeline ? file.SpeakerCount : "-")
+                    </dd>
+                    <dt class="text-slate-500">区間</dt>
+                    <dd class="inline-flex items-center gap-1.5">
+                        <FaIcon Name="bars-staggered" Class="tfa-icon !h-3 !w-3 text-slate-400" />
+                        @(file.HasTimeline ? file.TurnCount : "-")
+                    </dd>
+                </dl>
+            </section>
+
+            @if (!file.HasTimeline)
+            {
+                <section class="tfa-card tfa-card-pad">
+                    <h2 class="flex items-center gap-2 text-lg font-semibold">
+                        <FaIcon Name="clock" Class="tfa-icon text-amber-700" />
+                        <span>分析結果</span>
+                    </h2>
+                    <p class="mt-2 text-sm text-slate-600">
+                        この音声の時間軸データはまだ作成されていません。
+                    </p>
+                </section>
+            }
+        </aside>
+
+        <section class="grid gap-5">
+            <div class="tfa-card tfa-card-pad">
+                <h2 class="flex items-center gap-2 text-lg font-semibold">
+                    <FaIcon Name="headphones" Class="tfa-icon text-accent" />
+                    <span>音声</span>
+                </h2>
+                <p class="mt-3 flex items-center gap-2 text-sm text-slate-600">
+                    <FaIcon Name="circle-minus" Class="tfa-icon text-slate-400" />
+                    <span>再生用の音声はまだありません。</span>
+                </p>
+            </div>
+
+            <div class="tfa-card overflow-hidden">
+                <div class="tfa-card-pad border-b border-line">
+                    <h2 class="flex items-center gap-2 text-lg font-semibold">
+                        <FaIcon Name="bars-staggered" Class="tfa-icon text-accent" />
+                        <span>時間軸データ</span>
+                    </h2>
+                    <p class="mt-1 text-sm text-slate-600">話者と音響単位を、開始時間順に確認します。</p>
+                </div>
+                <div class="max-h-[680px] overflow-auto">
+                    <table class="tfa-table">
+                        <thead class="sticky top-0">
+                            <tr>
+                                <th>再生</th>
+                                <th>時間</th>
+                                <th>話者</th>
+                                <th>音響単位</th>
+                                <th>信頼度</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td colspan="5" class="text-slate-500">
+                                    <span class="inline-flex items-center gap-2">
+                                        <FaIcon Name="circle-minus" Class="tfa-icon" />
+                                        表示できる時間軸データはまだありません。
+                                    </span>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+    </div>
+}
+
+@code {
+    [SupplyParameterFromQuery(Name = "sourceId")]
+    public string? SourceId { get; set; }
+
+    [SupplyParameterFromQuery(Name = "path")]
+    public string? RelativePath { get; set; }
+
+    private AudioFileRow? _file;
+    private string? _error;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _error = null;
+        _file = null;
+        if (string.IsNullOrWhiteSpace(SourceId) || string.IsNullOrWhiteSpace(RelativePath))
+        {
+            _error = "音声ファイルが指定されていません。";
+            return;
+        }
+
+        try
+        {
+            var files = await Timeline.GetAudioFilesAsync();
+            _file = files.Files.FirstOrDefault(file =>
+                file.SourceId.Equals(SourceId, StringComparison.OrdinalIgnoreCase)
+                && file.RelativePath.Equals(RelativePath, StringComparison.OrdinalIgnoreCase));
+            if (_file is null)
+            {
+                _error = "指定された音声ファイルは見つかりませんでした。";
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    private static string DurationLabel(double? seconds) =>
+        seconds is > 0 ? UiFormat.Duration(seconds.Value) : "-";
+
+    private static string StatusLabel(string status) =>
+        status.ToLowerInvariant() switch
+        {
+            "completed" => "処理済み",
+            "queued" => "待機中",
+            "processing" => "処理中",
+            "changed" => "再処理必要",
+            "settings_changed" => "設定変更あり",
+            "failed" => "エラー",
+            _ => "未処理",
+        };
+
+    private static string StatusPill(string status) =>
+        status.ToLowerInvariant() switch
+        {
+            "completed" => "tfa-status-pill border-teal-200 bg-teal-50 text-teal-800",
+            "queued" or "processing" => "tfa-status-pill border-sky-200 bg-sky-50 text-sky-800",
+            "failed" => "tfa-status-pill border-red-200 bg-red-50 text-red-800",
+            "changed" or "settings_changed" => "tfa-status-pill border-amber-200 bg-amber-50 text-amber-900",
+            _ => "tfa-status-pill border-slate-200 bg-slate-50 text-slate-700",
+        };
+
+    private static string StatusIcon(string status) =>
+        status.ToLowerInvariant() switch
+        {
+            "completed" => "circle-check",
+            "queued" => "clock",
+            "processing" => "spinner",
+            "changed" or "settings_changed" => "triangle-exclamation",
+            "failed" => "circle-xmark",
+            _ => "circle-minus",
+        };
+}
