@@ -22,3 +22,12 @@ Stop:
 ```powershell
 .\stop.ps1
 ```
+
+## Smoke checks
+
+After starting Timeline, verify the web routes and the TimelineForAudio PS1 download path:
+
+```powershell
+.\scripts\smoke-web.ps1
+.\scripts\smoke-audio-ps1-download.ps1
+```

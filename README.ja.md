@@ -31,6 +31,15 @@ http://127.0.0.1:19000
 .\stop.ps1
 ```
 
+## 動作確認
+
+Timeline 起動後、Web ルートと TimelineForAudio の `cli.ps1` 経由 download を確認できます。
+
+```powershell
+.\scripts\smoke-web.ps1
+.\scripts\smoke-audio-ps1-download.ps1
+```
+
 ## 構成
 
 - `web/`: Blazor Web App

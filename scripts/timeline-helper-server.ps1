@@ -2921,13 +2921,25 @@ function New-TimelineAudioItemsDownload {
         -ProductId "audio" `
         -FilePrefix "TimelineForAudio-items" `
         -RequestedPath $outputPath
-    $args += @("--output", $hostOutputPath)
 
     $payload = Invoke-TimelineAudioCliJson -CliArgs $args -TimeoutSeconds 900
     $result = Convert-TimelineAudioDownloadItemsResult -Payload $payload
-    $archivePath = Convert-TimelineDownloadLocalPath -Path (Convert-TimelineText -Value (Get-PropertyValue -Object $result -Name "archivePath" -Default ""))
+    $sourceArchivePath = Convert-TimelineDownloadLocalPath -Path (Convert-TimelineText -Value (Get-PropertyValue -Object $result -Name "archivePath" -Default ""))
+    if (-not $sourceArchivePath -or -not (Test-Path -LiteralPath $sourceArchivePath -PathType Leaf)) {
+        throw "TimelineForAudio CLI did not create a downloadable ZIP."
+    }
+    if (-not [System.IO.Path]::GetExtension($sourceArchivePath).Equals(".zip", [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "TimelineForAudio CLI created an unexpected download file type."
+    }
+
+    if (Test-Path -LiteralPath $hostOutputPath -PathType Leaf) {
+        Remove-Item -LiteralPath $hostOutputPath -Force
+    }
+    Copy-Item -LiteralPath $sourceArchivePath -Destination $hostOutputPath -Force
+
+    $archivePath = Convert-TimelineDownloadLocalPath -Path $hostOutputPath
     if (-not $archivePath -or -not (Test-TimelineDownloadFileAllowed -Path $archivePath)) {
-        throw "TimelineForAudio CLI did not create a downloadable ZIP in the Timeline work directory."
+        throw "TimelineForAudio download ZIP could not be staged in the Timeline work directory."
     }
 
     return [ordered]@{
