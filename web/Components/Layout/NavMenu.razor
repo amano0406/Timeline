@@ -8,6 +8,21 @@
         </div>
 
         <nav class="flex flex-col gap-4 p-3 text-sm">
+            <div class="grid gap-1">
+                <NavLink class="flex items-center gap-2 rounded-md px-3 py-2 text-slate-200 hover:bg-white/10 hover:text-white"
+                         ActiveClass="bg-white/15 text-white"
+                         href="">
+                    <FaIcon Name="gauge" Class="tfa-icon" />
+                    <span>ダッシュボード</span>
+                </NavLink>
+                <NavLink class="flex items-center gap-2 rounded-md px-3 py-2 text-slate-200 hover:bg-white/10 hover:text-white"
+                         ActiveClass="bg-white/15 text-white"
+                         href="timeline/settings">
+                    <FaIcon Name="sliders" Class="tfa-icon" />
+                    <span>設定</span>
+                </NavLink>
+            </div>
+
             <section>
                 <div class="flex items-center gap-2 px-3 py-2 font-semibold text-white">
                     <FaIcon Name="file-audio" Class="tfa-icon text-teal-300" />
@@ -16,14 +31,55 @@
                 <div class="ml-3 border-l border-white/10 pl-3">
                     <NavLink class="flex items-center gap-2 rounded-md px-3 py-2 text-slate-200 hover:bg-white/10 hover:text-white"
                              ActiveClass="bg-white/15 text-white"
-                             href=""
-                             Match="NavLinkMatch.All">
+                             href="audio/files">
                         <FaIcon Name="list-ul" Class="tfa-icon" />
-                        <span>音声ファイル</span>
+                        <span>音声ファイル一覧</span>
                     </NavLink>
                     <NavLink class="flex items-center gap-2 rounded-md px-3 py-2 text-slate-200 hover:bg-white/10 hover:text-white"
                              ActiveClass="bg-white/15 text-white"
-                             href="settings">
+                             href="audio/settings">
+                        <FaIcon Name="gear" Class="tfa-icon" />
+                        <span>設定</span>
+                    </NavLink>
+                </div>
+            </section>
+
+            <section>
+                <div class="flex items-center gap-2 px-3 py-2 font-semibold text-white">
+                    <FaIcon Name="terminal" Class="tfa-icon text-teal-300" />
+                    <span>TimelineForWindowsCodex</span>
+                </div>
+                <div class="ml-3 border-l border-white/10 pl-3">
+                    <NavLink class="flex items-center gap-2 rounded-md px-3 py-2 text-slate-200 hover:bg-white/10 hover:text-white"
+                             ActiveClass="bg-white/15 text-white"
+                             href="windows-codex">
+                        <FaIcon Name="clock-rotate-left" Class="tfa-icon" />
+                        <span>スレッド一覧</span>
+                    </NavLink>
+                    <NavLink class="flex items-center gap-2 rounded-md px-3 py-2 text-slate-200 hover:bg-white/10 hover:text-white"
+                             ActiveClass="bg-white/15 text-white"
+                             href="windows-codex/settings">
+                        <FaIcon Name="gear" Class="tfa-icon" />
+                        <span>設定</span>
+                    </NavLink>
+                </div>
+            </section>
+
+            <section>
+                <div class="flex items-center gap-2 px-3 py-2 font-semibold text-white">
+                    <FaIcon Name="comments" Class="tfa-icon text-teal-300" />
+                    <span>TimelineForChatGPT</span>
+                </div>
+                <div class="ml-3 border-l border-white/10 pl-3">
+                    <NavLink class="flex items-center gap-2 rounded-md px-3 py-2 text-slate-200 hover:bg-white/10 hover:text-white"
+                             ActiveClass="bg-white/15 text-white"
+                             href="chatgpt">
+                        <FaIcon Name="file-zipper" Class="tfa-icon" />
+                        <span>スレッド一覧</span>
+                    </NavLink>
+                    <NavLink class="flex items-center gap-2 rounded-md px-3 py-2 text-slate-200 hover:bg-white/10 hover:text-white"
+                             ActiveClass="bg-white/15 text-white"
+                             href="chatgpt/settings">
                         <FaIcon Name="gear" Class="tfa-icon" />
                         <span>設定</span>
                     </NavLink>
@@ -38,16 +94,8 @@
                         <span>TimelineForVideo</span>
                     </div>
                     <div class="flex items-center gap-2 rounded-md px-3 py-2 text-slate-500">
-                        <FaIcon Name="comments" Class="tfa-icon" />
-                        <span>TimelineForChatGPT</span>
-                    </div>
-                    <div class="flex items-center gap-2 rounded-md px-3 py-2 text-slate-500">
                         <FaIcon Name="image" Class="tfa-icon" />
                         <span>TimelineForImage</span>
-                    </div>
-                    <div class="flex items-center gap-2 rounded-md px-3 py-2 text-slate-500">
-                        <FaIcon Name="terminal" Class="tfa-icon" />
-                        <span>TimelineForWindowsCodex</span>
                     </div>
                 </div>
             </section>

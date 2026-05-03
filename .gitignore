@@ -12,5 +12,6 @@ web/obj/
 web/node_modules/
 web/wwwroot/vendor/
 settings.local.json
+/settings.json
 *.user
 *.suo

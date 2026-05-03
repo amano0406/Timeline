@@ -7,14 +7,17 @@
     <base href="/" />
     <link rel="stylesheet" href="vendor/fontawesome/css/all.min.css" />
     <link rel="stylesheet" href="app.css" />
+    <link rel="stylesheet" href="timeline-file-tree.css" />
     <link rel="icon" type="image/svg+xml" href="favicon.svg" />
-    <HeadOutlet @rendermode="InteractiveServer" />
+    <HeadOutlet @rendermode="@(new InteractiveServerRenderMode(prerender: false))" />
 </head>
 
 <body>
-    <Routes @rendermode="InteractiveServer" />
+    <Routes @rendermode="@(new InteractiveServerRenderMode(prerender: false))" />
     <script src="vendor/tw-elements/tw-elements.umd.min.js"></script>
     <script src="timeline-directory-picker.js"></script>
+    <script src="timeline-audio-player.js"></script>
+    <script src="timeline-download.js"></script>
     <script src="_framework/blazor.web.js"></script>
 </body>
 

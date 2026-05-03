@@ -1,0 +1,177 @@
+@page "/chatgpt/settings"
+@inject TimelineHelperClient Timeline
+@inject IJSRuntime Js
+
+<PageTitle>ChatGPT設定 - Timeline</PageTitle>
+
+<div class="mb-6">
+    <h1 class="tfa-title flex items-center gap-2">
+        <FaIcon Name="gear" Class="tfa-icon text-accent" />
+        <span>ChatGPT設定</span>
+    </h1>
+</div>
+
+@if (_error is not null)
+{
+    <div class="tfa-alert-danger mb-5 flex items-start gap-2">
+        <FaIcon Name="triangle-exclamation" Class="tfa-icon mt-0.5" />
+        <span>@_error</span>
+    </div>
+}
+
+@if (_saved)
+{
+    <div class="tfa-alert-info mb-5 flex items-start gap-2">
+        <FaIcon Name="circle-check" Class="tfa-icon mt-0.5" />
+        <span>設定を保存しました。</span>
+    </div>
+}
+
+@if (_loading)
+{
+    <section class="tfa-card tfa-card-pad flex items-center gap-3">
+        <FaIcon Name="spinner" Class="tfa-icon fa-spin text-accent" />
+        <span class="text-sm text-slate-600">読み込み中</span>
+    </section>
+}
+else
+{
+    @if (_overview is not null && !_overview.ProductFound)
+    {
+        <div class="tfa-alert-danger mb-5 flex items-start gap-2">
+            <FaIcon Name="folder-open" Class="tfa-icon mt-0.5" />
+            <span>TimelineForChatGPT が見つかりません。</span>
+        </div>
+    }
+
+    <section class="tfa-card tfa-card-pad">
+        <h2 class="flex items-center gap-2 text-lg font-semibold">
+            <FaIcon Name="database" Class="tfa-icon text-accent" />
+            <span>出力ディレクトリ</span>
+        </h2>
+
+        <div class="mt-4 grid gap-3 rounded-md border border-line bg-slate-50 p-4 lg:grid-cols-[1fr_auto] lg:items-center">
+            <div class="min-w-0">
+                <div class="break-all font-mono text-sm text-slate-900">@DirectoryDisplay(_outputRoot)</div>
+            </div>
+            <button class="tfa-button-secondary gap-2" @onclick="PickOutputRootAsync">
+                <FaIcon Name="folder-open" Class="tfa-icon" />
+                <span>変更</span>
+            </button>
+        </div>
+    </section>
+
+    <div class="mt-5 flex flex-wrap gap-3">
+        <button class="tfa-button-primary gap-2" @onclick="SaveAsync" disabled="@_saving">
+            <FaIcon Name="@(_saving ? "spinner" : "floppy-disk")" Class="@($"tfa-icon {(_saving ? "fa-spin" : "")}")" />
+            <span>保存</span>
+        </button>
+        <a class="tfa-button-secondary gap-2" href="chatgpt">
+            <FaIcon Name="arrow-left" Class="tfa-icon" />
+            <span>戻る</span>
+        </a>
+    </div>
+}
+
+@code {
+    private ChatGptOverview? _overview;
+    private ChatGptDirectoryRoot _outputRoot = new() { Id = "output", DisplayName = "Output", Path = @"C:\TimelineData\chatgpt" };
+    private bool _loading = true;
+    private bool _saving;
+    private bool _saved;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _error = null;
+        try
+        {
+            _overview = await Timeline.GetChatGptOverviewAsync();
+            _outputRoot = CloneRoot(_overview.OutputRoot);
+            if (string.IsNullOrWhiteSpace(_outputRoot.Path))
+            {
+                _outputRoot.Path = @"C:\TimelineData\chatgpt";
+                _outputRoot.DisplayPath = _outputRoot.Path;
+            }
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task PickOutputRootAsync()
+    {
+        var path = await PickDirectoryAsync("出力ディレクトリを選択", DirectoryDisplay(_outputRoot));
+        if (path is null)
+        {
+            return;
+        }
+
+        _outputRoot.Path = path;
+        _outputRoot.DisplayPath = path;
+        _saved = false;
+    }
+
+    private async Task<string?> PickDirectoryAsync(string title, string initialPath)
+    {
+        _error = null;
+        try
+        {
+            return await Js.InvokeAsync<string?>("timelineDirectoryPicker.pick", title, initialPath);
+        }
+        catch (JSException ex)
+        {
+            _error = ex.Message;
+            return null;
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        _saving = true;
+        _saved = false;
+        _error = null;
+        try
+        {
+            if (string.IsNullOrWhiteSpace(_outputRoot.Path))
+            {
+                throw new InvalidOperationException("出力ディレクトリを設定してください。");
+            }
+
+            _overview = await Timeline.SaveChatGptSettingsAsync(new ChatGptSettingsSaveRequest
+            {
+                OutputRoot = CloneRoot(_outputRoot),
+                OutputRootPath = _outputRoot.Path,
+            });
+            _saved = true;
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private static ChatGptDirectoryRoot CloneRoot(ChatGptDirectoryRoot root) => new()
+    {
+        Id = root.Id,
+        DisplayName = root.DisplayName,
+        Path = root.Path,
+        DisplayPath = root.DisplayPath,
+        Exists = root.Exists,
+    };
+
+    private static string DirectoryDisplay(ChatGptDirectoryRoot root) =>
+        !string.IsNullOrWhiteSpace(root.DisplayPath) ? root.DisplayPath : EmptyText(root.Path);
+
+    private static string EmptyText(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? "-" : value;
+}

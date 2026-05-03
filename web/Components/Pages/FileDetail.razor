@@ -1,12 +1,11 @@
 @page "/audio/file-detail"
-@page "/file-detail"
 @inject TimelineHelperClient Timeline
+@inject IJSRuntime JS
 
 <PageTitle>音声詳細 - Timeline</PageTitle>
 
 <div class="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
     <div>
-        <div class="tfa-kicker">Audio detail</div>
         <h1 class="tfa-title flex items-center gap-2">
             <FaIcon Name="file-audio" Class="tfa-icon text-accent" />
             <span>@(_file?.FileName ?? "音声詳細")</span>
@@ -16,7 +15,7 @@
             <p class="mt-2 break-all font-mono text-sm text-slate-600">@_file.DisplayPath</p>
         }
     </div>
-    <a class="tfa-button-secondary gap-2" href="">
+    <a class="tfa-button-secondary gap-2" href="audio/files">
         <FaIcon Name="arrow-left" Class="tfa-icon" />
         <span>一覧に戻る</span>
     </a>
@@ -105,19 +104,37 @@ else if (_file is not null)
                     <FaIcon Name="headphones" Class="tfa-icon text-accent" />
                     <span>音声</span>
                 </h2>
-                <p class="mt-3 flex items-center gap-2 text-sm text-slate-600">
-                    <FaIcon Name="circle-minus" Class="tfa-icon text-slate-400" />
-                    <span>再生用の音声はまだありません。</span>
-                </p>
+                @if (_detail?.AudioAvailable == true)
+                {
+                    <audio id="@AudioElementId" class="mt-4 w-full" controls preload="metadata" src="@AudioSourceUrl(file)"></audio>
+                }
+                else
+                {
+                    <p class="mt-3 flex items-center gap-2 text-sm text-slate-600">
+                        <FaIcon Name="circle-minus" Class="tfa-icon text-slate-400" />
+                        <span>音声ファイルを再生できません。</span>
+                    </p>
+                }
             </div>
 
             <div class="tfa-card overflow-hidden">
                 <div class="tfa-card-pad border-b border-line">
-                    <h2 class="flex items-center gap-2 text-lg font-semibold">
-                        <FaIcon Name="bars-staggered" Class="tfa-icon text-accent" />
-                        <span>時間軸データ</span>
-                    </h2>
-                    <p class="mt-1 text-sm text-slate-600">話者と音響単位を、開始時間順に確認します。</p>
+                    <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                        <h2 class="flex items-center gap-2 text-lg font-semibold">
+                            <FaIcon Name="bars-staggered" Class="tfa-icon text-accent" />
+                            <span>時間軸データ</span>
+                        </h2>
+                        @if (_detail?.TimelineAvailable == true)
+                        {
+                            <div class="flex flex-wrap gap-2 text-xs text-slate-500">
+                                @if (!string.IsNullOrWhiteSpace(_detail.UnitType))
+                                {
+                                    <span class="tfa-status-pill border-slate-200 bg-slate-50">@_detail.UnitType</span>
+                                }
+                                <span class="tfa-status-pill border-slate-200 bg-slate-50">@_detail.Turns.Count 区間</span>
+                            </div>
+                        }
+                    </div>
                 </div>
                 <div class="max-h-[680px] overflow-auto">
                     <table class="tfa-table">
@@ -131,14 +148,42 @@ else if (_file is not null)
                             </tr>
                         </thead>
                         <tbody>
-                            <tr>
-                                <td colspan="5" class="text-slate-500">
-                                    <span class="inline-flex items-center gap-2">
-                                        <FaIcon Name="circle-minus" Class="tfa-icon" />
-                                        表示できる時間軸データはまだありません。
-                                    </span>
-                                </td>
-                            </tr>
+                            @if (_detail?.Turns.Count > 0)
+                            {
+                                @foreach (var turn in _detail.Turns)
+                                {
+                                    <tr>
+                                        <td>
+                                            <button class="tfa-icon-box text-accent" type="button" title="この位置から再生" @onclick="() => SeekAsync(turn.StartSec)">
+                                                <FaIcon Name="play" Class="tfa-icon !h-3.5 !w-3.5" />
+                                            </button>
+                                        </td>
+                                        <td class="whitespace-nowrap font-mono text-xs">
+                                            @DurationLabel(turn.StartSec) - @DurationLabel(turn.EndSec)
+                                        </td>
+                                        <td>
+                                            <span class="tfa-status-pill border-slate-200 bg-slate-50">@SpeakerLabel(turn.Speaker)</span>
+                                        </td>
+                                        <td class="max-w-[980px] whitespace-pre-wrap break-words font-mono text-xs leading-6 text-slate-800">
+                                            @TokenLabel(turn.PhoneTokens)
+                                        </td>
+                                        <td class="whitespace-nowrap font-mono text-xs text-slate-500">
+                                            @ConfidenceLabel(turn.Confidence)
+                                        </td>
+                                    </tr>
+                                }
+                            }
+                            else
+                            {
+                                <tr>
+                                    <td colspan="5" class="text-slate-500">
+                                        <span class="inline-flex items-center gap-2">
+                                            <FaIcon Name="circle-minus" Class="tfa-icon" />
+                                            表示できる時間軸データはありません。
+                                        </span>
+                                    </td>
+                                </tr>
+                            }
                         </tbody>
                     </table>
                 </div>
@@ -154,12 +199,15 @@ else if (_file is not null)
     [SupplyParameterFromQuery(Name = "path")]
     public string? RelativePath { get; set; }
 
+    private const string AudioElementId = "audio-detail-player";
+    private AudioFileDetailResult? _detail;
     private AudioFileRow? _file;
     private string? _error;
 
     protected override async Task OnParametersSetAsync()
     {
         _error = null;
+        _detail = null;
         _file = null;
         if (string.IsNullOrWhiteSpace(SourceId) || string.IsNullOrWhiteSpace(RelativePath))
         {
@@ -169,14 +217,16 @@ else if (_file is not null)
 
         try
         {
-            var files = await Timeline.GetAudioFilesAsync();
-            _file = files.Files.FirstOrDefault(file =>
-                file.SourceId.Equals(SourceId, StringComparison.OrdinalIgnoreCase)
-                && file.RelativePath.Equals(RelativePath, StringComparison.OrdinalIgnoreCase));
-            if (_file is null)
+            _detail = await Timeline.GetAudioFileDetailAsync(SourceId, RelativePath);
+            if (_detail.Available && _detail.File is not null)
             {
-                _error = "指定された音声ファイルは見つかりませんでした。";
+                _file = _detail.File;
+                return;
             }
+
+            _error = string.IsNullOrWhiteSpace(_detail.Message)
+                ? "指定された音声ファイルは見つかりませんでした。"
+                : _detail.Message;
         }
         catch (Exception ex)
         {
@@ -184,8 +234,32 @@ else if (_file is not null)
         }
     }
 
+    private async Task SeekAsync(double seconds)
+    {
+        if (_detail?.AudioAvailable != true)
+        {
+            return;
+        }
+
+        await JS.InvokeVoidAsync("timelineAudioPlayer.seek", AudioElementId, Math.Max(0, seconds));
+    }
+
     private static string DurationLabel(double? seconds) =>
         seconds is > 0 ? UiFormat.Duration(seconds.Value) : "-";
+
+    private static string SpeakerLabel(string value) =>
+        string.IsNullOrWhiteSpace(value) ? "-" : value;
+
+    private static string TokenLabel(string value) =>
+        string.IsNullOrWhiteSpace(value) ? "-" : value;
+
+    private static string ConfidenceLabel(double? value) =>
+        value is null ? "-" : value.Value.ToString("0.000");
+
+    private static string AudioSourceUrl(AudioFileRow file) =>
+        "api/audio/source"
+        + $"?sourceId={Uri.EscapeDataString(file.SourceId)}"
+        + $"&path={Uri.EscapeDataString(file.RelativePath)}";
 
     private static string StatusLabel(string status) =>
         status.ToLowerInvariant() switch

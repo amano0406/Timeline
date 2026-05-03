@@ -1,0 +1,340 @@
+@page "/"
+@inject TimelineHelperClient Timeline
+@inject IJSRuntime Js
+
+<PageTitle>Timeline</PageTitle>
+
+<div class="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+    <div>
+        <h1 class="tfa-title flex items-center gap-2">
+            <FaIcon Name="timeline" Class="tfa-icon text-accent" />
+            <span>Timeline</span>
+        </h1>
+    </div>
+    <div class="flex flex-wrap gap-2">
+        <button class="tfa-button-secondary gap-2" @onclick="LoadAsync" disabled="@(_loading || _downloadingExport)">
+            <FaIcon Name="rotate" Class="@($"tfa-icon {(_loading ? "fa-spin" : "")}")" />
+            <span>状態更新</span>
+        </button>
+        <button class="tfa-button-primary gap-2" @onclick="DownloadTimelineExportAsync" disabled="@(_loading || _downloadingExport)">
+            <FaIcon Name="@(_downloadingExport ? "spinner" : "download")" Class="@($"tfa-icon {(_downloadingExport ? "fa-spin" : "")}")" />
+            <span>@(_downloadingExport ? "作成中" : "全データをダウンロード")</span>
+        </button>
+    </div>
+</div>
+
+@if (_error is not null)
+{
+    <div class="tfa-alert-danger mb-5 flex items-start gap-2">
+        <FaIcon Name="triangle-exclamation" Class="tfa-icon mt-0.5" />
+        <span>@_error</span>
+    </div>
+}
+
+@if (_operationMessage is not null)
+{
+    <div class="tfa-alert-info mb-5 flex items-start gap-2">
+        <FaIcon Name="circle-info" Class="tfa-icon mt-0.5" />
+        <span>@_operationMessage</span>
+    </div>
+}
+
+@if (_loading && _overview is null)
+{
+    <section class="tfa-card tfa-card-pad flex items-center gap-3">
+        <FaIcon Name="spinner" Class="tfa-icon fa-spin text-accent" />
+        <span class="text-sm text-slate-600">読み込み中</span>
+    </section>
+}
+else
+{
+    <div class="grid gap-4 xl:grid-cols-3">
+        @foreach (var product in Products)
+        {
+            <section class="tfa-card tfa-card-pad">
+                <div class="flex items-start justify-between gap-3">
+                    <div class="min-w-0">
+                        <div class="text-lg font-semibold">@product.DisplayName</div>
+                        <div class="mt-2 text-sm text-slate-600">@ProductDescription(product)</div>
+                    </div>
+                    <span class="@($"tfa-icon-box {ProductIconClass(product.Id)}")">
+                        <FaIcon Name="@ProductIcon(product.Id)" Class="tfa-icon" />
+                    </span>
+                </div>
+
+                <div class="mt-4 rounded-md border border-line bg-slate-50 p-3">
+                    <div class="flex items-center justify-between gap-3">
+                        <div class="font-medium text-slate-700">起動状態</div>
+                        <span class="@RuntimePillClass(product)">
+                            <FaIcon Name="@RuntimeIcon(product)" Class="@($"tfa-icon !h-3 !w-3 {(IsBusy(product) ? "fa-spin" : "")}")" />
+                            <span>@RuntimeLabel(product)</span>
+                        </span>
+                    </div>
+                    <div class="mt-2 break-all text-xs text-slate-600">操作入口: @RuntimeEntryLabel(product)</div>
+                    @if (!string.IsNullOrWhiteSpace(product.Message))
+                    {
+                        <div class="mt-2 text-sm text-slate-600">@product.Message</div>
+                    }
+                </div>
+
+                <div class="mt-4 flex flex-wrap gap-2">
+                    <a class="tfa-button-secondary gap-2" href="@product.PagePath">
+                        <FaIcon Name="arrow-up-right-from-square" Class="tfa-icon" />
+                        <span>開く</span>
+                    </a>
+                    <a class="tfa-button-secondary gap-2" href="@product.SettingsPath">
+                        <FaIcon Name="gear" Class="tfa-icon" />
+                        <span>設定</span>
+                    </a>
+                    <button class="tfa-button-secondary gap-2" @onclick="() => StartAsync(product)" disabled="@(!CanStart(product))">
+                        <FaIcon Name="@(_actingProductId == product.Id && _actingAction == "start" ? "spinner" : "power-off")"
+                                Class="@($"tfa-icon {(_actingProductId == product.Id && _actingAction == "start" ? "fa-spin" : "")}")" />
+                        <span>起動</span>
+                    </button>
+                    <button class="tfa-button-primary gap-2" @onclick="() => RestartAsync(product)" disabled="@(!CanRestart(product))">
+                        <FaIcon Name="@(_actingProductId == product.Id && _actingAction == "restart" ? "spinner" : "rotate")"
+                                Class="@($"tfa-icon {(_actingProductId == product.Id && _actingAction == "restart" ? "fa-spin" : "")}")" />
+                        <span>再起動</span>
+                    </button>
+                </div>
+            </section>
+        }
+    </div>
+}
+
+@code {
+    private ProductRuntimeOverview? _overview;
+    private bool _loading = true;
+    private bool _downloadingExport;
+    private string? _actingProductId;
+    private string? _actingAction;
+    private string? _error;
+    private string? _operationMessage;
+
+    private IReadOnlyList<ProductRuntimeRow> Products => _overview?.Products ?? [];
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _error = null;
+        try
+        {
+            _overview = await Timeline.GetProductRuntimeOverviewAsync();
+            if (!string.IsNullOrWhiteSpace(_overview.Message))
+            {
+                _error = _overview.Message;
+            }
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task StartAsync(ProductRuntimeRow product)
+    {
+        await InvokeRuntimeActionAsync(product, "start");
+    }
+
+    private async Task RestartAsync(ProductRuntimeRow product)
+    {
+        await InvokeRuntimeActionAsync(product, "restart");
+    }
+
+    private async Task DownloadTimelineExportAsync()
+    {
+        var suggestedName = $"Timeline-export-{DateTime.Now:yyyyMMdd-HHmmss}.zip";
+        var save = await Js.InvokeAsync<BrowserSaveHandle>("timelineDownload.beginSave", suggestedName);
+        if (!save.Accepted)
+        {
+            if (!string.IsNullOrWhiteSpace(save.Message))
+            {
+                _error = save.Message;
+            }
+            return;
+        }
+
+        _downloadingExport = true;
+        _error = null;
+        _operationMessage = null;
+        try
+        {
+            var result = await Timeline.DownloadTimelineExportAsync();
+            if (string.IsNullOrWhiteSpace(result.ArchivePath))
+            {
+                throw new InvalidOperationException("ダウンロードファイルを作成できませんでした。");
+            }
+
+            var fileName = ArchiveFileName(result.ArchivePath, suggestedName);
+            await Js.InvokeVoidAsync(
+                "timelineDownload.saveUrl",
+                save.Id,
+                DownloadFileUrl(result.ArchivePath),
+                fileName);
+            _operationMessage = $"保存しました。{result.ItemCount} 件 / {result.EventCount} イベント";
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _downloadingExport = false;
+        }
+    }
+
+    private async Task InvokeRuntimeActionAsync(ProductRuntimeRow product, string action)
+    {
+        _actingProductId = product.Id;
+        _actingAction = action;
+        _error = null;
+        _operationMessage = null;
+        try
+        {
+            var result = action == "restart"
+                ? await Timeline.RestartProductAsync(product.Id)
+                : await Timeline.StartProductAsync(product.Id);
+            ReplaceProduct(result);
+            _operationMessage = $"{product.DisplayName} を{(action == "restart" ? "再起動" : "起動")}しました。";
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _actingProductId = null;
+            _actingAction = null;
+        }
+    }
+
+    private void ReplaceProduct(ProductRuntimeRow product)
+    {
+        if (_overview is null)
+        {
+            _overview = new ProductRuntimeOverview();
+        }
+
+        var index = _overview.Products.FindIndex(row => row.Id.Equals(product.Id, StringComparison.OrdinalIgnoreCase));
+        if (index >= 0)
+        {
+            _overview.Products[index] = product;
+        }
+        else
+        {
+            _overview.Products.Add(product);
+        }
+    }
+
+    private bool CanStart(ProductRuntimeRow product) =>
+        _actingProductId is null
+        && product.ProductFound
+        && product.ComposeFound
+        && !product.Running;
+
+    private bool CanRestart(ProductRuntimeRow product) =>
+        _actingProductId is null
+        && product.ProductFound
+        && product.ComposeFound;
+
+    private bool IsBusy(ProductRuntimeRow product) =>
+        _actingProductId == product.Id
+        || product.State.Equals("restarting", StringComparison.OrdinalIgnoreCase);
+
+    private static string RuntimeLabel(ProductRuntimeRow product)
+    {
+        if (!product.ProductFound)
+        {
+            return "未検出";
+        }
+        if (!product.ComposeFound)
+        {
+            return "CLI未検出";
+        }
+        return product.State.Trim().ToLowerInvariant() switch
+        {
+            "ready" => "CLI利用可",
+            "running" => "稼働中",
+            "exited" => "停止中",
+            "created" => "作成済み",
+            "restarting" => "再起動中",
+            "paused" => "一時停止",
+            "not-created" => "未作成",
+            "" => "未確認",
+            var value => value,
+        };
+    }
+
+    private static string RuntimePillClass(ProductRuntimeRow product)
+    {
+        if (!product.ProductFound || !product.ComposeFound)
+        {
+            return "tfa-status-pill border-red-200 bg-red-50 text-red-800";
+        }
+        return product.State.Trim().ToLowerInvariant() switch
+        {
+            "ready" => "tfa-status-pill border-teal-200 bg-teal-50 text-teal-800",
+            "running" => "tfa-status-pill border-teal-200 bg-teal-50 text-teal-800",
+            "restarting" => "tfa-status-pill border-sky-200 bg-sky-50 text-sky-800",
+            "exited" or "created" or "not-created" => "tfa-status-pill border-slate-200 bg-slate-50 text-slate-700",
+            _ => "tfa-status-pill border-amber-200 bg-amber-50 text-amber-800",
+        };
+    }
+
+    private static string RuntimeIcon(ProductRuntimeRow product)
+    {
+        if (!product.ProductFound || !product.ComposeFound)
+        {
+            return "triangle-exclamation";
+        }
+        return product.State.Trim().ToLowerInvariant() switch
+        {
+            "ready" => "circle-check",
+            "running" => "circle-check",
+            "restarting" => "spinner",
+            "exited" or "created" or "not-created" => "circle-minus",
+            _ => "circle-info",
+        };
+    }
+
+    private static string RuntimeEntryLabel(ProductRuntimeRow product)
+    {
+        return string.IsNullOrWhiteSpace(product.ContainerName) ? "cli.ps1" : product.ContainerName;
+    }
+
+    private static string ProductIcon(string productId) => productId switch
+    {
+        "audio" => "file-audio",
+        "windows-codex" => "terminal",
+        "chatgpt" => "comments",
+        _ => "box",
+    };
+
+    private static string ProductIconClass(string productId) => productId switch
+    {
+        "audio" => "text-teal-700",
+        "windows-codex" => "text-slate-700",
+        "chatgpt" => "text-sky-800",
+        _ => "text-slate-700",
+    };
+
+    private static string ProductDescription(ProductRuntimeRow product) => product.Id switch
+    {
+        "audio" => "音声ファイル一覧",
+        "windows-codex" => "スレッド一覧",
+        "chatgpt" => "スレッド一覧",
+        _ => product.Description,
+    };
+
+    private static string DownloadFileUrl(string archivePath) =>
+        $"api/download/file?path={Uri.EscapeDataString(archivePath)}";
+
+    private static string ArchiveFileName(string archivePath, string fallback)
+    {
+        var text = (archivePath ?? "").Trim().Replace('\\', '/');
+        var fileName = text.Split('/', StringSplitOptions.RemoveEmptyEntries).LastOrDefault();
+        return string.IsNullOrWhiteSpace(fileName) ? fallback : fileName;
+    }
+}

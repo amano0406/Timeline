@@ -1,0 +1,137 @@
+@page "/timeline/settings"
+@inject TimelineHelperClient Timeline
+
+<PageTitle>Timeline 設定 - Timeline</PageTitle>
+
+<div class="mb-6">
+    <h1 class="tfa-title flex items-center gap-2">
+        <FaIcon Name="sliders" Class="tfa-icon text-accent" />
+        <span>Timeline 設定</span>
+    </h1>
+</div>
+
+@if (_error is not null)
+{
+    <div class="tfa-alert-danger mb-5 flex items-start gap-2">
+        <FaIcon Name="triangle-exclamation" Class="tfa-icon mt-0.5" />
+        <span>@_error</span>
+    </div>
+}
+
+@if (_saved)
+{
+    <div class="tfa-alert-info mb-5 flex items-start gap-2">
+        <FaIcon Name="circle-check" Class="tfa-icon mt-0.5" />
+        <span>設定を保存しました。</span>
+    </div>
+}
+
+@if (_loading)
+{
+    <section class="tfa-card tfa-card-pad flex items-center gap-3">
+        <FaIcon Name="spinner" Class="tfa-icon fa-spin text-accent" />
+        <span class="text-sm text-slate-600">読み込み中</span>
+    </section>
+}
+else
+{
+    <section class="tfa-card tfa-card-pad">
+        <h2 class="flex items-center gap-2 text-lg font-semibold">
+            <FaIcon Name="language" Class="tfa-icon text-accent" />
+            <span>表示</span>
+        </h2>
+
+        <div class="mt-4 grid gap-5 lg:grid-cols-2">
+            <div>
+                <label class="mb-2 block text-sm font-medium text-slate-700" for="timeline-display-language">表示言語</label>
+                <select id="timeline-display-language" class="tfa-input" @bind="_displayLanguageId">
+                    @foreach (var language in DisplayLanguages)
+                    {
+                        <option value="@language.Id">@language.Label</option>
+                    }
+                </select>
+            </div>
+
+            <div>
+                <label class="mb-2 block text-sm font-medium text-slate-700" for="timeline-time-zone">タイムゾーン</label>
+                <select id="timeline-time-zone" class="tfa-input" @bind="_timeZoneId">
+                    @foreach (var zone in TimeZones)
+                    {
+                        <option value="@zone.Id">@zone.Label</option>
+                    }
+                </select>
+                <div class="mt-3 rounded-md border border-line bg-slate-50 p-3 text-sm text-slate-700">
+                    <div class="tfa-kicker">表示例</div>
+                    <div class="mt-1 font-medium text-slate-900">@UiFormat.ShortDate(DateTimeOffset.Now.ToString("O"), _timeZoneId)</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <div class="mt-5 flex flex-wrap gap-3">
+        <button class="tfa-button-primary gap-2" @onclick="SaveAsync" disabled="@_saving">
+            <FaIcon Name="@(_saving ? "spinner" : "floppy-disk")" Class="@($"tfa-icon {(_saving ? "fa-spin" : "")}")" />
+            <span>保存</span>
+        </button>
+    </div>
+}
+
+@code {
+    private TimelineAppSettings? _settings;
+    private bool _loading = true;
+    private bool _saving;
+    private bool _saved;
+    private string? _error;
+    private string _displayLanguageId = "ja-JP";
+    private string _timeZoneId = "Asia/Tokyo";
+
+    private IReadOnlyList<TimelineDisplayLanguageOption> DisplayLanguages => _settings?.DisplayLanguages ?? [];
+    private IReadOnlyList<TimelineTimeZoneOption> TimeZones => _settings?.TimeZones ?? [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _error = null;
+        try
+        {
+            _settings = await Timeline.GetTimelineSettingsAsync();
+            _displayLanguageId = string.IsNullOrWhiteSpace(_settings.DisplayLanguageId) ? "ja-JP" : _settings.DisplayLanguageId;
+            _timeZoneId = string.IsNullOrWhiteSpace(_settings.TimeZoneId) ? "Asia/Tokyo" : _settings.TimeZoneId;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        _saving = true;
+        _saved = false;
+        _error = null;
+        try
+        {
+            _settings = await Timeline.SaveTimelineSettingsAsync(new TimelineAppSettingsSaveRequest
+            {
+                DisplayLanguageId = _displayLanguageId,
+                TimeZoneId = _timeZoneId,
+            });
+            _displayLanguageId = _settings.DisplayLanguageId;
+            _timeZoneId = _settings.TimeZoneId;
+            _saved = true;
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+}

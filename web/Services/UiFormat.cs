@@ -36,11 +36,38 @@ public static class UiFormat
 
     public static string ShortDate(string value)
     {
+        return ShortDate(value, "");
+    }
+
+    public static string ShortDate(string value, string timeZoneId)
+    {
         if (DateTimeOffset.TryParse(value, CultureInfo.CurrentCulture, DateTimeStyles.AssumeLocal, out var parsed))
         {
-            return parsed.ToString("yyyy-MM-dd HH:mm");
+            return ConvertToTimeZone(parsed, timeZoneId).ToString("yyyy-MM-dd HH:mm");
         }
 
         return string.IsNullOrWhiteSpace(value) ? "-" : value;
+    }
+
+    private static DateTimeOffset ConvertToTimeZone(DateTimeOffset value, string timeZoneId)
+    {
+        if (string.IsNullOrWhiteSpace(timeZoneId))
+        {
+            return value;
+        }
+
+        try
+        {
+            var zone = TimeZoneInfo.FindSystemTimeZoneById(timeZoneId);
+            return TimeZoneInfo.ConvertTime(value, zone);
+        }
+        catch (TimeZoneNotFoundException)
+        {
+            return value;
+        }
+        catch (InvalidTimeZoneException)
+        {
+            return value;
+        }
     }
 }

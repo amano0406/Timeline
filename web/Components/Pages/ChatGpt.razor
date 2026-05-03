@@ -1,0 +1,878 @@
+@page "/chatgpt"
+@inject TimelineHelperClient Timeline
+@inject IJSRuntime Js
+@implements IDisposable
+
+<PageTitle>スレッド一覧 - Timeline</PageTitle>
+
+<div class="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+    <div>
+        <h1 class="tfa-title flex items-center gap-2">
+            <FaIcon Name="comments" Class="tfa-icon text-accent" />
+            <span>スレッド一覧</span>
+        </h1>
+    </div>
+    <div class="flex flex-wrap gap-2">
+        <button class="tfa-button-primary gap-2" @onclick="StartRefreshAsync" disabled="@(ListBusy || _refreshing || _downloading || !CanRefresh)">
+            <FaIcon Name="@(_refreshing ? "spinner" : "file-arrow-up")" Class="@($"tfa-icon {(_refreshing ? "fa-spin" : "")}")" />
+            <span>@(_refreshing ? "処理中" : "ZIPをアップロード")</span>
+        </button>
+    </div>
+</div>
+
+@if (_error is not null)
+{
+    <div class="tfa-alert-danger mb-5 flex items-start gap-2">
+        <FaIcon Name="triangle-exclamation" Class="tfa-icon mt-0.5" />
+        <span>@_error</span>
+    </div>
+}
+
+@if (_operationMessage is not null)
+{
+    <div class="tfa-alert-info mb-5 flex items-start gap-2">
+        <FaIcon Name="circle-info" Class="tfa-icon mt-0.5" />
+        <span>@_operationMessage</span>
+    </div>
+}
+
+@if (_overview is not null && !_overview.ProductFound)
+{
+    <div class="tfa-alert-danger mb-5 flex items-start gap-2">
+        <FaIcon Name="folder-open" Class="tfa-icon mt-0.5" />
+        <span>TimelineForChatGPT が見つかりません。</span>
+    </div>
+}
+else if (_overview is not null && !_overview.SettingsValid)
+{
+    <div class="tfa-alert-warn mb-5 flex items-start gap-2">
+        <FaIcon Name="triangle-exclamation" Class="tfa-icon mt-0.5" />
+        <span>出力ディレクトリを確認してください。</span>
+    </div>
+}
+
+@if (_loading && _overview is null)
+{
+    <section class="tfa-card tfa-card-pad flex items-center gap-3">
+        <FaIcon Name="spinner" Class="tfa-icon fa-spin text-accent" />
+        <span class="text-sm text-slate-600">読み込み中</span>
+    </section>
+}
+else if (_overview is not null)
+{
+    @if (ShowProcessingProgress)
+    {
+        <section class="tfa-card tfa-run-progress">
+            <div class="tfa-run-progress-head">
+                <div class="tfa-run-progress-summary">
+                    <div class="tfa-run-progress-title">
+                        <span class="tfa-icon-box text-sky-800">
+                            <FaIcon Name="spinner" Class="tfa-icon fa-spin" />
+                        </span>
+                        <div class="tfa-run-progress-title-text">
+                            <h2>分析の進捗</h2>
+                            <div class="tfa-run-progress-meta">
+                                <span class="@ProcessingStatePill">@ProcessingStateLabel</span>
+                                <span class="tfa-status-pill border-slate-200 bg-white text-slate-700">@ProcessingStageLabel</span>
+                                @if (!string.IsNullOrWhiteSpace(ProcessingRunId))
+                                {
+                                    <span class="tfa-run-progress-id">実行ID: @ProcessingRunId</span>
+                                }
+                                @if (!string.IsNullOrWhiteSpace(ProcessingCurrentItem))
+                                {
+                                    <span class="tfa-run-progress-current-inline">処理中スレッド: @ProcessingCurrentItem</span>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                    <div class="tfa-run-progress-rate">
+                        <div class="tfa-run-progress-percent">@ProcessingProgressLabel</div>
+                        <div class="tfa-run-progress-count">@ProcessingProgressCountLabel</div>
+                    </div>
+                </div>
+
+                <div class="tfa-run-progress-bar-track"
+                     role="progressbar"
+                     aria-label="分析の進捗"
+                     aria-valuemin="0"
+                     aria-valuemax="100"
+                     aria-valuenow="@ProcessingProgressAriaValue">
+                    <div class="@ProcessingProgressBarClass" style="@ProcessingProgressBarStyle"></div>
+                </div>
+            </div>
+
+            <div class="tfa-run-progress-body">
+                <div class="tfa-run-metrics">
+                    <div class="tfa-run-metric">
+                        <div class="tfa-kicker">対象スレッド</div>
+                        <div>@ProcessingTotalLabel</div>
+                    </div>
+                    <div class="tfa-run-metric">
+                        <div class="tfa-kicker">処理済み</div>
+                        <div>@ProcessingDoneLabel</div>
+                    </div>
+                    <div class="tfa-run-metric">
+                        <div class="tfa-kicker">エラー</div>
+                        <div>@ProcessingErrorLabel</div>
+                    </div>
+                    <div class="tfa-run-metric">
+                        <div class="tfa-kicker">バッチ</div>
+                        <div>@ProcessingBatchLabel</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    }
+
+    <div class="grid gap-4 md:grid-cols-4">
+        <section class="tfa-card tfa-card-pad">
+            <div class="flex items-start justify-between gap-3">
+                <div>
+                    <div class="tfa-kicker">スレッド数</div>
+                    <div class="mt-2 text-3xl font-semibold">@_overview.ItemCount</div>
+                </div>
+                <span class="tfa-icon-box text-sky-800">
+                    <FaIcon Name="comments" Class="tfa-icon" />
+                </span>
+            </div>
+        </section>
+        <section class="tfa-card tfa-card-pad">
+            <div class="flex items-start justify-between gap-3">
+                <div>
+                    <div class="tfa-kicker">処理ステータス</div>
+                    <div class="mt-2 text-2xl font-semibold">@ProcessingSummaryLabel</div>
+                </div>
+                <span class="@($"tfa-icon-box {ProcessingSummaryIconClass}")">
+                    <FaIcon Name="@ProcessingSummaryIcon" Class="@($"tfa-icon {(ShowProcessingProgress ? "fa-spin" : "")}")" />
+                </span>
+            </div>
+        </section>
+        <section class="tfa-card tfa-card-pad">
+            <div class="flex items-start justify-between gap-3">
+                <div>
+                    <div class="tfa-kicker">メッセージ数</div>
+                    <div class="mt-2 text-3xl font-semibold">@TotalMessageCount</div>
+                </div>
+                <span class="tfa-icon-box text-teal-700">
+                    <FaIcon Name="comments" Class="tfa-icon" />
+                </span>
+            </div>
+        </section>
+        <section class="tfa-card tfa-card-pad">
+            <div class="flex items-start justify-between gap-3">
+                <div>
+                    <div class="tfa-kicker">入力ZIP</div>
+                    <div class="mt-2 text-2xl font-semibold">アップロード</div>
+                </div>
+                <span class="tfa-icon-box text-slate-600">
+                    <FaIcon Name="sliders" Class="tfa-icon" />
+                </span>
+            </div>
+        </section>
+    </div>
+
+    <section class="tfa-card mt-5 overflow-hidden">
+        <div class="tfa-card-pad flex items-center justify-between gap-3 border-b border-line">
+            <h2 class="flex items-center gap-2 text-lg font-semibold">
+                <FaIcon Name="comments" Class="tfa-icon text-accent" />
+                <span>スレッド一覧</span>
+            </h2>
+            <span class="text-sm text-slate-500">@ThreadListStatusLabel</span>
+        </div>
+
+        @if (Threads.Count == 0)
+        {
+            <div class="p-5 text-sm text-slate-600">スレッドはありません。</div>
+        }
+        else
+        {
+            <div class="tfa-file-actionbar">
+                <div class="tfa-file-actionbar-count">
+                    <FaIcon Name="check-square" Class="tfa-icon text-slate-500" />
+                    <span>@SelectionSummary</span>
+                </div>
+                <div class="tfa-file-actionbar-actions">
+                    <button class="tfa-button-secondary gap-2" @onclick="OpenDeleteModal" disabled="@(ListBusy || !HasSelection || _downloading || _deleting)">
+                        <FaIcon Name="trash-can" Class="tfa-icon" />
+                        <span>生成物を削除</span>
+                    </button>
+                    <button class="tfa-button-secondary gap-2" @onclick="DownloadSelectedAsync" disabled="@(ListBusy || !HasSelection || _downloading || _deleting)">
+                        <FaIcon Name="@(_downloading ? "spinner" : "download")" Class="@($"tfa-icon {(_downloading ? "fa-spin" : "")}")" />
+                        <span>ダウンロード</span>
+                    </button>
+                    <button class="tfa-button-secondary gap-2" @onclick="DownloadAllAsync" disabled="@(_loading || (Threads.Count == 0 && _threadTotal == 0) || _downloading || _deleting)">
+                        <FaIcon Name="@(_downloading ? "spinner" : "download")" Class="@($"tfa-icon {(_downloading ? "fa-spin" : "")}")" />
+                        <span>すべてダウンロード</span>
+                    </button>
+                    <button class="tfa-button-secondary gap-2" @onclick="ClearSelection" disabled="@(ListBusy || !HasSelection || _downloading || _deleting)">
+                        <FaIcon Name="xmark" Class="tfa-icon" />
+                        <span>選択解除</span>
+                    </button>
+                </div>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="tfa-table">
+                    <thead>
+                        <tr>
+                            <th class="w-10">
+                                <input type="checkbox"
+                                       checked="@AllThreadsSelected"
+                                       @onchange="ToggleAllThreads"
+                                       disabled="@ListBusy"
+                                       aria-label="すべてのスレッドを選択" />
+                            </th>
+                            <th>タイトル</th>
+                            <th>メッセージ</th>
+                            <th>作成日時</th>
+                            <th>更新日時</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var thread in Threads)
+                        {
+                            <tr>
+                                <td class="w-10">
+                                    <input type="checkbox"
+                                           checked="@IsSelected(thread)"
+                                           @onchange="(args) => ToggleThread(thread, IsChecked(args))"
+                                           disabled="@ListBusy"
+                                           aria-label="@($"{EmptyText(thread.Title)} を選択")" />
+                                </td>
+                                <td class="min-w-80">
+                                    <a class="inline-flex items-center gap-1.5 font-medium text-accent underline underline-offset-2"
+                                       href="@ThreadUrl(thread)">
+                                        <span>@EmptyText(thread.Title)</span>
+                                        <FaIcon Name="arrow-up-right-from-square" Class="tfa-icon !h-3 !w-3" />
+                                    </a>
+                                </td>
+                                <td class="whitespace-nowrap">@thread.MessageCount 件</td>
+                                <td class="whitespace-nowrap">@ShortDate(thread.CreatedAt)</td>
+                                <td class="whitespace-nowrap">@ShortDate(thread.UpdatedAt)</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            @if (_hasMoreThreads && !_autoLoadingThreads)
+            {
+                <div class="border-t border-line p-4 text-center">
+                    <button class="tfa-button-secondary gap-2" @onclick="LoadNextThreadPageAsync" disabled="@_loadingMoreThreads">
+                        <FaIcon Name="@(_loadingMoreThreads ? "spinner" : "plus")" Class="@($"tfa-icon {(_loadingMoreThreads ? "fa-spin" : "")}")" />
+                        <span>さらに読み込む</span>
+                    </button>
+                </div>
+            }
+        }
+    </section>
+
+}
+
+@if (_deleteModalOpen)
+{
+    <div class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4">
+        <section class="w-full max-w-xl rounded-md bg-white shadow-xl">
+            <div class="border-b border-line p-5">
+                <h2 class="flex items-center gap-2 text-lg font-semibold">
+                    <FaIcon Name="trash-can" Class="tfa-icon text-danger" />
+                    <span>生成物を削除</span>
+                </h2>
+            </div>
+            <div class="p-5 text-sm text-slate-700">
+                <p>選択中の @SelectedItemCount 件の生成物を削除します。</p>
+                <p class="mt-2 text-slate-500">元の ChatGPT エクスポートZIPは削除しません。削除後にZIPをアップロードすると、生成物は再作成できます。</p>
+            </div>
+            <div class="flex flex-wrap justify-end gap-2 border-t border-line p-4">
+                <button class="tfa-button-secondary gap-2" @onclick="CloseDeleteModal" disabled="@_deleting">
+                    <FaIcon Name="xmark" Class="tfa-icon" />
+                    <span>キャンセル</span>
+                </button>
+                <button class="tfa-button-primary gap-2" @onclick="ConfirmDeleteSelectedAsync" disabled="@_deleting">
+                    <FaIcon Name="@(_deleting ? "spinner" : "trash-can")" Class="@($"tfa-icon {(_deleting ? "fa-spin" : "")}")" />
+                    <span>削除</span>
+                </button>
+            </div>
+        </section>
+    </div>
+}
+
+@code {
+    private const int ThreadPageSize = 100;
+
+    private ChatGptOverview? _overview;
+    private TimelineAppSettings? _timelineSettings;
+    private readonly List<TimelineThreadRow> _threads = [];
+    private readonly HashSet<string> _selectedThreadIds = new(StringComparer.OrdinalIgnoreCase);
+    private bool _loading = true;
+    private bool _loadingMoreThreads;
+    private bool _autoLoadingThreads;
+    private bool _hasMoreThreads;
+    private bool _refreshing;
+    private bool _downloading;
+    private bool _deleting;
+    private bool _deleteModalOpen;
+    private bool _pollingOverview;
+    private bool _disposed;
+    private DateTime? _lastLoadedAt;
+    private int _nextThreadPage = 1;
+    private int _threadTotal;
+    private string? _error;
+    private string? _operationMessage;
+    private CancellationTokenSource? _pollingCts;
+
+    private bool CanRefresh => _overview?.ProductFound == true && _overview.SettingsValid;
+    private IReadOnlyList<TimelineThreadRow> Threads => _threads;
+    private bool ListBusy => _loading || _loadingMoreThreads || _autoLoadingThreads;
+    private string ThreadListStatusLabel => ListBusy
+        ? $"読み込み中 {Threads.Count} / {Math.Max(_threadTotal, Threads.Count)} 件"
+        : _lastLoadedAt is null
+            ? $"{Threads.Count} / {Math.Max(_threadTotal, Threads.Count)} 件"
+            : $"{Threads.Count} / {Math.Max(_threadTotal, Threads.Count)} 件、最終更新 {_lastLoadedAt.Value:HH:mm:ss}";
+    private int TotalMessageCount => Threads.Sum(thread => thread.MessageCount);
+    private ChatGptJobRow? ActiveJob => _overview?.Jobs.FirstOrDefault(IsActiveJob);
+    private bool ShowProcessingProgress => _refreshing || ActiveJob is not null;
+    private bool HasMeasuredProgress => ActiveJob is not null && (ActiveJob.ConversationsTotal > 0 || ActiveJob.ProgressPercent > 0);
+    private double ProcessingProgressPercent => Math.Clamp(ActiveJob?.ProgressPercent ?? 0, 0, 100);
+    private string ProcessingSummaryLabel => ShowProcessingProgress ? "処理中" : "待機中";
+    private string ProcessingSummaryIcon => ShowProcessingProgress ? "spinner" : "circle-check";
+    private string ProcessingSummaryIconClass => ShowProcessingProgress ? "text-sky-800" : "text-slate-500";
+    private string ProcessingStateLabel => ActiveJob is not null ? StateLabel(ActiveJob.State) : "準備中";
+    private string ProcessingStatePill => ActiveJob is not null
+        ? StatePillClass(ActiveJob.State)
+        : "tfa-status-pill border-sky-200 bg-sky-50 text-sky-800";
+    private string ProcessingStageLabel => ActiveJob is not null ? StageLabel(ActiveJob.CurrentStage) : "ZIPを処理中";
+    private string ProcessingRunId => ActiveJob?.JobId ?? "";
+    private string ProcessingCurrentItem => ActiveJob?.CurrentConversation ?? "";
+    private string ProcessingProgressLabel => HasMeasuredProgress ? $"{ProcessingProgressPercent:0.#}%" : "処理中";
+    private string ProcessingProgressCountLabel => ActiveJob is null
+        ? "完了後に一覧へ反映します"
+        : ActiveJob.ConversationsTotal > 0
+            ? $"{ActiveJob.ConversationsDone} / {ActiveJob.ConversationsTotal} 件"
+            : "件数を確認中";
+    private int ProcessingProgressAriaValue => HasMeasuredProgress ? (int)Math.Round(ProcessingProgressPercent) : 0;
+    private string ProcessingProgressBarClass => HasMeasuredProgress
+        ? "tfa-run-progress-bar"
+        : "tfa-run-progress-bar tfa-run-progress-bar-indeterminate";
+    private string ProcessingProgressBarStyle => HasMeasuredProgress ? $"width:{ProcessingProgressPercent:0.##}%" : "";
+    private string ProcessingTotalLabel => ActiveJob?.ConversationsTotal > 0 ? $"{ActiveJob.ConversationsTotal} 件" : "-";
+    private string ProcessingDoneLabel => ActiveJob is not null ? $"{ActiveJob.ConversationsDone} 件" : "-";
+    private string ProcessingErrorLabel => ActiveJob is not null ? $"{ActiveJob.ErrorCount} 件" : "-";
+    private string ProcessingBatchLabel => ActiveJob?.BatchCount > 0 ? $"{ActiveJob.BatchCount} 件" : "-";
+    private string DisplayTimeZoneId => _timelineSettings?.TimeZoneId ?? "Asia/Tokyo";
+    private bool HasSelection => _selectedThreadIds.Count > 0;
+    private int SelectedItemCount => SelectedItemIds().Count;
+    private bool AllThreadsSelected => Threads.Count > 0 && Threads.All(thread => _selectedThreadIds.Contains(thread.ItemId));
+    private string SelectionSummary => HasSelection ? $"{_selectedThreadIds.Count} 件選択中" : "未選択";
+
+    protected override void OnInitialized()
+    {
+        _pollingCts = new CancellationTokenSource();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _disposed)
+        {
+            return;
+        }
+
+        await LoadAsync();
+        if (!_disposed && _pollingCts is not null)
+        {
+            _ = PollActiveJobAsync(_pollingCts.Token);
+        }
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _error = null;
+        try
+        {
+            var overviewTask = Timeline.GetChatGptOverviewAsync();
+            var settingsTask = Timeline.GetTimelineSettingsAsync();
+            await Task.WhenAll(overviewTask, settingsTask);
+            _overview = await overviewTask;
+            _timelineSettings = await settingsTask;
+            _threads.Clear();
+            _nextThreadPage = 1;
+            _hasMoreThreads = false;
+            await InvokeAsync(StateHasChanged);
+            await LoadThreadPageAsync(1, reset: true);
+        }
+        finally
+        {
+            _loading = false;
+            await InvokeAsync(StateHasChanged);
+        }
+
+        _ = AutoLoadRemainingThreadsAsync();
+    }
+
+    private async Task LoadThreadPageAsync(int page, bool reset)
+    {
+        var result = await Timeline.GetChatGptThreadsAsync(page, ThreadPageSize);
+        if (reset)
+        {
+            _threads.Clear();
+        }
+
+        var known = _threads.Select(thread => thread.ItemId).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (var thread in result.Threads)
+        {
+            if (!string.IsNullOrWhiteSpace(thread.ItemId) && known.Add(thread.ItemId))
+            {
+                _threads.Add(thread);
+            }
+        }
+
+        _threadTotal = result.Total > 0 ? result.Total : result.Pagination.TotalItems;
+        _lastLoadedAt = DateTime.Now;
+        _hasMoreThreads = result.Pagination.HasNext;
+        _nextThreadPage = Math.Max(1, result.Pagination.Page) + 1;
+        RemoveMissingSelections();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task LoadNextThreadPageAsync()
+    {
+        if (!_hasMoreThreads || _loadingMoreThreads)
+        {
+            return;
+        }
+
+        _loadingMoreThreads = true;
+        _error = null;
+        try
+        {
+            await LoadThreadPageAsync(_nextThreadPage, reset: false);
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _loadingMoreThreads = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task AutoLoadRemainingThreadsAsync()
+    {
+        if (!_hasMoreThreads || _disposed || _pollingCts?.IsCancellationRequested == true)
+        {
+            return;
+        }
+
+        _autoLoadingThreads = true;
+        try
+        {
+            while (_hasMoreThreads && !_disposed && _pollingCts?.IsCancellationRequested != true)
+            {
+                await LoadThreadPageAsync(_nextThreadPage, reset: false);
+                await Task.Delay(50, _pollingCts?.Token ?? CancellationToken.None);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _autoLoadingThreads = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task PollActiveJobAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                await Task.Delay(TimeSpan.FromSeconds(5), cancellationToken);
+                if (ShowProcessingProgress)
+                {
+                    await InvokeAsync(RefreshOverviewForPollingAsync);
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+
+    private async Task RefreshOverviewForPollingAsync()
+    {
+        if (_pollingOverview || _loading || _deleting || _downloading)
+        {
+            return;
+        }
+
+        _pollingOverview = true;
+        var hadActiveJob = ActiveJob is not null;
+        try
+        {
+            _overview = await Timeline.GetChatGptOverviewAsync();
+            if (hadActiveJob && ActiveJob is null)
+            {
+                await LoadThreadPageAsync(1, reset: true);
+                _ = AutoLoadRemainingThreadsAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            _error ??= ex.Message;
+        }
+        finally
+        {
+            _pollingOverview = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task StartRefreshAsync()
+    {
+        _error = null;
+        _operationMessage = null;
+
+        string? filePath;
+        try
+        {
+            filePath = await Js.InvokeAsync<string?>(
+                "timelineDirectoryPicker.pickFile",
+                "ChatGPT export ZIPを選択",
+                "",
+                "ZIP files (*.zip)|*.zip|All files (*.*)|*.*");
+        }
+        catch (JSException ex)
+        {
+            _error = ex.Message;
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(filePath))
+        {
+            return;
+        }
+
+        _refreshing = true;
+        await InvokeAsync(StateHasChanged);
+        try
+        {
+            var result = await Timeline.RefreshChatGptAsync(new ChatGptRefreshRequest
+            {
+                FilePath = filePath,
+            });
+            _operationMessage = result.Available
+                ? $"更新が完了しました。処理 {result.Processed} 件、スキップ {result.Skipped} 件。"
+                : "更新を実行しました。";
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _refreshing = false;
+        }
+    }
+
+    private async Task DownloadSelectedAsync()
+    {
+        var itemIds = SelectedItemIds();
+        if (itemIds.Count == 0)
+        {
+            _error = "ダウンロードするスレッドを選択してください。";
+            return;
+        }
+
+        var save = await BeginSaveAsync($"TimelineForChatGPT-{DateTime.Now:yyyyMMdd-HHmmss}.zip");
+        if (save is null)
+        {
+            return;
+        }
+
+        _downloading = true;
+        _error = null;
+        _operationMessage = null;
+        try
+        {
+            var result = await Timeline.DownloadChatGptItemsAsync(new TimelineThreadItemsRequest
+            {
+                ItemIds = itemIds,
+            });
+            await SaveArchiveAsync(save, result.ArchivePath, $"TimelineForChatGPT-{DateTime.Now:yyyyMMdd-HHmmss}.zip");
+            _operationMessage = $"{itemIds.Count} 件を保存しました。";
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _downloading = false;
+        }
+    }
+
+    private async Task DownloadAllAsync()
+    {
+        var save = await BeginSaveAsync($"TimelineForChatGPT-all-{DateTime.Now:yyyyMMdd-HHmmss}.zip");
+        if (save is null)
+        {
+            return;
+        }
+
+        _downloading = true;
+        _error = null;
+        _operationMessage = null;
+        try
+        {
+            var result = await Timeline.DownloadChatGptItemsAsync(new TimelineThreadItemsRequest());
+            await SaveArchiveAsync(save, result.ArchivePath, $"TimelineForChatGPT-all-{DateTime.Now:yyyyMMdd-HHmmss}.zip");
+            _operationMessage = "すべてのスレッドを保存しました。";
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _downloading = false;
+        }
+    }
+
+    private async Task<BrowserSaveHandle?> BeginSaveAsync(string suggestedName)
+    {
+        var save = await Js.InvokeAsync<BrowserSaveHandle>("timelineDownload.beginSave", suggestedName);
+        if (!save.Accepted)
+        {
+            if (!string.IsNullOrWhiteSpace(save.Message))
+            {
+                _error = save.Message;
+            }
+            return null;
+        }
+        return save;
+    }
+
+    private async Task SaveArchiveAsync(BrowserSaveHandle save, string archivePath, string fallbackName)
+    {
+        if (string.IsNullOrWhiteSpace(archivePath))
+        {
+            throw new InvalidOperationException("ダウンロードファイルを作成できませんでした。");
+        }
+
+        await Js.InvokeVoidAsync(
+            "timelineDownload.saveUrl",
+            save.Id,
+            DownloadFileUrl(archivePath),
+            ArchiveFileName(archivePath, fallbackName));
+    }
+
+    private static string DownloadFileUrl(string archivePath) =>
+        $"api/download/file?path={Uri.EscapeDataString(archivePath)}";
+
+    private static string ArchiveFileName(string archivePath, string fallback)
+    {
+        var text = (archivePath ?? "").Trim().Replace('\\', '/');
+        var fileName = text.Split('/', StringSplitOptions.RemoveEmptyEntries).LastOrDefault();
+        return string.IsNullOrWhiteSpace(fileName) ? fallback : fileName;
+    }
+
+    private void OpenDeleteModal()
+    {
+        if (HasSelection)
+        {
+            _deleteModalOpen = true;
+        }
+    }
+
+    private void CloseDeleteModal()
+    {
+        if (!_deleting)
+        {
+            _deleteModalOpen = false;
+        }
+    }
+
+    private async Task ConfirmDeleteSelectedAsync()
+    {
+        var itemIds = SelectedItemIds();
+        if (itemIds.Count == 0)
+        {
+            _error = "削除するスレッドを選択してください。";
+            return;
+        }
+
+        _deleting = true;
+        _error = null;
+        _operationMessage = null;
+        try
+        {
+            var result = await Timeline.DeleteChatGptItemsAsync(new TimelineThreadItemsRequest
+            {
+                ItemIds = itemIds,
+            });
+            _selectedThreadIds.Clear();
+            _deleteModalOpen = false;
+            _operationMessage = DeleteMessage(result, itemIds.Count);
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _deleting = false;
+        }
+    }
+
+    private static string StateLabel(string? state)
+    {
+        return (state ?? "").Trim().ToLowerInvariant() switch
+        {
+            "completed" => "完了",
+            "running" or "processing" => "処理中",
+            "pending" or "queued" => "待機中",
+            "failed" => "失敗",
+            "" => "未作成",
+            var value => value,
+        };
+    }
+
+    private static string StatePillClass(string? state)
+    {
+        return (state ?? "").Trim().ToLowerInvariant() switch
+        {
+            "completed" => "tfa-status-pill border-teal-200 bg-teal-50 text-teal-800",
+            "running" or "processing" => "tfa-status-pill border-sky-200 bg-sky-50 text-sky-800",
+            "pending" or "queued" => "tfa-status-pill border-slate-200 bg-slate-50 text-slate-700",
+            "failed" => "tfa-status-pill border-red-200 bg-red-50 text-red-800",
+            _ => "tfa-status-pill border-slate-200 bg-slate-50 text-slate-700",
+        };
+    }
+
+    private static bool IsActiveJob(ChatGptJobRow job) =>
+        job.State.Equals("running", StringComparison.OrdinalIgnoreCase)
+        || job.State.Equals("processing", StringComparison.OrdinalIgnoreCase)
+        || job.State.Equals("pending", StringComparison.OrdinalIgnoreCase)
+        || job.State.Equals("queued", StringComparison.OrdinalIgnoreCase);
+
+    private static string StageLabel(string? stage)
+    {
+        return (stage ?? "").Trim().ToLowerInvariant() switch
+        {
+            "queued" => "待機中",
+            "preflight" => "準備中",
+            "extract" or "extract_zip" => "ZIP展開中",
+            "parse" or "parse_conversations" => "会話解析中",
+            "write" or "write_items" or "generate_items" => "保存中",
+            "completed" => "完了",
+            "failed" => "失敗",
+            "" => "確認中",
+            var value => value,
+        };
+    }
+
+    private static string ThreadUrl(TimelineThreadRow thread) =>
+        $"chatgpt/thread/{Uri.EscapeDataString(thread.ItemId)}";
+
+    private string ShortDate(string? value) =>
+        UiFormat.ShortDate(value ?? "", DisplayTimeZoneId);
+
+    private bool IsSelected(TimelineThreadRow thread) =>
+        !string.IsNullOrWhiteSpace(thread.ItemId) && _selectedThreadIds.Contains(thread.ItemId);
+
+    private List<string> SelectedItemIds() =>
+        Threads.Where(IsSelected)
+            .Select(thread => thread.ItemId)
+            .Where(itemId => !string.IsNullOrWhiteSpace(itemId))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+    private void ToggleThread(TimelineThreadRow thread, bool selected)
+    {
+        _operationMessage = null;
+        if (string.IsNullOrWhiteSpace(thread.ItemId))
+        {
+            return;
+        }
+
+        if (selected)
+        {
+            _selectedThreadIds.Add(thread.ItemId);
+        }
+        else
+        {
+            _selectedThreadIds.Remove(thread.ItemId);
+        }
+    }
+
+    private void ToggleAllThreads(ChangeEventArgs args)
+    {
+        _operationMessage = null;
+        if (IsChecked(args))
+        {
+            foreach (var thread in Threads)
+            {
+                if (!string.IsNullOrWhiteSpace(thread.ItemId))
+                {
+                    _selectedThreadIds.Add(thread.ItemId);
+                }
+            }
+        }
+        else
+        {
+            foreach (var thread in Threads)
+            {
+                _selectedThreadIds.Remove(thread.ItemId);
+            }
+        }
+    }
+
+    private void ClearSelection()
+    {
+        _operationMessage = null;
+        _selectedThreadIds.Clear();
+    }
+
+    private void RemoveMissingSelections()
+    {
+        var visible = Threads.Select(thread => thread.ItemId).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        _selectedThreadIds.RemoveWhere(itemId => !visible.Contains(itemId));
+    }
+
+    private static bool IsChecked(ChangeEventArgs args) =>
+        args.Value is bool value && value;
+
+    private static string DeleteMessage(TimelineThreadItemsDeleteResult result, int selectedCount)
+    {
+        if (result.DeletedCount > 0)
+        {
+            var message = $"{result.DeletedCount} 件の生成物を削除しました。";
+            if (result.MissingItemIds.Count > 0)
+            {
+                message += $" 削除済みまたは見つからない項目: {result.MissingItemIds.Count} 件。";
+            }
+            return message;
+        }
+
+        return $"選択した {selectedCount} 件に削除対象の生成物はありませんでした。";
+    }
+
+    private static string EmptyText(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? "-" : value;
+
+    public void Dispose()
+    {
+        _disposed = true;
+        _pollingCts?.Cancel();
+        _pollingCts?.Dispose();
+    }
+}

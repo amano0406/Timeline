@@ -16,7 +16,31 @@ function Get-TimelineLastExitCode {
 function Add-TimelineDockerPath {
     $dockerBin = Join-Path $env:ProgramFiles "Docker\Docker\resources\bin"
     if (Test-Path -LiteralPath (Join-Path $dockerBin "docker.exe")) {
-        $env:PATH = "$dockerBin;$env:PATH"
+        $currentPath = [Environment]::GetEnvironmentVariable("PATH", "Process")
+        if (-not $currentPath) {
+            $currentPath = $env:PATH
+        }
+
+        $pathParts = @($currentPath -split ";") |
+            Where-Object { $_ } |
+            ForEach-Object { $_.Trim() }
+
+        $containsDockerBin = $false
+        foreach ($pathPart in $pathParts) {
+            if ([string]::Equals($pathPart, $dockerBin, [System.StringComparison]::OrdinalIgnoreCase)) {
+                $containsDockerBin = $true
+                break
+            }
+        }
+
+        if (-not $containsDockerBin) {
+            $currentPath = "$dockerBin;$currentPath"
+        }
+
+        [Environment]::SetEnvironmentVariable("PATH", $currentPath, "Process")
+        [Environment]::SetEnvironmentVariable("Path", $currentPath, "Process")
+        $env:PATH = $currentPath
+        $env:Path = $currentPath
     }
 }
 
@@ -141,7 +165,9 @@ function Start-TimelineHelperServer {
         [Parameter(Mandatory = $true)]
         [string]$RepoRoot,
         [Parameter(Mandatory = $true)]
-        [string]$AudioProductPath
+        [string]$AudioProductPath,
+        [string]$WindowsCodexProductPath = "C:\apps\TimelineForWindowsCodex",
+        [string]$ChatGptProductPath = "C:\apps\TimelineForChatGPT"
     )
 
     if (Test-TimelineHelperServer) {
@@ -162,16 +188,20 @@ function Start-TimelineHelperServer {
         "-File",
         "`"$scriptPath`"",
         "-AudioProductPath",
-        "`"$AudioProductPath`""
+        "`"$AudioProductPath`"",
+        "-WindowsCodexProductPath",
+        "`"$WindowsCodexProductPath`"",
+        "-ChatGptProductPath",
+        "`"$ChatGptProductPath`""
     )
 
     Start-Process -FilePath "powershell.exe" -ArgumentList $arguments -WindowStyle Hidden | Out-Null
 
-    for ($attempt = 1; $attempt -le 30; $attempt += 1) {
+    for ($attempt = 1; $attempt -le 120; $attempt += 1) {
         if (Test-TimelineHelperServer) {
             return
         }
-        Start-Sleep -Milliseconds 100
+        Start-Sleep -Milliseconds 250
     }
 
     throw "Timeline helper server did not start."

@@ -28,6 +28,37 @@ const timelineDirectoryPicker = {
     }
     return payload.path;
   },
+
+  async pickFile(title, initialPath, filter) {
+    const params = new URLSearchParams({
+      title: title || "Select file",
+      initialPath: initialPath || "",
+      filter: filter || "All files (*.*)|*.*",
+    });
+
+    let response;
+    try {
+      response = await fetch(`http://127.0.0.1:19001/pick-file?${params.toString()}`, {
+        method: "GET",
+        cache: "no-store",
+      });
+    } catch {
+      throw new Error("ファイル選択を起動できません。start.bat から Timeline を起動してください。");
+    }
+
+    if (!response.ok) {
+      throw new Error("ファイル選択を起動できませんでした。");
+    }
+
+    const payload = await response.json();
+    if (payload.cancelled) {
+      return null;
+    }
+    if (!payload.path) {
+      throw new Error("ファイルを選択できませんでした。");
+    }
+    return payload.path;
+  },
 };
 
 window.timelineDirectoryPicker = timelineDirectoryPicker;
@@ -40,5 +71,21 @@ window.timelineForAudioPlayer = {
     }
     element.currentTime = seconds || 0;
     element.play();
+  },
+};
+
+window.timelineFileActions = {
+  downloadJson(fileName, payload) {
+    const blob = new Blob([JSON.stringify(payload, null, 2)], {
+      type: "application/json;charset=utf-8",
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = fileName || "timeline-selection.json";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
   },
 };

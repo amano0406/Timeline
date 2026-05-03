@@ -1,0 +1,224 @@
+@page "/chatgpt/thread/{ItemId}"
+@inject TimelineHelperClient Timeline
+
+<PageTitle>@TitleLabel - Timeline</PageTitle>
+
+<div class="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+    <div class="min-w-0">
+        <h1 class="tfa-title flex items-center gap-2">
+            <FaIcon Name="comments" Class="tfa-icon text-accent" />
+            <span>@TitleLabel</span>
+        </h1>
+    </div>
+    <a class="tfa-button-secondary gap-2" href="chatgpt">
+        <FaIcon Name="arrow-left" Class="tfa-icon" />
+        <span>一覧に戻る</span>
+    </a>
+</div>
+
+@if (_error is not null)
+{
+    <div class="tfa-alert-danger mb-5 flex items-start gap-2">
+        <FaIcon Name="triangle-exclamation" Class="tfa-icon mt-0.5" />
+        <span>@_error</span>
+    </div>
+}
+
+@if (_loading)
+{
+    <section class="tfa-card tfa-card-pad flex items-center gap-3">
+        <FaIcon Name="spinner" Class="tfa-icon fa-spin text-accent" />
+        <span class="text-sm text-slate-600">読み込み中</span>
+    </section>
+}
+else if (_thread is null || !_thread.Available)
+{
+    <section class="tfa-card tfa-card-pad">
+        <div class="flex items-start gap-2 text-sm text-slate-600">
+            <FaIcon Name="circle-info" Class="tfa-icon mt-0.5 text-slate-400" />
+            <span>@EmptyText(_thread?.Message, "指定されたスレッドは見つかりませんでした。")</span>
+        </div>
+    </section>
+}
+else
+{
+    <div class="grid gap-4 md:grid-cols-4">
+        <section class="tfa-card tfa-card-pad">
+            <div class="tfa-kicker">メッセージ数</div>
+            <div class="mt-2 text-3xl font-semibold">@_thread.MessageCount</div>
+        </section>
+        <section class="tfa-card tfa-card-pad">
+            <div class="tfa-kicker">作成日時</div>
+            <div class="mt-2 text-lg font-semibold">@ShortDate(_thread.CreatedAt)</div>
+        </section>
+        <section class="tfa-card tfa-card-pad">
+            <div class="tfa-kicker">更新日時</div>
+            <div class="mt-2 text-lg font-semibold">@ShortDate(_thread.UpdatedAt)</div>
+        </section>
+        <section class="tfa-card tfa-card-pad">
+            <div class="tfa-kicker">保存先</div>
+            <div class="mt-2 truncate text-lg font-semibold">@ShortPath(_thread.DirectoryPath)</div>
+        </section>
+    </div>
+
+    <section class="tfa-card tfa-conversation-card mt-5 overflow-hidden">
+        <div class="tfa-card-pad flex items-center justify-between gap-3 border-b border-line">
+            <h2 class="flex items-center gap-2 text-lg font-semibold">
+                <FaIcon Name="message" Class="tfa-icon text-accent" />
+                <span>会話内容</span>
+            </h2>
+            <span class="text-sm text-slate-500">@_thread.Messages.Count 件</span>
+        </div>
+
+        @if (_thread.Messages.Count == 0)
+        {
+            <div class="p-5 text-sm text-slate-600">表示できるメッセージはありません。</div>
+        }
+        else
+        {
+            <div class="tfa-chat-list">
+                @foreach (var group in MessageGroups)
+                {
+                    <article class="@MessageClass(group.Role)">
+                        <div class="tfa-chat-bubble">
+                            <div class="tfa-chat-meta">
+                                <span class="inline-flex items-center gap-1.5">
+                                    <FaIcon Name="@RoleIcon(group.Role)" Class="tfa-icon !h-3 !w-3" />
+                                    <span>@RoleLabel(group.Role)</span>
+                                </span>
+                                <span>@group.Messages.Count 件</span>
+                            </div>
+                            <div class="tfa-chat-parts">
+                                @for (var index = 0; index < group.Messages.Count; index += 1)
+                                {
+                                    var message = group.Messages[index];
+                                    var isContinuation = index > 0;
+                                    <section class="@(isContinuation ? "tfa-chat-part tfa-chat-part-continuation" : "tfa-chat-part")">
+                                        @if (!isContinuation)
+                                        {
+                                            <div class="tfa-chat-part-time">@ShortDate(message.CreatedAt)</div>
+                                        }
+                                        <MarkdownText Text="@EmptyText(message.Text, "本文なし")" />
+                                    </section>
+                                }
+                            </div>
+                        </div>
+                    </article>
+                }
+            </div>
+        }
+    </section>
+}
+
+@code {
+    [Parameter]
+    public string? ItemId { get; set; }
+
+    private Timeline.Web.Services.ChatGptThreadDetail? _thread;
+    private TimelineAppSettings? _timelineSettings;
+    private bool _loading = true;
+    private string? _error;
+
+    private string TitleLabel => string.IsNullOrWhiteSpace(_thread?.Title) ? "スレッド詳細" : _thread.Title;
+    private string DisplayTimeZoneId => _timelineSettings?.TimeZoneId ?? "Asia/Tokyo";
+    private IReadOnlyList<MessageGroup> MessageGroups => BuildMessageGroups(_thread?.Messages ?? []);
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _loading = true;
+        _error = null;
+        _thread = null;
+
+        if (string.IsNullOrWhiteSpace(ItemId))
+        {
+            _error = "スレッドが指定されていません。";
+            _loading = false;
+            return;
+        }
+
+        try
+        {
+            var threadTask = Timeline.GetChatGptThreadAsync(ItemId);
+            var settingsTask = Timeline.GetTimelineSettingsAsync();
+            await Task.WhenAll(threadTask, settingsTask);
+            _thread = await threadTask;
+            _timelineSettings = await settingsTask;
+            if (!_thread.Available && !string.IsNullOrWhiteSpace(_thread.Message))
+            {
+                _error = _thread.Message;
+            }
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private static string MessageClass(string? role) =>
+        (role ?? "").Trim().ToLowerInvariant() switch
+        {
+            "user" => "tfa-chat-message tfa-chat-message-user",
+            "assistant" => "tfa-chat-message tfa-chat-message-assistant",
+            "system" or "developer" => "tfa-chat-message tfa-chat-message-system",
+            _ => "tfa-chat-message tfa-chat-message-other",
+        };
+
+    private static string RoleLabel(string? role) =>
+        (role ?? "").Trim().ToLowerInvariant() switch
+        {
+            "user" => "ユーザー",
+            "assistant" => "ChatGPT",
+            "system" => "システム",
+            "developer" => "開発者",
+            "tool" => "ツール",
+            "" => "不明",
+            var value => value,
+        };
+
+    private static string RoleIcon(string? role) =>
+        (role ?? "").Trim().ToLowerInvariant() switch
+        {
+            "user" => "user",
+            "assistant" => "robot",
+            "system" or "developer" => "gear",
+            "tool" => "wrench",
+            _ => "message",
+        };
+
+    private static string EmptyText(string? value, string fallback = "-") =>
+        string.IsNullOrWhiteSpace(value) ? fallback : value;
+
+    private string ShortDate(string? value) =>
+        UiFormat.ShortDate(value ?? "", DisplayTimeZoneId);
+
+    private static IReadOnlyList<MessageGroup> BuildMessageGroups(IReadOnlyList<TimelineThreadMessage> messages)
+    {
+        var groups = new List<MessageGroup>();
+        foreach (var message in messages)
+        {
+            var role = (message.Role ?? "").Trim();
+            if (groups.Count == 0 || !groups[^1].Role.Equals(role, StringComparison.OrdinalIgnoreCase))
+            {
+                groups.Add(new MessageGroup(role, []));
+            }
+
+            groups[^1].Messages.Add(message);
+        }
+
+        return groups;
+    }
+
+    private static string ShortPath(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return "-";
+        }
+
+        var trimmed = path.Trim().TrimEnd('\\', '/');
+        var separator = Math.Max(trimmed.LastIndexOf('\\'), trimmed.LastIndexOf('/'));
+        return separator >= 0 && separator + 1 < trimmed.Length ? trimmed[(separator + 1)..] : trimmed;
+    }
+
+    private sealed record MessageGroup(string Role, List<TimelineThreadMessage> Messages);
+}

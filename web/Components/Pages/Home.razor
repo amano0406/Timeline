@@ -1,24 +1,27 @@
-@page "/"
 @page "/audio/files"
 @inject TimelineHelperClient Timeline
+@inject IJSRuntime Js
+@implements IDisposable
 
-<PageTitle>音声ファイル - Timeline</PageTitle>
+<PageTitle>音声ファイル一覧 - Timeline</PageTitle>
 
 <div class="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
     <div>
-        <div class="tfa-kicker">Audio files</div>
         <h1 class="tfa-title flex items-center gap-2">
             <FaIcon Name="file-audio" Class="tfa-icon text-accent" />
-            <span>音声ファイル</span>
+            <span>音声ファイル一覧</span>
         </h1>
-        <p class="mt-2 max-w-3xl text-sm text-slate-600">
-            入力ディレクトリにある音声を確認し、分析できているかをファイル単位で見ます。
-        </p>
     </div>
-    <button class="tfa-button-secondary gap-2" @onclick="LoadAsync" disabled="@_loading">
-        <FaIcon Name="rotate" Class="@($"tfa-icon {(_loading ? "fa-spin" : "")}")" />
-        <span>更新</span>
-    </button>
+    <div class="flex flex-wrap gap-2">
+        <button class="tfa-button-secondary gap-2" @onclick="LoadAsync" disabled="@(ListBusy || _refreshing)">
+            <FaIcon Name="rotate" Class="@($"tfa-icon {(ListBusy ? "fa-spin" : "")}")" />
+            <span>一覧更新</span>
+        </button>
+        <button class="tfa-button-primary gap-2" @onclick="StartAudioRefreshAsync" disabled="@(ListBusy || _refreshing || _deleting || _downloading)">
+            <FaIcon Name="@(_refreshing ? "spinner" : "play")" Class="@($"tfa-icon {(_refreshing ? "fa-spin" : "")}")" />
+            <span>@(_refreshing ? "分析開始中" : "再スキャンして分析")</span>
+        </button>
+    </div>
 </div>
 
 @if (_error is not null)
@@ -37,7 +40,7 @@
     </div>
 }
 
-@if (WorkerState.Equals("starting", StringComparison.OrdinalIgnoreCase))
+@if (WorkerState.Equals("starting", StringComparison.OrdinalIgnoreCase) && ActiveRun is null)
 {
     <div class="tfa-alert-info mb-5 flex items-start gap-2">
         <FaIcon Name="spinner" Class="tfa-icon fa-spin mt-0.5" />
@@ -52,65 +55,162 @@ else if (WorkerState.Equals("stopped", StringComparison.OrdinalIgnoreCase))
     </div>
 }
 
-<div class="grid gap-4 md:grid-cols-4">
-    <section class="tfa-card tfa-card-pad">
-        <div class="flex items-start justify-between gap-3">
-            <div>
-                <div class="tfa-kicker">音声ファイル</div>
-                <div class="mt-2 text-3xl font-semibold">@FileCount</div>
-            </div>
-            <span class="tfa-icon-box">
-                <FaIcon Name="file-audio" Class="tfa-icon" />
-            </span>
-        </div>
-    </section>
-    <section class="tfa-card tfa-card-pad">
-        <div class="flex items-start justify-between gap-3">
-            <div>
-                <div class="tfa-kicker">処理済み</div>
-                <div class="mt-2 text-3xl font-semibold">@CompletedCount</div>
-            </div>
-            <span class="tfa-icon-box text-teal-700">
-                <FaIcon Name="circle-check" Class="tfa-icon" />
-            </span>
-        </div>
-    </section>
-    <section class="tfa-card tfa-card-pad">
-        <div class="flex items-start justify-between gap-3">
-            <div>
-                <div class="tfa-kicker">未処理</div>
-                <div class="mt-2 text-3xl font-semibold">@PendingCount</div>
-            </div>
-            <span class="tfa-icon-box text-amber-700">
-                <FaIcon Name="clock" Class="tfa-icon" />
-            </span>
-        </div>
-    </section>
-    <section class="tfa-card tfa-card-pad">
-        <div class="flex items-start justify-between gap-3">
-            <div>
-                <div class="tfa-kicker">分析処理</div>
-                <div class="mt-2 text-2xl font-semibold">@WorkerStateLabel</div>
-            </div>
-            <span class="@($"tfa-icon-box {WorkerStateIconClass}")">
-                <FaIcon Name="@WorkerStateIcon" Class="@($"tfa-icon {(WorkerWaiting ? "fa-spin" : "")}")" />
-            </span>
-        </div>
-    </section>
-</div>
+@if (_operationMessage is not null)
+{
+    <div class="tfa-alert-info mb-5 flex items-start gap-2">
+        <FaIcon Name="circle-info" Class="tfa-icon mt-0.5" />
+        <span>@_operationMessage</span>
+    </div>
+}
 
-<section class="tfa-card mt-5 overflow-hidden">
+@if (_loading && _files is null)
+{
+    <section class="tfa-card tfa-card-pad flex items-center gap-3">
+        <FaIcon Name="spinner" Class="tfa-icon fa-spin text-accent" />
+        <span class="text-sm text-slate-600">読み込み中</span>
+    </section>
+}
+else
+{
+    @if (ActiveRun is not null)
+    {
+        <section class="tfa-card tfa-run-progress">
+            <div class="tfa-run-progress-head">
+                <div class="tfa-run-progress-summary">
+                    <div class="tfa-run-progress-title">
+                        <span class="tfa-icon-box text-sky-800">
+                            <FaIcon Name="spinner" Class="tfa-icon fa-spin" />
+                        </span>
+                        <div class="tfa-run-progress-title-text">
+                            <h2>分析の進捗</h2>
+                            <div class="tfa-run-progress-meta">
+                                <span class="@RunStatePill(ActiveRun.State)">@RunStateLabel(ActiveRun.State)</span>
+                                @if (ShouldShowStage(ActiveRun))
+                                {
+                                    <span class="tfa-status-pill border-slate-200 bg-white text-slate-700">@StageLabel(ActiveRun.CurrentStage)</span>
+                                }
+                                <span class="tfa-run-progress-id">実行ID: @ActiveRun.RunId</span>
+                                @if (!string.IsNullOrWhiteSpace(ActiveRun.CurrentItem))
+                                {
+                                    <span class="tfa-run-progress-current-inline">処理中ファイル: @ActiveRun.CurrentItem</span>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                    <div class="tfa-run-progress-rate">
+                        <div class="tfa-run-progress-percent">@ProgressLabel(ActiveRun.ProgressPercent)</div>
+                        <div class="tfa-run-progress-count">@ActiveRun.ItemsDone / @ActiveRun.ItemsTotal 件</div>
+                    </div>
+                </div>
+
+                <div class="tfa-run-progress-bar-track"
+                     role="progressbar"
+                     aria-label="分析の進捗"
+                     aria-valuemin="0"
+                     aria-valuemax="100"
+                     aria-valuenow="@ProgressAriaValue(ActiveRun.ProgressPercent)">
+                    <div class="tfa-run-progress-bar" style="@ProgressBarStyle(ActiveRun.ProgressPercent)"></div>
+                </div>
+            </div>
+
+            <div class="tfa-run-progress-body">
+                <div class="tfa-run-progress-actions">
+                    <button type="button"
+                            class="tfa-run-progress-toggle"
+                            @onclick="ToggleRunDetails"
+                            aria-expanded="@_runDetailsOpen">
+                        <FaIcon Name="@(_runDetailsOpen ? "chevron-up" : "chevron-down")" Class="tfa-icon !h-3 !w-3" />
+                        <span>@(_runDetailsOpen ? "詳細を閉じる" : "詳細を表示")</span>
+                    </button>
+                </div>
+
+                @if (_runDetailsOpen)
+                {
+                    <div class="tfa-run-metrics">
+                        <div class="tfa-run-metric">
+                            <div class="tfa-kicker">失敗</div>
+                            <div>@ActiveRun.ItemsFailed 件</div>
+                        </div>
+                        <div class="tfa-run-metric">
+                            <div class="tfa-kicker">スキップ</div>
+                            <div>@ActiveRun.ItemsSkipped 件</div>
+                        </div>
+                        <div class="tfa-run-metric">
+                            <div class="tfa-kicker">処理済み時間</div>
+                            <div>@RunDurationLabel(ActiveRun.ProcessedDurationSec)</div>
+                        </div>
+                        <div class="tfa-run-metric">
+                            <div class="tfa-kicker">残り目安</div>
+                            <div>@RunDurationLabel(ActiveRun.EstimatedRemainingSec)</div>
+                        </div>
+                    </div>
+                }
+            </div>
+        </section>
+    }
+
+    <div class="grid gap-4 md:grid-cols-4">
+        <section class="tfa-card tfa-card-pad">
+            <div class="flex items-start justify-between gap-3">
+                <div>
+                    <div class="tfa-kicker">総ファイル数</div>
+                    <div class="mt-2 text-3xl font-semibold">@FileCount</div>
+                </div>
+                <span class="tfa-icon-box">
+                    <FaIcon Name="file-audio" Class="tfa-icon" />
+                </span>
+            </div>
+        </section>
+        <section class="tfa-card tfa-card-pad">
+            <div class="flex items-start justify-between gap-3">
+                <div>
+                    <div class="tfa-kicker">未処理ファイル数</div>
+                    <div class="mt-2 text-3xl font-semibold">@UnprocessedCount</div>
+                </div>
+                <span class="tfa-icon-box text-slate-600">
+                    <FaIcon Name="circle-minus" Class="tfa-icon" />
+                </span>
+            </div>
+        </section>
+        <section class="tfa-card tfa-card-pad">
+            <div class="flex items-start justify-between gap-3">
+                <div>
+                    <div class="tfa-kicker">総記録時間</div>
+                    <div class="mt-2 text-2xl font-semibold">@TotalDurationLabel</div>
+                    @if (HasPartialDuration)
+                    {
+                        <div class="mt-1 text-xs text-slate-500">@KnownDurationCount / @FileCount 件</div>
+                    }
+                </div>
+                <span class="tfa-icon-box text-sky-800">
+                    <FaIcon Name="stopwatch" Class="tfa-icon" />
+                </span>
+            </div>
+        </section>
+        <section class="tfa-card tfa-card-pad">
+            <div class="flex items-start justify-between gap-3">
+                <div>
+                    <div class="tfa-kicker">処理ステータス</div>
+                    <div class="mt-2 text-2xl font-semibold">@WorkerStateLabel</div>
+                </div>
+                <span class="@($"tfa-icon-box {WorkerStateIconClass}")">
+                    <FaIcon Name="@WorkerStateIcon" Class="@($"tfa-icon {(WorkerWaiting ? "fa-spin" : "")}")" />
+                </span>
+            </div>
+        </section>
+    </div>
+
+    <section class="tfa-card mt-5 overflow-hidden">
     <div class="tfa-card-pad flex flex-col gap-3 border-b border-line sm:flex-row sm:items-center sm:justify-between">
         <div>
             <h2 class="flex items-center gap-2 text-lg font-semibold">
                 <FaIcon Name="folder-open" Class="tfa-icon text-accent" />
-                <span>入力ファイル一覧</span>
+                <span>ファイル一覧</span>
             </h2>
-            <p class="mt-1 text-sm text-slate-600">ファイル名を開くと、音声と時間軸データを確認できます。</p>
         </div>
         <div class="flex items-center gap-2 text-sm text-slate-500">
-            <FaIcon Name="@(_loading ? "spinner" : "clock")" Class="@($"tfa-icon {(_loading ? "fa-spin" : "")}")" />
-            <span>@(_loading ? "読み込み中" : $"最終更新 {DateTime.Now:HH:mm:ss}")</span>
+            <FaIcon Name="@(ListBusy ? "spinner" : "clock")" Class="@($"tfa-icon {(ListBusy ? "fa-spin" : "")}")" />
+            <span>@FileListStatusLabel</span>
         </div>
     </div>
 
@@ -125,106 +225,263 @@ else if (WorkerState.Equals("stopped", StringComparison.OrdinalIgnoreCase))
     }
     else
     {
-        <div class="divide-y divide-line">
-            @foreach (var rootGroup in RootGroups)
-            {
-                <section>
-                    <div class="bg-slate-50 px-4 py-3">
-                        <div class="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-                            <div class="flex items-center gap-2 font-semibold text-slate-800">
-                                <FaIcon Name="folder" Class="tfa-icon text-slate-500" />
-                                <span>@RootDisplayName(rootGroup.Key)</span>
-                            </div>
-                            <div class="break-all font-mono text-xs text-slate-500">@rootGroup.Key.RootPath</div>
-                        </div>
-                    </div>
-
-                    @foreach (var directoryGroup in rootGroup.GroupBy(FileDirectory).OrderBy(group => group.Key, StringComparer.OrdinalIgnoreCase))
-                    {
-                        <div class="border-t border-line">
-                            <div class="flex items-center gap-2 px-4 py-2 text-xs font-semibold uppercase tracking-normal text-slate-500">
-                                <FaIcon Name="folder-tree" Class="tfa-icon text-slate-400" />
-                                <span>@(string.IsNullOrWhiteSpace(directoryGroup.Key) ? "ルート" : directoryGroup.Key)</span>
-                            </div>
-                            <div class="overflow-x-auto">
-                                <table class="tfa-table">
-                                    <thead>
-                                        <tr>
-                                            <th>ファイル</th>
-                                            <th>状態</th>
-                                            <th>日時</th>
-                                            <th>記録時間</th>
-                                            <th>サイズ</th>
-                                            <th>結果</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        @foreach (var file in directoryGroup.OrderBy(item => item.FileName, StringComparer.OrdinalIgnoreCase))
-                                        {
-                                            <tr>
-                                                <td class="min-w-[320px]">
-                                                    <a class="inline-flex items-center gap-2 font-medium text-accent underline" href="@DetailHref(file)">
-                                                        <FaIcon Name="file-audio" Class="tfa-icon" />
-                                                        <span>@file.FileName</span>
-                                                    </a>
-                                                    <div class="mt-1 break-all font-mono text-xs text-slate-500">@file.DisplayPath</div>
-                                                </td>
-                                                <td>
-                                                    <span class="@StatusPill(file.Status)">
-                                                        <FaIcon Name="@StatusIcon(file.Status)" Class="tfa-icon !h-3 !w-3" />
-                                                        <span>@StatusLabel(file.Status)</span>
-                                                    </span>
-                                                </td>
-                                                <td class="whitespace-nowrap">@UiFormat.ShortDate(file.ModifiedAt)</td>
-                                                <td class="whitespace-nowrap">@DurationLabel(file.DurationSec)</td>
-                                                <td class="whitespace-nowrap">@UiFormat.Bytes(file.SizeBytes)</td>
-                                                <td class="whitespace-nowrap text-sm">
-                                                    @if (file.HasTimeline)
-                                                    {
-                                                        <span class="inline-flex items-center gap-2">
-                                                            <FaIcon Name="users" Class="tfa-icon text-slate-400" />
-                                                            <span>@file.TurnCount 区間 / @file.SpeakerCount 話者</span>
-                                                        </span>
-                                                    }
-                                                    else
-                                                    {
-                                                        <span class="inline-flex items-center gap-2 text-slate-500">
-                                                            <FaIcon Name="circle-minus" Class="tfa-icon" />
-                                                            <span>未作成</span>
-                                                        </span>
-                                                    }
-                                                </td>
-                                            </tr>
-                                        }
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    }
-                </section>
-            }
+        <div class="tfa-file-actionbar">
+            <div class="tfa-file-actionbar-count">
+                <FaIcon Name="check-square" Class="tfa-icon text-slate-500" />
+                <span>@SelectionSummary</span>
+            </div>
+            <div class="tfa-file-actionbar-actions">
+                <button class="tfa-button-secondary gap-2" @onclick="OpenDeleteModal" disabled="@(ListBusy || !HasGeneratedItemSelection || _deleting || _downloading)">
+                    <FaIcon Name="trash-can" Class="tfa-icon" />
+                    <span>生成物を削除</span>
+                </button>
+                <button class="tfa-button-secondary gap-2" @onclick="DownloadSelectedAsync" disabled="@(ListBusy || !HasGeneratedItemSelection || _deleting || _downloading)">
+                    <FaIcon Name="@(_downloading ? "spinner" : "download")" Class="@($"tfa-icon {(_downloading ? "fa-spin" : "")}")" />
+                    <span>ダウンロード</span>
+                </button>
+                <button class="tfa-button-secondary gap-2" @onclick="DownloadAllAsync" disabled="@(_loading || FileCount == 0 || _deleting || _downloading)">
+                    <FaIcon Name="@(_downloading ? "spinner" : "download")" Class="@($"tfa-icon {(_downloading ? "fa-spin" : "")}")" />
+                    <span>すべてダウンロード</span>
+                </button>
+                <button class="tfa-button-secondary gap-2" @onclick="ClearSelection" disabled="@(ListBusy || !HasSelection || _deleting || _downloading)">
+                    <FaIcon Name="xmark" Class="tfa-icon" />
+                    <span>選択解除</span>
+                </button>
+            </div>
         </div>
+
+        <div class="overflow-x-auto">
+            <div class="tfa-file-tree" role="treegrid" aria-label="ファイル一覧">
+                <div class="tfa-file-tree-header" role="row">
+                    <div class="tfa-file-tree-select" role="columnheader">
+                        <input type="checkbox"
+                               checked="@AllVisibleSelected"
+                               @onchange="ToggleAllVisible"
+                               disabled="@ListBusy"
+                               aria-label="すべて選択" />
+                    </div>
+                    <div role="columnheader">名前</div>
+                    <div role="columnheader">状態</div>
+                    <div role="columnheader">日時</div>
+                    <div role="columnheader">記録時間</div>
+                    <div role="columnheader">サイズ</div>
+                    <div role="columnheader">生成物</div>
+                </div>
+
+                @foreach (var row in BuildTreeRows(Files))
+                {
+                    <div class="@TreeRowClass(row)" role="row">
+                        <div class="tfa-file-tree-select" role="gridcell">
+                            <span class="tfa-file-tree-check">
+                                <input type="checkbox"
+                                       checked="@IsTreeRowSelected(row)"
+                                       @onchange="(args) => ToggleTreeRow(row, IsChecked(args))"
+                                       disabled="@(ListBusy || row.FileKeys.Count == 0)"
+                                       aria-label="@SelectionLabel(row)" />
+                                @if (IsTreeRowPartiallySelected(row))
+                                {
+                                    <span class="tfa-file-tree-check-partial"></span>
+                                }
+                            </span>
+                        </div>
+
+                        <div class="tfa-file-tree-name" role="gridcell">
+                            <span class="tfa-file-tree-indent" style="@TreeIndentStyle(row.Depth)"></span>
+                            <FaIcon Name="@(row.File is null ? "folder" : "file-audio")"
+                                    Class="@($"tfa-icon {(row.File is null ? "text-slate-500" : "text-accent")}")" />
+                            @if (row.File is null)
+                            {
+                                <span class="tfa-file-tree-directory-name">@row.Name</span>
+                            }
+                            else
+                            {
+                                <a class="tfa-file-tree-file-name" href="@DetailHref(row.File)">
+                                    @row.Name
+                                </a>
+                            }
+                        </div>
+
+                        @if (row.File is null)
+                        {
+                            <div role="gridcell"></div>
+                            <div role="gridcell"></div>
+                            <div role="gridcell"></div>
+                            <div role="gridcell"></div>
+                            <div role="gridcell"></div>
+                        }
+                        else
+                        {
+                            var file = row.File;
+                            <div class="tfa-file-tree-meta" role="gridcell">
+                                <span class="@StatusPill(file.Status)">
+                                    <FaIcon Name="@StatusIcon(file.Status)" Class="tfa-icon !h-3 !w-3" />
+                                    <span>@StatusLabel(file.Status)</span>
+                                </span>
+                            </div>
+                            <div class="tfa-file-tree-meta" role="gridcell">@UiFormat.ShortDate(file.ModifiedAt)</div>
+                            <div class="tfa-file-tree-meta" role="gridcell">@DurationLabel(file.DurationSec)</div>
+                            <div class="tfa-file-tree-meta" role="gridcell">@UiFormat.Bytes(file.SizeBytes)</div>
+                            <div class="tfa-file-tree-meta" role="gridcell">
+                                @if (file.HasTimeline && HasGeneratedItem(file))
+                                {
+                                    <span class="tfa-file-tree-result">
+                                        <FaIcon Name="file-lines" Class="tfa-icon text-teal-700" />
+                                        <span>@ArtifactLabel(file)</span>
+                                    </span>
+                                }
+                                else if (file.HasTimeline)
+                                {
+                                    <span class="tfa-file-tree-result tfa-file-tree-result-muted">
+                                        <FaIcon Name="spinner" Class="tfa-icon" />
+                                        <span>分析中</span>
+                                    </span>
+                                }
+                                else if (file.HasAudio)
+                                {
+                                    <span class="tfa-file-tree-result tfa-file-tree-result-muted">
+                                        <FaIcon Name="file-audio" Class="tfa-icon" />
+                                        <span>@(IsProcessingStatus(file.Status) ? "分析中" : "音声あり")</span>
+                                    </span>
+                                }
+                                else
+                                {
+                                    <span class="tfa-file-tree-result tfa-file-tree-result-muted">
+                                        <FaIcon Name="circle-minus" Class="tfa-icon" />
+                                        <span>未作成</span>
+                                    </span>
+                                }
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+
+        @if (_hasMoreFiles && !_autoLoadingFiles)
+        {
+            <div class="border-t border-line p-4 text-center">
+                <button class="tfa-button-secondary gap-2" @onclick="LoadNextFilePageAsync" disabled="@_loadingMoreFiles">
+                    <FaIcon Name="@(_loadingMoreFiles ? "spinner" : "plus")" Class="@($"tfa-icon {(_loadingMoreFiles ? "fa-spin" : "")}")" />
+                    <span>さらに読み込む</span>
+                </button>
+            </div>
+        }
     }
-</section>
+    </section>
+}
+
+@if (_deleteModalOpen)
+{
+    <div class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4">
+        <section class="w-full max-w-xl rounded-md bg-white shadow-xl">
+            <div class="border-b border-line p-5">
+                <h2 class="flex items-center gap-2 text-lg font-semibold">
+                    <FaIcon Name="trash-can" Class="tfa-icon text-danger" />
+                    <span>生成物を削除</span>
+                </h2>
+            </div>
+            <div class="p-5 text-sm text-slate-700">
+                <p>選択中のうち @SelectedGeneratedItemCount 件の操作可能な生成物を削除します。</p>
+                <p class="mt-2 text-slate-500">元の音声ファイルは削除しません。</p>
+            </div>
+            <div class="flex flex-wrap justify-end gap-2 border-t border-line p-4">
+                <button class="tfa-button-secondary gap-2" @onclick="CloseDeleteModal" disabled="@_deleting">
+                    <FaIcon Name="xmark" Class="tfa-icon" />
+                    <span>キャンセル</span>
+                </button>
+                <button class="tfa-button-primary gap-2" @onclick="ConfirmDeleteSelectedAsync" disabled="@_deleting">
+                    <FaIcon Name="@(_deleting ? "spinner" : "trash-can")" Class="@($"tfa-icon {(_deleting ? "fa-spin" : "")}")" />
+                    <span>削除</span>
+                </button>
+            </div>
+        </section>
+    </div>
+}
 
 @code {
-    private sealed record RootKey(string SourceId, string SourceDisplayName, string RootPath);
+    private sealed class FileTreeDirectory
+    {
+        private readonly Dictionary<string, FileTreeDirectory> _directories = new(StringComparer.OrdinalIgnoreCase);
+
+        public FileTreeDirectory(string name)
+        {
+            Name = name;
+        }
+
+        public string Name { get; }
+        public IReadOnlyCollection<FileTreeDirectory> Directories => _directories.Values;
+        public List<AudioFileRow> Files { get; } = [];
+
+        public FileTreeDirectory GetOrAddDirectory(string name)
+        {
+            if (!_directories.TryGetValue(name, out var directory))
+            {
+                directory = new FileTreeDirectory(name);
+                _directories.Add(name, directory);
+            }
+
+            return directory;
+        }
+    }
+
+    private sealed record FileTreeRow(string Name, int Depth, AudioFileRow? File, IReadOnlyList<string> FileKeys);
+
+    private const int FilePageSize = 100;
 
     private TimelineProductOverview? _overview;
     private AudioFileListResult? _files;
-    private bool _loading;
+    private readonly HashSet<string> _selectedFileKeys = new(StringComparer.OrdinalIgnoreCase);
+    private bool _loading = true;
+    private bool _refreshing;
+    private bool _downloading;
+    private bool _deleting;
+    private bool _pollingOverview;
+    private bool _loadingMoreFiles;
+    private bool _autoLoadingFiles;
+    private bool _hasMoreFiles;
+    private bool _deleteModalOpen;
+    private bool _runDetailsOpen;
+    private bool _disposed;
+    private int _nextFilePage = 1;
+    private DateTime? _lastLoadedAt;
+    private CancellationTokenSource? _pollingCts;
     private string? _error;
+    private string? _operationMessage;
 
     private IReadOnlyList<AudioFileRow> Files => _files?.Files ?? [];
     private int FileCount => _files?.Total ?? Files.Count;
-    private int CompletedCount => Files.Count(file => file.Status.Equals("completed", StringComparison.OrdinalIgnoreCase));
-    private int PendingCount => Files.Count(file => !file.Status.Equals("completed", StringComparison.OrdinalIgnoreCase));
+    private int LoadedFileCount => Files.Count;
+    private bool ListBusy => _loading || _loadingMoreFiles || _autoLoadingFiles;
+    private string FileListStatusLabel => ListBusy
+        ? $"読み込み中 {LoadedFileCount} / {Math.Max(FileCount, LoadedFileCount)} 件"
+        : _lastLoadedAt is null
+            ? $"{LoadedFileCount} / {Math.Max(FileCount, LoadedFileCount)} 件"
+            : $"{LoadedFileCount} / {Math.Max(FileCount, LoadedFileCount)} 件、最終更新 {_lastLoadedAt.Value:HH:mm:ss}";
+    private int UnprocessedCount => Files.Count(file => !file.Status.Equals("completed", StringComparison.OrdinalIgnoreCase));
+    private int KnownDurationCount => Files.Count(file => file.DurationSec is > 0);
+    private double TotalDurationSec => Files.Where(file => file.DurationSec is > 0).Sum(file => file.DurationSec!.Value);
+    private string TotalDurationLabel => TotalDurationSec > 0 ? UiFormat.Duration(TotalDurationSec) : "未取得";
+    private bool HasPartialDuration => FileCount > 0 && KnownDurationCount > 0 && KnownDurationCount < FileCount;
+    private int SelectedFileCount => _selectedFileKeys.Count;
+    private bool HasSelection => SelectedFileCount > 0;
+    private int SelectedGeneratedItemCount => SelectedGeneratedItemIds().Count;
+    private bool HasGeneratedItemSelection => SelectedGeneratedItemCount > 0;
+    private bool AllVisibleSelected => Files.Count > 0 && Files.All(file => _selectedFileKeys.Contains(FileKey(file)));
+    private string SelectionSummary =>
+        HasSelection
+            ? $"{SelectedFileCount} 件選択中 / 操作可能な生成物 {SelectedGeneratedItemCount} 件"
+            : "未選択";
     private string WorkerState => _overview?.WorkerState ?? "checking";
-    private bool WorkerWaiting => WorkerState.Equals("checking", StringComparison.OrdinalIgnoreCase) || WorkerState.Equals("starting", StringComparison.OrdinalIgnoreCase);
+    private AudioRunProgress? ActiveRun => IsActiveRun(_overview?.ActiveRun) ? _overview?.ActiveRun : null;
+    private bool WorkerWaiting =>
+        WorkerState.Equals("checking", StringComparison.OrdinalIgnoreCase)
+        || WorkerState.Equals("starting", StringComparison.OrdinalIgnoreCase)
+        || WorkerState.Equals("processing", StringComparison.OrdinalIgnoreCase);
 
     private string WorkerStateLabel => WorkerState.ToLowerInvariant() switch
     {
-        "running" => "稼働中",
+        "processing" => "分析中",
+        "running" => "待機中",
         "checking" => "確認中",
         "starting" => "起動待ち",
         "stopped" => "停止中",
@@ -233,6 +490,7 @@ else if (WorkerState.Equals("stopped", StringComparison.OrdinalIgnoreCase))
 
     private string WorkerStateIcon => WorkerState.ToLowerInvariant() switch
     {
+        "processing" => "spinner",
         "running" => "microchip",
         "checking" => "spinner",
         "starting" => "spinner",
@@ -241,17 +499,32 @@ else if (WorkerState.Equals("stopped", StringComparison.OrdinalIgnoreCase))
 
     private string WorkerStateIconClass => WorkerState.ToLowerInvariant() switch
     {
+        "processing" => "text-sky-800",
         "running" => "text-teal-700",
         "checking" => "text-sky-800",
         "starting" => "text-sky-800",
         _ => "text-slate-500",
     };
 
-    private IEnumerable<IGrouping<RootKey, AudioFileRow>> RootGroups =>
-        Files.GroupBy(file => new RootKey(file.SourceId, file.SourceDisplayName, file.RootPath))
-            .OrderBy(group => RootDisplayName(group.Key), StringComparer.OrdinalIgnoreCase);
+    protected override void OnInitialized()
+    {
+        _pollingCts = new CancellationTokenSource();
+    }
 
-    protected override async Task OnInitializedAsync() => await LoadAsync();
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _pollingCts is null || _disposed)
+        {
+            return;
+        }
+
+        await LoadAsync();
+        if (_disposed || _pollingCts is null)
+        {
+            return;
+        }
+        _ = PollActiveRunAsync(_pollingCts.Token);
+    }
 
     private async Task LoadAsync()
     {
@@ -260,7 +533,11 @@ else if (WorkerState.Equals("stopped", StringComparison.OrdinalIgnoreCase))
         try
         {
             _overview = await Timeline.GetAudioOverviewAsync();
-            _files = await Timeline.GetAudioFilesAsync();
+            _files = new AudioFileListResult();
+            _nextFilePage = 1;
+            _hasMoreFiles = false;
+            await InvokeAsync(StateHasChanged);
+            await LoadFilePageAsync(1, reset: true);
         }
         catch (Exception ex)
         {
@@ -269,14 +546,232 @@ else if (WorkerState.Equals("stopped", StringComparison.OrdinalIgnoreCase))
         finally
         {
             _loading = false;
+            await InvokeAsync(StateHasChanged);
+        }
+
+        _ = AutoLoadRemainingFilesAsync();
+    }
+
+    private async Task LoadFilePageAsync(int page, bool reset)
+    {
+        var result = await Timeline.GetAudioFilesAsync(page, FilePageSize);
+        if (reset || _files is null)
+        {
+            _files = result;
+        }
+        else
+        {
+            var known = _files.Files.Select(FileKey).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            foreach (var file in result.Files)
+            {
+                if (known.Add(FileKey(file)))
+                {
+                    _files.Files.Add(file);
+                }
+            }
+            _files.Total = result.Total;
+            _files.Truncated = result.Truncated;
+            _files.Pagination = result.Pagination;
+        }
+
+        _lastLoadedAt = DateTime.Now;
+        _hasMoreFiles = result.Pagination.HasNext;
+        _nextFilePage = Math.Max(1, result.Pagination.Page) + 1;
+        RemoveMissingSelections();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task LoadNextFilePageAsync()
+    {
+        if (!_hasMoreFiles || _loadingMoreFiles)
+        {
+            return;
+        }
+
+        _loadingMoreFiles = true;
+        _error = null;
+        try
+        {
+            await LoadFilePageAsync(_nextFilePage, reset: false);
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _loadingMoreFiles = false;
+            await InvokeAsync(StateHasChanged);
         }
     }
+
+    private async Task AutoLoadRemainingFilesAsync()
+    {
+        if (!_hasMoreFiles || _disposed || _pollingCts is null || _pollingCts.IsCancellationRequested)
+        {
+            return;
+        }
+
+        _autoLoadingFiles = true;
+        try
+        {
+            while (_hasMoreFiles && !_disposed && !_pollingCts.IsCancellationRequested)
+            {
+                await LoadFilePageAsync(_nextFilePage, reset: false);
+                await Task.Delay(50, _pollingCts.Token);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _autoLoadingFiles = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task PollActiveRunAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                await Task.Delay(TimeSpan.FromSeconds(5), cancellationToken);
+                if (ShouldPollRunProgress)
+                {
+                    await InvokeAsync(RefreshOverviewForPollingAsync);
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+
+    private bool ShouldPollRunProgress =>
+        IsActiveRun(_overview?.ActiveRun)
+        || WorkerState.Equals("processing", StringComparison.OrdinalIgnoreCase)
+        || WorkerState.Equals("starting", StringComparison.OrdinalIgnoreCase);
+
+    private async Task RefreshOverviewForPollingAsync()
+    {
+        if (_pollingOverview || _loading || _refreshing || _deleting || _downloading)
+        {
+            return;
+        }
+
+        _pollingOverview = true;
+        var hadActiveRun = IsActiveRun(_overview?.ActiveRun);
+        try
+        {
+            _overview = await Timeline.GetAudioOverviewAsync();
+            if (hadActiveRun && !IsActiveRun(_overview.ActiveRun))
+            {
+                await LoadFilePageAsync(1, reset: true);
+                _ = AutoLoadRemainingFilesAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            _error ??= ex.Message;
+        }
+        finally
+        {
+            _pollingOverview = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task StartAudioRefreshAsync()
+    {
+        _refreshing = true;
+        _error = null;
+        _operationMessage = null;
+        await InvokeAsync(StateHasChanged);
+        try
+        {
+            var result = await Timeline.RefreshAudioAsync(new AudioRefreshRequest
+            {
+                QueueOnly = true,
+            });
+            _operationMessage = RefreshMessage(result);
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _refreshing = false;
+        }
+    }
+
+    private void ToggleRunDetails() => _runDetailsOpen = !_runDetailsOpen;
 
     private static string DetailHref(AudioFileRow file) =>
         "/audio/file-detail?sourceId=" + Uri.EscapeDataString(file.SourceId) + "&path=" + Uri.EscapeDataString(file.RelativePath);
 
     private static string DurationLabel(double? seconds) =>
         seconds is > 0 ? UiFormat.Duration(seconds.Value) : "-";
+
+    private static string ArtifactLabel(AudioFileRow file)
+    {
+        if (file.TurnCount > 0)
+        {
+            return $"JSONあり / {file.TurnCount} 区間";
+        }
+
+        return "JSONあり";
+    }
+
+    private static List<FileTreeRow> BuildTreeRows(IEnumerable<AudioFileRow> files)
+    {
+        var virtualRoot = new FileTreeDirectory("");
+        foreach (var file in files.OrderBy(FileSortPath, StringComparer.OrdinalIgnoreCase))
+        {
+            var directory = virtualRoot;
+            foreach (var part in SplitPathParts(FileDirectoryPath(file)))
+            {
+                directory = directory.GetOrAddDirectory(part);
+            }
+            directory.Files.Add(file);
+        }
+
+        var rows = new List<FileTreeRow>();
+        AddDirectoryRows(virtualRoot, 0, rows);
+        return rows;
+    }
+
+    private static void AddDirectoryRows(FileTreeDirectory directory, int depth, List<FileTreeRow> rows)
+    {
+        foreach (var child in directory.Directories.OrderBy(item => item.Name, StringComparer.OrdinalIgnoreCase))
+        {
+            rows.Add(new FileTreeRow(child.Name, depth, null, CollectFileKeys(child)));
+            AddDirectoryRows(child, depth + 1, rows);
+        }
+
+        foreach (var file in directory.Files.OrderBy(item => item.FileName, StringComparer.OrdinalIgnoreCase))
+        {
+            rows.Add(new FileTreeRow(file.FileName, depth, file, [FileKey(file)]));
+        }
+    }
+
+    private static List<string> CollectFileKeys(FileTreeDirectory directory)
+    {
+        var keys = new List<string>();
+        foreach (var child in directory.Directories)
+        {
+            keys.AddRange(CollectFileKeys(child));
+        }
+        keys.AddRange(directory.Files.Select(FileKey));
+        return keys;
+    }
 
     private static string FileDirectory(AudioFileRow file)
     {
@@ -290,8 +785,418 @@ else if (WorkerState.Equals("stopped", StringComparison.OrdinalIgnoreCase))
         return index > 0 ? relativePath[..index] : "";
     }
 
-    private static string RootDisplayName(RootKey root) =>
-        string.IsNullOrWhiteSpace(root.SourceDisplayName) ? root.SourceId : root.SourceDisplayName;
+    private static string FileDirectoryPath(AudioFileRow file)
+    {
+        if (!string.IsNullOrWhiteSpace(file.DisplayPath))
+        {
+            var normalized = file.DisplayPath.Replace('/', '\\');
+            var index = normalized.LastIndexOf('\\');
+            return index > 0 ? normalized[..index] : "";
+        }
+
+        var root = (file.RootPath ?? "").Trim().TrimEnd('\\', '/');
+        var directory = FileDirectory(file).Trim().Trim('\\', '/');
+        if (string.IsNullOrWhiteSpace(directory))
+        {
+            return root;
+        }
+
+        return string.IsNullOrWhiteSpace(root) ? directory : $"{root}\\{directory}";
+    }
+
+    private static string FileSortPath(AudioFileRow file)
+    {
+        if (!string.IsNullOrWhiteSpace(file.DisplayPath))
+        {
+            return file.DisplayPath;
+        }
+
+        return $"{file.RootPath}\\{file.RelativePath}";
+    }
+
+    private static IEnumerable<string> SplitPathParts(string path)
+    {
+        var normalized = (path ?? "").Trim().Replace('/', '\\').Trim('\\');
+        if (string.IsNullOrWhiteSpace(normalized))
+        {
+            return [];
+        }
+
+        return normalized.Split('\\', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+    }
+
+    private static string TreeIndentStyle(int depth) =>
+        $"--depth:{Math.Max(0, depth)}";
+
+    private static string TreeRowClass(FileTreeRow row) =>
+        row.File is null ? "tfa-file-tree-row tfa-file-tree-row-directory" : "tfa-file-tree-row tfa-file-tree-row-file";
+
+    private static string FileKey(AudioFileRow file) =>
+        $"{file.SourceId}|{file.RelativePath}";
+
+    private bool IsTreeRowSelected(FileTreeRow row) =>
+        row.FileKeys.Count > 0 && row.FileKeys.All(key => _selectedFileKeys.Contains(key));
+
+    private bool IsTreeRowPartiallySelected(FileTreeRow row) =>
+        row.File is null
+        && row.FileKeys.Any(key => _selectedFileKeys.Contains(key))
+        && !IsTreeRowSelected(row);
+
+    private static string SelectionLabel(FileTreeRow row) =>
+        row.File is null ? $"{row.Name} 配下を選択" : $"{row.Name} を選択";
+
+    private static bool IsChecked(ChangeEventArgs args) =>
+        args.Value is bool value && value;
+
+    private void ToggleAllVisible(ChangeEventArgs args)
+    {
+        _operationMessage = null;
+        if (IsChecked(args))
+        {
+            foreach (var file in Files)
+            {
+                _selectedFileKeys.Add(FileKey(file));
+            }
+        }
+        else
+        {
+            foreach (var file in Files)
+            {
+                _selectedFileKeys.Remove(FileKey(file));
+            }
+        }
+    }
+
+    private void ToggleTreeRow(FileTreeRow row, bool selected)
+    {
+        _operationMessage = null;
+        foreach (var key in row.FileKeys)
+        {
+            if (selected)
+            {
+                _selectedFileKeys.Add(key);
+            }
+            else
+            {
+                _selectedFileKeys.Remove(key);
+            }
+        }
+    }
+
+    private void ClearSelection()
+    {
+        _operationMessage = null;
+        _selectedFileKeys.Clear();
+    }
+
+    private void OpenDeleteModal()
+    {
+        if (HasGeneratedItemSelection)
+        {
+            _deleteModalOpen = true;
+        }
+    }
+
+    private void CloseDeleteModal()
+    {
+        if (!_deleting)
+        {
+            _deleteModalOpen = false;
+        }
+    }
+
+    private async Task ConfirmDeleteSelectedAsync()
+    {
+        var selected = SelectedFiles().ToList();
+        var itemIds = SelectedGeneratedItemIds(selected).ToList();
+        var identities = selected
+            .Select(SourceFileIdentity)
+            .Where(identity => !string.IsNullOrWhiteSpace(identity))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (itemIds.Count == 0)
+        {
+            _error = "削除できる生成物があるファイルを選択してください。";
+            return;
+        }
+
+        _deleting = true;
+        _error = null;
+        _operationMessage = null;
+        try
+        {
+            var result = await Timeline.DeleteAudioGeneratedAsync(new AudioDeleteGeneratedRequest
+            {
+                ItemIds = itemIds,
+                SourceFileIdentities = identities,
+            });
+            _selectedFileKeys.Clear();
+            _deleteModalOpen = false;
+            _operationMessage = DeleteGeneratedMessage(result, selected.Count);
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _deleting = false;
+        }
+    }
+
+    private async Task DownloadSelectedAsync()
+    {
+        var selected = SelectedFiles().ToList();
+        var itemIds = SelectedGeneratedItemIds(selected).ToList();
+        if (itemIds.Count == 0)
+        {
+            _error = "ダウンロードできる生成物があるファイルを選択してください。";
+            return;
+        }
+
+        var save = await BeginSaveAsync($"TimelineForAudio-{DateTime.Now:yyyyMMdd-HHmmss}.zip");
+        if (save is null)
+        {
+            return;
+        }
+
+        _downloading = true;
+        _error = null;
+        _operationMessage = null;
+        try
+        {
+            var result = await Timeline.DownloadAudioItemsAsync(new AudioDownloadItemsRequest
+            {
+                ItemIds = itemIds,
+            });
+            await SaveArchiveAsync(save, result.ArchivePath, $"TimelineForAudio-{DateTime.Now:yyyyMMdd-HHmmss}.zip");
+            _operationMessage = $"{itemIds.Count} 件を保存しました。";
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _downloading = false;
+        }
+    }
+
+    private async Task DownloadAllAsync()
+    {
+        var save = await BeginSaveAsync($"TimelineForAudio-all-{DateTime.Now:yyyyMMdd-HHmmss}.zip");
+        if (save is null)
+        {
+            return;
+        }
+
+        _downloading = true;
+        _error = null;
+        _operationMessage = null;
+        try
+        {
+            var result = await Timeline.DownloadAudioItemsAsync(new AudioDownloadItemsRequest());
+            await SaveArchiveAsync(save, result.ArchivePath, $"TimelineForAudio-all-{DateTime.Now:yyyyMMdd-HHmmss}.zip");
+            _operationMessage = "すべての生成物を保存しました。";
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _downloading = false;
+        }
+    }
+
+    private async Task<BrowserSaveHandle?> BeginSaveAsync(string suggestedName)
+    {
+        var save = await Js.InvokeAsync<BrowserSaveHandle>("timelineDownload.beginSave", suggestedName);
+        if (!save.Accepted)
+        {
+            if (!string.IsNullOrWhiteSpace(save.Message))
+            {
+                _error = save.Message;
+            }
+            return null;
+        }
+        return save;
+    }
+
+    private async Task SaveArchiveAsync(BrowserSaveHandle save, string archivePath, string fallbackName)
+    {
+        if (string.IsNullOrWhiteSpace(archivePath))
+        {
+            throw new InvalidOperationException("ダウンロードファイルを作成できませんでした。");
+        }
+
+        await Js.InvokeVoidAsync(
+            "timelineDownload.saveUrl",
+            save.Id,
+            DownloadFileUrl(archivePath),
+            ArchiveFileName(archivePath, fallbackName));
+    }
+
+    private static string DownloadFileUrl(string archivePath) =>
+        $"api/download/file?path={Uri.EscapeDataString(archivePath)}";
+
+    private static string ArchiveFileName(string archivePath, string fallback)
+    {
+        var text = (archivePath ?? "").Trim().Replace('\\', '/');
+        var fileName = text.Split('/', StringSplitOptions.RemoveEmptyEntries).LastOrDefault();
+        return string.IsNullOrWhiteSpace(fileName) ? fallback : fileName;
+    }
+
+    private IEnumerable<AudioFileRow> SelectedFiles() =>
+        Files.Where(file => _selectedFileKeys.Contains(FileKey(file)));
+
+    private IReadOnlyList<string> SelectedGeneratedItemIds() =>
+        SelectedGeneratedItemIds(SelectedFiles()).ToList();
+
+    private static IEnumerable<string> SelectedGeneratedItemIds(IEnumerable<AudioFileRow> files) =>
+        files.Select(GeneratedItemId)
+            .Where(itemId => !string.IsNullOrWhiteSpace(itemId))
+            .Distinct(StringComparer.OrdinalIgnoreCase);
+
+    private void RemoveMissingSelections()
+    {
+        var visibleKeys = Files.Select(FileKey).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        _selectedFileKeys.RemoveWhere(key => !visibleKeys.Contains(key));
+    }
+
+    private static string GeneratedItemId(AudioFileRow file)
+    {
+        if (!string.IsNullOrWhiteSpace(file.ItemId) && !file.ItemId.Contains(':'))
+        {
+            return file.ItemId;
+        }
+
+        return "";
+    }
+
+    private static bool HasGeneratedItem(AudioFileRow file) =>
+        !string.IsNullOrWhiteSpace(GeneratedItemId(file));
+
+    private static bool IsProcessingStatus(string status) =>
+        status.Equals("processing", StringComparison.OrdinalIgnoreCase)
+        || status.Equals("queued", StringComparison.OrdinalIgnoreCase);
+
+    private static string SourceFileIdentity(AudioFileRow file)
+    {
+        if (!string.IsNullOrWhiteSpace(file.SourceFileIdentity))
+        {
+            return file.SourceFileIdentity;
+        }
+
+        return $"{file.SourceId}:{(file.RelativePath ?? "").Replace('\\', '/')}";
+    }
+
+    private static string DeleteGeneratedMessage(AudioDeleteGeneratedResult result, int selectedCount)
+    {
+        if (result.CatalogRowsRemoved > 0)
+        {
+            var message = $"{result.CatalogRowsRemoved} 件の生成物を削除しました。";
+            if (result.MissingSourceFileIdentities.Count > 0)
+            {
+                message += $" 生成物がないファイル: {result.MissingSourceFileIdentities.Count} 件。";
+            }
+            return message;
+        }
+
+        return $"選択した {selectedCount} 件に削除対象の生成物はありませんでした。";
+    }
+
+    private static string RefreshMessage(AudioRefreshResult result)
+    {
+        if (result.QueuedCount > 0)
+        {
+            return $"{result.QueuedCount} 件の分析を開始しました。処理状況は一覧更新で確認できます。";
+        }
+
+        if (result.State.Equals("skipped", StringComparison.OrdinalIgnoreCase))
+        {
+            return "新しく分析する音声はありませんでした。";
+        }
+
+        return "再スキャンを開始しました。処理状況は一覧更新で確認できます。";
+    }
+
+    private static bool IsActiveRun(AudioRunProgress? run) =>
+        run is not null
+        && (
+            run.State.Equals("running", StringComparison.OrdinalIgnoreCase)
+            || run.State.Equals("processing", StringComparison.OrdinalIgnoreCase)
+            || run.State.Equals("pending", StringComparison.OrdinalIgnoreCase)
+            || run.State.Equals("queued", StringComparison.OrdinalIgnoreCase)
+        );
+
+    private static string ProgressBarStyle(double percent) =>
+        $"width:{Math.Clamp(percent, 0, 100):0.##}%";
+
+    private static int ProgressAriaValue(double percent) =>
+        (int)Math.Round(Math.Clamp(percent, 0, 100));
+
+    private static string ProgressLabel(double percent) =>
+        $"{Math.Clamp(percent, 0, 100):0.#}%";
+
+    private static string RunStateLabel(string state) =>
+        state.ToLowerInvariant() switch
+        {
+            "running" or "processing" => "分析中",
+            "pending" or "queued" => "待機中",
+            _ => "確認中",
+        };
+
+    private static string RunStatePill(string state) =>
+        state.ToLowerInvariant() switch
+        {
+            "running" or "processing" => "tfa-status-pill border-sky-200 bg-sky-50 text-sky-800",
+            "pending" or "queued" => "tfa-status-pill border-amber-200 bg-amber-50 text-amber-900",
+            _ => "tfa-status-pill border-slate-200 bg-slate-50 text-slate-700",
+        };
+
+    private static bool ShouldShowStage(AudioRunProgress run)
+    {
+        if (string.IsNullOrWhiteSpace(run.CurrentStage))
+        {
+            return false;
+        }
+
+        return !(
+            run.State.Equals("pending", StringComparison.OrdinalIgnoreCase)
+            && run.CurrentStage.Equals("queued", StringComparison.OrdinalIgnoreCase)
+        );
+    }
+
+    private static string StageLabel(string stage) =>
+        stage.ToLowerInvariant() switch
+        {
+            "queued" => "キュー投入済み",
+            "preflight" => "準備中",
+            "manifest" => "対象確認中",
+            "extract_audio" => "音声準備中",
+            "speech_candidates" or "detect_speech_candidates" => "発話区間検出中",
+            "diarize" or "diarize_audio" => "話者分離中",
+            "extract_acoustic_units" => "音響単位抽出中",
+            "finalize" or "generate_artifacts" => "保存中",
+            "llm_export" => "書き出し中",
+            "completed" => "完了",
+            "failed" => "失敗",
+            "canceled" => "中止",
+            "" => "確認中",
+            _ => stage,
+        };
+
+    private static string RunDurationLabel(double seconds) =>
+        seconds > 0 ? UiFormat.Duration(seconds) : "-";
+
+    public void Dispose()
+    {
+        _disposed = true;
+        _pollingCts?.Cancel();
+        _pollingCts?.Dispose();
+    }
 
     private static string StatusLabel(string status) =>
         status.ToLowerInvariant() switch
