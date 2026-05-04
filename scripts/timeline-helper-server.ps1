@@ -5875,6 +5875,27 @@ function Update-TimelineAudioVerbalizationTiming {
     $Status["estimatedRemainingSec"] = [Math]::Round($remainingSec, 1)
 }
 
+function Copy-TimelineAudioVerbalizationStatus {
+    param([object]$Status)
+
+    $copy = [ordered]@{}
+    if ($null -eq $Status) {
+        return $copy
+    }
+
+    if ($Status -is [System.Collections.IDictionary]) {
+        foreach ($key in @($Status.Keys)) {
+            $copy[[string]$key] = $Status[$key]
+        }
+        return $copy
+    }
+
+    foreach ($property in @($Status.PSObject.Properties)) {
+        $copy[[string]$property.Name] = $property.Value
+    }
+    return $copy
+}
+
 function Invoke-TimelineAudioVerbalizationExecution {
     param(
         [object]$Plan,
@@ -5901,10 +5922,7 @@ function Invoke-TimelineAudioVerbalizationExecution {
     $allTurns = @()
     $startedAt = [DateTimeOffset]::Now
 
-    $status = [ordered]@{}
-    foreach ($property in $InitialStatus.GetEnumerator()) {
-        $status[$property.Key] = $property.Value
-    }
+    $status = Copy-TimelineAudioVerbalizationStatus -Status $InitialStatus
     $status["state"] = "running"
     $status["updatedAt"] = $startedAt.ToString("o")
     $status["message"] = "Audio verbalization is running."
@@ -6018,6 +6036,68 @@ function Invoke-TimelineAudioVerbalizationExecution {
     Update-TimelineAudioVerbalizationTiming -Status $status -StartedAt $startedAt -CompletedChunks $resultChunks.Count -TotalChunks $chunks.Count
     Write-TimelineAudioVerbalizationResultPayload -ResultPath $ResultPath -Status $status -Chunks $resultChunks -Turns $allTurns
     return $status
+}
+
+function New-TimelineAudioVerbalizationJobId {
+    $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
+    $suffix = ([guid]::NewGuid().ToString("N")).Substring(0, 8)
+    return "audio-verbalization-$stamp-$suffix"
+}
+
+function Start-TimelineAudioVerbalizationWorker {
+    param(
+        [string]$AudioItemId,
+        [string]$JobId
+    )
+
+    if (-not $AudioItemId) {
+        throw "Audio item id is required."
+    }
+    if (-not $JobId) {
+        throw "Audio verbalization job id is required."
+    }
+
+    $workerScript = Join-Path $TimelineProductPath "scripts\audio-verbalization-worker.ps1"
+    if (-not (Test-Path -LiteralPath $workerScript -PathType Leaf)) {
+        throw "Audio verbalization worker script was not found."
+    }
+
+    $arguments = @(
+        "-NoLogo",
+        "-NoProfile",
+        "-STA",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        $workerScript,
+        "-JobId",
+        $JobId,
+        "-AudioItemId",
+        $AudioItemId,
+        "-TimelineProductPath",
+        $TimelineProductPath,
+        "-AudioProductPath",
+        $AudioProductPath,
+        "-WindowsCodexProductPath",
+        $WindowsCodexProductPath,
+        "-ChatGptProductPath",
+        $ChatGptProductPath,
+        "-ImageProductPath",
+        $ImageProductPath
+    )
+
+    $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
+    $startInfo.FileName = Get-TimelinePowerShellPath
+    $startInfo.Arguments = ($arguments | ForEach-Object { Format-TimelineProcessArgument -Value ([string]$_) }) -join " "
+    $startInfo.WorkingDirectory = $TimelineProductPath
+    $startInfo.UseShellExecute = $false
+    $startInfo.CreateNoWindow = $true
+    $environment = Get-TimelineChildProcessEnvironment
+    foreach ($key in @($environment.Keys)) {
+        $startInfo.EnvironmentVariables[[string]$key] = [string]$environment[$key]
+    }
+
+    [System.Diagnostics.Process]::Start($startInfo) | Out-Null
 }
 
 function Get-TimelineAudioVerbalizationStatusFromDetail {
@@ -6391,6 +6471,11 @@ function Start-TimelineAudioVerbalization {
     if (-not [bool](Get-PropertyValue -Object $status -Name "available" -Default $false)) {
         return $status
     }
+    $force = [bool](Get-PropertyValue -Object $Request -Name "force" -Default $false)
+    $currentState = (Convert-TimelineText -Value (Get-PropertyValue -Object $status -Name "state" -Default "")).ToLowerInvariant()
+    if (-not $force -and @("queued", "running") -contains $currentState) {
+        return $status
+    }
 
     $settings = Read-TimelineAppSettings
     $verbalizationSettings = Get-PropertyValue -Object $settings -Name "audioVerbalization" -Default (New-TimelineDefaultAudioVerbalizationSettings)
@@ -6408,9 +6493,10 @@ function Start-TimelineAudioVerbalization {
 
     $chunks = @(Get-PropertyValue -Object $plan -Name "chunks" -Default @())
     $now = [DateTimeOffset]::Now.ToString("o")
+    $jobId = New-TimelineAudioVerbalizationJobId
     $plannedStatus = [ordered]@{
         available = $true
-        state = "planned"
+        state = "queued"
         audioItemId = $audioItemId
         sourceFileIdentity = Convert-TimelineText -Value (Get-PropertyValue -Object $status -Name "sourceFileIdentity" -Default "")
         language = Convert-TimelineText -Value (Get-PropertyValue -Object $verbalizationSettings -Name "language" -Default "ja-JP")
@@ -6419,7 +6505,7 @@ function Start-TimelineAudioVerbalization {
         verbalizedTurns = 0
         totalChunks = $chunks.Count
         completedChunks = 0
-        jobId = ""
+        jobId = $jobId
         currentChunkId = if ($chunks.Count -gt 0) { Convert-TimelineText -Value (Get-PropertyValue -Object $chunks[0] -Name "chunkId" -Default "") } else { "" }
         planPath = $planPath
         resultPath = $resultPath
@@ -6427,7 +6513,7 @@ function Start-TimelineAudioVerbalization {
         elapsedSec = 0
         estimatedRemainingSec = 0
         updatedAt = $now
-        message = "Audio verbalization chunk plan was created."
+        message = "Audio verbalization worker has been queued."
     }
 
     Write-TimelineUtf8JsonFile -Path $resultPath -Payload ([ordered]@{
@@ -6449,11 +6535,24 @@ function Start-TimelineAudioVerbalization {
         })
     })
 
-    return Invoke-TimelineAudioVerbalizationExecution `
-        -Plan $plan `
-        -Directory $directory `
-        -InitialStatus $plannedStatus `
-        -ResultPath $resultPath
+    try {
+        Start-TimelineAudioVerbalizationWorker -AudioItemId $audioItemId -JobId $jobId
+    }
+    catch {
+        $plannedStatus["state"] = "failed"
+        $plannedStatus["updatedAt"] = [DateTimeOffset]::Now.ToString("o")
+        $plannedStatus["message"] = $_.Exception.Message
+        $existingChunks = @()
+        try {
+            $existingPayload = Get-Content -LiteralPath $resultPath -Raw -Encoding UTF8 | ConvertFrom-Json
+            $existingChunks = @(Get-PropertyValue -Object $existingPayload -Name "chunks" -Default @())
+        }
+        catch {
+        }
+        Write-TimelineAudioVerbalizationResultPayload -ResultPath $resultPath -Status $plannedStatus -Chunks $existingChunks -Turns @()
+    }
+
+    return $plannedStatus
 }
 
 function Get-TimelineAudioMimeType {

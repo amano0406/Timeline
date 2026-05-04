@@ -599,6 +599,14 @@ else if (_file is not null)
         {
             return "言語化が完了しました。";
         }
+        if (status.Message.Equals("Audio verbalization worker has been queued.", StringComparison.OrdinalIgnoreCase))
+        {
+            return "言語化を開始しました。準備ができると処理が進みます。";
+        }
+        if (status.Message.Equals("Audio verbalization is running.", StringComparison.OrdinalIgnoreCase))
+        {
+            return "言語化中です。";
+        }
         return status.Message;
     }
 

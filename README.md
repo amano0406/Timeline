@@ -177,6 +177,8 @@ Current implementation:
 - Creates 5-10 minute chunk plans from audio timeline turns.
 - Writes per-chunk `context/*.context.json` and `summary.json` files under the
   Timeline store.
+- Queues the long-running LLM work in `scripts\audio-verbalization-worker.ps1`
+  so the start request can return quickly.
 - Calls the Timeline-owned Ollama Docker service `/api/chat` with JSON output.
 - Stores completed or failed results in
   `store\audio-verbalizations\<audio-item-id>\audio-verbalization.json`.
