@@ -1325,6 +1325,13 @@ function Convert-TimelineDownloadLocalPath {
     return Convert-TimelineWindowsPath -Path $text
 }
 
+function Test-TimelineContainerPrefixedWindowsPath {
+    param([string]$Path)
+
+    $text = Convert-TimelineText -Value $Path
+    return ($text -match '^/[A-Za-z0-9_.-]+/[A-Za-z]:[\\/]')
+}
+
 function Get-TimelineAppWorkDirectory {
     $defaultRoot = "C:\TimelineData\Timeline\work"
     $workDirectory = $defaultRoot
@@ -3882,6 +3889,10 @@ function New-TimelineAudioItemsDownload {
     $payload = Invoke-TimelineAudioCliJson -CliArgs $args -TimeoutSeconds 900
     $result = Convert-TimelineAudioDownloadItemsResult -Payload $payload
     $returnedArchivePath = Convert-TimelineText -Value (Get-PropertyValue -Object $result -Name "archivePath" -Default "")
+    if (Test-TimelineContainerPrefixedWindowsPath -Path $returnedArchivePath) {
+        throw "TimelineForAudio CLI returned a container-prefixed Windows path. The product must write to the requested host path and return that host path. Returned path: $returnedArchivePath"
+    }
+
     $archivePath = Convert-TimelineDownloadLocalPath -Path $returnedArchivePath
     if (-not $archivePath -or -not (Test-Path -LiteralPath $archivePath -PathType Leaf)) {
         throw "TimelineForAudio CLI did not create a downloadable ZIP. Returned path: $returnedArchivePath"
@@ -5365,20 +5376,52 @@ function Get-TimelineAudioCatalogByIdentity {
     }
 
     $catalogPath = Join-Path $outputRootPath ".timeline-for-audio\catalog.jsonl"
-    if (-not (Test-Path -LiteralPath $catalogPath)) {
+    if (Test-Path -LiteralPath $catalogPath) {
+        foreach ($line in Get-Content -LiteralPath $catalogPath -ErrorAction SilentlyContinue) {
+            if (-not ([string]$line).Trim()) {
+                continue
+            }
+
+            try {
+                $row = $line | ConvertFrom-Json
+                $identity = [string](Get-PropertyValue -Object $row -Name "source_file_identity" -Default "")
+                if ($identity) {
+                    $rows[$identity] = $row
+                }
+            }
+            catch {
+            }
+        }
+    }
+
+    if ($rows.Count -gt 0 -or -not (Test-Path -LiteralPath $outputRootPath -PathType Container)) {
         return $rows
     }
 
-    foreach ($line in Get-Content -LiteralPath $catalogPath -ErrorAction SilentlyContinue) {
-        if (-not ([string]$line).Trim()) {
+    foreach ($directory in Get-ChildItem -LiteralPath $outputRootPath -Directory -ErrorAction SilentlyContinue) {
+        $convertInfoPath = Join-Path $directory.FullName "convert_info.json"
+        if (-not (Test-Path -LiteralPath $convertInfoPath -PathType Leaf)) {
             continue
         }
 
         try {
-            $row = $line | ConvertFrom-Json
-            $identity = [string](Get-PropertyValue -Object $row -Name "source_file_identity" -Default "")
-            if ($identity) {
-                $rows[$identity] = $row
+            $convertInfo = Get-Content -LiteralPath $convertInfoPath -Raw -Encoding UTF8 | ConvertFrom-Json
+            $source = Get-PropertyValue -Object $convertInfo -Name "source" -Default @{}
+            $identity = [string](Get-PropertyValue -Object $source -Name "source_file_identity" -Default "")
+            if (-not $identity) {
+                continue
+            }
+
+            $pipeline = Get-PropertyValue -Object $convertInfo -Name "pipeline" -Default @{}
+            $phone = Get-PropertyValue -Object $pipeline -Name "phone_recognition" -Default @{}
+            $rows[$identity] = [ordered]@{
+                source_file_identity = $identity
+                duration_sec = Get-PropertyValue -Object $source -Name "duration_sec" -Default $null
+                duration_seconds = Get-PropertyValue -Object $source -Name "duration_sec" -Default $null
+                media_id = [string]$directory.Name
+                audio_id = [string]$directory.Name
+                run_id = ""
+                turn_count = Get-PropertyValue -Object $phone -Name "turn_count" -Default 0
             }
         }
         catch {
@@ -5400,7 +5443,16 @@ function Get-TimelineAudioMediaDirectory {
 
     $runId = [string](Get-PropertyValue -Object $CatalogRow -Name "run_id" -Default "")
     $mediaId = [string](Get-PropertyValue -Object $CatalogRow -Name "audio_id" -Default (Get-PropertyValue -Object $CatalogRow -Name "media_id" -Default ""))
-    if (-not $runId -or -not $mediaId) {
+    if (-not $mediaId) {
+        return ""
+    }
+
+    $directMediaDir = Join-Path $OutputRootPath $mediaId
+    if (Test-Path -LiteralPath $directMediaDir -PathType Container) {
+        return $directMediaDir
+    }
+
+    if (-not $runId) {
         return ""
     }
 
@@ -5425,6 +5477,9 @@ function Get-TimelineAudioArtifactSummary {
     $summary.hasAudio = Test-Path -LiteralPath (Join-Path $MediaDirectory "source\audio-normalized.wav")
 
     $timelinePath = Join-Path $MediaDirectory "timeline\speaker-acoustic-units-timeline.json"
+    if (-not (Test-Path -LiteralPath $timelinePath)) {
+        $timelinePath = Join-Path $MediaDirectory "timeline.json"
+    }
     if (-not (Test-Path -LiteralPath $timelinePath)) {
         return $summary
     }
@@ -5591,7 +5646,8 @@ function Get-TimelineAudioFilesFromSettings {
                 $directory = ""
             }
             $identityRelativePath = $relativePath.Replace('\', '/')
-            $sourceFileIdentity = "$([string]$root.id):$identityRelativePath"
+            $sourceId = [string]$root.path
+            $sourceFileIdentity = "$sourceId::$identityRelativePath"
             $catalogRow = $null
             if ($catalogByIdentity.ContainsKey($sourceFileIdentity)) {
                 $catalogRow = $catalogByIdentity[$sourceFileIdentity]
@@ -5602,16 +5658,26 @@ function Get-TimelineAudioFilesFromSettings {
                 $durationSec = Convert-TimelineAudioNumber -Value (Get-PropertyValue -Object $catalogRow -Name "duration_seconds" -Default (Get-PropertyValue -Object $catalogRow -Name "duration_sec" -Default $null))
             }
 
+            $mediaId = [string](Get-PropertyValue -Object $catalogRow -Name "audio_id" -Default (Get-PropertyValue -Object $catalogRow -Name "media_id" -Default ""))
+            $itemId = if ($mediaId) { $mediaId } else { $sourceFileIdentity }
             $mediaDirectory = Get-TimelineAudioMediaDirectory -OutputRootPath $outputRootPath -CatalogRow $catalogRow
-            $artifactSummary = Get-TimelineAudioArtifactSummary -MediaDirectory $mediaDirectory
-            $status = if ([bool]$artifactSummary.hasTimeline) { "completed" } else { "detected" }
+            $hasTimeline = $false
+            $hasAudio = $false
+            if ($mediaDirectory) {
+                $hasTimeline = (Test-Path -LiteralPath (Join-Path $mediaDirectory "timeline\speaker-acoustic-units-timeline.json") -PathType Leaf) `
+                    -or (Test-Path -LiteralPath (Join-Path $mediaDirectory "timeline.json") -PathType Leaf)
+                $hasAudio = Test-Path -LiteralPath (Join-Path $mediaDirectory "source\audio-normalized.wav") -PathType Leaf
+            }
+            $status = if ($hasTimeline) { "completed" } else { "detected" }
+            $turnCount = Convert-TimelineAudioInt -Value (Get-PropertyValueAny -Object $catalogRow -Names @("turn_count", "turnCount") -Default 0)
+            $speakerCount = Convert-TimelineAudioInt -Value (Get-PropertyValueAny -Object $catalogRow -Names @("speaker_count", "speakerCount") -Default 0)
 
             $allRows += [ordered]@{
-                itemId = $sourceFileIdentity
-                sourceId = [string]$root.id
+                itemId = $itemId
+                sourceId = $sourceId
                 sourceFileIdentity = $sourceFileIdentity
-                sourceDisplayName = [string]$root.displayName
-                sourceName = [string]$root.displayName
+                sourceDisplayName = $sourceId
+                sourceName = $sourceId
                 rootPath = [string]$root.path
                 displayPath = $file.FullName
                 relativePath = $relativePath
@@ -5621,12 +5687,12 @@ function Get-TimelineAudioFilesFromSettings {
                 modifiedAt = $file.LastWriteTime.ToString("yyyy-MM-dd HH:mm:ss")
                 status = $status
                 durationSec = $durationSec
-                hasTimeline = [bool]$artifactSummary.hasTimeline
-                hasAudio = [bool]$artifactSummary.hasAudio
+                hasTimeline = [bool]$hasTimeline
+                hasAudio = [bool]$hasAudio
                 runId = [string](Get-PropertyValue -Object $catalogRow -Name "run_id" -Default "")
-                mediaId = [string](Get-PropertyValue -Object $catalogRow -Name "audio_id" -Default (Get-PropertyValue -Object $catalogRow -Name "media_id" -Default ""))
-                turnCount = [int]$artifactSummary.turnCount
-                speakerCount = [int]$artifactSummary.speakerCount
+                mediaId = $mediaId
+                turnCount = $turnCount
+                speakerCount = $speakerCount
             }
         }
     }
@@ -5652,10 +5718,7 @@ function Get-TimelineAudioFiles {
         [int]$PageSize = 100
     )
 
-    $payload = Invoke-TimelineAudioCliJson `
-        -CliArgs @("files", "list", "--page", ([string][Math]::Max(1, $Page)), "--page-size", ([string][Math]::Max(1, $PageSize)), "--json") `
-        -TimeoutSeconds 120
-    return Convert-TimelineAudioFilesResult -Payload $payload
+    return Get-TimelineAudioFilesFromSettings -Page $Page -PageSize $PageSize
 }
 
 function Get-TimelineAudioOverview {
@@ -5665,7 +5728,7 @@ function Get-TimelineAudioOverview {
     $activeRun = Get-TimelineActiveAudioRun -Settings $settings
     $audioFileCount = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $activeRun -Name "itemsTotal" -Default 0)
     if ($audioFileCount -le 0) {
-        $files = Get-TimelineAudioFiles -Page 1 -PageSize 1
+        $files = Get-TimelineAudioFilesFromSettings -Page 1 -PageSize 1
         $audioFileCount = [int]$files.total
     }
     return [ordered]@{

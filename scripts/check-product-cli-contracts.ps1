@@ -310,12 +310,23 @@ function Convert-ContractLocalPath {
     return $text
 }
 
+function Test-ContractContainerPrefixedWindowsPath {
+    param([string]$Path)
+
+    $text = ([string]$Path).Trim()
+    return ($text -match '^/[A-Za-z0-9_.-]+/[A-Za-z]:[\\/]')
+}
+
 function Assert-ContractZip {
     param(
         [string]$Path,
         [string]$Product,
         [string]$ProductPath
     )
+
+    if (Test-ContractContainerPrefixedWindowsPath -Path $Path) {
+        throw "CLI returned a container-prefixed Windows path. The product must write to the requested host path and return that host path. Returned path: $Path"
+    }
 
     $localPath = Convert-ContractLocalPath -Path $Path -ProductPath $ProductPath
     if (-not $localPath -or -not (Test-Path -LiteralPath $localPath -PathType Leaf)) {
