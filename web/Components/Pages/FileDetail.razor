@@ -114,6 +114,16 @@ else if (_file is not null)
                         <dd class="font-mono text-xs">@EmptyText(verbalization.Language)</dd>
                         <dt class="text-slate-500">進捗</dt>
                         <dd>@VerbalizationProgress(verbalization)</dd>
+                        @if (verbalization.ElapsedSec > 0)
+                        {
+                            <dt class="text-slate-500">処理時間</dt>
+                            <dd>@UiFormat.Duration(verbalization.ElapsedSec)</dd>
+                        }
+                        @if (ShouldShowVerbalizationRemaining(verbalization))
+                        {
+                            <dt class="text-slate-500">残り目安</dt>
+                            <dd>@UiFormat.Duration(verbalization.EstimatedRemainingSec)</dd>
+                        }
                     </dl>
 
                     @if (!string.IsNullOrWhiteSpace(VerbalizationDisplayMessage(verbalization)))
@@ -567,6 +577,13 @@ else if (_file is not null)
             : status.TotalTurns > 0
                 ? $"{Math.Min(status.VerbalizedTurns, status.TotalTurns)} / {status.TotalTurns} 区間"
                 : "-";
+
+    private static bool ShouldShowVerbalizationRemaining(AudioVerbalizationStatus status) =>
+        status.EstimatedRemainingSec > 0
+        && (
+            status.State.Equals("running", StringComparison.OrdinalIgnoreCase)
+            || status.State.Equals("planned", StringComparison.OrdinalIgnoreCase)
+        );
 
     private static string VerbalizationDisplayMessage(AudioVerbalizationStatus status)
     {

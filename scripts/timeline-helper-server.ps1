@@ -5857,6 +5857,27 @@ function Write-TimelineAudioVerbalizationResultPayload {
     })
 }
 
+function Update-TimelineAudioVerbalizationTiming {
+    param(
+        [object]$Status,
+        [DateTimeOffset]$StartedAt,
+        [int]$CompletedChunks,
+        [int]$TotalChunks
+    )
+
+    $now = [DateTimeOffset]::Now
+    $elapsedSec = [Math]::Max(0, ($now - $StartedAt).TotalSeconds)
+    $remainingSec = 0
+    if ($CompletedChunks -gt 0 -and $TotalChunks -gt $CompletedChunks) {
+        $averageSec = $elapsedSec / $CompletedChunks
+        $remainingSec = $averageSec * ($TotalChunks - $CompletedChunks)
+    }
+
+    $Status["startedAt"] = $StartedAt.ToString("o")
+    $Status["elapsedSec"] = [Math]::Round($elapsedSec, 1)
+    $Status["estimatedRemainingSec"] = [Math]::Round($remainingSec, 1)
+}
+
 function Invoke-TimelineAudioVerbalizationExecution {
     param(
         [object]$Plan,
@@ -5881,15 +5902,16 @@ function Invoke-TimelineAudioVerbalizationExecution {
     $chunks = @(Get-PropertyValue -Object $Plan -Name "chunks" -Default @())
     $resultChunks = @()
     $allTurns = @()
-    $startedAt = [DateTimeOffset]::Now.ToString("o")
+    $startedAt = [DateTimeOffset]::Now
 
     $status = [ordered]@{}
     foreach ($property in $InitialStatus.GetEnumerator()) {
         $status[$property.Key] = $property.Value
     }
     $status["state"] = "running"
-    $status["updatedAt"] = $startedAt
+    $status["updatedAt"] = $startedAt.ToString("o")
     $status["message"] = "Audio verbalization is running."
+    Update-TimelineAudioVerbalizationTiming -Status $status -StartedAt $startedAt -CompletedChunks 0 -TotalChunks $chunks.Count
 
     foreach ($chunk in $chunks) {
         $chunkId = Convert-TimelineText -Value (Get-PropertyValue -Object $chunk -Name "chunkId" -Default "")
@@ -5899,6 +5921,7 @@ function Invoke-TimelineAudioVerbalizationExecution {
 
         $status["currentChunkId"] = $chunkId
         $status["updatedAt"] = [DateTimeOffset]::Now.ToString("o")
+        Update-TimelineAudioVerbalizationTiming -Status $status -StartedAt $startedAt -CompletedChunks $resultChunks.Count -TotalChunks $chunks.Count
         Write-TimelineAudioVerbalizationResultPayload -ResultPath $ResultPath -Status $status -Chunks $resultChunks -Turns $allTurns
 
         $contextPath = Join-Path $contextDirectory "$chunkId.context.json"
@@ -5959,6 +5982,7 @@ function Invoke-TimelineAudioVerbalizationExecution {
             $allTurns += $verbalizedTurns
             $status["completedChunks"] = $resultChunks.Count
             $status["verbalizedTurns"] = $allTurns.Count
+            Update-TimelineAudioVerbalizationTiming -Status $status -StartedAt $startedAt -CompletedChunks $resultChunks.Count -TotalChunks $chunks.Count
         }
         catch {
             $failedChunk = [ordered]@{
@@ -5983,6 +6007,7 @@ function Invoke-TimelineAudioVerbalizationExecution {
             $status["state"] = "failed"
             $status["updatedAt"] = [DateTimeOffset]::Now.ToString("o")
             $status["message"] = $_.Exception.Message
+            Update-TimelineAudioVerbalizationTiming -Status $status -StartedAt $startedAt -CompletedChunks $resultChunks.Count -TotalChunks $chunks.Count
             Write-TimelineAudioVerbalizationResultPayload -ResultPath $ResultPath -Status $status -Chunks $resultChunks -Turns $allTurns
             return $status
         }
@@ -5992,6 +6017,8 @@ function Invoke-TimelineAudioVerbalizationExecution {
     $status["currentChunkId"] = ""
     $status["updatedAt"] = [DateTimeOffset]::Now.ToString("o")
     $status["message"] = "Audio verbalization completed."
+    $status["estimatedRemainingSec"] = 0
+    Update-TimelineAudioVerbalizationTiming -Status $status -StartedAt $startedAt -CompletedChunks $resultChunks.Count -TotalChunks $chunks.Count
     Write-TimelineAudioVerbalizationResultPayload -ResultPath $ResultPath -Status $status -Chunks $resultChunks -Turns $allTurns
     return $status
 }
@@ -6107,6 +6134,9 @@ function Get-TimelineAudioVerbalizationStatusFromDetail {
             currentChunkId = Convert-TimelineText -Value (Get-PropertyValue -Object $status -Name "currentChunkId" -Default "")
             planPath = $planPath
             resultPath = $resultPath
+            startedAt = Convert-TimelineText -Value (Get-PropertyValue -Object $status -Name "startedAt" -Default "")
+            elapsedSec = [double](Convert-TimelineAudioNumber -Value (Get-PropertyValue -Object $status -Name "elapsedSec" -Default 0))
+            estimatedRemainingSec = [double](Convert-TimelineAudioNumber -Value (Get-PropertyValue -Object $status -Name "estimatedRemainingSec" -Default 0))
             updatedAt = Convert-TimelineText -Value (Get-PropertyValue -Object $status -Name "updatedAt" -Default "")
             message = Convert-TimelineText -Value (Get-PropertyValue -Object $status -Name "message" -Default "")
         }
@@ -6271,6 +6301,9 @@ function Get-TimelineAudioVerbalizationStatusFromFileRow {
             currentChunkId = Convert-TimelineText -Value (Get-PropertyValue -Object $status -Name "currentChunkId" -Default "")
             planPath = $planPath
             resultPath = $resultPath
+            startedAt = Convert-TimelineText -Value (Get-PropertyValue -Object $status -Name "startedAt" -Default "")
+            elapsedSec = [double](Convert-TimelineAudioNumber -Value (Get-PropertyValue -Object $status -Name "elapsedSec" -Default 0))
+            estimatedRemainingSec = [double](Convert-TimelineAudioNumber -Value (Get-PropertyValue -Object $status -Name "estimatedRemainingSec" -Default 0))
             updatedAt = Convert-TimelineText -Value (Get-PropertyValue -Object $status -Name "updatedAt" -Default "")
             message = Convert-TimelineText -Value (Get-PropertyValue -Object $status -Name "message" -Default "")
         }
@@ -6393,6 +6426,9 @@ function Start-TimelineAudioVerbalization {
         currentChunkId = if ($chunks.Count -gt 0) { Convert-TimelineText -Value (Get-PropertyValue -Object $chunks[0] -Name "chunkId" -Default "") } else { "" }
         planPath = $planPath
         resultPath = $resultPath
+        startedAt = ""
+        elapsedSec = 0
+        estimatedRemainingSec = 0
         updatedAt = $now
         message = "Audio verbalization chunk plan was created."
     }

@@ -250,6 +250,9 @@ public sealed class AudioVerbalizationStatus
     public string CurrentChunkId { get; set; } = "";
     public string PlanPath { get; set; } = "";
     public string ResultPath { get; set; } = "";
+    public string StartedAt { get; set; } = "";
+    public double ElapsedSec { get; set; }
+    public double EstimatedRemainingSec { get; set; }
     public string UpdatedAt { get; set; } = "";
     public string Message { get; set; } = "";
 }
