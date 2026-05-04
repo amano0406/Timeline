@@ -3,7 +3,10 @@
 Timeline is the local parent UI and cross-product timeline store for Timeline
 products.
 
-This repository does not contain the sub-product engines. It connects to existing local products under `C:\apps`:
+This repository does not contain the sub-product engines. Timeline resolves
+sub-product locations through its product registry. By default it uses managed
+paths under `C:\TimelineProducts`, while keeping `C:\apps` as a development
+fallback when those directories already exist:
 
 - `C:\apps\TimelineForAudio`
 - `C:\apps\TimelineForWindowsCodex`
@@ -11,6 +14,12 @@ This repository does not contain the sub-product engines. It connects to existin
 - `C:\apps\TimelineForImage`
 
 Timeline operates sub-products through each product's `cli.ps1`. It may read generated output files, but it must not enter or operate sub-product Docker containers directly.
+
+Sub-product management design:
+
+```text
+docs\sub-product-management-design.html
+```
 
 ## Current Scope
 

@@ -12,12 +12,12 @@ Initialize-TimelineDocker -RepoRoot $repoRoot
 
 $helperPort = 19001
 try {
-    Start-TimelineHelperServer -RepoRoot $repoRoot -AudioProductPath "C:\apps\TimelineForAudio" -Port $helperPort
+    Start-TimelineHelperServer -RepoRoot $repoRoot -Port $helperPort
 }
 catch {
     Write-Warning "Timeline helper server did not start on port $helperPort. Retrying on port 19002."
     $helperPort = 19002
-    Start-TimelineHelperServer -RepoRoot $repoRoot -AudioProductPath "C:\apps\TimelineForAudio" -Port $helperPort
+    Start-TimelineHelperServer -RepoRoot $repoRoot -Port $helperPort
 }
 
 $docker = Get-TimelineDockerCommand
@@ -150,11 +150,16 @@ Write-Host "  http://127.0.0.1:19000"
 Write-Host "Helper:"
 Write-Host "  http://127.0.0.1:$helperPort"
 Write-Host ""
-Write-Host "Connected local products:"
-Write-Host "  C:\apps\TimelineForAudio"
-Write-Host "  C:\apps\TimelineForWindowsCodex"
-Write-Host "  C:\apps\TimelineForChatGPT"
-Write-Host "  C:\apps\TimelineForImage"
+Write-Host "Connected products:"
+try {
+    $runtime = Invoke-RestMethod -UseBasicParsing -TimeoutSec 2 "http://127.0.0.1:$helperPort/products/runtime/status"
+    foreach ($product in @($runtime.products)) {
+        Write-Host ("  {0}: {1} [{2}]" -f ([string]$product.displayName), ([string]$product.productPath), ([string]$product.state))
+    }
+}
+catch {
+    Write-Host "  Product runtime status is not available."
+}
 Write-Host ""
 Write-Host "Health:"
 Write-Host "  Web: OK"

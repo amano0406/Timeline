@@ -139,6 +139,154 @@ function Resolve-TimelineInternalAudioVerbalizationSettings {
     return $settings
 }
 
+function New-TimelineProductRegistryDefaults {
+    $productsDirectory = "C:\TimelineProducts"
+    return [ordered]@{
+        productsDirectory = $productsDirectory
+        products = @(
+            [ordered]@{
+                id = "audio"
+                displayName = "TimelineForAudio"
+                installPath = Join-Path $productsDirectory "TimelineForAudio"
+                developmentPath = "C:\apps\TimelineForAudio"
+                sourceType = "release"
+                sourceUrl = ""
+                version = ""
+                enabled = $true
+                required = $false
+            },
+            [ordered]@{
+                id = "windows-codex"
+                displayName = "TimelineForWindowsCodex"
+                installPath = Join-Path $productsDirectory "TimelineForWindowsCodex"
+                developmentPath = "C:\apps\TimelineForWindowsCodex"
+                sourceType = "release"
+                sourceUrl = ""
+                version = ""
+                enabled = $true
+                required = $false
+            },
+            [ordered]@{
+                id = "chatgpt"
+                displayName = "TimelineForChatGPT"
+                installPath = Join-Path $productsDirectory "TimelineForChatGPT"
+                developmentPath = "C:\apps\TimelineForChatGPT"
+                sourceType = "release"
+                sourceUrl = ""
+                version = ""
+                enabled = $true
+                required = $false
+            },
+            [ordered]@{
+                id = "image"
+                displayName = "TimelineForImage"
+                installPath = Join-Path $productsDirectory "TimelineForImage"
+                developmentPath = "C:\apps\TimelineForImage"
+                sourceType = "release"
+                sourceUrl = ""
+                version = ""
+                enabled = $true
+                required = $false
+            }
+        )
+    }
+}
+
+function Get-TimelineDefaultProductDefinition {
+    param(
+        [string]$ProductId,
+        [object]$Registry
+    )
+
+    foreach ($product in @(Get-PropertyValue -Object $Registry -Name "products" -Default @())) {
+        if ((Convert-TimelineText -Value (Get-PropertyValue -Object $product -Name "id" -Default "")).Equals($ProductId, [System.StringComparison]::OrdinalIgnoreCase)) {
+            return $product
+        }
+    }
+    return $null
+}
+
+function Convert-TimelineProductDefinition {
+    param(
+        [string]$ProductId,
+        [object]$Source,
+        [object]$Default
+    )
+
+    $displayName = Convert-TimelineText -Value (Get-PropertyValue -Object $Source -Name "displayName" -Default (Get-PropertyValue -Object $Default -Name "displayName" -Default $ProductId))
+    $installPath = Convert-TimelineText -Value (Get-PropertyValue -Object $Source -Name "installPath" -Default (Get-PropertyValue -Object $Default -Name "installPath" -Default ""))
+    $developmentPath = Convert-TimelineText -Value (Get-PropertyValue -Object $Source -Name "developmentPath" -Default (Get-PropertyValue -Object $Default -Name "developmentPath" -Default ""))
+    $sourceType = Convert-TimelineText -Value (Get-PropertyValue -Object $Source -Name "sourceType" -Default (Get-PropertyValue -Object $Default -Name "sourceType" -Default "release"))
+    $sourceUrl = Convert-TimelineText -Value (Get-PropertyValue -Object $Source -Name "sourceUrl" -Default (Get-PropertyValue -Object $Default -Name "sourceUrl" -Default ""))
+    $version = Convert-TimelineText -Value (Get-PropertyValue -Object $Source -Name "version" -Default (Get-PropertyValue -Object $Default -Name "version" -Default ""))
+    $enabled = Get-PropertyValue -Object $Source -Name "enabled" -Default (Get-PropertyValue -Object $Default -Name "enabled" -Default $true)
+    $required = Get-PropertyValue -Object $Source -Name "required" -Default (Get-PropertyValue -Object $Default -Name "required" -Default $false)
+
+    return [ordered]@{
+        id = $ProductId
+        displayName = $displayName
+        installPath = $installPath
+        developmentPath = $developmentPath
+        sourceType = if ($sourceType) { $sourceType } else { "release" }
+        sourceUrl = $sourceUrl
+        version = $version
+        enabled = [bool]$enabled
+        required = [bool]$required
+    }
+}
+
+function Resolve-TimelineProductRegistry {
+    param([object]$Payload)
+
+    $defaults = New-TimelineProductRegistryDefaults
+    $registrySource = Get-PropertyValue -Object $Payload -Name "productRegistry" -Default $null
+    $productsDirectory = Convert-TimelineText -Value (Get-PropertyValue -Object $registrySource -Name "productsDirectory" -Default "")
+    if (-not $productsDirectory) {
+        $productsDirectory = Convert-TimelineText -Value (Get-PropertyValue -Object $Payload -Name "productsDirectory" -Default "")
+    }
+    if (-not $productsDirectory) {
+        $productsDirectory = Convert-TimelineText -Value (Get-PropertyValue -Object $defaults -Name "productsDirectory" -Default "C:\TimelineProducts")
+    }
+
+    $rawConfiguredProducts = Get-PropertyValue -Object $registrySource -Name "products" -Default $null
+    $configuredProducts = @()
+    if ($null -ne $rawConfiguredProducts) {
+        $configuredProducts = @($rawConfiguredProducts)
+    }
+    if ($configuredProducts.Count -eq 0) {
+        $rawTopLevelProducts = Get-PropertyValue -Object $Payload -Name "products" -Default $null
+        $configuredProducts = @()
+        if ($null -ne $rawTopLevelProducts) {
+            $configuredProducts = @($rawTopLevelProducts)
+        }
+    }
+
+    $configuredById = @{}
+    foreach ($configured in @($configuredProducts)) {
+        $id = Convert-TimelineText -Value (Get-PropertyValue -Object $configured -Name "id" -Default "")
+        if ($id) {
+            $configuredById[$id.ToLowerInvariant()] = $configured
+        }
+    }
+
+    $products = @()
+    foreach ($productId in @("audio", "windows-codex", "chatgpt", "image")) {
+        $default = Get-TimelineDefaultProductDefinition -ProductId $productId -Registry $defaults
+        $hasConfiguredProduct = $configuredById.ContainsKey($productId)
+        $source = if ($hasConfiguredProduct) { $configuredById[$productId] } else { $default }
+        $product = Convert-TimelineProductDefinition -ProductId $productId -Source $source -Default $default
+        if (-not $hasConfiguredProduct -or -not (Convert-TimelineText -Value (Get-PropertyValue -Object $source -Name "installPath" -Default ""))) {
+            $product["installPath"] = Join-Path $productsDirectory ([string]$product.displayName)
+        }
+        $products += $product
+    }
+
+    return [ordered]@{
+        productsDirectory = $productsDirectory
+        products = @($products)
+    }
+}
+
 function Read-TimelineAppSettings {
     $path = Get-TimelineAppSettingsPath
     $displayLanguageId = "ja-JP"
@@ -146,6 +294,7 @@ function Read-TimelineAppSettings {
     $workDirectory = "C:\TimelineData\Timeline\work"
     $storeDirectory = "C:\TimelineData\Timeline\store"
     $audioVerbalization = New-TimelineDefaultAudioVerbalizationSettings
+    $productRegistry = Resolve-TimelineProductRegistry -Payload $null
     if (Test-Path -LiteralPath $path) {
         try {
             $payload = Get-Content -LiteralPath $path -Raw -Encoding UTF8 | ConvertFrom-Json
@@ -165,6 +314,7 @@ function Read-TimelineAppSettings {
             if ($storeDirectoryCandidate) {
                 $storeDirectory = $storeDirectoryCandidate
             }
+            $productRegistry = Resolve-TimelineProductRegistry -Payload $payload
         }
         catch {
             $displayLanguageId = "ja-JP"
@@ -172,6 +322,7 @@ function Read-TimelineAppSettings {
             $workDirectory = "C:\TimelineData\Timeline\work"
             $storeDirectory = "C:\TimelineData\Timeline\store"
             $audioVerbalization = New-TimelineDefaultAudioVerbalizationSettings
+            $productRegistry = Resolve-TimelineProductRegistry -Payload $null
         }
     }
 
@@ -189,6 +340,7 @@ function Read-TimelineAppSettings {
         timeZones = @(Get-TimelineTimeZoneOptions)
         workDirectory = $workDirectory
         storeDirectory = $storeDirectory
+        productRegistry = $productRegistry
         audioVerbalization = $audioVerbalization
     }
 }
@@ -226,6 +378,13 @@ function Write-TimelineAppSettings {
         $storeDirectory = Convert-TimelineText -Value (Get-PropertyValue -Object $current -Name "storeDirectory" -Default "C:\TimelineData\Timeline\store")
     }
     $audioVerbalization = Resolve-TimelineInternalAudioVerbalizationSettings -DisplayLanguageId $displayLanguageId
+    $requestRegistry = Get-PropertyValue -Object $Request -Name "productRegistry" -Default $null
+    $productRegistry = if ($null -ne $requestRegistry) {
+        Resolve-TimelineProductRegistry -Payload ([ordered]@{ productRegistry = $requestRegistry })
+    }
+    else {
+        Get-PropertyValue -Object $current -Name "productRegistry" -Default (Resolve-TimelineProductRegistry -Payload $null)
+    }
 
     if (-not (Test-Path -LiteralPath $TimelineProductPath)) {
         [System.IO.Directory]::CreateDirectory($TimelineProductPath) | Out-Null
@@ -237,10 +396,80 @@ function Write-TimelineAppSettings {
         timeZoneId = $timeZoneId
         workDirectory = $workDirectory
         storeDirectory = $storeDirectory
+        productRegistry = $productRegistry
         audioVerbalization = $audioVerbalization
     }
     Write-TimelineUtf8JsonFile -Path (Get-TimelineAppSettingsPath) -Payload $payload
     return Read-TimelineAppSettings
+}
+
+function Get-TimelineProductRegistryProduct {
+    param(
+        [string]$ProductId,
+        [object]$ProductRegistry = $null
+    )
+
+    $registry = $ProductRegistry
+    if ($null -eq $registry) {
+        $settings = Read-TimelineAppSettings
+        $registry = Get-PropertyValue -Object $settings -Name "productRegistry" -Default (Resolve-TimelineProductRegistry -Payload $null)
+    }
+
+    foreach ($product in @(Get-PropertyValue -Object $registry -Name "products" -Default @())) {
+        if ((Convert-TimelineText -Value (Get-PropertyValue -Object $product -Name "id" -Default "")).Equals($ProductId, [System.StringComparison]::OrdinalIgnoreCase)) {
+            return $product
+        }
+    }
+    return $null
+}
+
+function Get-TimelineFullPathOrOriginal {
+    param([string]$Path)
+
+    $text = Convert-TimelineText -Value $Path
+    if (-not $text) {
+        return ""
+    }
+    try {
+        return [System.IO.Path]::GetFullPath($text)
+    }
+    catch {
+        return $text
+    }
+}
+
+function Resolve-TimelineProductPath {
+    param(
+        [object]$Product,
+        [string]$FallbackPath
+    )
+
+    $installPath = Convert-TimelineText -Value (Get-PropertyValue -Object $Product -Name "installPath" -Default "")
+    $developmentPath = Convert-TimelineText -Value (Get-PropertyValue -Object $Product -Name "developmentPath" -Default "")
+    $fallback = Convert-TimelineText -Value $FallbackPath
+
+    if ($installPath -and (Test-Path -LiteralPath $installPath)) {
+        return Get-TimelineFullPathOrOriginal -Path $installPath
+    }
+    if ($developmentPath -and (Test-Path -LiteralPath $developmentPath)) {
+        return Get-TimelineFullPathOrOriginal -Path $developmentPath
+    }
+    if ($installPath) {
+        return Get-TimelineFullPathOrOriginal -Path $installPath
+    }
+    if ($developmentPath) {
+        return Get-TimelineFullPathOrOriginal -Path $developmentPath
+    }
+    return Get-TimelineFullPathOrOriginal -Path $fallback
+}
+
+function Initialize-TimelineProductPathsFromRegistry {
+    $settings = Read-TimelineAppSettings
+    $registry = Get-PropertyValue -Object $settings -Name "productRegistry" -Default (Resolve-TimelineProductRegistry -Payload $null)
+    $script:AudioProductPath = Resolve-TimelineProductPath -Product (Get-TimelineProductRegistryProduct -ProductId "audio" -ProductRegistry $registry) -FallbackPath $AudioProductPath
+    $script:WindowsCodexProductPath = Resolve-TimelineProductPath -Product (Get-TimelineProductRegistryProduct -ProductId "windows-codex" -ProductRegistry $registry) -FallbackPath $WindowsCodexProductPath
+    $script:ChatGptProductPath = Resolve-TimelineProductPath -Product (Get-TimelineProductRegistryProduct -ProductId "chatgpt" -ProductRegistry $registry) -FallbackPath $ChatGptProductPath
+    $script:ImageProductPath = Resolve-TimelineProductPath -Product (Get-TimelineProductRegistryProduct -ProductId "image" -ProductRegistry $registry) -FallbackPath $ImageProductPath
 }
 
 function New-TimelineRootRow {
@@ -2676,6 +2905,11 @@ function Remove-TimelineWindowsCodexItems {
 }
 
 function Get-TimelineRuntimeProductDefinitions {
+    $registry = Get-PropertyValue -Object (Read-TimelineAppSettings) -Name "productRegistry" -Default (Resolve-TimelineProductRegistry -Payload $null)
+    $audioProduct = Get-TimelineProductRegistryProduct -ProductId "audio" -ProductRegistry $registry
+    $windowsCodexProduct = Get-TimelineProductRegistryProduct -ProductId "windows-codex" -ProductRegistry $registry
+    $chatGptProduct = Get-TimelineProductRegistryProduct -ProductId "chatgpt" -ProductRegistry $registry
+    $imageProduct = Get-TimelineProductRegistryProduct -ProductId "image" -ProductRegistry $registry
     return @(
         [ordered]@{
             id = "audio"
@@ -2684,6 +2918,12 @@ function Get-TimelineRuntimeProductDefinitions {
             pagePath = "audio/files"
             settingsPath = "audio/settings"
             productPath = $AudioProductPath
+            installPath = Convert-TimelineText -Value (Get-PropertyValue -Object $audioProduct -Name "installPath" -Default "")
+            developmentPath = Convert-TimelineText -Value (Get-PropertyValue -Object $audioProduct -Name "developmentPath" -Default "")
+            sourceType = Convert-TimelineText -Value (Get-PropertyValue -Object $audioProduct -Name "sourceType" -Default "")
+            sourceUrl = Convert-TimelineText -Value (Get-PropertyValue -Object $audioProduct -Name "sourceUrl" -Default "")
+            version = Convert-TimelineText -Value (Get-PropertyValue -Object $audioProduct -Name "version" -Default "")
+            enabled = [bool](Get-PropertyValue -Object $audioProduct -Name "enabled" -Default $true)
             cliPath = (Join-Path $AudioProductPath "cli.ps1")
             startPath = (Join-Path $AudioProductPath "start.ps1")
             stopPath = (Join-Path $AudioProductPath "stop.ps1")
@@ -2695,6 +2935,12 @@ function Get-TimelineRuntimeProductDefinitions {
             pagePath = "windows-codex"
             settingsPath = "windows-codex/settings"
             productPath = $WindowsCodexProductPath
+            installPath = Convert-TimelineText -Value (Get-PropertyValue -Object $windowsCodexProduct -Name "installPath" -Default "")
+            developmentPath = Convert-TimelineText -Value (Get-PropertyValue -Object $windowsCodexProduct -Name "developmentPath" -Default "")
+            sourceType = Convert-TimelineText -Value (Get-PropertyValue -Object $windowsCodexProduct -Name "sourceType" -Default "")
+            sourceUrl = Convert-TimelineText -Value (Get-PropertyValue -Object $windowsCodexProduct -Name "sourceUrl" -Default "")
+            version = Convert-TimelineText -Value (Get-PropertyValue -Object $windowsCodexProduct -Name "version" -Default "")
+            enabled = [bool](Get-PropertyValue -Object $windowsCodexProduct -Name "enabled" -Default $true)
             cliPath = (Join-Path $WindowsCodexProductPath "cli.ps1")
             startPath = (Join-Path $WindowsCodexProductPath "start.ps1")
             stopPath = (Join-Path $WindowsCodexProductPath "stop.ps1")
@@ -2706,6 +2952,12 @@ function Get-TimelineRuntimeProductDefinitions {
             pagePath = "chatgpt"
             settingsPath = "chatgpt/settings"
             productPath = $ChatGptProductPath
+            installPath = Convert-TimelineText -Value (Get-PropertyValue -Object $chatGptProduct -Name "installPath" -Default "")
+            developmentPath = Convert-TimelineText -Value (Get-PropertyValue -Object $chatGptProduct -Name "developmentPath" -Default "")
+            sourceType = Convert-TimelineText -Value (Get-PropertyValue -Object $chatGptProduct -Name "sourceType" -Default "")
+            sourceUrl = Convert-TimelineText -Value (Get-PropertyValue -Object $chatGptProduct -Name "sourceUrl" -Default "")
+            version = Convert-TimelineText -Value (Get-PropertyValue -Object $chatGptProduct -Name "version" -Default "")
+            enabled = [bool](Get-PropertyValue -Object $chatGptProduct -Name "enabled" -Default $true)
             cliPath = (Join-Path $ChatGptProductPath "cli.ps1")
             startPath = (Join-Path $ChatGptProductPath "start.ps1")
             stopPath = (Join-Path $ChatGptProductPath "stop.ps1")
@@ -2717,6 +2969,12 @@ function Get-TimelineRuntimeProductDefinitions {
             pagePath = "image"
             settingsPath = "image/settings"
             productPath = $ImageProductPath
+            installPath = Convert-TimelineText -Value (Get-PropertyValue -Object $imageProduct -Name "installPath" -Default "")
+            developmentPath = Convert-TimelineText -Value (Get-PropertyValue -Object $imageProduct -Name "developmentPath" -Default "")
+            sourceType = Convert-TimelineText -Value (Get-PropertyValue -Object $imageProduct -Name "sourceType" -Default "")
+            sourceUrl = Convert-TimelineText -Value (Get-PropertyValue -Object $imageProduct -Name "sourceUrl" -Default "")
+            version = Convert-TimelineText -Value (Get-PropertyValue -Object $imageProduct -Name "version" -Default "")
+            enabled = [bool](Get-PropertyValue -Object $imageProduct -Name "enabled" -Default $true)
             cliPath = (Join-Path $ImageProductPath "cli.ps1")
             startPath = (Join-Path $ImageProductPath "start.ps1")
             stopPath = (Join-Path $ImageProductPath "stop.ps1")
@@ -2765,6 +3023,12 @@ function Convert-TimelineRuntimeStatus {
         pagePath = [string]$Definition.pagePath
         settingsPath = [string]$Definition.settingsPath
         productPath = $productPath
+        installPath = Convert-TimelineText -Value (Get-PropertyValue -Object $Definition -Name "installPath" -Default "")
+        developmentPath = Convert-TimelineText -Value (Get-PropertyValue -Object $Definition -Name "developmentPath" -Default "")
+        sourceType = Convert-TimelineText -Value (Get-PropertyValue -Object $Definition -Name "sourceType" -Default "")
+        sourceUrl = Convert-TimelineText -Value (Get-PropertyValue -Object $Definition -Name "sourceUrl" -Default "")
+        version = Convert-TimelineText -Value (Get-PropertyValue -Object $Definition -Name "version" -Default "")
+        enabled = [bool](Get-PropertyValue -Object $Definition -Name "enabled" -Default $true)
         productFound = $productFound
         composeFound = $cliFound
         containerName = if ($cliFound) { Split-Path -Leaf $cliPath } else { "" }
@@ -7701,6 +7965,8 @@ function Send-TimelineFileResponse {
         $fileStream.Dispose()
     }
 }
+
+Initialize-TimelineProductPathsFromRegistry
 
 if ($ImportOnly) {
     return

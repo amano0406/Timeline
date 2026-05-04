@@ -166,8 +166,7 @@ function Start-TimelineHelperServer {
     param(
         [Parameter(Mandatory = $true)]
         [string]$RepoRoot,
-        [Parameter(Mandatory = $true)]
-        [string]$AudioProductPath,
+        [string]$AudioProductPath = "C:\apps\TimelineForAudio",
         [string]$WindowsCodexProductPath = "C:\apps\TimelineForWindowsCodex",
         [string]$ChatGptProductPath = "C:\apps\TimelineForChatGPT",
         [string]$ImageProductPath = "C:\apps\TimelineForImage",
