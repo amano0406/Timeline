@@ -176,12 +176,81 @@ else if (_file is not null)
                 }
             </div>
 
-            <div class="tfa-card overflow-hidden">
-                <div class="tfa-card-pad border-b border-line">
+            @if (HasVerbalizedTurns)
+            {
+                <div class="tfa-card overflow-hidden">
+                    <div class="tfa-card-pad border-b border-line">
+                        <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                            <h2 class="flex items-center gap-2 text-lg font-semibold">
+                                <FaIcon Name="language" Class="tfa-icon text-accent" />
+                                <span>言語化結果</span>
+                            </h2>
+                            <div class="flex flex-wrap gap-2 text-xs text-slate-500">
+                                <span class="tfa-status-pill border-teal-200 bg-teal-50 text-teal-800">@_verbalizationResult!.Turns.Count 区間</span>
+                                <span class="@VerbalizationPill(_verbalizationResult.Status.State)">
+                                    <FaIcon Name="@VerbalizationIcon(_verbalizationResult.Status.State)" Class="tfa-icon !h-3 !w-3" />
+                                    <span>@VerbalizationLabel(_verbalizationResult.Status.State)</span>
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="max-h-[680px] overflow-auto">
+                        <table class="tfa-table">
+                            <thead class="sticky top-0">
+                                <tr>
+                                    <th>再生</th>
+                                    <th>時間</th>
+                                    <th>話者</th>
+                                    <th>内容</th>
+                                    <th>確度</th>
+                                    <th>状態</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var turn in _verbalizationResult!.Turns)
+                                {
+                                    <tr>
+                                        <td>
+                                            <button class="tfa-icon-box text-accent" type="button" title="この位置から再生" @onclick="() => SeekAsync(turn.StartSec)">
+                                                <FaIcon Name="play" Class="tfa-icon !h-3.5 !w-3.5" />
+                                            </button>
+                                        </td>
+                                        <td class="whitespace-nowrap font-mono text-xs">
+                                            @DurationLabel(turn.StartSec) - @DurationLabel(turn.EndSec)
+                                        </td>
+                                        <td>
+                                            <span class="tfa-status-pill border-slate-200 bg-slate-50">@SpeakerLabel(turn.Speaker)</span>
+                                        </td>
+                                        <td class="max-w-[980px] whitespace-pre-wrap break-words text-sm leading-6 text-slate-900">
+                                            @VerbalizedText(turn)
+                                            @if (HasUncertainTerms(turn))
+                                            {
+                                                <div class="mt-2 text-xs text-amber-800">
+                                                    要確認: @UncertainTermsText(turn)
+                                                </div>
+                                            }
+                                        </td>
+                                        <td class="whitespace-nowrap font-mono text-xs text-slate-500">
+                                            @ConfidenceLabel(turn.Confidence)
+                                        </td>
+                                        <td>
+                                            <span class="@VerbalizedTurnPill(turn.Status)">@VerbalizedTurnLabel(turn.Status)</span>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            }
+
+            <details class="tfa-card overflow-hidden" open="@(!HasVerbalizedTurns)">
+                <summary class="cursor-pointer list-none border-b border-line">
+                    <div class="tfa-card-pad">
                     <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                         <h2 class="flex items-center gap-2 text-lg font-semibold">
                             <FaIcon Name="bars-staggered" Class="tfa-icon text-accent" />
-                            <span>時間軸データ</span>
+                            <span>@(HasVerbalizedTurns ? "解析元データ" : "時間軸データ")</span>
                         </h2>
                         @if (_detail?.TimelineAvailable == true)
                         {
@@ -194,7 +263,8 @@ else if (_file is not null)
                             </div>
                         }
                     </div>
-                </div>
+                    </div>
+                </summary>
                 <div class="max-h-[680px] overflow-auto">
                     <table class="tfa-table">
                         <thead class="sticky top-0">
@@ -246,7 +316,7 @@ else if (_file is not null)
                         </tbody>
                     </table>
                 </div>
-            </div>
+            </details>
         </section>
     </div>
 }
@@ -260,16 +330,20 @@ else if (_file is not null)
 
     private const string AudioElementId = "audio-detail-player";
     private AudioFileDetailResult? _detail;
+    private AudioVerbalizationResult? _verbalizationResult;
     private AudioFileRow? _file;
     private string? _error;
     private string? _operationMessage;
     private bool _startingVerbalization;
+
+    private bool HasVerbalizedTurns => _verbalizationResult?.Turns.Count > 0;
 
     protected override async Task OnParametersSetAsync()
     {
         _error = null;
         _operationMessage = null;
         _detail = null;
+        _verbalizationResult = null;
         _file = null;
         if (string.IsNullOrWhiteSpace(SourceId) || string.IsNullOrWhiteSpace(RelativePath))
         {
@@ -283,6 +357,7 @@ else if (_file is not null)
             if (_detail.Available && _detail.File is not null)
             {
                 _file = _detail.File;
+                await LoadVerbalizationResultAsync();
                 return;
             }
 
@@ -294,6 +369,17 @@ else if (_file is not null)
         {
             _error = ex.Message;
         }
+    }
+
+    private async Task LoadVerbalizationResultAsync()
+    {
+        if (string.IsNullOrWhiteSpace(SourceId) || string.IsNullOrWhiteSpace(RelativePath))
+        {
+            _verbalizationResult = null;
+            return;
+        }
+
+        _verbalizationResult = await Timeline.GetAudioVerbalizationResultAsync(SourceId, RelativePath);
     }
 
     private async Task SeekAsync(double seconds)
@@ -324,6 +410,7 @@ else if (_file is not null)
                 RelativePath = RelativePath,
             });
             _detail.AudioVerbalization = status;
+            await LoadVerbalizationResultAsync();
             _operationMessage = VerbalizationStartMessage(status);
         }
         catch (Exception ex)
@@ -344,6 +431,15 @@ else if (_file is not null)
 
     private static string TokenLabel(string value) =>
         string.IsNullOrWhiteSpace(value) ? "-" : value;
+
+    private static string VerbalizedText(AudioVerbalizedTurn turn) =>
+        string.IsNullOrWhiteSpace(turn.Text) ? "言語化候補はありません。" : turn.Text;
+
+    private static bool HasUncertainTerms(AudioVerbalizedTurn turn) =>
+        turn.UncertainTerms is { Count: > 0 };
+
+    private static string UncertainTermsText(AudioVerbalizedTurn turn) =>
+        turn.UncertainTerms is { Count: > 0 } ? string.Join("、", turn.UncertainTerms) : "";
 
     private static string ConfidenceLabel(double? value) =>
         value is null ? "-" : value.Value.ToString("0.000");
@@ -424,6 +520,25 @@ else if (_file is not null)
             : status.State.Equals("not_implemented", StringComparison.OrdinalIgnoreCase)
                 ? "言語化の設定と画面導線を追加しました。実行処理は次の段階で実装します。"
                 : string.IsNullOrWhiteSpace(VerbalizationDisplayMessage(status)) ? VerbalizationLabel(status.State) : VerbalizationDisplayMessage(status);
+
+    private static string VerbalizedTurnLabel(string status) =>
+        (status ?? "").ToLowerInvariant() switch
+        {
+            "confirmed" => "確認済み",
+            "candidate" => "候補",
+            "needs_review" => "要確認",
+            "failed" => "失敗",
+            _ => string.IsNullOrWhiteSpace(status) ? "候補" : status,
+        };
+
+    private static string VerbalizedTurnPill(string status) =>
+        (status ?? "").ToLowerInvariant() switch
+        {
+            "confirmed" => "tfa-status-pill border-teal-200 bg-teal-50 text-teal-800",
+            "candidate" => "tfa-status-pill border-sky-200 bg-sky-50 text-sky-800",
+            "failed" => "tfa-status-pill border-red-200 bg-red-50 text-red-800",
+            _ => "tfa-status-pill border-amber-200 bg-amber-50 text-amber-900",
+        };
 
     private static string AudioSourceUrl(AudioFileRow file) =>
         "api/audio/source"

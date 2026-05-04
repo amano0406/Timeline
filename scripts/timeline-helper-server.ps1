@@ -6180,6 +6180,46 @@ function Get-TimelineAudioVerbalizationStatus {
     return Get-TimelineAudioVerbalizationStatusFromDetail -Detail $detail
 }
 
+function Get-TimelineAudioVerbalizationResult {
+    param(
+        [string]$SourceId,
+        [string]$RelativePath
+    )
+
+    $detail = Get-TimelineAudioFileDetail -SourceId $SourceId -RelativePath $RelativePath
+    $status = Get-TimelineAudioVerbalizationStatusFromDetail -Detail $detail
+    $resultPath = Convert-TimelineText -Value (Get-PropertyValue -Object $status -Name "resultPath" -Default "")
+    if (-not $resultPath -or -not (Test-Path -LiteralPath $resultPath -PathType Leaf)) {
+        return [ordered]@{
+            available = [bool](Get-PropertyValue -Object $status -Name "available" -Default $false)
+            status = $status
+            turns = @()
+            chunks = @()
+            message = "Audio verbalization result was not found."
+        }
+    }
+
+    try {
+        $payload = Get-Content -LiteralPath $resultPath -Raw -Encoding UTF8 | ConvertFrom-Json
+        return [ordered]@{
+            available = $true
+            status = (Get-PropertyValue -Object $payload -Name "status" -Default $status)
+            turns = @(Get-PropertyValue -Object $payload -Name "turns" -Default @())
+            chunks = @(Get-PropertyValue -Object $payload -Name "chunks" -Default @())
+            message = ""
+        }
+    }
+    catch {
+        return [ordered]@{
+            available = $false
+            status = $status
+            turns = @()
+            chunks = @()
+            message = $_.Exception.Message
+        }
+    }
+}
+
 function Start-TimelineAudioVerbalization {
     param([object]$Request)
 
@@ -6227,7 +6267,7 @@ function Start-TimelineAudioVerbalization {
         planPath = $planPath
         resultPath = $resultPath
         updatedAt = $now
-        message = "Audio verbalization chunk plan was created. LLM execution is not implemented yet."
+        message = "Audio verbalization chunk plan was created."
     }
 
     Write-TimelineUtf8JsonFile -Path $resultPath -Payload ([ordered]@{
@@ -7147,6 +7187,12 @@ try {
             if ($method -eq "GET" -and $uri.AbsolutePath -eq "/timeline/audio-verbalization/status") {
                 $query = [System.Web.HttpUtility]::ParseQueryString($uri.Query)
                 Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Get-TimelineAudioVerbalizationStatus -SourceId ([string]$query["sourceId"]) -RelativePath ([string]$query["path"])))
+                continue
+            }
+
+            if ($method -eq "GET" -and $uri.AbsolutePath -eq "/timeline/audio-verbalization/result") {
+                $query = [System.Web.HttpUtility]::ParseQueryString($uri.Query)
+                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Get-TimelineAudioVerbalizationResult -SourceId ([string]$query["sourceId"]) -RelativePath ([string]$query["path"])))
                 continue
             }
 

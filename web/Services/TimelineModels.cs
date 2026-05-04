@@ -266,19 +266,41 @@ public sealed class AudioVerbalizationOllamaStatus
 
 public sealed class AudioVerbalizationResult
 {
+    public bool Available { get; set; }
     public AudioVerbalizationStatus Status { get; set; } = new();
     public List<AudioVerbalizedTurn> Turns { get; set; } = [];
+    public List<AudioVerbalizedChunk> Chunks { get; set; } = [];
+    public string Message { get; set; } = "";
 }
 
 public sealed class AudioVerbalizedTurn
 {
     public string TurnId { get; set; } = "";
     public int Index { get; set; }
+    public double StartSec { get; set; }
+    public double EndSec { get; set; }
+    public string Speaker { get; set; } = "";
     public string Text { get; set; } = "";
     public double? Confidence { get; set; }
     public string Status { get; set; } = "";
     public List<string> Basis { get; set; } = [];
     public List<string> UncertainTerms { get; set; } = [];
+}
+
+public sealed class AudioVerbalizedChunk
+{
+    public string ChunkId { get; set; } = "";
+    public int Sequence { get; set; }
+    public string State { get; set; } = "";
+    public double StartSec { get; set; }
+    public double EndSec { get; set; }
+    public int TurnCount { get; set; }
+    public string ContextPath { get; set; } = "";
+    public string SummaryPath { get; set; } = "";
+    public string ResultPath { get; set; } = "";
+    public int RetryCount { get; set; }
+    public string Error { get; set; } = "";
+    public string Summary { get; set; } = "";
 }
 
 public sealed class AudioDeleteGeneratedRequest

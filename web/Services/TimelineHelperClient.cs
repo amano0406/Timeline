@@ -278,6 +278,28 @@ public sealed class TimelineHelperClient
         }
     }
 
+    public async Task<AudioVerbalizationResult> GetAudioVerbalizationResultAsync(
+        string sourceId,
+        string relativePath,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            return await _http.GetFromJsonAsync<AudioVerbalizationResult>(
+                    "timeline/audio-verbalization/result"
+                    + $"?sourceId={Uri.EscapeDataString(sourceId)}"
+                    + $"&path={Uri.EscapeDataString(relativePath)}",
+                    JsonOptions,
+                    cancellationToken)
+                ?? new AudioVerbalizationResult { Message = "言語化結果を取得できませんでした。" };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to load audio verbalization result.");
+            return new AudioVerbalizationResult { Message = "言語化結果を取得できませんでした。" };
+        }
+    }
+
     public async Task<AudioVerbalizationStatus> StartAudioVerbalizationAsync(
         AudioVerbalizationStartRequest request,
         CancellationToken cancellationToken = default)
