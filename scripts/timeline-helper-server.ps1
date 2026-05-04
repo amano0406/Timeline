@@ -112,67 +112,30 @@ function New-TimelineDefaultAudioVerbalizationSettings {
     }
 }
 
-function Convert-TimelineAudioVerbalizationSettings {
-    param([object]$Source)
+function Resolve-TimelineInternalAudioVerbalizationSettings {
+    param([string]$DisplayLanguageId)
 
-    $defaults = New-TimelineDefaultAudioVerbalizationSettings
-    if ($null -eq $Source) {
-        return $defaults
-    }
-
-    $provider = (Convert-TimelineText -Value (Get-PropertyValue -Object $Source -Name "provider" -Default $defaults.provider)).ToLowerInvariant()
-    if (@("ollama", "none") -notcontains $provider) {
-        $provider = "ollama"
-    }
-
-    $model = Convert-TimelineText -Value (Get-PropertyValue -Object $Source -Name "model" -Default $defaults.model)
-    if (-not $model) {
-        $model = $defaults.model
-    }
-
-    $fastModel = Convert-TimelineText -Value (Get-PropertyValue -Object $Source -Name "fastModel" -Default $defaults.fastModel)
-    if (-not $fastModel) {
-        $fastModel = $defaults.fastModel
-    }
-
-    $language = Convert-TimelineText -Value (Get-PropertyValue -Object $Source -Name "language" -Default $defaults.language)
+    $settings = New-TimelineDefaultAudioVerbalizationSettings
+    $language = Convert-TimelineText -Value $DisplayLanguageId
     if (-not $language) {
-        $language = $defaults.language
+        $language = "ja-JP"
     }
 
-    $ollamaBaseUrl = Convert-TimelineText -Value (Get-PropertyValue -Object $Source -Name "ollamaBaseUrl" -Default $defaults.ollamaBaseUrl)
-    if (-not $ollamaBaseUrl) {
-        $ollamaBaseUrl = $defaults.ollamaBaseUrl
-    }
-
-    $chunkMin = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $Source -Name "chunkMinMinutes" -Default $defaults.chunkMinMinutes)
-    $chunkMax = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $Source -Name "chunkMaxMinutes" -Default $defaults.chunkMaxMinutes)
-    $chunkTurns = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $Source -Name "chunkMaxTurns" -Default $defaults.chunkMaxTurns)
-    $nearby = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $Source -Name "nearbyContextMinutes" -Default $defaults.nearbyContextMinutes)
-    $concurrent = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $Source -Name "maxConcurrentJobs" -Default $defaults.maxConcurrentJobs)
-
-    $chunkMin = [Math]::Max(1, [Math]::Min(60, $chunkMin))
-    $chunkMax = [Math]::Max($chunkMin, [Math]::Min(120, $chunkMax))
-    $chunkTurns = [Math]::Max(1, [Math]::Min(500, $chunkTurns))
-    $nearby = [Math]::Max(0, [Math]::Min(240, $nearby))
-    $concurrent = [Math]::Max(1, [Math]::Min(4, $concurrent))
-
-    return [ordered]@{
-        enabled = [bool](Get-PropertyValue -Object $Source -Name "enabled" -Default $defaults.enabled)
-        provider = $provider
-        ollamaBaseUrl = $ollamaBaseUrl
-        model = $model
-        fastModel = $fastModel
-        language = $language
-        chunkMinMinutes = $chunkMin
-        chunkMaxMinutes = $chunkMax
-        chunkMaxTurns = $chunkTurns
-        nearbyContextMinutes = $nearby
-        maxConcurrentJobs = $concurrent
-        autoRun = [bool](Get-PropertyValue -Object $Source -Name "autoRun" -Default $defaults.autoRun)
-        usePreviousChunkSummary = [bool](Get-PropertyValue -Object $Source -Name "usePreviousChunkSummary" -Default $defaults.usePreviousChunkSummary)
-        useUnconfirmedVerbalizationAsWeakHint = [bool](Get-PropertyValue -Object $Source -Name "useUnconfirmedVerbalizationAsWeakHint" -Default $defaults.useUnconfirmedVerbalizationAsWeakHint)
-    }
+    $settings["enabled"] = $true
+    $settings["provider"] = "ollama"
+    $settings["ollamaBaseUrl"] = "http://127.0.0.1:11434"
+    $settings["model"] = "qwen3.5:9b"
+    $settings["fastModel"] = "qwen3.5:4b"
+    $settings["language"] = $language
+    $settings["chunkMinMinutes"] = 5
+    $settings["chunkMaxMinutes"] = 10
+    $settings["chunkMaxTurns"] = 80
+    $settings["nearbyContextMinutes"] = 10
+    $settings["maxConcurrentJobs"] = 1
+    $settings["autoRun"] = $false
+    $settings["usePreviousChunkSummary"] = $true
+    $settings["useUnconfirmedVerbalizationAsWeakHint"] = $true
+    return $settings
 }
 
 function Read-TimelineAppSettings {
@@ -201,7 +164,6 @@ function Read-TimelineAppSettings {
             if ($storeDirectoryCandidate) {
                 $storeDirectory = $storeDirectoryCandidate
             }
-            $audioVerbalization = Convert-TimelineAudioVerbalizationSettings -Source (Get-PropertyValue -Object $payload -Name "audioVerbalization" -Default $null)
         }
         catch {
             $displayLanguageId = "ja-JP"
@@ -216,6 +178,7 @@ function Read-TimelineAppSettings {
     if ($allowedLanguages -notcontains $displayLanguageId) {
         $displayLanguageId = "ja-JP"
     }
+    $audioVerbalization = Resolve-TimelineInternalAudioVerbalizationSettings -DisplayLanguageId $displayLanguageId
 
     return [ordered]@{
         schemaVersion = 1
@@ -261,7 +224,7 @@ function Write-TimelineAppSettings {
     if (-not $storeDirectory) {
         $storeDirectory = Convert-TimelineText -Value (Get-PropertyValue -Object $current -Name "storeDirectory" -Default "C:\TimelineData\Timeline\store")
     }
-    $audioVerbalization = Convert-TimelineAudioVerbalizationSettings -Source (Get-PropertyValue -Object $Request -Name "audioVerbalization" -Default (Get-PropertyValue -Object $current -Name "audioVerbalization" -Default $null))
+    $audioVerbalization = Resolve-TimelineInternalAudioVerbalizationSettings -DisplayLanguageId $displayLanguageId
 
     if (-not (Test-Path -LiteralPath $TimelineProductPath)) {
         [System.IO.Directory]::CreateDirectory($TimelineProductPath) | Out-Null

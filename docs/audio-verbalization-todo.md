@@ -5,7 +5,7 @@ TimelineForAudio のフォントークンを Timeline 本体で言語化する�
 ## Phase 1: 設定と骨格
 
 - [x] Timeline 設定に `audioVerbalization` を追加する
-- [x] 設定画面に Ollama / モデル / チャンク設定を表示する
+- [x] Ollama / モデル / チャンク設定を Timeline 内部設定として管理する
 - [x] 言語化結果・ジョブ状態の C# モデルを追加する
 - [x] 補助サーバーに言語化 status/start の API 骨格を追加する
 - [x] 音声詳細画面に「言語化ステータス」枠を追加する
@@ -50,6 +50,6 @@ TimelineForAudio のフォントークンを Timeline 本体で言語化する�
 
 - [ ] signature で未処理/再処理判定する
 - [ ] モデルやプロンプト変更時の再言語化を扱う
-- [ ] 自動言語化を `off / idle / always` から選べるようにする
+- [ ] 自動言語化の実行方針を内部ジョブ管理として設計する
 - [x] README と設計HTMLを更新する
 - [ ] スモークテストを追加する

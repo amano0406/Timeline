@@ -28,7 +28,6 @@ public sealed class TimelineAppSettingsSaveRequest
     public string TimeZoneId { get; set; } = "Asia/Tokyo";
     public string WorkDirectory { get; set; } = @"C:\TimelineData\Timeline\work";
     public string StoreDirectory { get; set; } = @"C:\TimelineData\Timeline\store";
-    public TimelineAudioVerbalizationSettings AudioVerbalization { get; set; } = new();
 }
 
 public sealed class TimelineAudioVerbalizationSettings

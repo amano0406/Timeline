@@ -398,7 +398,7 @@ chunk-0003 uses chunk-0001..0002 rolling summary
     <section>
       <h2>API案</h2>
       <pre><code>GET  /timeline/audio-verbalization/status?sourceId=&lt;id&gt;&amp;path=&lt;relative-path&gt;
-GET  /timeline/audio-verbalization/ollama/status?baseUrl=&lt;url&gt;&amp;model=&lt;model&gt;
+GET  /timeline/audio-verbalization/ollama/status
 POST /timeline/audio-verbalization/start
 POST /timeline/audio-verbalization/cancel
 POST /timeline/audio-verbalization/retry-failed
@@ -448,7 +448,11 @@ GET  /timeline/audio-verbalization/result?audioItemId=&lt;id&gt;</code></pre>
     </section>
 
     <section>
-      <h2>初期設定案</h2>
+      <h2>内部設定案</h2>
+      <p>
+        Ollama URL、モデル、チャンク幅、同時実行数は Timeline の内部責務として扱い、設定画面には出さない。
+        言語は当面、Timeline の表示言語を利用する。
+      </p>
       <pre><code>{
   "audioVerbalization": {
     "enabled": true,
@@ -471,7 +475,7 @@ GET  /timeline/audio-verbalization/result?audioItemId=&lt;id&gt;</code></pre>
     <section class="panel">
       <h2>MVP実装順</h2>
       <ol>
-        <li>Timeline 設定に Ollama / モデル / 言語化設定を追加する。</li>
+        <li>Timeline 内部設定に Ollama / モデル / 言語化設定を追加する。</li>
         <li>音声詳細APIに既存の言語化結果を返すフィールドを追加する。</li>
         <li>音声1件を5〜10分チャンクへ分割する関数を追加する。</li>
         <li>チャンクごとの context JSON を作る。</li>

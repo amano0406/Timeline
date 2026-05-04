@@ -178,7 +178,7 @@ TimelineForAudio が出力するフォントークンの時間軸は、Timeline 
 - Timeline ストア配下にチャンクごとの `context/*.context.json` と `summary.json` を作成
 - Timeline 所有の Ollama Docker サービスの `/api/chat` に JSON 返却指定で送信
 - 完了または失敗した結果を `store\audio-verbalizations\<audio-item-id>\audio-verbalization.json` に保存
-- Timeline 設定画面から Ollama の接続確認が可能
+- Ollama URL、モデル、チャンク幅、同時実行数は Timeline 内部で管理
 
 既定モデル:
 

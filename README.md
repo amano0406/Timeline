@@ -157,7 +157,10 @@ Timeline settings control:
 - time zone
 - Timeline work directory
 - Timeline store directory
-- audio verbalization provider / model / chunk settings
+
+Audio verbalization runtime settings are managed internally by Timeline. The UI
+does not expose the Ollama URL, model, chunk size, or concurrency because those
+are product responsibilities rather than user choices.
 
 If the work/store directories need to be accessible from Timeline's Docker
 worker, keep `docker-compose.yml` bind mounts aligned with the selected local
@@ -177,7 +180,7 @@ Current implementation:
 - Calls the Timeline-owned Ollama Docker service `/api/chat` with JSON output.
 - Stores completed or failed results in
   `store\audio-verbalizations\<audio-item-id>\audio-verbalization.json`.
-- Provides an Ollama connection check from Timeline settings.
+- Manages the Ollama URL, model, chunk size, and concurrency internally.
 
 Default model:
 
