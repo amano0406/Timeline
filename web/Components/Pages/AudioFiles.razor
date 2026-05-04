@@ -322,34 +322,44 @@ else
                             <div class="tfa-file-tree-meta" role="gridcell">@DurationLabel(file.DurationSec)</div>
                             <div class="tfa-file-tree-meta" role="gridcell">@UiFormat.Bytes(file.SizeBytes)</div>
                             <div class="tfa-file-tree-meta" role="gridcell">
-                                @if (file.HasTimeline && HasGeneratedItem(file))
-                                {
-                                    <span class="tfa-file-tree-result">
-                                        <FaIcon Name="file-lines" Class="tfa-icon text-teal-700" />
-                                        <span>@ArtifactLabel(file)</span>
-                                    </span>
-                                }
-                                else if (file.HasTimeline)
-                                {
-                                    <span class="tfa-file-tree-result tfa-file-tree-result-muted">
-                                        <FaIcon Name="spinner" Class="tfa-icon" />
-                                        <span>分析中</span>
-                                    </span>
-                                }
-                                else if (file.HasAudio)
-                                {
-                                    <span class="tfa-file-tree-result tfa-file-tree-result-muted">
-                                        <FaIcon Name="file-audio" Class="tfa-icon" />
-                                        <span>@(IsProcessingStatus(file.Status) ? "分析中" : "音声あり")</span>
-                                    </span>
-                                }
-                                else
-                                {
-                                    <span class="tfa-file-tree-result tfa-file-tree-result-muted">
-                                        <FaIcon Name="circle-minus" Class="tfa-icon" />
-                                        <span>未作成</span>
-                                    </span>
-                                }
+                                <div class="flex flex-col items-end gap-1">
+                                    @if (file.HasTimeline && HasGeneratedItem(file))
+                                    {
+                                        <span class="tfa-file-tree-result">
+                                            <FaIcon Name="file-lines" Class="tfa-icon text-teal-700" />
+                                            <span>@ArtifactLabel(file)</span>
+                                        </span>
+                                    }
+                                    else if (file.HasTimeline)
+                                    {
+                                        <span class="tfa-file-tree-result tfa-file-tree-result-muted">
+                                            <FaIcon Name="spinner" Class="tfa-icon" />
+                                            <span>分析中</span>
+                                        </span>
+                                    }
+                                    else if (file.HasAudio)
+                                    {
+                                        <span class="tfa-file-tree-result tfa-file-tree-result-muted">
+                                            <FaIcon Name="file-audio" Class="tfa-icon" />
+                                            <span>@(IsProcessingStatus(file.Status) ? "分析中" : "音声あり")</span>
+                                        </span>
+                                    }
+                                    else
+                                    {
+                                        <span class="tfa-file-tree-result tfa-file-tree-result-muted">
+                                            <FaIcon Name="circle-minus" Class="tfa-icon" />
+                                            <span>未作成</span>
+                                        </span>
+                                    }
+
+                                    @if (ShouldShowVerbalizationStatus(file))
+                                    {
+                                        <span class="@VerbalizationPill(file.AudioVerbalization.State)">
+                                            <FaIcon Name="@VerbalizationIcon(file.AudioVerbalization.State)" Class="@($"tfa-icon !h-3 !w-3 {VerbalizationIconSpin(file.AudioVerbalization.State)}")" />
+                                            <span>@VerbalizationLabel(file.AudioVerbalization)</span>
+                                        </span>
+                                    }
+                                </div>
                             </div>
                         }
                     </div>
@@ -675,6 +685,55 @@ else
 
         return "JSONあり";
     }
+
+    private static bool ShouldShowVerbalizationStatus(AudioFileRow file) =>
+        file.HasTimeline && file.AudioVerbalization is not null;
+
+    private static string VerbalizationLabel(AudioVerbalizationStatus status)
+    {
+        var label = status.State.ToLowerInvariant() switch
+        {
+            "completed" => "言語化済み",
+            "running" => "言語化中",
+            "planned" => "言語化待ち",
+            "failed" => "言語化失敗",
+            "unreadable" => "読取不可",
+            _ => "未言語化",
+        };
+
+        if ((status.State.Equals("running", StringComparison.OrdinalIgnoreCase)
+                || status.State.Equals("planned", StringComparison.OrdinalIgnoreCase))
+            && status.TotalChunks > 0)
+        {
+            return $"{label} {status.CompletedChunks}/{status.TotalChunks}";
+        }
+
+        return label;
+    }
+
+    private static string VerbalizationIcon(string state) =>
+        state.ToLowerInvariant() switch
+        {
+            "completed" => "language",
+            "running" => "spinner",
+            "planned" => "clock",
+            "failed" => "triangle-exclamation",
+            "unreadable" => "circle-xmark",
+            _ => "circle-minus",
+        };
+
+    private static string VerbalizationIconSpin(string state) =>
+        state.Equals("running", StringComparison.OrdinalIgnoreCase) ? "fa-spin" : "";
+
+    private static string VerbalizationPill(string state) =>
+        state.ToLowerInvariant() switch
+        {
+            "completed" => "tfa-status-pill border-teal-200 bg-teal-50 text-teal-800",
+            "running" => "tfa-status-pill border-sky-200 bg-sky-50 text-sky-800",
+            "planned" => "tfa-status-pill border-amber-200 bg-amber-50 text-amber-900",
+            "failed" or "unreadable" => "tfa-status-pill border-red-200 bg-red-50 text-red-800",
+            _ => "tfa-status-pill border-slate-200 bg-slate-50 text-slate-700",
+        };
 
     private static List<FileTreeRow> BuildTreeRows(IEnumerable<AudioFileRow> files)
     {

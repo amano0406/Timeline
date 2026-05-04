@@ -6133,6 +6133,170 @@ function Get-TimelineAudioVerbalizationStatusFromDetail {
     }
 }
 
+function Get-TimelineAudioVerbalizationStatusFromFileRow {
+    param(
+        [object]$FileRow,
+        [object]$AppSettings = $null
+    )
+
+    if ($null -eq $FileRow) {
+        return [ordered]@{
+            available = $false
+            state = "unavailable"
+            audioItemId = ""
+            sourceFileIdentity = ""
+            language = "ja-JP"
+            model = "qwen3.5:9b"
+            totalTurns = 0
+            verbalizedTurns = 0
+            totalChunks = 0
+            completedChunks = 0
+            jobId = ""
+            currentChunkId = ""
+            planPath = ""
+            resultPath = ""
+            updatedAt = ""
+            message = "Audio file row was not available."
+        }
+    }
+
+    $settings = $AppSettings
+    if ($null -eq $settings) {
+        $settings = Read-TimelineAppSettings
+    }
+    $verbalizationSettings = Get-PropertyValue -Object $settings -Name "audioVerbalization" -Default (New-TimelineDefaultAudioVerbalizationSettings)
+    $language = Convert-TimelineText -Value (Get-PropertyValue -Object $verbalizationSettings -Name "language" -Default "ja-JP")
+    $model = Convert-TimelineText -Value (Get-PropertyValue -Object $verbalizationSettings -Name "model" -Default "qwen3.5:9b")
+    $audioItemId = Convert-TimelineText -Value (Get-PropertyValue -Object $FileRow -Name "itemId" -Default "")
+    $sourceFileIdentity = Convert-TimelineText -Value (Get-PropertyValue -Object $FileRow -Name "sourceFileIdentity" -Default "")
+    $totalTurns = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $FileRow -Name "turnCount" -Default 0)
+
+    if (-not [bool](Get-PropertyValue -Object $FileRow -Name "hasTimeline" -Default $false)) {
+        return [ordered]@{
+            available = $false
+            state = "unavailable"
+            audioItemId = $audioItemId
+            sourceFileIdentity = $sourceFileIdentity
+            language = $language
+            model = $model
+            totalTurns = $totalTurns
+            verbalizedTurns = 0
+            totalChunks = 0
+            completedChunks = 0
+            jobId = ""
+            currentChunkId = ""
+            planPath = ""
+            resultPath = ""
+            updatedAt = ""
+            message = "Audio timeline was not available."
+        }
+    }
+
+    if (-not $audioItemId) {
+        return [ordered]@{
+            available = $false
+            state = "unavailable"
+            audioItemId = ""
+            sourceFileIdentity = $sourceFileIdentity
+            language = $language
+            model = $model
+            totalTurns = $totalTurns
+            verbalizedTurns = 0
+            totalChunks = 0
+            completedChunks = 0
+            jobId = ""
+            currentChunkId = ""
+            planPath = ""
+            resultPath = ""
+            updatedAt = ""
+            message = "Audio item ID was not available."
+        }
+    }
+
+    $directory = Get-TimelineAudioVerbalizationDirectory -AudioItemId $audioItemId
+    $planPath = Join-Path $directory "verbalization-plan.json"
+    $resultPath = Join-Path $directory "audio-verbalization.json"
+
+    if (-not (Test-Path -LiteralPath $resultPath -PathType Leaf)) {
+        $state = "not_started"
+        $totalChunks = 0
+        $updatedAt = ""
+        if (Test-Path -LiteralPath $planPath -PathType Leaf) {
+            try {
+                $planPayload = Get-Content -LiteralPath $planPath -Raw -Encoding UTF8 | ConvertFrom-Json
+                $totalChunks = @(Get-PropertyValue -Object $planPayload -Name "chunks" -Default @()).Count
+                $updatedAt = Convert-TimelineText -Value (Get-PropertyValue -Object $planPayload -Name "createdAt" -Default "")
+                $state = "planned"
+            }
+            catch {
+                $state = "unreadable"
+            }
+        }
+        return [ordered]@{
+            available = $true
+            state = $state
+            audioItemId = $audioItemId
+            sourceFileIdentity = $sourceFileIdentity
+            language = $language
+            model = $model
+            totalTurns = $totalTurns
+            verbalizedTurns = 0
+            totalChunks = $totalChunks
+            completedChunks = 0
+            jobId = ""
+            currentChunkId = ""
+            planPath = $planPath
+            resultPath = $resultPath
+            updatedAt = $updatedAt
+            message = ""
+        }
+    }
+
+    try {
+        $payload = Get-Content -LiteralPath $resultPath -Raw -Encoding UTF8 | ConvertFrom-Json
+        $status = Get-PropertyValue -Object $payload -Name "status" -Default @{}
+        $verbalizedTurns = @(Get-PropertyValue -Object $payload -Name "turns" -Default @()).Count
+        return [ordered]@{
+            available = $true
+            state = Convert-TimelineText -Value (Get-PropertyValue -Object $status -Name "state" -Default "completed")
+            audioItemId = $audioItemId
+            sourceFileIdentity = $sourceFileIdentity
+            language = Convert-TimelineText -Value (Get-PropertyValue -Object $status -Name "language" -Default $language)
+            model = Convert-TimelineText -Value (Get-PropertyValue -Object $status -Name "model" -Default $model)
+            totalTurns = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $status -Name "totalTurns" -Default $totalTurns)
+            verbalizedTurns = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $status -Name "verbalizedTurns" -Default $verbalizedTurns)
+            totalChunks = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $status -Name "totalChunks" -Default 0)
+            completedChunks = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $status -Name "completedChunks" -Default 0)
+            jobId = Convert-TimelineText -Value (Get-PropertyValue -Object $status -Name "jobId" -Default "")
+            currentChunkId = Convert-TimelineText -Value (Get-PropertyValue -Object $status -Name "currentChunkId" -Default "")
+            planPath = $planPath
+            resultPath = $resultPath
+            updatedAt = Convert-TimelineText -Value (Get-PropertyValue -Object $status -Name "updatedAt" -Default "")
+            message = Convert-TimelineText -Value (Get-PropertyValue -Object $status -Name "message" -Default "")
+        }
+    }
+    catch {
+        return [ordered]@{
+            available = $true
+            state = "unreadable"
+            audioItemId = $audioItemId
+            sourceFileIdentity = $sourceFileIdentity
+            language = $language
+            model = $model
+            totalTurns = $totalTurns
+            verbalizedTurns = 0
+            totalChunks = 0
+            completedChunks = 0
+            jobId = ""
+            currentChunkId = ""
+            planPath = $planPath
+            resultPath = $resultPath
+            updatedAt = ""
+            message = $_.Exception.Message
+        }
+    }
+}
+
 function Get-TimelineAudioVerbalizationStatus {
     param(
         [string]$SourceId,
@@ -6452,6 +6616,7 @@ function Convert-TimelineAudioFilesResult {
         }
     }
 
+    $appSettings = Read-TimelineAppSettings
     $rows = @()
     foreach ($row in @($rowsSource)) {
         $sourceFileIdentity = Convert-TimelineText -Value (Get-PropertyValueAny -Object $row -Names @("source_file_identity", "sourceFileIdentity") -Default "")
@@ -6474,7 +6639,7 @@ function Convert-TimelineAudioFilesResult {
             $sourceDisplayName = $sourceId
         }
 
-        $rows += [ordered]@{
+        $fileRow = [ordered]@{
             itemId = $itemId
             sourceId = $sourceId
             sourceFileIdentity = $sourceFileIdentity
@@ -6496,6 +6661,8 @@ function Convert-TimelineAudioFilesResult {
             turnCount = Convert-TimelineAudioInt -Value (Get-PropertyValueAny -Object $row -Names @("turn_count", "turnCount") -Default 0)
             speakerCount = Convert-TimelineAudioInt -Value (Get-PropertyValueAny -Object $row -Names @("speaker_count", "speakerCount") -Default 0)
         }
+        $fileRow["audioVerbalization"] = Get-TimelineAudioVerbalizationStatusFromFileRow -FileRow $fileRow -AppSettings $appSettings
+        $rows += $fileRow
     }
 
     $payloadTruncated = [bool](Get-PropertyValue -Object $Payload -Name "truncated" -Default $false)
@@ -6518,6 +6685,7 @@ function Get-TimelineAudioFilesFromSettings {
     )
 
     $settings = Read-TimelineAudioSettings
+    $appSettings = Read-TimelineAppSettings
     $outputRootPath = Get-TimelineAudioOutputRootPath -Settings $settings
     $catalogByIdentity = Get-TimelineAudioCatalogByIdentity -Settings $settings
     $extensions = @($settings.audioExtensions | ForEach-Object {
@@ -6578,7 +6746,7 @@ function Get-TimelineAudioFilesFromSettings {
             $turnCount = Convert-TimelineAudioInt -Value (Get-PropertyValueAny -Object $catalogRow -Names @("turn_count", "turnCount") -Default 0)
             $speakerCount = Convert-TimelineAudioInt -Value (Get-PropertyValueAny -Object $catalogRow -Names @("speaker_count", "speakerCount") -Default 0)
 
-            $allRows += [ordered]@{
+            $fileRow = [ordered]@{
                 itemId = $itemId
                 sourceId = $sourceId
                 sourceFileIdentity = $sourceFileIdentity
@@ -6600,6 +6768,8 @@ function Get-TimelineAudioFilesFromSettings {
                 turnCount = $turnCount
                 speakerCount = $speakerCount
             }
+            $fileRow["audioVerbalization"] = Get-TimelineAudioVerbalizationStatusFromFileRow -FileRow $fileRow -AppSettings $appSettings
+            $allRows += $fileRow
         }
     }
 

@@ -195,6 +195,7 @@ public sealed class AudioFileRow
     public string MediaId { get; set; } = "";
     public int TurnCount { get; set; }
     public int SpeakerCount { get; set; }
+    public AudioVerbalizationStatus AudioVerbalization { get; set; } = new();
 }
 
 public sealed class AudioFileDetailResult
