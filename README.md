@@ -174,7 +174,7 @@ Current implementation:
 - Creates 5-10 minute chunk plans from audio timeline turns.
 - Writes per-chunk `context/*.context.json` and `summary.json` files under the
   Timeline store.
-- Calls Ollama `/api/chat` with JSON output when Ollama is available.
+- Calls the Timeline-owned Ollama Docker service `/api/chat` with JSON output.
 - Stores completed or failed results in
   `store\audio-verbalizations\<audio-item-id>\audio-verbalization.json`.
 - Provides an Ollama connection check from Timeline settings.
@@ -185,7 +185,9 @@ Default model:
 qwen3.5:9b
 ```
 
-Ollama must be running on the Windows host at the configured URL, usually:
+`start.ps1` starts Ollama through `docker-compose.yml` and pulls the default
+model on first run. The model data is stored in the `ollama` Docker volume.
+Timeline exposes Ollama only on localhost:
 
 ```text
 http://127.0.0.1:11434
@@ -197,7 +199,7 @@ http://127.0.0.1:11434
 - `scripts/timeline-helper-server.ps1`: Windows-side local helper server
 - `scripts/timeline-store-worker.ps1`: Windows-side Timeline store rebuild worker
 - `worker/`: Timeline-owned Docker worker. It currently monitors the store and writes heartbeat status
-- `docker-compose.yml`: Docker startup for the web UI and Timeline worker
+- `docker-compose.yml`: Docker startup for the web UI, Timeline worker, and Ollama
 
 The Docker worker belongs to Timeline. It is not a layer for directly operating sub-product Docker containers.
 

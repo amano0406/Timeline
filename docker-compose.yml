@@ -1,6 +1,25 @@
 name: timeline
 
 services:
+  ollama:
+    image: ollama/ollama:latest
+    restart: unless-stopped
+    environment:
+      OLLAMA_HOST: 0.0.0.0:11434
+      OLLAMA_KEEP_ALIVE: 30m
+    ports:
+      - "127.0.0.1:11434:11434"
+    volumes:
+      - type: volume
+        source: ollama
+        target: /root/.ollama
+    gpus: all
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
   web:
     image: timeline-web:latest
     build:
@@ -28,3 +47,6 @@ services:
       - type: bind
         source: C:\TimelineData\Timeline\store
         target: /data/store
+
+volumes:
+  ollama:

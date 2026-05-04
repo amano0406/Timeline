@@ -176,7 +176,7 @@ TimelineForAudio が出力するフォントークンの時間軸は、Timeline 
 
 - 音声タイムラインの発話区間から 5〜10分程度のチャンク計画を作成
 - Timeline ストア配下にチャンクごとの `context/*.context.json` と `summary.json` を作成
-- Ollama が利用できる場合、`/api/chat` に JSON 返却指定で送信
+- Timeline 所有の Ollama Docker サービスの `/api/chat` に JSON 返却指定で送信
 - 完了または失敗した結果を `store\audio-verbalizations\<audio-item-id>\audio-verbalization.json` に保存
 - Timeline 設定画面から Ollama の接続確認が可能
 
@@ -186,7 +186,7 @@ TimelineForAudio が出力するフォントークンの時間軸は、Timeline 
 qwen3.5:9b
 ```
 
-Ollama は Windows ホスト側で起動しておく必要があります。通常の接続先は次の通りです。
+`start.ps1` は `docker-compose.yml` 経由で Ollama を起動し、初回起動時に既定モデルを取得します。モデルデータは Docker volume の `ollama` に保存します。Timeline では Ollama を localhost のみに公開します。
 
 ```text
 http://127.0.0.1:11434

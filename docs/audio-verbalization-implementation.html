@@ -432,6 +432,22 @@ GET  /timeline/audio-verbalization/result?audioItemId=&lt;id&gt;</code></pre>
     </section>
 
     <section>
+      <h2>Ollama起動構成</h2>
+      <p>
+        Ollama は Timeline 本体の `docker-compose.yml` に含める。`start.ps1` で Web、worker、Ollama を同時に起動し、初回のみ既定モデルを取得する。
+        補助サーバーは Windows 側から `http://127.0.0.1:11434` に接続する。
+      </p>
+      <pre><code>services:
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "127.0.0.1:11434:11434"
+    volumes:
+      - ollama:/root/.ollama
+    gpus: all</code></pre>
+    </section>
+
+    <section>
       <h2>初期設定案</h2>
       <pre><code>{
   "audioVerbalization": {

@@ -23,6 +23,7 @@ catch {
 $docker = Get-TimelineDockerCommand
 $composeArgs = Get-TimelineComposeArgs -RepoRoot $repoRoot
 $env:TIMELINE_HELPER_PORT = [string]$helperPort
+$ollamaModel = "qwen3.5:9b"
 
 foreach ($path in @("C:\TimelineData\Timeline\work", "C:\TimelineData\Timeline\store")) {
     if (-not (Test-Path -LiteralPath $path)) {
@@ -30,7 +31,7 @@ foreach ($path in @("C:\TimelineData\Timeline\work", "C:\TimelineData\Timeline\s
     }
 }
 
-Write-Host "Starting Timeline web and worker..."
+Write-Host "Starting Timeline web, worker, and Ollama..."
 Invoke-TimelineWithFileLock -RepoRoot $repoRoot -LockName "docker-compose.lock" -ScriptBlock {
     $logDir = Join-Path $repoRoot ".docker"
     if (-not (Test-Path -LiteralPath $logDir)) {
@@ -54,7 +55,7 @@ Invoke-TimelineWithFileLock -RepoRoot $repoRoot -LockName "docker-compose.lock" 
         $env:DOCKER_CONFIG = $dockerConfigDir
         $process = Start-Process `
             -FilePath $docker `
-            -ArgumentList (@("compose") + @($composeArgs) + @("up", "-d", "--build", "--remove-orphans", "web", "worker")) `
+            -ArgumentList (@("compose") + @($composeArgs) + @("up", "-d", "--build", "--remove-orphans", "ollama", "web", "worker")) `
             -WorkingDirectory $repoRoot `
             -NoNewWindow `
             -PassThru `
@@ -78,6 +79,50 @@ Invoke-TimelineWithFileLock -RepoRoot $repoRoot -LockName "docker-compose.lock" 
     if ($composeExitCode -ne 0) {
         throw "docker compose failed with exit code $composeExitCode."
     }
+}
+
+$ollamaReady = $false
+$ollamaModelReady = $false
+for ($attempt = 1; $attempt -le 120; $attempt += 1) {
+    try {
+        $tags = Invoke-RestMethod -UseBasicParsing -TimeoutSec 2 "http://127.0.0.1:11434/api/tags"
+        $ollamaReady = $true
+        foreach ($model in @($tags.models)) {
+            if ([string]$model.name -eq $ollamaModel) {
+                $ollamaModelReady = $true
+                break
+            }
+        }
+        break
+    }
+    catch {
+    }
+    Start-Sleep -Seconds 1
+}
+
+if (-not $ollamaReady) {
+    throw "Ollama did not become ready at http://127.0.0.1:11434."
+}
+
+if (-not $ollamaModelReady) {
+    Write-Host "Pulling Ollama model $ollamaModel. This can take a while on first run..."
+    try {
+        $pullBody = @{
+            name = $ollamaModel
+            stream = $false
+        } | ConvertTo-Json -Compress
+        Invoke-RestMethod `
+            -UseBasicParsing `
+            -Method Post `
+            -ContentType "application/json" `
+            -Body $pullBody `
+            -TimeoutSec 7200 `
+            -Uri "http://127.0.0.1:11434/api/pull" | Out-Null
+    }
+    catch {
+        throw "Ollama model pull failed. $($_.Exception.Message)"
+    }
+    $ollamaModelReady = $true
 }
 
 $webReady = $false
@@ -118,6 +163,18 @@ if (Test-TimelineHelperServer -Port $helperPort) {
 }
 else {
     Write-Warning "Timeline helper server is not responding."
+}
+if ($ollamaReady) {
+    Write-Host "  Ollama: OK"
+}
+else {
+    Write-Warning "Ollama is not responding."
+}
+if ($ollamaModelReady) {
+    Write-Host "  Ollama model ${ollamaModel}: OK"
+}
+else {
+    Write-Warning "Ollama model $ollamaModel is not available."
 }
 Start-Process "http://127.0.0.1:19000" | Out-Null
 exit 0
