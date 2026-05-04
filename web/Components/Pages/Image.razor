@@ -127,7 +127,6 @@ else if (_overview is not null)
                 <FaIcon Name="images" Class="tfa-icon text-accent" />
                 <span>画像ファイル一覧</span>
             </h2>
-            <span class="text-sm text-slate-500">@ListStatusLabel</span>
         </div>
 
         @if (Items.Count == 0)
@@ -207,15 +206,12 @@ else if (_overview is not null)
                 </table>
             </div>
 
-            @if (_hasMore && !_loadingMore)
-            {
-                <div class="border-t border-line p-4 text-center">
-                    <button class="tfa-button-secondary gap-2" @onclick="LoadNextPageAsync">
-                        <FaIcon Name="plus" Class="tfa-icon" />
-                        <span>さらに表示</span>
-                    </button>
-                </div>
-            }
+            <PaginationControls CurrentPage="@_currentPage"
+                                PageSize="@PageSize"
+                                TotalItems="@ListTotalItems"
+                                Disabled="@Busy"
+                                Label="画像ファイル一覧のページ移動"
+                                PageChanged="ChangePageAsync" />
         }
     </section>
 }
@@ -223,10 +219,10 @@ else if (_overview is not null)
 @code {
     private const int PageSize = 100;
     private ImageOverview? _overview;
+    private TimelinePagination? _pagination;
     private readonly List<ImageItemRow> _items = [];
     private readonly HashSet<string> _selected = new(StringComparer.OrdinalIgnoreCase);
-    private int _nextPage = 1;
-    private bool _hasMore;
+    private int _currentPage = 1;
     private bool _loading = true;
     private bool _loadingMore;
     private bool _refreshing;
@@ -246,7 +242,9 @@ else if (_overview is not null)
     private string ProcessingIcon => _refreshing ? "spinner" : "circle-check";
     private string ProcessingIconClass => _refreshing ? "text-sky-800" : "text-teal-700";
     private string SelectionSummary => HasSelection ? $"{_selected.Count} 件選択中" : "未選択";
-    private string ListStatusLabel => _overview is null ? "" : $"{_items.Count} / {_overview.SourceFileCount} 件";
+    private int ListTotalItems => _pagination?.TotalItems > 0
+        ? _pagination.TotalItems
+        : _overview?.SourceFileCount ?? _items.Count;
     private bool ShowInputDirectoryWarning =>
         _overview?.ProductFound == true &&
         _overview.SettingsValid &&
@@ -271,8 +269,8 @@ else if (_overview is not null)
             _overview = await Timeline.GetImageOverviewAsync();
             _items.Clear();
             _selected.Clear();
-            _nextPage = 1;
-            await LoadNextPageAsync();
+            _currentPage = 1;
+            await LoadPageAsync(_currentPage);
         }
         finally
         {
@@ -280,15 +278,32 @@ else if (_overview is not null)
         }
     }
 
-    private async Task LoadNextPageAsync()
+    private async Task ChangePageAsync(int page)
+    {
+        if (page == _currentPage)
+        {
+            return;
+        }
+
+        await LoadPageAsync(page);
+    }
+
+    private async Task LoadPageAsync(int page)
     {
         _loadingMore = true;
+        _error = null;
         try
         {
-            var result = await Timeline.GetImageFilesAsync(_nextPage, PageSize);
+            var result = await Timeline.GetImageFilesAsync(page, PageSize);
+            _items.Clear();
             _items.AddRange(result.Files);
-            _hasMore = result.Pagination.HasNext;
-            _nextPage += 1;
+            _pagination = result.Pagination;
+            _currentPage = Math.Max(1, result.Pagination.Page);
+            RemoveMissingSelections();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
         }
         finally
         {
@@ -431,6 +446,12 @@ else if (_overview is not null)
     }
 
     private void ClearSelection() => _selected.Clear();
+
+    private void RemoveMissingSelections()
+    {
+        var visible = Items.Select(item => item.ItemId).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        _selected.RemoveWhere(itemId => !visible.Contains(itemId));
+    }
 
     private bool IsSelected(ImageItemRow item) =>
         !string.IsNullOrWhiteSpace(item.ItemId) && _selected.Contains(item.ItemId);

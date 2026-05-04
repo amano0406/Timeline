@@ -116,6 +116,72 @@
   overscroll-behavior: contain;
 }
 
+.tfa-main .tfa-card > .overflow-x-auto .tfa-table thead,
+.tfa-main .tfa-card > .overflow-x-auto .tfa-table th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.tfa-pagination {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  border-top: 1px solid rgb(217 225 236);
+  background: rgb(255 255 255);
+  padding: 0.75rem 1rem;
+}
+
+.tfa-pagination-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.875rem;
+  color: rgb(71 85 105);
+  font-size: 0.875rem;
+}
+
+.tfa-pagination-actions,
+.tfa-pagination-pages {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.tfa-pagination-button {
+  display: inline-flex;
+  min-height: 2.25rem;
+  min-width: 2.25rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  border: 1px solid rgb(217 225 236);
+  border-radius: 0.375rem;
+  background: rgb(255 255 255);
+  padding: 0.375rem 0.625rem;
+  color: rgb(23 32 51);
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.tfa-pagination-button:hover:not(:disabled) {
+  background: rgb(248 250 252);
+}
+
+.tfa-pagination-button:disabled {
+  cursor: default;
+  color: rgb(148 163 184);
+}
+
+.tfa-pagination-button-current,
+.tfa-pagination-button-current:disabled {
+  border-color: rgb(15 118 110);
+  background: rgb(15 118 110);
+  color: rgb(255 255 255);
+}
+
 @media (min-width: 1024px) {
   .tfa-shell {
     padding-left: var(--timeline-sidebar-width);
@@ -230,5 +296,24 @@
     max-height: min(62vh, 32rem);
     overflow: auto;
     overscroll-behavior: contain;
+  }
+
+  .tfa-pagination {
+    align-items: stretch;
+  }
+
+  .tfa-pagination-summary,
+  .tfa-pagination-actions {
+    width: 100%;
+  }
+
+  .tfa-pagination-actions {
+    justify-content: space-between;
+  }
+
+  .tfa-pagination-pages {
+    order: 3;
+    width: 100%;
+    justify-content: center;
   }
 }

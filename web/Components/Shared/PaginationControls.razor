@@ -1,0 +1,120 @@
+@if (TotalItems > 0 && PageSize > 0)
+{
+    <div class="tfa-pagination" aria-label="@Label">
+        <div class="tfa-pagination-summary">
+            <span>@RangeLabel</span>
+            <span>@CurrentPage / @PageCount ページ</span>
+        </div>
+        <div class="tfa-pagination-actions">
+            <button type="button"
+                    class="tfa-pagination-button"
+                    @onclick="() => ChangePageAsync(1)"
+                    disabled="@(Disabled || CurrentPage <= 1)">
+                <FaIcon Name="angles-left" Class="tfa-icon !h-3 !w-3" />
+                <span>最初</span>
+            </button>
+            <button type="button"
+                    class="tfa-pagination-button"
+                    @onclick="() => ChangePageAsync(CurrentPage - 1)"
+                    disabled="@(Disabled || CurrentPage <= 1)">
+                <FaIcon Name="angle-left" Class="tfa-icon !h-3 !w-3" />
+                <span>前へ</span>
+            </button>
+            <div class="tfa-pagination-pages" role="group" aria-label="ページ">
+                @foreach (var page in VisiblePages)
+                {
+                    var pageNumber = page;
+                    <button type="button"
+                            class="@PageButtonClass(pageNumber)"
+                            aria-current="@(pageNumber == CurrentPage ? "page" : null)"
+                            @onclick="() => ChangePageAsync(pageNumber)"
+                            disabled="@(Disabled || pageNumber == CurrentPage)">
+                        @pageNumber
+                    </button>
+                }
+            </div>
+            <button type="button"
+                    class="tfa-pagination-button"
+                    @onclick="() => ChangePageAsync(CurrentPage + 1)"
+                    disabled="@(Disabled || CurrentPage >= PageCount)">
+                <span>次へ</span>
+                <FaIcon Name="angle-right" Class="tfa-icon !h-3 !w-3" />
+            </button>
+            <button type="button"
+                    class="tfa-pagination-button"
+                    @onclick="() => ChangePageAsync(PageCount)"
+                    disabled="@(Disabled || CurrentPage >= PageCount)">
+                <span>最後</span>
+                <FaIcon Name="angles-right" Class="tfa-icon !h-3 !w-3" />
+            </button>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter]
+    public int CurrentPage { get; set; } = 1;
+
+    [Parameter]
+    public int PageSize { get; set; } = 100;
+
+    [Parameter]
+    public int TotalItems { get; set; }
+
+    [Parameter]
+    public bool Disabled { get; set; }
+
+    [Parameter]
+    public string Label { get; set; } = "ページ移動";
+
+    [Parameter]
+    public EventCallback<int> PageChanged { get; set; }
+
+    private int SafeCurrentPage => Math.Clamp(CurrentPage, 1, PageCount);
+
+    private int PageCount => Math.Max(1, (int)Math.Ceiling(TotalItems / (double)Math.Max(1, PageSize)));
+
+    private string RangeLabel
+    {
+        get
+        {
+            if (TotalItems <= 0)
+            {
+                return "0 件";
+            }
+
+            var start = ((SafeCurrentPage - 1) * PageSize) + 1;
+            var end = Math.Min(TotalItems, start + PageSize - 1);
+            return $"{start:N0} - {end:N0} / {TotalItems:N0} 件";
+        }
+    }
+
+    private IEnumerable<int> VisiblePages
+    {
+        get
+        {
+            const int windowSize = 5;
+            var start = Math.Max(1, SafeCurrentPage - 2);
+            var end = Math.Min(PageCount, start + windowSize - 1);
+            start = Math.Max(1, end - windowSize + 1);
+
+            for (var page = start; page <= end; page++)
+            {
+                yield return page;
+            }
+        }
+    }
+
+    private Task ChangePageAsync(int page)
+    {
+        var target = Math.Clamp(page, 1, PageCount);
+        return target == SafeCurrentPage
+            ? Task.CompletedTask
+            : PageChanged.InvokeAsync(target);
+    }
+
+    private string PageButtonClass(int page) =>
+        page == SafeCurrentPage
+            ? "tfa-pagination-button tfa-pagination-button-current"
+            : "tfa-pagination-button";
+}

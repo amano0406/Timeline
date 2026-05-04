@@ -8,7 +8,8 @@ services:
       dockerfile: web/Dockerfile
     environment:
       ASPNETCORE_URLS: http://+:8080
-      Timeline__HelperBaseUrl: http://host.docker.internal:19001
+      Timeline__HelperBaseUrl: http://host.docker.internal:${TIMELINE_HELPER_PORT:-19001}
+      Timeline__HelperPublicBaseUrl: http://127.0.0.1:${TIMELINE_HELPER_PORT:-19001}
     ports:
       - "19000:8080"
 

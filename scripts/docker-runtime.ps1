@@ -151,8 +151,10 @@ function Get-TimelineComposeArgs {
 }
 
 function Test-TimelineHelperServer {
+    param([int]$Port = 19001)
+
     try {
-        $response = Invoke-RestMethod -Uri "http://127.0.0.1:19001/health" -TimeoutSec 1 -ErrorAction Stop
+        $response = Invoke-RestMethod -Uri "http://127.0.0.1:$Port/health" -TimeoutSec 1 -ErrorAction Stop
         return [bool]$response.ok
     }
     catch {
@@ -168,10 +170,11 @@ function Start-TimelineHelperServer {
         [string]$AudioProductPath,
         [string]$WindowsCodexProductPath = "C:\apps\TimelineForWindowsCodex",
         [string]$ChatGptProductPath = "C:\apps\TimelineForChatGPT",
-        [string]$ImageProductPath = "C:\apps\TimelineForImage"
+        [string]$ImageProductPath = "C:\apps\TimelineForImage",
+        [int]$Port = 19001
     )
 
-    if (Test-TimelineHelperServer) {
+    if (Test-TimelineHelperServer -Port $Port) {
         Stop-TimelineHelperServer
         Start-Sleep -Milliseconds 300
     }
@@ -189,6 +192,8 @@ function Start-TimelineHelperServer {
         "Bypass",
         "-File",
         "`"$scriptPath`"",
+        "-Port",
+        "$Port",
         "-AudioProductPath",
         "`"$AudioProductPath`"",
         "-WindowsCodexProductPath",
@@ -202,7 +207,7 @@ function Start-TimelineHelperServer {
     Start-Process -FilePath "powershell.exe" -ArgumentList $arguments -WindowStyle Hidden | Out-Null
 
     for ($attempt = 1; $attempt -le 120; $attempt += 1) {
-        if (Test-TimelineHelperServer) {
+        if (Test-TimelineHelperServer -Port $Port) {
             return
         }
         Start-Sleep -Milliseconds 250

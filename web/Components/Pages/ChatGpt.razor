@@ -139,7 +139,7 @@ else if (_overview is not null)
         <section class="tfa-card tfa-card-pad">
             <div class="flex items-start justify-between gap-3">
                 <div>
-                    <div class="tfa-kicker">メッセージ数</div>
+                    <div class="tfa-kicker">表示中メッセージ数</div>
                     <div class="mt-2 text-3xl font-semibold">@TotalMessageCount</div>
                 </div>
                 <span class="tfa-icon-box text-teal-700">
@@ -253,15 +253,12 @@ else if (_overview is not null)
                     </tbody>
                 </table>
             </div>
-            @if (_hasMoreThreads && !_autoLoadingThreads)
-            {
-                <div class="border-t border-line p-4 text-center">
-                    <button class="tfa-button-secondary gap-2" @onclick="LoadNextThreadPageAsync" disabled="@_loadingMoreThreads">
-                        <FaIcon Name="@(_loadingMoreThreads ? "spinner" : "plus")" Class="@($"tfa-icon {(_loadingMoreThreads ? "fa-spin" : "")}")" />
-                        <span>さらに読み込む</span>
-                    </button>
-                </div>
-            }
+            <PaginationControls CurrentPage="@_currentThreadPage"
+                                PageSize="@ThreadPageSize"
+                                TotalItems="@ThreadTotalItems"
+                                Disabled="@ListBusy"
+                                Label="スレッド一覧のページ移動"
+                                PageChanged="ChangeThreadPageAsync" />
         }
     </section>
 
@@ -300,12 +297,11 @@ else if (_overview is not null)
 
     private ChatGptOverview? _overview;
     private TimelineAppSettings? _timelineSettings;
+    private TimelinePagination? _pagination;
     private readonly List<TimelineThreadRow> _threads = [];
     private readonly HashSet<string> _selectedThreadIds = new(StringComparer.OrdinalIgnoreCase);
     private bool _loading = true;
     private bool _loadingMoreThreads;
-    private bool _autoLoadingThreads;
-    private bool _hasMoreThreads;
     private bool _refreshing;
     private bool _downloading;
     private bool _deleting;
@@ -313,7 +309,7 @@ else if (_overview is not null)
     private bool _pollingOverview;
     private bool _disposed;
     private DateTime? _lastLoadedAt;
-    private int _nextThreadPage = 1;
+    private int _currentThreadPage = 1;
     private int _threadTotal;
     private string? _error;
     private string? _operationMessage;
@@ -321,12 +317,15 @@ else if (_overview is not null)
 
     private bool CanRefresh => _overview?.ProductFound == true && _overview.SettingsValid;
     private IReadOnlyList<TimelineThreadRow> Threads => _threads;
-    private bool ListBusy => _loading || _loadingMoreThreads || _autoLoadingThreads;
+    private bool ListBusy => _loading || _loadingMoreThreads;
+    private int ThreadTotalItems => _pagination?.TotalItems > 0
+        ? _pagination.TotalItems
+        : Math.Max(_threadTotal, Threads.Count);
     private string ThreadListStatusLabel => ListBusy
-        ? $"読み込み中 {Threads.Count} / {Math.Max(_threadTotal, Threads.Count)} 件"
+        ? "読み込み中"
         : _lastLoadedAt is null
-            ? $"{Threads.Count} / {Math.Max(_threadTotal, Threads.Count)} 件"
-            : $"{Threads.Count} / {Math.Max(_threadTotal, Threads.Count)} 件、最終更新 {_lastLoadedAt.Value:HH:mm:ss}";
+            ? ""
+            : $"最終更新 {_lastLoadedAt.Value:HH:mm:ss}";
     private int TotalMessageCount => Threads.Sum(thread => thread.MessageCount);
     private ChatGptJobRow? ActiveJob => _overview?.Jobs.FirstOrDefault(IsActiveJob);
     private bool ShowProcessingProgress => _refreshing || ActiveJob is not null;
@@ -394,8 +393,7 @@ else if (_overview is not null)
             _overview = await overviewTask;
             _timelineSettings = await settingsTask;
             _threads.Clear();
-            _nextThreadPage = 1;
-            _hasMoreThreads = false;
+            _currentThreadPage = 1;
             await InvokeAsync(StateHasChanged);
             await LoadThreadPageAsync(1, reset: true);
         }
@@ -404,8 +402,6 @@ else if (_overview is not null)
             _loading = false;
             await InvokeAsync(StateHasChanged);
         }
-
-        _ = AutoLoadRemainingThreadsAsync();
     }
 
     private async Task LoadThreadPageAsync(int page, bool reset)
@@ -415,27 +411,19 @@ else if (_overview is not null)
         {
             _threads.Clear();
         }
-
-        var known = _threads.Select(thread => thread.ItemId).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        foreach (var thread in result.Threads)
-        {
-            if (!string.IsNullOrWhiteSpace(thread.ItemId) && known.Add(thread.ItemId))
-            {
-                _threads.Add(thread);
-            }
-        }
+        _threads.AddRange(result.Threads);
 
         _threadTotal = result.Total > 0 ? result.Total : result.Pagination.TotalItems;
+        _pagination = result.Pagination;
         _lastLoadedAt = DateTime.Now;
-        _hasMoreThreads = result.Pagination.HasNext;
-        _nextThreadPage = Math.Max(1, result.Pagination.Page) + 1;
+        _currentThreadPage = Math.Max(1, result.Pagination.Page);
         RemoveMissingSelections();
         await InvokeAsync(StateHasChanged);
     }
 
-    private async Task LoadNextThreadPageAsync()
+    private async Task ChangeThreadPageAsync(int page)
     {
-        if (!_hasMoreThreads || _loadingMoreThreads)
+        if (page == _currentThreadPage || _loadingMoreThreads)
         {
             return;
         }
@@ -444,7 +432,7 @@ else if (_overview is not null)
         _error = null;
         try
         {
-            await LoadThreadPageAsync(_nextThreadPage, reset: false);
+            await LoadThreadPageAsync(page, reset: true);
         }
         catch (Exception ex)
         {
@@ -453,36 +441,6 @@ else if (_overview is not null)
         finally
         {
             _loadingMoreThreads = false;
-            await InvokeAsync(StateHasChanged);
-        }
-    }
-
-    private async Task AutoLoadRemainingThreadsAsync()
-    {
-        if (!_hasMoreThreads || _disposed || _pollingCts?.IsCancellationRequested == true)
-        {
-            return;
-        }
-
-        _autoLoadingThreads = true;
-        try
-        {
-            while (_hasMoreThreads && !_disposed && _pollingCts?.IsCancellationRequested != true)
-            {
-                await LoadThreadPageAsync(_nextThreadPage, reset: false);
-                await Task.Delay(50, _pollingCts?.Token ?? CancellationToken.None);
-            }
-        }
-        catch (OperationCanceledException)
-        {
-        }
-        catch (Exception ex)
-        {
-            _error = ex.Message;
-        }
-        finally
-        {
-            _autoLoadingThreads = false;
             await InvokeAsync(StateHasChanged);
         }
     }
@@ -519,8 +477,7 @@ else if (_overview is not null)
             _overview = await Timeline.GetChatGptOverviewAsync();
             if (hadActiveJob && ActiveJob is null)
             {
-                await LoadThreadPageAsync(1, reset: true);
-                _ = AutoLoadRemainingThreadsAsync();
+                await LoadThreadPageAsync(_currentThreadPage, reset: true);
             }
         }
         catch (Exception ex)

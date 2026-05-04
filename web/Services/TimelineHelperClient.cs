@@ -256,6 +256,69 @@ public sealed class TimelineHelperClient
         }
     }
 
+    public async Task<AudioVerbalizationStatus> GetAudioVerbalizationStatusAsync(
+        string sourceId,
+        string relativePath,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            return await _http.GetFromJsonAsync<AudioVerbalizationStatus>(
+                    "timeline/audio-verbalization/status"
+                    + $"?sourceId={Uri.EscapeDataString(sourceId)}"
+                    + $"&path={Uri.EscapeDataString(relativePath)}",
+                    JsonOptions,
+                    cancellationToken)
+                ?? new AudioVerbalizationStatus { Message = "言語化状態を取得できませんでした。" };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to load audio verbalization status.");
+            return new AudioVerbalizationStatus { State = "unknown", Message = "言語化状態を取得できませんでした。" };
+        }
+    }
+
+    public async Task<AudioVerbalizationStatus> StartAudioVerbalizationAsync(
+        AudioVerbalizationStartRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var response = await _http.PostAsJsonAsync("timeline/audio-verbalization/start", request, JsonOptions, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            throw new InvalidOperationException(ErrorMessageFromBody(body)
+                ?? $"音声の言語化を開始できませんでした。HTTP {(int)response.StatusCode}");
+        }
+
+        return await response.Content.ReadFromJsonAsync<AudioVerbalizationStatus>(JsonOptions, cancellationToken)
+            ?? new AudioVerbalizationStatus { Message = "音声の言語化状態を取得できませんでした。" };
+    }
+
+    public async Task<AudioVerbalizationOllamaStatus> GetAudioVerbalizationOllamaStatusAsync(
+        string baseUrl = "",
+        string model = "",
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var url = "timeline/audio-verbalization/ollama/status";
+            if (!string.IsNullOrWhiteSpace(baseUrl) || !string.IsNullOrWhiteSpace(model))
+            {
+                url += $"?baseUrl={Uri.EscapeDataString(baseUrl)}&model={Uri.EscapeDataString(model)}";
+            }
+            return await _http.GetFromJsonAsync<AudioVerbalizationOllamaStatus>(
+                    url,
+                    JsonOptions,
+                    cancellationToken)
+                ?? new AudioVerbalizationOllamaStatus { Message = "Ollama の状態を取得できませんでした。" };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to load Ollama status.");
+            return new AudioVerbalizationOllamaStatus { Message = "Ollama の状態を取得できませんでした。" };
+        }
+    }
+
     public async Task<TimelineThreadListResult> GetWindowsCodexThreadsAsync(
         int page = 1,
         int pageSize = 100,

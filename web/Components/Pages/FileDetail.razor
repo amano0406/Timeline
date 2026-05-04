@@ -29,6 +29,14 @@
     </div>
 }
 
+@if (_operationMessage is not null)
+{
+    <div class="tfa-alert-info mb-5 flex items-start gap-2">
+        <FaIcon Name="circle-info" Class="tfa-icon mt-0.5" />
+        <span>@_operationMessage</span>
+    </div>
+}
+
 @if (_file is null && _error is null)
 {
     <section class="tfa-card tfa-card-pad text-sm text-slate-600">
@@ -82,6 +90,57 @@ else if (_file is not null)
                         @(file.HasTimeline ? file.TurnCount : "-")
                     </dd>
                 </dl>
+            </section>
+
+            <section class="tfa-card tfa-card-pad">
+                <h2 class="flex items-center gap-2 text-lg font-semibold">
+                    <FaIcon Name="language" Class="tfa-icon text-accent" />
+                    <span>音声の言語化</span>
+                </h2>
+                @if (_detail?.AudioVerbalization is { } verbalization)
+                {
+                    <dl class="mt-4 grid grid-cols-2 gap-2 text-sm">
+                        <dt class="text-slate-500">状態</dt>
+                        <dd>
+                            <span class="@VerbalizationPill(verbalization.State)">
+                                <FaIcon Name="@VerbalizationIcon(verbalization.State)" Class="tfa-icon !h-3 !w-3" />
+                                <span>@VerbalizationLabel(verbalization.State)</span>
+                            </span>
+                        </dd>
+                        <dt class="text-slate-500">モデル</dt>
+                        <dd class="break-all font-mono text-xs">@EmptyText(verbalization.Model)</dd>
+                        <dt class="text-slate-500">言語</dt>
+                        <dd class="font-mono text-xs">@EmptyText(verbalization.Language)</dd>
+                        <dt class="text-slate-500">進捗</dt>
+                        <dd>@VerbalizationProgress(verbalization)</dd>
+                    </dl>
+
+                    @if (!string.IsNullOrWhiteSpace(VerbalizationDisplayMessage(verbalization)))
+                    {
+                        <p class="@VerbalizationMessageClass(verbalization.State)">
+                            @VerbalizationDisplayMessage(verbalization)
+                        </p>
+                    }
+
+                    @if (verbalization.State.Equals("not_implemented", StringComparison.OrdinalIgnoreCase))
+                    {
+                        <p class="mt-3 text-sm text-amber-800">実行処理は次の段階で実装します。</p>
+                    }
+                    else if (verbalization.Available)
+                    {
+                        <button class="tfa-button-primary mt-4 gap-2"
+                                @onclick="StartVerbalizationAsync"
+                                disabled="@(_startingVerbalization || !file.HasTimeline)">
+                            <FaIcon Name="@(_startingVerbalization ? "spinner" : "wand-magic-sparkles")"
+                                    Class="@($"tfa-icon {(_startingVerbalization ? "fa-spin" : "")}")" />
+                            <span>@(_startingVerbalization ? "準備中" : "この音声を言語化")</span>
+                        </button>
+                    }
+                }
+                else
+                {
+                    <p class="mt-3 text-sm text-slate-600">言語化状態を取得できません。</p>
+                }
             </section>
 
             @if (!file.HasTimeline)
@@ -203,10 +262,13 @@ else if (_file is not null)
     private AudioFileDetailResult? _detail;
     private AudioFileRow? _file;
     private string? _error;
+    private string? _operationMessage;
+    private bool _startingVerbalization;
 
     protected override async Task OnParametersSetAsync()
     {
         _error = null;
+        _operationMessage = null;
         _detail = null;
         _file = null;
         if (string.IsNullOrWhiteSpace(SourceId) || string.IsNullOrWhiteSpace(RelativePath))
@@ -244,6 +306,36 @@ else if (_file is not null)
         await JS.InvokeVoidAsync("timelineAudioPlayer.seek", AudioElementId, Math.Max(0, seconds));
     }
 
+    private async Task StartVerbalizationAsync()
+    {
+        if (string.IsNullOrWhiteSpace(SourceId) || string.IsNullOrWhiteSpace(RelativePath) || _detail is null)
+        {
+            return;
+        }
+
+        _startingVerbalization = true;
+        _error = null;
+        _operationMessage = null;
+        try
+        {
+            var status = await Timeline.StartAudioVerbalizationAsync(new AudioVerbalizationStartRequest
+            {
+                SourceId = SourceId,
+                RelativePath = RelativePath,
+            });
+            _detail.AudioVerbalization = status;
+            _operationMessage = VerbalizationStartMessage(status);
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _startingVerbalization = false;
+        }
+    }
+
     private static string DurationLabel(double? seconds) =>
         seconds is > 0 ? UiFormat.Duration(seconds.Value) : "-";
 
@@ -255,6 +347,83 @@ else if (_file is not null)
 
     private static string ConfidenceLabel(double? value) =>
         value is null ? "-" : value.Value.ToString("0.000");
+
+    private static string EmptyText(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? "-" : value;
+
+    private static string VerbalizationLabel(string state) =>
+        state.ToLowerInvariant() switch
+        {
+            "completed" => "言語化済み",
+            "running" => "言語化中",
+            "queued" => "待機中",
+            "planned" => "準備済み",
+            "failed" => "エラー",
+            "unavailable" => "対象外",
+            "unreadable" => "読込不可",
+            "not_implemented" => "準備中",
+            _ => "未言語化",
+        };
+
+    private static string VerbalizationPill(string state) =>
+        state.ToLowerInvariant() switch
+        {
+            "completed" => "tfa-status-pill border-teal-200 bg-teal-50 text-teal-800",
+            "running" or "queued" => "tfa-status-pill border-sky-200 bg-sky-50 text-sky-800",
+            "planned" => "tfa-status-pill border-amber-200 bg-amber-50 text-amber-900",
+            "failed" or "unreadable" => "tfa-status-pill border-red-200 bg-red-50 text-red-800",
+            "not_implemented" => "tfa-status-pill border-amber-200 bg-amber-50 text-amber-900",
+            "unavailable" => "tfa-status-pill border-slate-200 bg-slate-50 text-slate-700",
+            _ => "tfa-status-pill border-slate-200 bg-slate-50 text-slate-700",
+        };
+
+    private static string VerbalizationIcon(string state) =>
+        state.ToLowerInvariant() switch
+        {
+            "completed" => "circle-check",
+            "running" => "spinner",
+            "queued" => "clock",
+            "planned" => "list-check",
+            "failed" or "unreadable" => "circle-xmark",
+            "not_implemented" => "triangle-exclamation",
+            _ => "circle-minus",
+        };
+
+    private static string VerbalizationProgress(AudioVerbalizationStatus status) =>
+        status.TotalChunks > 0
+            ? $"{Math.Min(status.CompletedChunks, status.TotalChunks)} / {status.TotalChunks} チャンク"
+            : status.TotalTurns > 0
+                ? $"{Math.Min(status.VerbalizedTurns, status.TotalTurns)} / {status.TotalTurns} 区間"
+                : "-";
+
+    private static string VerbalizationDisplayMessage(AudioVerbalizationStatus status)
+    {
+        if (string.IsNullOrWhiteSpace(status.Message))
+        {
+            return "";
+        }
+        if (status.Message.StartsWith("Ollama request failed.", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Ollamaに接続できません。Ollamaを起動し、設定画面でモデルを確認してから再実行してください。";
+        }
+        if (status.Message.Equals("Audio verbalization completed.", StringComparison.OrdinalIgnoreCase))
+        {
+            return "言語化が完了しました。";
+        }
+        return status.Message;
+    }
+
+    private static string VerbalizationMessageClass(string state) =>
+        state.Equals("failed", StringComparison.OrdinalIgnoreCase)
+            ? "mt-3 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800"
+            : "mt-3 rounded-md border border-line bg-slate-50 p-3 text-sm text-slate-700";
+
+    private static string VerbalizationStartMessage(AudioVerbalizationStatus status) =>
+        status.State.Equals("planned", StringComparison.OrdinalIgnoreCase)
+            ? $"言語化のチャンク計画を作成しました。{status.TotalChunks} チャンクを順番に処理する予定です。"
+            : status.State.Equals("not_implemented", StringComparison.OrdinalIgnoreCase)
+                ? "言語化の設定と画面導線を追加しました。実行処理は次の段階で実装します。"
+                : string.IsNullOrWhiteSpace(VerbalizationDisplayMessage(status)) ? VerbalizationLabel(status.State) : VerbalizationDisplayMessage(status);
 
     private static string AudioSourceUrl(AudioFileRow file) =>
         "api/audio/source"

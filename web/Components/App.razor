@@ -1,3 +1,6 @@
+@using System.Text.Json
+@inject IConfiguration Configuration
+
 <!DOCTYPE html>
 <html lang="ja">
 
@@ -17,6 +20,9 @@
 
 <body>
     <Routes @rendermode="@(new InteractiveServerRenderMode(prerender: false))" />
+    <script>
+        window.timelineHelperBaseUrl = @HelperPublicBaseUrlJson;
+    </script>
     <script src="vendor/tw-elements/tw-elements.umd.min.js"></script>
     <script src="timeline-directory-picker.js"></script>
     <script src="timeline-audio-player.js"></script>
@@ -25,3 +31,13 @@
 </body>
 
 </html>
+
+@code {
+    private string HelperPublicBaseUrl =>
+        Configuration["Timeline:HelperPublicBaseUrl"]
+        ?? Environment.GetEnvironmentVariable("TIMELINE_HELPER_PUBLIC_BASE_URL")
+        ?? "http://127.0.0.1:19001";
+
+    private MarkupString HelperPublicBaseUrlJson =>
+        (MarkupString)JsonSerializer.Serialize(HelperPublicBaseUrl);
+}

@@ -1,4 +1,8 @@
 const timelineDirectoryPicker = {
+  helperBaseUrl() {
+    return (window.timelineHelperBaseUrl || "http://127.0.0.1:19001").replace(/\/+$/, "");
+  },
+
   async pick(title, initialPath) {
     const params = new URLSearchParams({
       title: title || "Select directory",
@@ -7,7 +11,7 @@ const timelineDirectoryPicker = {
 
     let response;
     try {
-      response = await fetch(`http://127.0.0.1:19001/pick-directory?${params.toString()}`, {
+      response = await fetch(`${this.helperBaseUrl()}/pick-directory?${params.toString()}`, {
         method: "GET",
         cache: "no-store",
       });
@@ -38,7 +42,7 @@ const timelineDirectoryPicker = {
 
     let response;
     try {
-      response = await fetch(`http://127.0.0.1:19001/pick-file?${params.toString()}`, {
+      response = await fetch(`${this.helperBaseUrl()}/pick-file?${params.toString()}`, {
         method: "GET",
         cache: "no-store",
       });

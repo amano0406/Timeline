@@ -19,6 +19,7 @@ public sealed class TimelineAppSettings
     public List<TimelineTimeZoneOption> TimeZones { get; set; } = [];
     public string WorkDirectory { get; set; } = @"C:\TimelineData\Timeline\work";
     public string StoreDirectory { get; set; } = @"C:\TimelineData\Timeline\store";
+    public TimelineAudioVerbalizationSettings AudioVerbalization { get; set; } = new();
 }
 
 public sealed class TimelineAppSettingsSaveRequest
@@ -27,6 +28,25 @@ public sealed class TimelineAppSettingsSaveRequest
     public string TimeZoneId { get; set; } = "Asia/Tokyo";
     public string WorkDirectory { get; set; } = @"C:\TimelineData\Timeline\work";
     public string StoreDirectory { get; set; } = @"C:\TimelineData\Timeline\store";
+    public TimelineAudioVerbalizationSettings AudioVerbalization { get; set; } = new();
+}
+
+public sealed class TimelineAudioVerbalizationSettings
+{
+    public bool Enabled { get; set; } = true;
+    public string Provider { get; set; } = "ollama";
+    public string OllamaBaseUrl { get; set; } = "http://127.0.0.1:11434";
+    public string Model { get; set; } = "qwen3.5:9b";
+    public string FastModel { get; set; } = "qwen3.5:4b";
+    public string Language { get; set; } = "ja-JP";
+    public int ChunkMinMinutes { get; set; } = 5;
+    public int ChunkMaxMinutes { get; set; } = 10;
+    public int ChunkMaxTurns { get; set; } = 80;
+    public int NearbyContextMinutes { get; set; } = 10;
+    public int MaxConcurrentJobs { get; set; } = 1;
+    public bool AutoRun { get; set; }
+    public bool UsePreviousChunkSummary { get; set; } = true;
+    public bool UseUnconfirmedVerbalizationAsWeakHint { get; set; } = true;
 }
 
 public sealed class TimelineDisplayLanguageOption
@@ -191,6 +211,7 @@ public sealed class AudioFileDetailResult
     public string PipelineVersion { get; set; } = "";
     public string UnitType { get; set; } = "";
     public List<AudioTimelineTurn> Turns { get; set; } = [];
+    public AudioVerbalizationStatus AudioVerbalization { get; set; } = new();
 }
 
 public sealed class AudioTimelineTurn
@@ -204,6 +225,60 @@ public sealed class AudioTimelineTurn
     public string PhoneTokens { get; set; } = "";
     public string UnitType { get; set; } = "";
     public double? Confidence { get; set; }
+}
+
+public sealed class AudioVerbalizationStartRequest
+{
+    public string SourceId { get; set; } = "";
+    public string RelativePath { get; set; } = "";
+    public bool Force { get; set; }
+}
+
+public sealed class AudioVerbalizationStatus
+{
+    public bool Available { get; set; }
+    public string State { get; set; } = "not_started";
+    public string AudioItemId { get; set; } = "";
+    public string SourceFileIdentity { get; set; } = "";
+    public string Language { get; set; } = "ja-JP";
+    public string Model { get; set; } = "qwen3.5:9b";
+    public int TotalTurns { get; set; }
+    public int VerbalizedTurns { get; set; }
+    public int TotalChunks { get; set; }
+    public int CompletedChunks { get; set; }
+    public string JobId { get; set; } = "";
+    public string CurrentChunkId { get; set; } = "";
+    public string PlanPath { get; set; } = "";
+    public string ResultPath { get; set; } = "";
+    public string UpdatedAt { get; set; } = "";
+    public string Message { get; set; } = "";
+}
+
+public sealed class AudioVerbalizationOllamaStatus
+{
+    public bool Available { get; set; }
+    public string BaseUrl { get; set; } = "http://127.0.0.1:11434";
+    public string Model { get; set; } = "qwen3.5:9b";
+    public bool ModelAvailable { get; set; }
+    public List<string> ModelNames { get; set; } = [];
+    public string Message { get; set; } = "";
+}
+
+public sealed class AudioVerbalizationResult
+{
+    public AudioVerbalizationStatus Status { get; set; } = new();
+    public List<AudioVerbalizedTurn> Turns { get; set; } = [];
+}
+
+public sealed class AudioVerbalizedTurn
+{
+    public string TurnId { get; set; } = "";
+    public int Index { get; set; }
+    public string Text { get; set; } = "";
+    public double? Confidence { get; set; }
+    public string Status { get; set; } = "";
+    public List<string> Basis { get; set; } = [];
+    public List<string> UncertainTerms { get; set; } = [];
 }
 
 public sealed class AudioDeleteGeneratedRequest

@@ -164,7 +164,7 @@ else
         <section class="tfa-card tfa-card-pad">
             <div class="flex items-start justify-between gap-3">
                 <div>
-                    <div class="tfa-kicker">未処理ファイル数</div>
+                    <div class="tfa-kicker">表示中未処理</div>
                     <div class="mt-2 text-3xl font-semibold">@UnprocessedCount</div>
                 </div>
                 <span class="tfa-icon-box text-slate-600">
@@ -175,11 +175,11 @@ else
         <section class="tfa-card tfa-card-pad">
             <div class="flex items-start justify-between gap-3">
                 <div>
-                    <div class="tfa-kicker">総記録時間</div>
+                    <div class="tfa-kicker">表示中記録時間</div>
                     <div class="mt-2 text-2xl font-semibold">@TotalDurationLabel</div>
                     @if (HasPartialDuration)
                     {
-                        <div class="mt-1 text-xs text-slate-500">@KnownDurationCount / @FileCount 件</div>
+                        <div class="mt-1 text-xs text-slate-500">@KnownDurationCount / @Files.Count 件</div>
                     }
                 </div>
                 <span class="tfa-icon-box text-sky-800">
@@ -357,15 +357,12 @@ else
             </div>
         </div>
 
-        @if (_hasMoreFiles && !_autoLoadingFiles)
-        {
-            <div class="border-t border-line p-4 text-center">
-                <button class="tfa-button-secondary gap-2" @onclick="LoadNextFilePageAsync" disabled="@_loadingMoreFiles">
-                    <FaIcon Name="@(_loadingMoreFiles ? "spinner" : "plus")" Class="@($"tfa-icon {(_loadingMoreFiles ? "fa-spin" : "")}")" />
-                    <span>さらに読み込む</span>
-                </button>
-            </div>
-        }
+        <PaginationControls CurrentPage="@_currentFilePage"
+                            PageSize="@FilePageSize"
+                            TotalItems="@FileTotalItems"
+                            Disabled="@ListBusy"
+                            Label="音声ファイル一覧のページ移動"
+                            PageChanged="ChangeFilePageAsync" />
     }
     </section>
 }
@@ -437,12 +434,10 @@ else
     private bool _deleting;
     private bool _pollingOverview;
     private bool _loadingMoreFiles;
-    private bool _autoLoadingFiles;
-    private bool _hasMoreFiles;
     private bool _deleteModalOpen;
     private bool _runDetailsOpen;
     private bool _disposed;
-    private int _nextFilePage = 1;
+    private int _currentFilePage = 1;
     private DateTime? _lastLoadedAt;
     private CancellationTokenSource? _pollingCts;
     private string? _error;
@@ -451,17 +446,20 @@ else
     private IReadOnlyList<AudioFileRow> Files => _files?.Files ?? [];
     private int FileCount => _files?.Total ?? Files.Count;
     private int LoadedFileCount => Files.Count;
-    private bool ListBusy => _loading || _loadingMoreFiles || _autoLoadingFiles;
+    private bool ListBusy => _loading || _loadingMoreFiles;
+    private int FileTotalItems => _files?.Pagination.TotalItems > 0
+        ? _files.Pagination.TotalItems
+        : FileCount;
     private string FileListStatusLabel => ListBusy
-        ? $"読み込み中 {LoadedFileCount} / {Math.Max(FileCount, LoadedFileCount)} 件"
+        ? "読み込み中"
         : _lastLoadedAt is null
-            ? $"{LoadedFileCount} / {Math.Max(FileCount, LoadedFileCount)} 件"
-            : $"{LoadedFileCount} / {Math.Max(FileCount, LoadedFileCount)} 件、最終更新 {_lastLoadedAt.Value:HH:mm:ss}";
+            ? ""
+            : $"最終更新 {_lastLoadedAt.Value:HH:mm:ss}";
     private int UnprocessedCount => Files.Count(file => !file.Status.Equals("completed", StringComparison.OrdinalIgnoreCase));
     private int KnownDurationCount => Files.Count(file => file.DurationSec is > 0);
     private double TotalDurationSec => Files.Where(file => file.DurationSec is > 0).Sum(file => file.DurationSec!.Value);
     private string TotalDurationLabel => TotalDurationSec > 0 ? UiFormat.Duration(TotalDurationSec) : "未取得";
-    private bool HasPartialDuration => FileCount > 0 && KnownDurationCount > 0 && KnownDurationCount < FileCount;
+    private bool HasPartialDuration => Files.Count > 0 && KnownDurationCount > 0 && KnownDurationCount < Files.Count;
     private int SelectedFileCount => _selectedFileKeys.Count;
     private bool HasSelection => SelectedFileCount > 0;
     private int SelectedGeneratedItemCount => SelectedGeneratedItemIds().Count;
@@ -529,13 +527,12 @@ else
     private async Task LoadAsync()
     {
         _loading = true;
-        _error = null;
+            _error = null;
         try
         {
             _overview = await Timeline.GetAudioOverviewAsync();
             _files = new AudioFileListResult();
-            _nextFilePage = 1;
-            _hasMoreFiles = false;
+            _currentFilePage = 1;
             await InvokeAsync(StateHasChanged);
             await LoadFilePageAsync(1, reset: true);
         }
@@ -548,42 +545,22 @@ else
             _loading = false;
             await InvokeAsync(StateHasChanged);
         }
-
-        _ = AutoLoadRemainingFilesAsync();
     }
 
     private async Task LoadFilePageAsync(int page, bool reset)
     {
         var result = await Timeline.GetAudioFilesAsync(page, FilePageSize);
-        if (reset || _files is null)
-        {
-            _files = result;
-        }
-        else
-        {
-            var known = _files.Files.Select(FileKey).ToHashSet(StringComparer.OrdinalIgnoreCase);
-            foreach (var file in result.Files)
-            {
-                if (known.Add(FileKey(file)))
-                {
-                    _files.Files.Add(file);
-                }
-            }
-            _files.Total = result.Total;
-            _files.Truncated = result.Truncated;
-            _files.Pagination = result.Pagination;
-        }
+        _files = result;
 
         _lastLoadedAt = DateTime.Now;
-        _hasMoreFiles = result.Pagination.HasNext;
-        _nextFilePage = Math.Max(1, result.Pagination.Page) + 1;
+        _currentFilePage = Math.Max(1, result.Pagination.Page);
         RemoveMissingSelections();
         await InvokeAsync(StateHasChanged);
     }
 
-    private async Task LoadNextFilePageAsync()
+    private async Task ChangeFilePageAsync(int page)
     {
-        if (!_hasMoreFiles || _loadingMoreFiles)
+        if (page == _currentFilePage || _loadingMoreFiles)
         {
             return;
         }
@@ -592,7 +569,7 @@ else
         _error = null;
         try
         {
-            await LoadFilePageAsync(_nextFilePage, reset: false);
+            await LoadFilePageAsync(page, reset: true);
         }
         catch (Exception ex)
         {
@@ -601,36 +578,6 @@ else
         finally
         {
             _loadingMoreFiles = false;
-            await InvokeAsync(StateHasChanged);
-        }
-    }
-
-    private async Task AutoLoadRemainingFilesAsync()
-    {
-        if (!_hasMoreFiles || _disposed || _pollingCts is null || _pollingCts.IsCancellationRequested)
-        {
-            return;
-        }
-
-        _autoLoadingFiles = true;
-        try
-        {
-            while (_hasMoreFiles && !_disposed && !_pollingCts.IsCancellationRequested)
-            {
-                await LoadFilePageAsync(_nextFilePage, reset: false);
-                await Task.Delay(50, _pollingCts.Token);
-            }
-        }
-        catch (OperationCanceledException)
-        {
-        }
-        catch (Exception ex)
-        {
-            _error = ex.Message;
-        }
-        finally
-        {
-            _autoLoadingFiles = false;
             await InvokeAsync(StateHasChanged);
         }
     }
@@ -672,8 +619,7 @@ else
             _overview = await Timeline.GetAudioOverviewAsync();
             if (hadActiveRun && !IsActiveRun(_overview.ActiveRun))
             {
-                await LoadFilePageAsync(1, reset: true);
-                _ = AutoLoadRemainingFilesAsync();
+                await LoadFilePageAsync(_currentFilePage, reset: true);
             }
         }
         catch (Exception ex)

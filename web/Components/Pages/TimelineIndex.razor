@@ -158,7 +158,6 @@ else
                         <FaIcon Name="list-ul" Class="tfa-icon text-accent" />
                         <span>時間軸一覧</span>
                     </h2>
-                    <div class="mt-1 text-sm text-slate-600">@ListRangeLabel</div>
                 </div>
             </div>
 
@@ -208,15 +207,12 @@ else
                     </table>
                 </div>
 
-                @if (_pagination?.HasNext == true)
-                {
-                    <div class="border-t border-line p-4">
-                        <button class="tfa-button-secondary gap-2" @onclick="LoadNextPageAsync" disabled="@_loadingMore">
-                            <FaIcon Name="@(_loadingMore ? "spinner" : "angles-down")" Class="@($"tfa-icon {(_loadingMore ? "fa-spin" : "")}")" />
-                            <span>さらに表示</span>
-                        </button>
-                    </div>
-                }
+                <PaginationControls CurrentPage="@_page"
+                                    PageSize="@PageSize"
+                                    TotalItems="@PaginationTotalItems"
+                                    Disabled="@Busy"
+                                    Label="時間軸一覧のページ移動"
+                                    PageChanged="ChangePageAsync" />
             }
         </section>
     }
@@ -248,9 +244,9 @@ else
         : "時間軸を再構築すると一覧に表示されます。";
     private string StoreStatusIcon => _overview?.Available == true ? "circle-check" : "circle-minus";
     private string StoreStatusIconClass => _overview?.Available == true ? "text-teal-700" : "text-slate-500";
-    private string ListRangeLabel => _pagination is null || _pagination.ReturnedItems == 0
-        ? "0 件"
-        : $"{_pagination.RangeStart:N0} - {_pagination.RangeEnd:N0} / {_pagination.TotalItems:N0} 件";
+    private int PaginationTotalItems => _pagination?.TotalItems > 0
+        ? _pagination.TotalItems
+        : _overview?.EventCount ?? _events.Count;
     private string DockerWorkerStatusLabel => _dockerWorkerStatus switch
     {
         { Available: true, State: "running" } => "稼働中",
@@ -382,24 +378,25 @@ else
         return $"{state}: {message}";
     }
 
-    private async Task LoadNextPageAsync()
+    private async Task ChangePageAsync(int page)
     {
-        if (_pagination?.HasNext != true)
+        if (page == _page)
         {
             return;
         }
 
         _loadingMore = true;
         _error = null;
+        var previousPage = _page;
         try
         {
-            _page += 1;
-            await LoadEventPageAsync(reset: false);
+            _page = Math.Max(1, page);
+            await LoadEventPageAsync(reset: true);
         }
         catch (Exception ex)
         {
             _error = ex.Message;
-            _page = Math.Max(1, _page - 1);
+            _page = previousPage;
         }
         finally
         {

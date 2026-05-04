@@ -9,10 +9,20 @@ $repoRoot = $PSScriptRoot
 . (Join-Path $repoRoot "scripts\docker-runtime.ps1")
 
 Initialize-TimelineDocker -RepoRoot $repoRoot
-Start-TimelineHelperServer -RepoRoot $repoRoot -AudioProductPath "C:\apps\TimelineForAudio"
+
+$helperPort = 19001
+try {
+    Start-TimelineHelperServer -RepoRoot $repoRoot -AudioProductPath "C:\apps\TimelineForAudio" -Port $helperPort
+}
+catch {
+    Write-Warning "Timeline helper server did not start on port $helperPort. Retrying on port 19002."
+    $helperPort = 19002
+    Start-TimelineHelperServer -RepoRoot $repoRoot -AudioProductPath "C:\apps\TimelineForAudio" -Port $helperPort
+}
 
 $docker = Get-TimelineDockerCommand
 $composeArgs = Get-TimelineComposeArgs -RepoRoot $repoRoot
+$env:TIMELINE_HELPER_PORT = [string]$helperPort
 
 foreach ($path in @("C:\TimelineData\Timeline\work", "C:\TimelineData\Timeline\store")) {
     if (-not (Test-Path -LiteralPath $path)) {
@@ -92,6 +102,8 @@ Write-Host ""
 Write-Host "Timeline is running."
 Write-Host "Web UI:"
 Write-Host "  http://127.0.0.1:19000"
+Write-Host "Helper:"
+Write-Host "  http://127.0.0.1:$helperPort"
 Write-Host ""
 Write-Host "Connected local products:"
 Write-Host "  C:\apps\TimelineForAudio"
@@ -101,7 +113,7 @@ Write-Host "  C:\apps\TimelineForImage"
 Write-Host ""
 Write-Host "Health:"
 Write-Host "  Web: OK"
-if (Test-TimelineHelperServer) {
+if (Test-TimelineHelperServer -Port $helperPort) {
     Write-Host "  Helper: OK"
 }
 else {

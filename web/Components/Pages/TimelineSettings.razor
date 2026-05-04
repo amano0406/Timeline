@@ -104,6 +104,119 @@ else
         </div>
     </section>
 
+    <section class="tfa-card tfa-card-pad mt-5">
+        <h2 class="flex items-center gap-2 text-lg font-semibold">
+            <FaIcon Name="brain" Class="tfa-icon text-accent" />
+            <span>音声の言語化</span>
+        </h2>
+
+        <div class="mt-4 grid gap-5">
+            <label class="inline-flex items-center gap-2 text-sm font-medium text-slate-700">
+                <input type="checkbox" @bind="_audioVerbalizationEnabled" />
+                <span>有効</span>
+            </label>
+
+            <div>
+                <label class="mb-2 block text-sm font-medium text-slate-700" for="timeline-verbalization-provider">LLM</label>
+                <select id="timeline-verbalization-provider" class="tfa-input" @bind="_audioVerbalizationProvider">
+                    <option value="ollama">Ollama</option>
+                    <option value="none">使用しない</option>
+                </select>
+            </div>
+
+            <div>
+                <label class="mb-2 block text-sm font-medium text-slate-700" for="timeline-verbalization-ollama-url">Ollama URL</label>
+                <input id="timeline-verbalization-ollama-url" class="tfa-input font-mono" @bind="_audioVerbalizationOllamaBaseUrl" />
+            </div>
+
+            <div>
+                <label class="mb-2 block text-sm font-medium text-slate-700" for="timeline-verbalization-model">モデル</label>
+                <input id="timeline-verbalization-model" class="tfa-input font-mono" @bind="_audioVerbalizationModel" />
+            </div>
+
+            <div class="rounded-md border border-line bg-slate-50 p-4">
+                <div class="flex flex-wrap items-center gap-3">
+                    <button class="tfa-button-secondary gap-2"
+                            @onclick="CheckOllamaAsync"
+                            disabled="@_checkingOllama">
+                        <FaIcon Name="@(_checkingOllama ? "spinner" : "plug-circle-check")"
+                                Class="@($"tfa-icon {(_checkingOllama ? "fa-spin" : "")}")" />
+                        <span>@(_checkingOllama ? "確認中" : "Ollama接続確認")</span>
+                    </button>
+                    @if (_ollamaStatus is not null)
+                    {
+                        <span class="@OllamaStatusPill(_ollamaStatus)">
+                            <FaIcon Name="@OllamaStatusIcon(_ollamaStatus)" Class="tfa-icon !h-3 !w-3" />
+                            <span>@OllamaStatusLabel(_ollamaStatus)</span>
+                        </span>
+                    }
+                </div>
+                @if (_ollamaStatus is not null)
+                {
+                    <div class="mt-3 grid gap-2 text-sm text-slate-700">
+                        <div class="break-all font-mono text-xs">@_ollamaStatus.BaseUrl</div>
+                        <div>@OllamaStatusMessage(_ollamaStatus)</div>
+                        @if (_ollamaStatus.ModelNames.Count > 0)
+                        {
+                            <div class="break-all text-xs text-slate-500">検出モデル: @string.Join(", ", _ollamaStatus.ModelNames.Take(6))</div>
+                        }
+                    </div>
+                }
+            </div>
+
+            <div>
+                <label class="mb-2 block text-sm font-medium text-slate-700" for="timeline-verbalization-fast-model">軽量モデル</label>
+                <input id="timeline-verbalization-fast-model" class="tfa-input font-mono" @bind="_audioVerbalizationFastModel" />
+            </div>
+
+            <div>
+                <label class="mb-2 block text-sm font-medium text-slate-700" for="timeline-verbalization-language">言語</label>
+                <input id="timeline-verbalization-language" class="tfa-input font-mono" @bind="_audioVerbalizationLanguage" />
+            </div>
+
+            <div class="grid gap-4 md:grid-cols-3">
+                <div>
+                    <label class="mb-2 block text-sm font-medium text-slate-700" for="timeline-verbalization-chunk-min">最小チャンク</label>
+                    <input id="timeline-verbalization-chunk-min" class="tfa-input" type="number" min="1" max="60" @bind="_audioVerbalizationChunkMinMinutes" />
+                </div>
+                <div>
+                    <label class="mb-2 block text-sm font-medium text-slate-700" for="timeline-verbalization-chunk-max">最大チャンク</label>
+                    <input id="timeline-verbalization-chunk-max" class="tfa-input" type="number" min="1" max="120" @bind="_audioVerbalizationChunkMaxMinutes" />
+                </div>
+                <div>
+                    <label class="mb-2 block text-sm font-medium text-slate-700" for="timeline-verbalization-chunk-turns">最大区間数</label>
+                    <input id="timeline-verbalization-chunk-turns" class="tfa-input" type="number" min="1" max="500" @bind="_audioVerbalizationChunkMaxTurns" />
+                </div>
+            </div>
+
+            <div class="grid gap-4 md:grid-cols-2">
+                <div>
+                    <label class="mb-2 block text-sm font-medium text-slate-700" for="timeline-verbalization-context-minutes">周辺ヒント</label>
+                    <input id="timeline-verbalization-context-minutes" class="tfa-input" type="number" min="0" max="240" @bind="_audioVerbalizationNearbyContextMinutes" />
+                </div>
+                <div>
+                    <label class="mb-2 block text-sm font-medium text-slate-700" for="timeline-verbalization-concurrency">同時実行</label>
+                    <input id="timeline-verbalization-concurrency" class="tfa-input" type="number" min="1" max="4" @bind="_audioVerbalizationMaxConcurrentJobs" />
+                </div>
+            </div>
+
+            <div class="grid gap-3">
+                <label class="inline-flex items-center gap-2 text-sm font-medium text-slate-700">
+                    <input type="checkbox" @bind="_audioVerbalizationUsePreviousChunkSummary" />
+                    <span>前チャンクの結果を次のヒントに使う</span>
+                </label>
+                <label class="inline-flex items-center gap-2 text-sm font-medium text-slate-700">
+                    <input type="checkbox" @bind="_audioVerbalizationUseUnconfirmedAsWeakHint" />
+                    <span>未確認の言語化候補を弱いヒントに使う</span>
+                </label>
+                <label class="inline-flex items-center gap-2 text-sm font-medium text-slate-700">
+                    <input type="checkbox" @bind="_audioVerbalizationAutoRun" />
+                    <span>自動言語化</span>
+                </label>
+            </div>
+        </div>
+    </section>
+
     <div class="mt-5 flex flex-wrap gap-3">
         <button class="tfa-button-primary gap-2" @onclick="SaveAsync" disabled="@_saving">
             <FaIcon Name="@(_saving ? "spinner" : "floppy-disk")" Class="@($"tfa-icon {(_saving ? "fa-spin" : "")}")" />
@@ -122,6 +235,22 @@ else
     private string _timeZoneId = "Asia/Tokyo";
     private string _workDirectory = @"C:\TimelineData\Timeline\work";
     private string _storeDirectory = @"C:\TimelineData\Timeline\store";
+    private bool _audioVerbalizationEnabled = true;
+    private string _audioVerbalizationProvider = "ollama";
+    private string _audioVerbalizationOllamaBaseUrl = "http://127.0.0.1:11434";
+    private string _audioVerbalizationModel = "qwen3.5:9b";
+    private string _audioVerbalizationFastModel = "qwen3.5:4b";
+    private string _audioVerbalizationLanguage = "ja-JP";
+    private int _audioVerbalizationChunkMinMinutes = 5;
+    private int _audioVerbalizationChunkMaxMinutes = 10;
+    private int _audioVerbalizationChunkMaxTurns = 80;
+    private int _audioVerbalizationNearbyContextMinutes = 10;
+    private int _audioVerbalizationMaxConcurrentJobs = 1;
+    private bool _audioVerbalizationAutoRun;
+    private bool _audioVerbalizationUsePreviousChunkSummary = true;
+    private bool _audioVerbalizationUseUnconfirmedAsWeakHint = true;
+    private bool _checkingOllama;
+    private AudioVerbalizationOllamaStatus? _ollamaStatus;
 
     private IReadOnlyList<TimelineDisplayLanguageOption> DisplayLanguages => _settings?.DisplayLanguages ?? [];
     private IReadOnlyList<TimelineTimeZoneOption> TimeZones => _settings?.TimeZones ?? [];
@@ -142,6 +271,7 @@ else
             _timeZoneId = string.IsNullOrWhiteSpace(_settings.TimeZoneId) ? "Asia/Tokyo" : _settings.TimeZoneId;
             _workDirectory = string.IsNullOrWhiteSpace(_settings.WorkDirectory) ? @"C:\TimelineData\Timeline\work" : _settings.WorkDirectory;
             _storeDirectory = string.IsNullOrWhiteSpace(_settings.StoreDirectory) ? @"C:\TimelineData\Timeline\store" : _settings.StoreDirectory;
+            ApplyAudioVerbalizationSettings(_settings.AudioVerbalization);
         }
         finally
         {
@@ -171,11 +301,13 @@ else
                 TimeZoneId = _timeZoneId,
                 WorkDirectory = _workDirectory,
                 StoreDirectory = _storeDirectory,
+                AudioVerbalization = BuildAudioVerbalizationSettings(),
             });
             _displayLanguageId = _settings.DisplayLanguageId;
             _timeZoneId = _settings.TimeZoneId;
             _workDirectory = _settings.WorkDirectory;
             _storeDirectory = _settings.StoreDirectory;
+            ApplyAudioVerbalizationSettings(_settings.AudioVerbalization);
             _saved = true;
         }
         catch (Exception ex)
@@ -212,6 +344,25 @@ else
         _saved = false;
     }
 
+    private async Task CheckOllamaAsync()
+    {
+        _checkingOllama = true;
+        _error = null;
+        _ollamaStatus = null;
+        try
+        {
+            _ollamaStatus = await Timeline.GetAudioVerbalizationOllamaStatusAsync(_audioVerbalizationOllamaBaseUrl, _audioVerbalizationModel);
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _checkingOllama = false;
+        }
+    }
+
     private async Task<string?> PickDirectoryAsync(string title, string initialPath)
     {
         _error = null;
@@ -228,4 +379,77 @@ else
 
     private static string EmptyText(string? value) =>
         string.IsNullOrWhiteSpace(value) ? "-" : value;
+
+    private static string OllamaStatusLabel(AudioVerbalizationOllamaStatus status)
+    {
+        if (!status.Available)
+        {
+            return "未接続";
+        }
+        return status.ModelAvailable ? "利用可能" : "モデル未検出";
+    }
+
+    private static string OllamaStatusMessage(AudioVerbalizationOllamaStatus status)
+    {
+        if (!status.Available)
+        {
+            return "Ollamaに接続できません。Ollamaを起動し、設定したURLに接続できる状態にしてください。";
+        }
+        if (!status.ModelAvailable)
+        {
+            return $"Ollamaは起動していますが、モデル {status.Model} が見つかりません。";
+        }
+        return $"モデル {status.Model} を利用できます。";
+    }
+
+    private static string OllamaStatusIcon(AudioVerbalizationOllamaStatus status) =>
+        !status.Available ? "circle-xmark" : status.ModelAvailable ? "circle-check" : "triangle-exclamation";
+
+    private static string OllamaStatusPill(AudioVerbalizationOllamaStatus status) =>
+        !status.Available
+            ? "tfa-status-pill border-red-200 bg-red-50 text-red-800"
+            : status.ModelAvailable
+                ? "tfa-status-pill border-teal-200 bg-teal-50 text-teal-800"
+                : "tfa-status-pill border-amber-200 bg-amber-50 text-amber-900";
+
+    private void ApplyAudioVerbalizationSettings(TimelineAudioVerbalizationSettings settings)
+    {
+        _audioVerbalizationEnabled = settings.Enabled;
+        _audioVerbalizationProvider = string.IsNullOrWhiteSpace(settings.Provider) ? "ollama" : settings.Provider;
+        _audioVerbalizationOllamaBaseUrl = string.IsNullOrWhiteSpace(settings.OllamaBaseUrl) ? "http://127.0.0.1:11434" : settings.OllamaBaseUrl;
+        _audioVerbalizationModel = string.IsNullOrWhiteSpace(settings.Model) ? "qwen3.5:9b" : settings.Model;
+        _audioVerbalizationFastModel = string.IsNullOrWhiteSpace(settings.FastModel) ? "qwen3.5:4b" : settings.FastModel;
+        _audioVerbalizationLanguage = string.IsNullOrWhiteSpace(settings.Language) ? "ja-JP" : settings.Language;
+        _audioVerbalizationChunkMinMinutes = Math.Clamp(settings.ChunkMinMinutes, 1, 60);
+        _audioVerbalizationChunkMaxMinutes = Math.Clamp(settings.ChunkMaxMinutes, _audioVerbalizationChunkMinMinutes, 120);
+        _audioVerbalizationChunkMaxTurns = Math.Clamp(settings.ChunkMaxTurns, 1, 500);
+        _audioVerbalizationNearbyContextMinutes = Math.Clamp(settings.NearbyContextMinutes, 0, 240);
+        _audioVerbalizationMaxConcurrentJobs = Math.Clamp(settings.MaxConcurrentJobs, 1, 4);
+        _audioVerbalizationAutoRun = settings.AutoRun;
+        _audioVerbalizationUsePreviousChunkSummary = settings.UsePreviousChunkSummary;
+        _audioVerbalizationUseUnconfirmedAsWeakHint = settings.UseUnconfirmedVerbalizationAsWeakHint;
+    }
+
+    private TimelineAudioVerbalizationSettings BuildAudioVerbalizationSettings()
+    {
+        var chunkMin = Math.Clamp(_audioVerbalizationChunkMinMinutes, 1, 60);
+        var chunkMax = Math.Clamp(_audioVerbalizationChunkMaxMinutes, chunkMin, 120);
+        return new TimelineAudioVerbalizationSettings
+        {
+            Enabled = _audioVerbalizationEnabled,
+            Provider = string.IsNullOrWhiteSpace(_audioVerbalizationProvider) ? "ollama" : _audioVerbalizationProvider,
+            OllamaBaseUrl = string.IsNullOrWhiteSpace(_audioVerbalizationOllamaBaseUrl) ? "http://127.0.0.1:11434" : _audioVerbalizationOllamaBaseUrl.Trim(),
+            Model = string.IsNullOrWhiteSpace(_audioVerbalizationModel) ? "qwen3.5:9b" : _audioVerbalizationModel.Trim(),
+            FastModel = string.IsNullOrWhiteSpace(_audioVerbalizationFastModel) ? "qwen3.5:4b" : _audioVerbalizationFastModel.Trim(),
+            Language = string.IsNullOrWhiteSpace(_audioVerbalizationLanguage) ? "ja-JP" : _audioVerbalizationLanguage.Trim(),
+            ChunkMinMinutes = chunkMin,
+            ChunkMaxMinutes = chunkMax,
+            ChunkMaxTurns = Math.Clamp(_audioVerbalizationChunkMaxTurns, 1, 500),
+            NearbyContextMinutes = Math.Clamp(_audioVerbalizationNearbyContextMinutes, 0, 240),
+            MaxConcurrentJobs = Math.Clamp(_audioVerbalizationMaxConcurrentJobs, 1, 4),
+            AutoRun = _audioVerbalizationAutoRun,
+            UsePreviousChunkSummary = _audioVerbalizationUsePreviousChunkSummary,
+            UseUnconfirmedVerbalizationAsWeakHint = _audioVerbalizationUseUnconfirmedAsWeakHint,
+        };
+    }
 }
