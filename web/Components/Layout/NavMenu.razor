@@ -1,7 +1,7 @@
-<aside class="tfa-sidebar">
+<aside id="timeline-sidebar" class="tfa-sidebar">
     <div class="flex h-full flex-col">
         <div class="border-b border-white/10 p-5">
-            <a class="flex items-center gap-2 text-lg font-semibold text-white" href="">
+            <a class="flex items-center gap-2 text-lg font-semibold text-white" href="" @onclick="NotifyNavigateAsync">
                 <FaIcon Name="timeline" Class="tfa-icon text-teal-300" />
                 <span>Timeline</span>
             </a>
@@ -11,19 +11,22 @@
             <div class="grid gap-1">
                 <NavLink class="flex items-center gap-2 rounded-md px-3 py-2 text-slate-200 hover:bg-white/10 hover:text-white"
                          ActiveClass="bg-white/15 text-white"
-                         href="">
+                         href=""
+                         @onclick="NotifyNavigateAsync">
                     <FaIcon Name="gauge" Class="tfa-icon" />
                     <span>ダッシュボード</span>
                 </NavLink>
                 <NavLink class="flex items-center gap-2 rounded-md px-3 py-2 text-slate-200 hover:bg-white/10 hover:text-white"
                          ActiveClass="bg-white/15 text-white"
-                         href="timeline">
+                         href="timeline"
+                         @onclick="NotifyNavigateAsync">
                     <FaIcon Name="timeline" Class="tfa-icon" />
                     <span>時間軸</span>
                 </NavLink>
                 <NavLink class="flex items-center gap-2 rounded-md px-3 py-2 text-slate-200 hover:bg-white/10 hover:text-white"
                          ActiveClass="bg-white/15 text-white"
-                         href="timeline/settings">
+                         href="timeline/settings"
+                         @onclick="NotifyNavigateAsync">
                     <FaIcon Name="sliders" Class="tfa-icon" />
                     <span>基本設定</span>
                 </NavLink>
@@ -37,13 +40,15 @@
                 <div class="ml-3 border-l border-white/10 pl-3">
                     <NavLink class="flex items-center gap-2 rounded-md px-3 py-2 text-slate-200 hover:bg-white/10 hover:text-white"
                              ActiveClass="bg-white/15 text-white"
-                             href="audio/files">
+                             href="audio/files"
+                             @onclick="NotifyNavigateAsync">
                         <FaIcon Name="list-ul" Class="tfa-icon" />
                         <span>ファイル一覧</span>
                     </NavLink>
                     <NavLink class="flex items-center gap-2 rounded-md px-3 py-2 text-slate-200 hover:bg-white/10 hover:text-white"
                              ActiveClass="bg-white/15 text-white"
-                             href="audio/settings">
+                             href="audio/settings"
+                             @onclick="NotifyNavigateAsync">
                         <FaIcon Name="gear" Class="tfa-icon" />
                         <span>設定</span>
                     </NavLink>
@@ -58,13 +63,15 @@
                 <div class="ml-3 border-l border-white/10 pl-3">
                     <NavLink class="flex items-center gap-2 rounded-md px-3 py-2 text-slate-200 hover:bg-white/10 hover:text-white"
                              ActiveClass="bg-white/15 text-white"
-                             href="windows-codex">
+                             href="windows-codex"
+                             @onclick="NotifyNavigateAsync">
                         <FaIcon Name="clock-rotate-left" Class="tfa-icon" />
                         <span>スレッド一覧</span>
                     </NavLink>
                     <NavLink class="flex items-center gap-2 rounded-md px-3 py-2 text-slate-200 hover:bg-white/10 hover:text-white"
                              ActiveClass="bg-white/15 text-white"
-                             href="windows-codex/settings">
+                             href="windows-codex/settings"
+                             @onclick="NotifyNavigateAsync">
                         <FaIcon Name="gear" Class="tfa-icon" />
                         <span>設定</span>
                     </NavLink>
@@ -79,13 +86,15 @@
                 <div class="ml-3 border-l border-white/10 pl-3">
                     <NavLink class="flex items-center gap-2 rounded-md px-3 py-2 text-slate-200 hover:bg-white/10 hover:text-white"
                              ActiveClass="bg-white/15 text-white"
-                             href="chatgpt">
+                             href="chatgpt"
+                             @onclick="NotifyNavigateAsync">
                         <FaIcon Name="file-zipper" Class="tfa-icon" />
                         <span>スレッド一覧</span>
                     </NavLink>
                     <NavLink class="flex items-center gap-2 rounded-md px-3 py-2 text-slate-200 hover:bg-white/10 hover:text-white"
                              ActiveClass="bg-white/15 text-white"
-                             href="chatgpt/settings">
+                             href="chatgpt/settings"
+                             @onclick="NotifyNavigateAsync">
                         <FaIcon Name="gear" Class="tfa-icon" />
                         <span>設定</span>
                     </NavLink>
@@ -100,13 +109,15 @@
                 <div class="ml-3 border-l border-white/10 pl-3">
                     <NavLink class="flex items-center gap-2 rounded-md px-3 py-2 text-slate-200 hover:bg-white/10 hover:text-white"
                              ActiveClass="bg-white/15 text-white"
-                             href="image">
+                             href="image"
+                             @onclick="NotifyNavigateAsync">
                         <FaIcon Name="images" Class="tfa-icon" />
                         <span>ファイル一覧</span>
                     </NavLink>
                     <NavLink class="flex items-center gap-2 rounded-md px-3 py-2 text-slate-200 hover:bg-white/10 hover:text-white"
                              ActiveClass="bg-white/15 text-white"
-                             href="image/settings">
+                             href="image/settings"
+                             @onclick="NotifyNavigateAsync">
                         <FaIcon Name="gear" Class="tfa-icon" />
                         <span>設定</span>
                     </NavLink>
@@ -132,3 +143,10 @@
         </div>
     </div>
 </aside>
+
+@code {
+    [Parameter]
+    public EventCallback OnNavigate { get; set; }
+
+    private Task NotifyNavigateAsync() => OnNavigate.InvokeAsync();
+}

@@ -1,10 +1,48 @@
 @inherits LayoutComponentBase
 
-<div class="tfa-shell">
-    <NavMenu />
+<div class="@ShellClass">
+    <button type="button"
+            class="tfa-sidebar-backdrop"
+            aria-label="メニューを閉じる"
+            @onclick="CloseSidebar"></button>
+
+    <NavMenu OnNavigate="CloseSidebar" />
+
+    <header class="tfa-mobile-topbar">
+        <button type="button"
+                class="tfa-sidebar-toggle"
+                aria-controls="timeline-sidebar"
+                aria-expanded="@_sidebarOpen"
+                @onclick="ToggleSidebar">
+            <FaIcon Name="bars" Class="tfa-icon" />
+            <span>メニュー</span>
+        </button>
+        <a class="tfa-mobile-brand" href="">
+            <FaIcon Name="timeline" Class="tfa-icon text-accent" />
+            <span>Timeline</span>
+        </a>
+    </header>
+
     <main class="tfa-main">
         @Body
     </main>
 </div>
 
 <TimelineConsole />
+
+@code {
+    private bool _sidebarOpen;
+
+    private string ShellClass =>
+        _sidebarOpen ? "tfa-shell tfa-shell-sidebar-open" : "tfa-shell";
+
+    private void ToggleSidebar()
+    {
+        _sidebarOpen = !_sidebarOpen;
+    }
+
+    private void CloseSidebar()
+    {
+        _sidebarOpen = false;
+    }
+}
