@@ -74,9 +74,34 @@ function Write-AudioVerbalizationWorkerFailure {
     }
 
     Write-TimelineAudioVerbalizationResultPayload -ResultPath $resultPath -Status $status -Chunks $chunks -Turns $turns
+    Write-TimelineOperationEvent `
+        -OperationId $JobId `
+        -Kind "worker" `
+        -ProductName "Timeline" `
+        -Action "audio_verbalization" `
+        -State "failed" `
+        -Message $Message `
+        -Details ([ordered]@{
+            audioItemId = $AudioItemId
+            planPath = $planPath
+            resultPath = $resultPath
+        })
 }
 
 try {
+    Write-TimelineOperationEvent `
+        -OperationId $JobId `
+        -Kind "worker" `
+        -ProductName "Timeline" `
+        -Action "audio_verbalization" `
+        -State "running" `
+        -Message "Audio verbalization worker started." `
+        -Details ([ordered]@{
+            audioItemId = $AudioItemId
+            planPath = $planPath
+            resultPath = $resultPath
+        })
+
     if (-not (Test-Path -LiteralPath $planPath -PathType Leaf)) {
         throw "Audio verbalization plan was not found."
     }

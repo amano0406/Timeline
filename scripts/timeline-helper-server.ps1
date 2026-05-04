@@ -782,6 +782,145 @@ function Get-TimelineConsoleTextPreview {
     return "... (trimmed)`n" + $value.Substring($value.Length - $MaxLength)
 }
 
+function New-TimelineOperationId {
+    param([string]$Prefix = "operation")
+
+    $safePrefix = Get-TimelineZipSafeSegment -Value $Prefix
+    if (-not $safePrefix) {
+        $safePrefix = "operation"
+    }
+    $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
+    $suffix = ([guid]::NewGuid().ToString("N")).Substring(0, 8)
+    return "$safePrefix-$stamp-$suffix"
+}
+
+function Get-TimelineOperationLogRoot {
+    $settings = Read-TimelineAppSettings
+    $storeDirectory = Convert-TimelineText -Value (Get-PropertyValue -Object $settings -Name "storeDirectory" -Default "C:\TimelineData\Timeline\store")
+    $storePath = Convert-TimelineWindowsPath -Path $storeDirectory
+    if (-not $storePath) {
+        $storePath = $storeDirectory
+    }
+    if (-not $storePath) {
+        $storePath = "C:\TimelineData\Timeline\store"
+    }
+
+    $baseDirectory = Split-Path -Parent $storePath
+    if (-not $baseDirectory) {
+        $baseDirectory = $storePath
+    }
+
+    $root = Join-Path (Join-Path $baseDirectory "logs") "operations"
+    [System.IO.Directory]::CreateDirectory($root) | Out-Null
+    return [System.IO.Path]::GetFullPath($root)
+}
+
+function Get-TimelineOperationDirectory {
+    param(
+        [string]$OperationId,
+        [switch]$Create
+    )
+
+    $safeOperationId = Get-TimelineZipSafeSegment -Value $OperationId
+    if (-not $safeOperationId) {
+        $safeOperationId = New-TimelineOperationId
+    }
+    $directory = Join-Path (Get-TimelineOperationLogRoot) $safeOperationId
+    if ($Create) {
+        [System.IO.Directory]::CreateDirectory($directory) | Out-Null
+    }
+    return $directory
+}
+
+function Write-TimelineOperationJsonLine {
+    param(
+        [string]$Path,
+        [object]$Payload
+    )
+
+    $encoding = [System.Text.UTF8Encoding]::new($false)
+    $line = (ConvertTo-Json -InputObject $Payload -Compress -Depth 20) + [Environment]::NewLine
+    $parent = [System.IO.Path]::GetDirectoryName($Path)
+    if ($parent) {
+        [System.IO.Directory]::CreateDirectory($parent) | Out-Null
+    }
+
+    for ($attempt = 0; $attempt -lt 3; $attempt += 1) {
+        try {
+            [System.IO.File]::AppendAllText($Path, $line, $encoding)
+            return
+        }
+        catch {
+            Start-Sleep -Milliseconds (50 * ($attempt + 1))
+        }
+    }
+}
+
+function Write-TimelineOperationEvent {
+    param(
+        [string]$OperationId,
+        [string]$ParentOperationId = "",
+        [string]$Kind = "operation",
+        [string]$ProductName = "",
+        [string]$Action = "",
+        [string]$State = "",
+        [string]$Message = "",
+        [string]$CommandLine = "",
+        [Nullable[int]]$ExitCode = $null,
+        [Nullable[int]]$DurationMs = $null,
+        [string]$Stdout = "",
+        [string]$Stderr = "",
+        [object]$Details = $null
+    )
+
+    if (-not $OperationId) {
+        return
+    }
+
+    try {
+        $directory = Get-TimelineOperationDirectory -OperationId $OperationId -Create
+        $now = [DateTimeOffset]::Now.ToString("o")
+        $entry = [ordered]@{
+            schemaVersion = 1
+            operationId = $OperationId
+            parentOperationId = $ParentOperationId
+            occurredAt = $now
+            kind = $Kind
+            productName = $ProductName
+            action = $Action
+            state = $State
+            message = $Message
+            commandLine = Protect-TimelineConsoleText -Text $CommandLine
+            exitCode = $ExitCode
+            durationMs = $DurationMs
+            stdoutTail = Get-TimelineConsoleTextPreview -Text $Stdout
+            stderrTail = Get-TimelineConsoleTextPreview -Text $Stderr
+            details = $Details
+        }
+
+        Write-TimelineOperationJsonLine -Path (Join-Path $directory "events.jsonl") -Payload $entry
+
+        $summary = [ordered]@{
+            schemaVersion = 1
+            operationId = $OperationId
+            parentOperationId = $ParentOperationId
+            kind = $Kind
+            productName = $ProductName
+            action = $Action
+            state = $State
+            message = $Message
+            commandLine = Protect-TimelineConsoleText -Text $CommandLine
+            exitCode = $ExitCode
+            durationMs = $DurationMs
+            updatedAt = $now
+            details = $Details
+        }
+        Write-TimelineUtf8JsonFile -Path (Join-Path $directory "summary.json") -Payload $summary
+    }
+    catch {
+    }
+}
+
 function Add-TimelineConsoleLog {
     param(
         [string]$Level = "info",
@@ -815,6 +954,21 @@ function Add-TimelineConsoleLog {
     $script:TimelineConsoleLogEntries.Add($entry)
     while ($script:TimelineConsoleLogEntries.Count -gt $script:TimelineConsoleLogLimit) {
         $script:TimelineConsoleLogEntries.RemoveAt(0)
+    }
+
+    if ($OperationId) {
+        Write-TimelineOperationEvent `
+            -OperationId $OperationId `
+            -Kind $Kind `
+            -ProductName $ProductName `
+            -Action "cli" `
+            -State $Level `
+            -Message $Message `
+            -CommandLine $CommandLine `
+            -ExitCode $ExitCode `
+            -DurationMs $DurationMs `
+            -Stdout $Stdout `
+            -Stderr $Stderr
     }
 }
 
@@ -1009,10 +1163,14 @@ function Invoke-TimelineLoggedProcess {
         [string]$WorkingDirectory,
         [int]$TimeoutSeconds = 25,
         [hashtable]$Environment = @{},
-        [string]$ProductName = ""
+        [string]$ProductName = "",
+        [string]$OperationId = ""
     )
 
-    $operationId = [guid]::NewGuid().ToString("N")
+    $operationId = Convert-TimelineText -Value $OperationId
+    if (-not $operationId) {
+        $operationId = New-TimelineOperationId -Prefix "cli"
+    }
     $commandLine = Join-TimelineCommandLine -FileName $FileName -Arguments $Arguments
     Add-TimelineConsoleLog `
         -Level "info" `
@@ -4892,6 +5050,20 @@ function Write-TimelineWorkerJobStatus {
     }
     $path = Get-TimelineWorkerJobStatusPath -JobId $jobId
     Write-TimelineUtf8JsonFile -Path $path -Payload $Status
+    Write-TimelineOperationEvent `
+        -OperationId $jobId `
+        -Kind "worker" `
+        -ProductName "Timeline" `
+        -Action (Convert-TimelineText -Value (Get-PropertyValue -Object $Status -Name "kind" -Default "timeline_worker")) `
+        -State (Convert-TimelineText -Value (Get-PropertyValue -Object $Status -Name "state" -Default "")) `
+        -Message (Convert-TimelineText -Value (Get-PropertyValue -Object $Status -Name "message" -Default "")) `
+        -Details ([ordered]@{
+            stage = Convert-TimelineText -Value (Get-PropertyValue -Object $Status -Name "stage" -Default "")
+            error = Convert-TimelineText -Value (Get-PropertyValue -Object $Status -Name "error" -Default "")
+            itemCount = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $Status -Name "itemCount" -Default 0)
+            eventCount = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $Status -Name "eventCount" -Default 0)
+            completedAt = Convert-TimelineText -Value (Get-PropertyValue -Object $Status -Name "completedAt" -Default "")
+        })
     return $Status
 }
 
@@ -5923,10 +6095,22 @@ function Invoke-TimelineAudioVerbalizationExecution {
     $startedAt = [DateTimeOffset]::Now
 
     $status = Copy-TimelineAudioVerbalizationStatus -Status $InitialStatus
+    $operationId = Convert-TimelineText -Value (Get-PropertyValue -Object $status -Name "jobId" -Default "")
     $status["state"] = "running"
     $status["updatedAt"] = $startedAt.ToString("o")
     $status["message"] = "Audio verbalization is running."
     Update-TimelineAudioVerbalizationTiming -Status $status -StartedAt $startedAt -CompletedChunks 0 -TotalChunks $chunks.Count
+    Write-TimelineOperationEvent `
+        -OperationId $operationId `
+        -Kind "llm" `
+        -ProductName "Timeline" `
+        -Action "audio_verbalization" `
+        -State "running" `
+        -Message "Audio verbalization execution started." `
+        -Details ([ordered]@{
+            totalChunks = $chunks.Count
+            resultPath = $ResultPath
+        })
 
     foreach ($chunk in $chunks) {
         $chunkId = Convert-TimelineText -Value (Get-PropertyValue -Object $chunk -Name "chunkId" -Default "")
@@ -5938,6 +6122,18 @@ function Invoke-TimelineAudioVerbalizationExecution {
         $status["updatedAt"] = [DateTimeOffset]::Now.ToString("o")
         Update-TimelineAudioVerbalizationTiming -Status $status -StartedAt $startedAt -CompletedChunks $resultChunks.Count -TotalChunks $chunks.Count
         Write-TimelineAudioVerbalizationResultPayload -ResultPath $ResultPath -Status $status -Chunks $resultChunks -Turns $allTurns
+        Write-TimelineOperationEvent `
+            -OperationId $operationId `
+            -Kind "llm" `
+            -ProductName "Timeline" `
+            -Action "audio_verbalization_chunk" `
+            -State "running" `
+            -Message "Audio verbalization chunk started." `
+            -Details ([ordered]@{
+                chunkId = $chunkId
+                completedChunks = $resultChunks.Count
+                totalChunks = $chunks.Count
+            })
 
         $contextPath = Join-Path $contextDirectory "$chunkId.context.json"
         $summaryPath = Join-Path $contextDirectory "$chunkId.summary.json"
@@ -5998,6 +6194,19 @@ function Invoke-TimelineAudioVerbalizationExecution {
             $status["completedChunks"] = $resultChunks.Count
             $status["verbalizedTurns"] = $allTurns.Count
             Update-TimelineAudioVerbalizationTiming -Status $status -StartedAt $startedAt -CompletedChunks $resultChunks.Count -TotalChunks $chunks.Count
+            Write-TimelineOperationEvent `
+                -OperationId $operationId `
+                -Kind "llm" `
+                -ProductName "Timeline" `
+                -Action "audio_verbalization_chunk" `
+                -State "completed" `
+                -Message "Audio verbalization chunk completed." `
+                -Details ([ordered]@{
+                    chunkId = $chunkId
+                    completedChunks = $resultChunks.Count
+                    totalChunks = $chunks.Count
+                    turnCount = $verbalizedTurns.Count
+                })
         }
         catch {
             $failedChunk = [ordered]@{
@@ -6024,6 +6233,18 @@ function Invoke-TimelineAudioVerbalizationExecution {
             $status["message"] = $_.Exception.Message
             Update-TimelineAudioVerbalizationTiming -Status $status -StartedAt $startedAt -CompletedChunks $resultChunks.Count -TotalChunks $chunks.Count
             Write-TimelineAudioVerbalizationResultPayload -ResultPath $ResultPath -Status $status -Chunks $resultChunks -Turns $allTurns
+            Write-TimelineOperationEvent `
+                -OperationId $operationId `
+                -Kind "llm" `
+                -ProductName "Timeline" `
+                -Action "audio_verbalization_chunk" `
+                -State "failed" `
+                -Message $_.Exception.Message `
+                -Details ([ordered]@{
+                    chunkId = $chunkId
+                    completedChunks = $resultChunks.Count
+                    totalChunks = $chunks.Count
+                })
             return $status
         }
     }
@@ -6035,6 +6256,20 @@ function Invoke-TimelineAudioVerbalizationExecution {
     $status["estimatedRemainingSec"] = 0
     Update-TimelineAudioVerbalizationTiming -Status $status -StartedAt $startedAt -CompletedChunks $resultChunks.Count -TotalChunks $chunks.Count
     Write-TimelineAudioVerbalizationResultPayload -ResultPath $ResultPath -Status $status -Chunks $resultChunks -Turns $allTurns
+    Write-TimelineOperationEvent `
+        -OperationId $operationId `
+        -Kind "llm" `
+        -ProductName "Timeline" `
+        -Action "audio_verbalization" `
+        -State "completed" `
+        -Message "Audio verbalization completed." `
+        -DurationMs ([int]([DateTimeOffset]::Now - $startedAt).TotalMilliseconds) `
+        -Details ([ordered]@{
+            completedChunks = $resultChunks.Count
+            totalChunks = $chunks.Count
+            verbalizedTurns = $allTurns.Count
+            resultPath = $ResultPath
+        })
     return $status
 }
 
@@ -6061,6 +6296,18 @@ function Start-TimelineAudioVerbalizationWorker {
     if (-not (Test-Path -LiteralPath $workerScript -PathType Leaf)) {
         throw "Audio verbalization worker script was not found."
     }
+
+    Write-TimelineOperationEvent `
+        -OperationId $JobId `
+        -Kind "worker" `
+        -ProductName "Timeline" `
+        -Action "audio_verbalization" `
+        -State "starting" `
+        -Message "Audio verbalization worker process is starting." `
+        -Details ([ordered]@{
+            audioItemId = $AudioItemId
+            workerScript = $workerScript
+        })
 
     $arguments = @(
         "-NoLogo",
@@ -6098,6 +6345,17 @@ function Start-TimelineAudioVerbalizationWorker {
     }
 
     [System.Diagnostics.Process]::Start($startInfo) | Out-Null
+    Write-TimelineOperationEvent `
+        -OperationId $JobId `
+        -Kind "worker" `
+        -ProductName "Timeline" `
+        -Action "audio_verbalization" `
+        -State "queued" `
+        -Message "Audio verbalization worker process was started." `
+        -Details ([ordered]@{
+            audioItemId = $AudioItemId
+            workerScript = $workerScript
+        })
 }
 
 function Get-TimelineAudioVerbalizationStatusFromDetail {
@@ -6515,6 +6773,21 @@ function Start-TimelineAudioVerbalization {
         updatedAt = $now
         message = "Audio verbalization worker has been queued."
     }
+    Write-TimelineOperationEvent `
+        -OperationId $jobId `
+        -Kind "operation" `
+        -ProductName "Timeline" `
+        -Action "audio_verbalization" `
+        -State "queued" `
+        -Message "Audio verbalization was queued from the helper API." `
+        -Details ([ordered]@{
+            sourceId = $sourceId
+            relativePath = $relativePath
+            audioItemId = $audioItemId
+            totalChunks = $chunks.Count
+            totalTurns = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $status -Name "totalTurns" -Default 0)
+            resultPath = $resultPath
+        })
 
     Write-TimelineUtf8JsonFile -Path $resultPath -Payload ([ordered]@{
         schemaVersion = 1
@@ -6542,6 +6815,17 @@ function Start-TimelineAudioVerbalization {
         $plannedStatus["state"] = "failed"
         $plannedStatus["updatedAt"] = [DateTimeOffset]::Now.ToString("o")
         $plannedStatus["message"] = $_.Exception.Message
+        Write-TimelineOperationEvent `
+            -OperationId $jobId `
+            -Kind "worker" `
+            -ProductName "Timeline" `
+            -Action "audio_verbalization" `
+            -State "failed" `
+            -Message $_.Exception.Message `
+            -Details ([ordered]@{
+                audioItemId = $audioItemId
+                resultPath = $resultPath
+            })
         $existingChunks = @()
         try {
             $existingPayload = Get-Content -LiteralPath $resultPath -Raw -Encoding UTF8 | ConvertFrom-Json

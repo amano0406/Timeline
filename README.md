@@ -104,6 +104,30 @@ For the focused TimelineForAudio download path check, run:
 .\scripts\smoke-audio-ps1-download.ps1
 ```
 
+## Operation Logs
+
+Timeline keeps two levels of local logs:
+
+- The bottom-right CLI console is a short in-memory UI log for live feedback.
+- Persistent operation logs are written for incident review under:
+
+```text
+C:\TimelineData\Timeline\logs\operations\<operation-id>\
+```
+
+Each operation directory contains:
+
+```text
+events.jsonl
+summary.json
+```
+
+The operation ID connects a user-triggered action, worker state changes, CLI
+commands, LLM chunk processing, completion, and failure records. These logs are
+internal diagnostic data. They are not a substitute for the user-facing UI, but
+they should make it possible to inspect why an operation started, stalled,
+timed out, failed, or completed.
+
 ## Sub-product Operation Rules
 
 Timeline must operate sub-products through their public `cli.ps1` entry points.
