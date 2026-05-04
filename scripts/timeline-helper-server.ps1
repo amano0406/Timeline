@@ -29,6 +29,7 @@ $script:TimelineModelInventoryCacheAt = $null
 $script:TimelineConsoleLogEntries = [System.Collections.Generic.List[object]]::new()
 $script:TimelineConsoleLogNextId = [long]0
 $script:TimelineConsoleLogLimit = 300
+$script:TimelineCurrentOperationId = ""
 
 function ConvertTo-TimelineJson {
     param([Parameter(Mandatory = $true)][object]$Payload)
@@ -928,6 +929,7 @@ function Add-TimelineConsoleLog {
         [string]$ProductName = "",
         [string]$CommandLine = "",
         [string]$OperationId = "",
+        [string]$ParentOperationId = "",
         [Nullable[int]]$ExitCode = $null,
         [Nullable[int]]$DurationMs = $null,
         [string]$Stdout = "",
@@ -944,6 +946,7 @@ function Add-TimelineConsoleLog {
         productName = $ProductName
         commandLine = $CommandLine
         operationId = $OperationId
+        parentOperationId = $ParentOperationId
         exitCode = $ExitCode
         durationMs = $DurationMs
         stdout = Get-TimelineConsoleTextPreview -Text $Stdout
@@ -959,6 +962,7 @@ function Add-TimelineConsoleLog {
     if ($OperationId) {
         Write-TimelineOperationEvent `
             -OperationId $OperationId `
+            -ParentOperationId $ParentOperationId `
             -Kind $Kind `
             -ProductName $ProductName `
             -Action "cli" `
@@ -1004,6 +1008,61 @@ function Clear-TimelineConsoleLogs {
         entries = @()
         lastId = $script:TimelineConsoleLogNextId
         count = 0
+    }
+}
+
+function Invoke-TimelineWebOperation {
+    param(
+        [string]$ProductName = "Timeline",
+        [string]$Action = "web_operation",
+        [string]$Kind = "web",
+        [object]$Details = $null,
+        [Parameter(Mandatory = $true)][scriptblock]$ScriptBlock
+    )
+
+    $operationId = New-TimelineOperationId -Prefix "web"
+    $previousOperationId = $script:TimelineCurrentOperationId
+    $script:TimelineCurrentOperationId = $operationId
+    $startedAt = [DateTimeOffset]::Now
+    Write-TimelineOperationEvent `
+        -OperationId $operationId `
+        -Kind $Kind `
+        -ProductName $ProductName `
+        -Action $Action `
+        -State "started" `
+        -Message "Web operation started." `
+        -Details $Details
+
+    try {
+        $result = & $ScriptBlock
+        $durationMs = [int]([DateTimeOffset]::Now - $startedAt).TotalMilliseconds
+        Write-TimelineOperationEvent `
+            -OperationId $operationId `
+            -Kind $Kind `
+            -ProductName $ProductName `
+            -Action $Action `
+            -State "completed" `
+            -Message "Web operation completed." `
+            -DurationMs $durationMs `
+            -Details $Details
+        return $result
+    }
+    catch {
+        $durationMs = [int]([DateTimeOffset]::Now - $startedAt).TotalMilliseconds
+        Write-TimelineOperationEvent `
+            -OperationId $operationId `
+            -Kind $Kind `
+            -ProductName $ProductName `
+            -Action $Action `
+            -State "failed" `
+            -Message $_.Exception.Message `
+            -DurationMs $durationMs `
+            -Stderr $_.Exception.Message `
+            -Details $Details
+        throw
+    }
+    finally {
+        $script:TimelineCurrentOperationId = $previousOperationId
     }
 }
 
@@ -1164,12 +1223,17 @@ function Invoke-TimelineLoggedProcess {
         [int]$TimeoutSeconds = 25,
         [hashtable]$Environment = @{},
         [string]$ProductName = "",
-        [string]$OperationId = ""
+        [string]$OperationId = "",
+        [string]$ParentOperationId = ""
     )
 
     $operationId = Convert-TimelineText -Value $OperationId
     if (-not $operationId) {
         $operationId = New-TimelineOperationId -Prefix "cli"
+    }
+    $parentOperationId = Convert-TimelineText -Value $ParentOperationId
+    if (-not $parentOperationId) {
+        $parentOperationId = Convert-TimelineText -Value $script:TimelineCurrentOperationId
     }
     $commandLine = Join-TimelineCommandLine -FileName $FileName -Arguments $Arguments
     Add-TimelineConsoleLog `
@@ -1178,6 +1242,7 @@ function Invoke-TimelineLoggedProcess {
         -ProductName $ProductName `
         -CommandLine $commandLine `
         -OperationId $operationId `
+        -ParentOperationId $parentOperationId `
         -Message "CLI start."
 
     $startedAt = [DateTimeOffset]::Now
@@ -1199,6 +1264,7 @@ function Invoke-TimelineLoggedProcess {
             -ProductName $ProductName `
             -CommandLine $commandLine `
             -OperationId $operationId `
+            -ParentOperationId $parentOperationId `
             -ExitCode $exitCode `
             -DurationMs $durationMs `
             -Stdout ([string]$result.stdout) `
@@ -1214,6 +1280,7 @@ function Invoke-TimelineLoggedProcess {
             -ProductName $ProductName `
             -CommandLine $commandLine `
             -OperationId $operationId `
+            -ParentOperationId $parentOperationId `
             -DurationMs $durationMs `
             -Stderr $_.Exception.Message `
             -Message "CLI execution error."
@@ -7700,7 +7767,7 @@ try {
             }
 
             if ($method -eq "POST" -and $uri.AbsolutePath -eq "/timeline/console/clear") {
-                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Clear-TimelineConsoleLogs))
+                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Invoke-TimelineWebOperation -ProductName "Timeline" -Action "console_clear" -ScriptBlock { Clear-TimelineConsoleLogs }))
                 continue
             }
 
@@ -7710,7 +7777,7 @@ try {
             }
 
             if ($method -eq "POST" -and $uri.AbsolutePath -eq "/timeline/rebuild") {
-                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Start-TimelineStoreRebuildWorker))
+                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Invoke-TimelineWebOperation -ProductName "Timeline" -Action "timeline_rebuild_start" -Kind "worker" -ScriptBlock { Start-TimelineStoreRebuildWorker }))
                 continue
             }
 
@@ -7753,12 +7820,12 @@ try {
 
             if ($method -eq "POST" -and $uri.AbsolutePath -eq "/timeline/audio-verbalization/start") {
                 $payload = if ([string]$request.Body) { $request.Body | ConvertFrom-Json } else { @{} }
-                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Start-TimelineAudioVerbalization -Request $payload))
+                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Invoke-TimelineWebOperation -ProductName "Timeline" -Action "audio_verbalization_start" -Kind "worker" -ScriptBlock { Start-TimelineAudioVerbalization -Request $payload }))
                 continue
             }
 
             if ($method -eq "POST" -and $uri.AbsolutePath -eq "/timeline/export/download") {
-                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (New-TimelineStoreDownload))
+                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Invoke-TimelineWebOperation -ProductName "Timeline" -Action "timeline_export_download" -ScriptBlock { New-TimelineStoreDownload }))
                 continue
             }
 
@@ -7800,7 +7867,7 @@ try {
             }
 
             if ($method -eq "GET" -and $uri.AbsolutePath -eq "/products/audio/overview") {
-                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Get-TimelineAudioOverview))
+                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Invoke-TimelineWebOperation -ProductName "TimelineForAudio" -Action "audio_overview" -ScriptBlock { Get-TimelineAudioOverview }))
                 continue
             }
 
@@ -7812,25 +7879,25 @@ try {
             if ($method -eq "POST" -and $uri.AbsolutePath -like "/products/runtime/*/start") {
                 $segments = @($uri.AbsolutePath.Trim("/") -split "/")
                 $productId = [System.Uri]::UnescapeDataString([string]$segments[2])
-                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Invoke-TimelineProductStart -ProductId $productId))
+                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Invoke-TimelineWebOperation -ProductName "Timeline" -Action "product_start" -ScriptBlock { Invoke-TimelineProductStart -ProductId $productId }))
                 continue
             }
 
             if ($method -eq "POST" -and $uri.AbsolutePath -like "/products/runtime/*/restart") {
                 $segments = @($uri.AbsolutePath.Trim("/") -split "/")
                 $productId = [System.Uri]::UnescapeDataString([string]$segments[2])
-                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Invoke-TimelineProductStart -ProductId $productId -Restart))
+                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Invoke-TimelineWebOperation -ProductName "Timeline" -Action "product_restart" -ScriptBlock { Invoke-TimelineProductStart -ProductId $productId -Restart }))
                 continue
             }
 
             if ($method -eq "GET" -and $uri.AbsolutePath -eq "/products/windows-codex/overview") {
-                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Get-TimelineWindowsCodexOverview))
+                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Invoke-TimelineWebOperation -ProductName "TimelineForWindowsCodex" -Action "windows_codex_overview" -ScriptBlock { Get-TimelineWindowsCodexOverview }))
                 continue
             }
 
             if ($method -eq "GET" -and $uri.AbsolutePath -eq "/products/windows-codex/items") {
                 $query = [System.Web.HttpUtility]::ParseQueryString($uri.Query)
-                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Get-TimelineWindowsCodexThreads -Page (Get-TimelineRequestPage -Query $query) -PageSize (Get-TimelineRequestPageSize -Query $query)))
+                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Invoke-TimelineWebOperation -ProductName "TimelineForWindowsCodex" -Action "windows_codex_items_list" -ScriptBlock { Get-TimelineWindowsCodexThreads -Page (Get-TimelineRequestPage -Query $query) -PageSize (Get-TimelineRequestPageSize -Query $query) }))
                 continue
             }
 
@@ -7842,36 +7909,36 @@ try {
             }
 
             if ($method -eq "POST" -and $uri.AbsolutePath -eq "/products/windows-codex/refresh") {
-                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Start-TimelineWindowsCodexRefresh))
+                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Invoke-TimelineWebOperation -ProductName "TimelineForWindowsCodex" -Action "windows_codex_refresh" -ScriptBlock { Start-TimelineWindowsCodexRefresh }))
                 continue
             }
 
             if ($method -eq "POST" -and $uri.AbsolutePath -eq "/products/windows-codex/items/download") {
                 $payload = if ([string]$request.Body) { $request.Body | ConvertFrom-Json } else { @{} }
-                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Start-TimelineWindowsCodexDownload -Request $payload))
+                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Invoke-TimelineWebOperation -ProductName "TimelineForWindowsCodex" -Action "windows_codex_items_download" -ScriptBlock { Start-TimelineWindowsCodexDownload -Request $payload }))
                 continue
             }
 
             if ($method -eq "POST" -and $uri.AbsolutePath -eq "/products/windows-codex/items/delete-generated") {
                 $payload = if ([string]$request.Body) { $request.Body | ConvertFrom-Json } else { @{} }
-                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Remove-TimelineWindowsCodexItems -Request $payload))
+                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Invoke-TimelineWebOperation -ProductName "TimelineForWindowsCodex" -Action "windows_codex_items_delete_generated" -ScriptBlock { Remove-TimelineWindowsCodexItems -Request $payload }))
                 continue
             }
 
             if ($method -eq "POST" -and $uri.AbsolutePath -eq "/products/windows-codex/settings") {
                 $payload = if ([string]$request.Body) { $request.Body | ConvertFrom-Json } else { @{} }
-                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Write-TimelineWindowsCodexSettings -Request $payload))
+                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Invoke-TimelineWebOperation -ProductName "TimelineForWindowsCodex" -Action "windows_codex_settings_save" -ScriptBlock { Write-TimelineWindowsCodexSettings -Request $payload }))
                 continue
             }
 
             if ($method -eq "GET" -and $uri.AbsolutePath -eq "/products/chatgpt/overview") {
-                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Get-TimelineChatGptOverview))
+                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Invoke-TimelineWebOperation -ProductName "TimelineForChatGPT" -Action "chatgpt_overview" -ScriptBlock { Get-TimelineChatGptOverview }))
                 continue
             }
 
             if ($method -eq "GET" -and $uri.AbsolutePath -eq "/products/chatgpt/items") {
                 $query = [System.Web.HttpUtility]::ParseQueryString($uri.Query)
-                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Get-TimelineChatGptThreads -Page (Get-TimelineRequestPage -Query $query) -PageSize (Get-TimelineRequestPageSize -Query $query)))
+                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Invoke-TimelineWebOperation -ProductName "TimelineForChatGPT" -Action "chatgpt_items_list" -ScriptBlock { Get-TimelineChatGptThreads -Page (Get-TimelineRequestPage -Query $query) -PageSize (Get-TimelineRequestPageSize -Query $query) }))
                 continue
             }
 
@@ -7884,78 +7951,78 @@ try {
 
             if ($method -eq "POST" -and $uri.AbsolutePath -eq "/products/chatgpt/refresh") {
                 $payload = if ([string]$request.Body) { $request.Body | ConvertFrom-Json } else { @{} }
-                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Start-TimelineChatGptRefresh -Request $payload))
+                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Invoke-TimelineWebOperation -ProductName "TimelineForChatGPT" -Action "chatgpt_refresh" -ScriptBlock { Start-TimelineChatGptRefresh -Request $payload }))
                 continue
             }
 
             if ($method -eq "POST" -and $uri.AbsolutePath -eq "/products/chatgpt/items/download") {
                 $payload = if ([string]$request.Body) { $request.Body | ConvertFrom-Json } else { @{} }
-                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Start-TimelineChatGptDownload -Request $payload))
+                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Invoke-TimelineWebOperation -ProductName "TimelineForChatGPT" -Action "chatgpt_items_download" -ScriptBlock { Start-TimelineChatGptDownload -Request $payload }))
                 continue
             }
 
             if ($method -eq "POST" -and $uri.AbsolutePath -eq "/products/chatgpt/items/delete-generated") {
                 $payload = if ([string]$request.Body) { $request.Body | ConvertFrom-Json } else { @{} }
-                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Remove-TimelineChatGptItems -Request $payload))
+                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Invoke-TimelineWebOperation -ProductName "TimelineForChatGPT" -Action "chatgpt_items_delete_generated" -ScriptBlock { Remove-TimelineChatGptItems -Request $payload }))
                 continue
             }
 
             if ($method -eq "POST" -and $uri.AbsolutePath -eq "/products/chatgpt/settings") {
                 $payload = if ([string]$request.Body) { $request.Body | ConvertFrom-Json } else { @{} }
-                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Write-TimelineChatGptSettings -Request $payload))
+                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Invoke-TimelineWebOperation -ProductName "TimelineForChatGPT" -Action "chatgpt_settings_save" -ScriptBlock { Write-TimelineChatGptSettings -Request $payload }))
                 continue
             }
 
             if ($method -eq "GET" -and $uri.AbsolutePath -eq "/products/image/overview") {
-                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Get-TimelineImageOverview))
+                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Invoke-TimelineWebOperation -ProductName "TimelineForImage" -Action "image_overview" -ScriptBlock { Get-TimelineImageOverview }))
                 continue
             }
 
             if ($method -eq "GET" -and $uri.AbsolutePath -eq "/products/image/items") {
                 $query = [System.Web.HttpUtility]::ParseQueryString($uri.Query)
-                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Get-TimelineImageItems -Page (Get-TimelineRequestPage -Query $query) -PageSize (Get-TimelineRequestPageSize -Query $query)))
+                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Invoke-TimelineWebOperation -ProductName "TimelineForImage" -Action "image_items_list" -ScriptBlock { Get-TimelineImageItems -Page (Get-TimelineRequestPage -Query $query) -PageSize (Get-TimelineRequestPageSize -Query $query) }))
                 continue
             }
 
             if ($method -eq "GET" -and $uri.AbsolutePath -eq "/products/image/files") {
                 $query = [System.Web.HttpUtility]::ParseQueryString($uri.Query)
-                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Get-TimelineImageFiles -Page (Get-TimelineRequestPage -Query $query) -PageSize (Get-TimelineRequestPageSize -Query $query)))
+                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Invoke-TimelineWebOperation -ProductName "TimelineForImage" -Action "image_files_list" -ScriptBlock { Get-TimelineImageFiles -Page (Get-TimelineRequestPage -Query $query) -PageSize (Get-TimelineRequestPageSize -Query $query) }))
                 continue
             }
 
             if ($method -eq "POST" -and $uri.AbsolutePath -eq "/products/image/refresh") {
                 $payload = if ([string]$request.Body) { $request.Body | ConvertFrom-Json } else { @{} }
-                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Start-TimelineImageRefresh -Request $payload))
+                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Invoke-TimelineWebOperation -ProductName "TimelineForImage" -Action "image_refresh" -ScriptBlock { Start-TimelineImageRefresh -Request $payload }))
                 continue
             }
 
             if ($method -eq "POST" -and $uri.AbsolutePath -eq "/products/image/items/download") {
                 $payload = if ([string]$request.Body) { $request.Body | ConvertFrom-Json } else { @{} }
-                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Start-TimelineImageDownload -Request $payload))
+                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Invoke-TimelineWebOperation -ProductName "TimelineForImage" -Action "image_items_download" -ScriptBlock { Start-TimelineImageDownload -Request $payload }))
                 continue
             }
 
             if ($method -eq "POST" -and $uri.AbsolutePath -eq "/products/image/items/delete-generated") {
                 $payload = if ([string]$request.Body) { $request.Body | ConvertFrom-Json } else { @{} }
-                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Remove-TimelineImageItems -Request $payload))
+                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Invoke-TimelineWebOperation -ProductName "TimelineForImage" -Action "image_items_delete_generated" -ScriptBlock { Remove-TimelineImageItems -Request $payload }))
                 continue
             }
 
             if ($method -eq "POST" -and $uri.AbsolutePath -eq "/products/image/settings") {
                 $payload = if ([string]$request.Body) { $request.Body | ConvertFrom-Json } else { @{} }
-                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Write-TimelineImageSettings -Request $payload))
+                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Invoke-TimelineWebOperation -ProductName "TimelineForImage" -Action "image_settings_save" -ScriptBlock { Write-TimelineImageSettings -Request $payload }))
                 continue
             }
 
             if ($method -eq "GET" -and $uri.AbsolutePath -eq "/products/audio/files") {
                 $query = [System.Web.HttpUtility]::ParseQueryString($uri.Query)
-                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Get-TimelineAudioFiles -Page (Get-TimelineRequestPage -Query $query) -PageSize (Get-TimelineRequestPageSize -Query $query)))
+                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Invoke-TimelineWebOperation -ProductName "TimelineForAudio" -Action "audio_files_list" -ScriptBlock { Get-TimelineAudioFiles -Page (Get-TimelineRequestPage -Query $query) -PageSize (Get-TimelineRequestPageSize -Query $query) }))
                 continue
             }
 
             if ($method -eq "GET" -and $uri.AbsolutePath -eq "/products/audio/files/detail") {
                 $query = [System.Web.HttpUtility]::ParseQueryString($uri.Query)
-                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Get-TimelineAudioFileDetail -SourceId ([string]$query["sourceId"]) -RelativePath ([string]$query["path"])))
+                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Invoke-TimelineWebOperation -ProductName "TimelineForAudio" -Action "audio_file_detail" -ScriptBlock { Get-TimelineAudioFileDetail -SourceId ([string]$query["sourceId"]) -RelativePath ([string]$query["path"]) }))
                 continue
             }
 
@@ -7973,31 +8040,31 @@ try {
             }
 
             if ($method -eq "GET" -and $uri.AbsolutePath -eq "/products/audio/models") {
-                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Get-TimelineAudioModels))
+                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Invoke-TimelineWebOperation -ProductName "TimelineForAudio" -Action "audio_models" -ScriptBlock { Get-TimelineAudioModels }))
                 continue
             }
 
             if ($method -eq "POST" -and $uri.AbsolutePath -eq "/products/audio/files/delete-generated") {
                 $payload = if ([string]$request.Body) { $request.Body | ConvertFrom-Json } else { @{} }
-                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Remove-TimelineAudioGeneratedArtifacts -Request $payload))
+                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Invoke-TimelineWebOperation -ProductName "TimelineForAudio" -Action "audio_files_delete_generated" -ScriptBlock { Remove-TimelineAudioGeneratedArtifacts -Request $payload }))
                 continue
             }
 
             if ($method -eq "POST" -and $uri.AbsolutePath -eq "/products/audio/refresh") {
                 $payload = if ([string]$request.Body) { $request.Body | ConvertFrom-Json } else { @{} }
-                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Start-TimelineAudioRefresh -Request $payload))
+                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Invoke-TimelineWebOperation -ProductName "TimelineForAudio" -Action "audio_refresh" -ScriptBlock { Start-TimelineAudioRefresh -Request $payload }))
                 continue
             }
 
             if ($method -eq "POST" -and $uri.AbsolutePath -eq "/products/audio/items/download") {
                 $payload = if ([string]$request.Body) { $request.Body | ConvertFrom-Json } else { @{} }
-                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (New-TimelineAudioItemsDownload -Request $payload))
+                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Invoke-TimelineWebOperation -ProductName "TimelineForAudio" -Action "audio_items_download" -ScriptBlock { New-TimelineAudioItemsDownload -Request $payload }))
                 continue
             }
 
             if ($method -eq "POST" -and $uri.AbsolutePath -eq "/products/audio/settings") {
                 $payload = if ([string]$request.Body) { $request.Body | ConvertFrom-Json } else { @{} }
-                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Write-TimelineAudioSettings -Request $payload))
+                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Invoke-TimelineWebOperation -ProductName "TimelineForAudio" -Action "audio_settings_save" -ScriptBlock { Write-TimelineAudioSettings -Request $payload }))
                 continue
             }
 

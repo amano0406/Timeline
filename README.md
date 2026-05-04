@@ -122,11 +122,19 @@ events.jsonl
 summary.json
 ```
 
-The operation ID connects a user-triggered action, worker state changes, CLI
-commands, LLM chunk processing, completion, and failure records. These logs are
-internal diagnostic data. They are not a substitute for the user-facing UI, but
-they should make it possible to inspect why an operation started, stalled,
-timed out, failed, or completed.
+Web actions create parent operation records. CLI calls launched while handling
+that Web action create child records with `parentOperationId`, so an incident
+can be traced from the button/API operation to the product `cli.ps1` command,
+exit code, stdout/stderr tail, and worker state changes. LLM chunk processing
+also writes operation events. These logs are internal diagnostic data. They are
+not a substitute for the user-facing UI, but they should make it possible to
+inspect why an operation started, stalled, timed out, failed, or completed.
+
+The Web operation checklist is kept in:
+
+```text
+docs\operation-log-web-test-checklist.md
+```
 
 ## Sub-product Operation Rules
 
