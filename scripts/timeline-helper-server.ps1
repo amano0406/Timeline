@@ -3022,10 +3022,7 @@ function Start-TimelineImageDownload {
         -ProductId "image" `
         -RequestedPath (Convert-TimelineText -Value (Get-PropertyValueAny -Object $Request -Names @("destinationPath", "downloadPath", "to") -Default ""))
     $args = @("items", "download")
-    if ($itemIds.Count -eq 0) {
-        $args += "--all"
-    }
-    else {
+    if ($itemIds.Count -gt 0) {
         foreach ($itemId in $itemIds) {
             $args += @("--item-id", $itemId)
         }

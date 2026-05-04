@@ -417,7 +417,7 @@ $imageSettings = Test-JsonCommand -Product "TimelineForImage" -ProductPath $Imag
 $imageFiles = Test-JsonCommand -Product "TimelineForImage" -ProductPath $ImageProductPath -Check "files list paging" -CliArgs @("--json", "files", "list", "--page", "1", "--page-size", "1") -RequiredProperties @("count", "files")
 $imageItems = Test-JsonCommand -Product "TimelineForImage" -ProductPath $ImageProductPath -Check "items list paging" -CliArgs @("--json", "items", "list", "--page", "1", "--page-size", "1") -RequiredProperties @("count", "items")
 $imageTo = New-DownloadDirectory -Product "image"
-Test-DownloadCommand -Product "TimelineForImage" -ProductPath $ImageProductPath -CliArgs @("--json", "items", "download", "--all", "--to", $imageTo, "--overwrite") -ItemsPayload $imageItems
+Test-DownloadCommand -Product "TimelineForImage" -ProductPath $ImageProductPath -CliArgs @("--json", "items", "download", "--to", $imageTo, "--overwrite") -ItemsPayload $imageItems
 
 if ($script:Failures.Count -gt 0) {
     Write-Host ""
