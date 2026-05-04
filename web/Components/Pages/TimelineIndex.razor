@@ -1,0 +1,560 @@
+@page "/timeline"
+@inject TimelineHelperClient Timeline
+@inject IJSRuntime Js
+
+<PageTitle>時間軸 - Timeline</PageTitle>
+
+<div class="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+    <div>
+        <h1 class="tfa-title flex items-center gap-2">
+            <FaIcon Name="timeline" Class="tfa-icon text-accent" />
+            <span>時間軸</span>
+        </h1>
+    </div>
+    <div class="flex flex-wrap gap-2">
+        <button class="tfa-button-secondary gap-2" @onclick="LoadAsync" disabled="@Busy">
+            <FaIcon Name="rotate" Class="@($"tfa-icon {(_loading ? "fa-spin" : "")}")" />
+            <span>一覧更新</span>
+        </button>
+        <button class="tfa-button-primary gap-2" @onclick="RebuildAsync" disabled="@Busy">
+            <FaIcon Name="@(_rebuilding ? "spinner" : "arrows-rotate")" Class="@($"tfa-icon {(_rebuilding ? "fa-spin" : "")}")" />
+            <span>@(_rebuilding ? "再構築中" : "時間軸を再構築")</span>
+        </button>
+        <button class="tfa-button-secondary gap-2" @onclick="DownloadAsync" disabled="@(!CanDownload || Busy)">
+            <FaIcon Name="@(_downloading ? "spinner" : "download")" Class="@($"tfa-icon {(_downloading ? "fa-spin" : "")}")" />
+            <span>@(_downloading ? "作成中" : "ダウンロード")</span>
+        </button>
+    </div>
+</div>
+
+@if (_error is not null)
+{
+    <div class="tfa-alert-danger mb-5 flex items-start gap-2">
+        <FaIcon Name="triangle-exclamation" Class="tfa-icon mt-0.5" />
+        <span>@_error</span>
+    </div>
+}
+
+@if (_operationMessage is not null)
+{
+    <div class="tfa-alert-info mb-5 flex items-start gap-2">
+        <FaIcon Name="circle-info" Class="tfa-icon mt-0.5" />
+        <span>@_operationMessage</span>
+    </div>
+}
+
+@if (_loading && _overview is null)
+{
+    <section class="tfa-card tfa-card-pad flex items-center gap-3">
+        <FaIcon Name="spinner" Class="tfa-icon fa-spin text-accent" />
+        <span class="text-sm text-slate-600">読み込み中</span>
+    </section>
+}
+else
+{
+    <div class="grid gap-4 md:grid-cols-4">
+        <section class="tfa-card tfa-card-pad">
+            <div class="flex items-start justify-between gap-3">
+                <div>
+                    <div class="tfa-kicker">イベント数</div>
+                    <div class="mt-2 text-2xl font-semibold text-slate-900">@EventCountLabel</div>
+                </div>
+                <span class="tfa-icon-box text-teal-700">
+                    <FaIcon Name="stream" Class="tfa-icon" />
+                </span>
+            </div>
+        </section>
+
+        <section class="tfa-card tfa-card-pad">
+            <div class="flex items-start justify-between gap-3">
+                <div>
+                    <div class="tfa-kicker">対象データ</div>
+                    <div class="mt-2 text-2xl font-semibold text-slate-900">@ItemCountLabel</div>
+                </div>
+                <span class="tfa-icon-box text-slate-700">
+                    <FaIcon Name="database" Class="tfa-icon" />
+                </span>
+            </div>
+        </section>
+
+        <section class="tfa-card tfa-card-pad">
+            <div class="flex items-start justify-between gap-3">
+                <div>
+                    <div class="tfa-kicker">プロダクト</div>
+                    <div class="mt-2 text-2xl font-semibold text-slate-900">@ProductCountLabel</div>
+                </div>
+                <span class="tfa-icon-box text-sky-800">
+                    <FaIcon Name="boxes-stacked" Class="tfa-icon" />
+                </span>
+            </div>
+        </section>
+
+        <section class="tfa-card tfa-card-pad">
+            <div class="flex items-start justify-between gap-3">
+                <div class="min-w-0">
+                    <div class="tfa-kicker">最終更新</div>
+                    <div class="mt-2 break-all text-lg font-semibold text-slate-900">@LastUpdatedLabel</div>
+                </div>
+                <span class="@($"tfa-icon-box {StoreStatusIconClass}")">
+                    <FaIcon Name="@StoreStatusIcon" Class="tfa-icon" />
+                </span>
+            </div>
+        </section>
+    </div>
+
+    <section class="tfa-card tfa-card-pad mt-5">
+        <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div class="min-w-0">
+                <h2 class="flex items-center gap-2 text-lg font-semibold text-slate-900">
+                    <FaIcon Name="server" Class="tfa-icon text-accent" />
+                    <span>バックグラウンド状態</span>
+                </h2>
+                <div class="mt-2 flex flex-wrap items-center gap-2 text-sm text-slate-600">
+                    <span class="@DockerWorkerStatusPillClass">
+                        <FaIcon Name="@DockerWorkerStatusIcon" Class="tfa-icon !h-3 !w-3" />
+                        <span>@DockerWorkerStatusLabel</span>
+                    </span>
+                    <span>最終確認: @DockerWorkerUpdatedLabel</span>
+                    <span>ストア: @DockerWorkerStoreLabel</span>
+                </div>
+                @if (!string.IsNullOrWhiteSpace(_dockerWorkerStatus?.Message))
+                {
+                    <div class="mt-2 text-sm text-slate-600">@_dockerWorkerStatus.Message</div>
+                }
+            </div>
+            <div class="grid min-w-72 grid-cols-2 gap-3 text-sm">
+                <div class="rounded-md border border-line bg-slate-50 p-3">
+                    <div class="tfa-kicker">項目</div>
+                    <div class="mt-1 text-lg font-semibold text-slate-900">@DockerWorkerItemCountLabel</div>
+                </div>
+                <div class="rounded-md border border-line bg-slate-50 p-3">
+                    <div class="tfa-kicker">イベント</div>
+                    <div class="mt-1 text-lg font-semibold text-slate-900">@DockerWorkerEventCountLabel</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    @if (_overview?.Available != true)
+    {
+        <section class="tfa-card tfa-card-pad mt-5">
+            <div class="flex items-start gap-3">
+                <span class="tfa-icon-box text-slate-700">
+                    <FaIcon Name="timeline" Class="tfa-icon" />
+                </span>
+                <div>
+                    <h2 class="text-lg font-semibold text-slate-900">時間軸はまだ作成されていません</h2>
+                    <p class="mt-2 text-sm text-slate-600">@StoreMessage</p>
+                </div>
+            </div>
+        </section>
+    }
+    else
+    {
+        <section class="tfa-card mt-5 overflow-hidden">
+            <div class="tfa-card-pad flex flex-col gap-3 border-b border-line sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                    <h2 class="flex items-center gap-2 text-lg font-semibold">
+                        <FaIcon Name="list-ul" Class="tfa-icon text-accent" />
+                        <span>時間軸一覧</span>
+                    </h2>
+                    <div class="mt-1 text-sm text-slate-600">@ListRangeLabel</div>
+                </div>
+            </div>
+
+            @if (_events.Count == 0)
+            {
+                <div class="p-6 text-sm text-slate-600">表示できるイベントがありません。</div>
+            }
+            else
+            {
+                <div class="overflow-x-auto">
+                    <table class="tfa-table">
+                        <thead>
+                            <tr>
+                                <th>日時</th>
+                                <th>プロダクト</th>
+                                <th>種類</th>
+                                <th>対象</th>
+                                <th>内容</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var row in _events)
+                            {
+                                <tr>
+                                    <td class="whitespace-nowrap">@EventTimeLabel(row)</td>
+                                    <td>
+                                        <span class="@ProductPillClass(row.Product)">
+                                            <FaIcon Name="@ProductIcon(row.Product)" Class="tfa-icon !h-3 !w-3" />
+                                            <span>@row.ProductName</span>
+                                        </span>
+                                    </td>
+                                    <td>@EventTypeLabel(row.EventType)</td>
+                                    <td>
+                                        <div class="font-medium text-slate-900">@ActorLabel(row)</div>
+                                        <div class="mt-1 break-all text-xs text-slate-500">@row.ItemId</div>
+                                    </td>
+                                    <td>
+                                        <div class="max-w-5xl text-sm text-slate-800" style="white-space: pre-wrap; overflow-wrap: anywhere;">@ContentPreview(row.ContentValue)</div>
+                                        @if (!string.IsNullOrWhiteSpace(row.ContentKind))
+                                        {
+                                            <div class="mt-1 text-xs text-slate-500">@ContentKindLabel(row.ContentKind)</div>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+
+                @if (_pagination?.HasNext == true)
+                {
+                    <div class="border-t border-line p-4">
+                        <button class="tfa-button-secondary gap-2" @onclick="LoadNextPageAsync" disabled="@_loadingMore">
+                            <FaIcon Name="@(_loadingMore ? "spinner" : "angles-down")" Class="@($"tfa-icon {(_loadingMore ? "fa-spin" : "")}")" />
+                            <span>さらに表示</span>
+                        </button>
+                    </div>
+                }
+            }
+        </section>
+    }
+}
+
+@code {
+    private const int PageSize = 100;
+    private TimelineStoreOverview? _overview;
+    private TimelinePagination? _pagination;
+    private TimelineDockerWorkerStatus? _dockerWorkerStatus;
+    private readonly List<TimelineEventRow> _events = [];
+    private int _page = 1;
+    private bool _loading = true;
+    private bool _loadingMore;
+    private bool _rebuilding;
+    private bool _downloading;
+    private string? _error;
+    private string? _operationMessage;
+    private TimelineWorkerJobStatus? _workerStatus;
+
+    private bool Busy => _loading || _loadingMore || _rebuilding || _downloading;
+    private bool CanDownload => _overview?.Available == true;
+    private string EventCountLabel => _overview?.Available == true ? $"{_overview.EventCount:N0} 件" : "-";
+    private string ItemCountLabel => _overview?.Available == true ? $"{_overview.ItemCount:N0} 件" : "-";
+    private string ProductCountLabel => _overview?.Available == true ? $"{_overview.ProductCount:N0} 件" : "-";
+    private string LastUpdatedLabel => _overview?.Available == true ? UiFormat.ShortDate(_overview.CreatedAt) : "-";
+    private string StoreMessage => _overview?.Available == true
+        ? ""
+        : "時間軸を再構築すると一覧に表示されます。";
+    private string StoreStatusIcon => _overview?.Available == true ? "circle-check" : "circle-minus";
+    private string StoreStatusIconClass => _overview?.Available == true ? "text-teal-700" : "text-slate-500";
+    private string ListRangeLabel => _pagination is null || _pagination.ReturnedItems == 0
+        ? "0 件"
+        : $"{_pagination.RangeStart:N0} - {_pagination.RangeEnd:N0} / {_pagination.TotalItems:N0} 件";
+    private string DockerWorkerStatusLabel => _dockerWorkerStatus switch
+    {
+        { Available: true, State: "running" } => "稼働中",
+        { Available: true, State: "stopping" } => "停止中",
+        { Available: true, State: "stopped" } => "停止",
+        { Available: false, State: "missing" } => "未確認",
+        { State.Length: > 0 } => _dockerWorkerStatus.State,
+        _ => "未確認",
+    };
+    private string DockerWorkerStatusIcon => _dockerWorkerStatus?.Available == true && _dockerWorkerStatus.State == "running"
+        ? "circle-check"
+        : "circle-minus";
+    private string DockerWorkerStatusPillClass => _dockerWorkerStatus?.Available == true && _dockerWorkerStatus.State == "running"
+        ? "tfa-status-pill border-teal-200 bg-teal-50 text-teal-800"
+        : "tfa-status-pill border-slate-200 bg-slate-50 text-slate-700";
+    private string DockerWorkerUpdatedLabel => string.IsNullOrWhiteSpace(_dockerWorkerStatus?.UpdatedAt)
+        ? "-"
+        : UiFormat.ShortDate(_dockerWorkerStatus.UpdatedAt);
+    private string DockerWorkerStoreLabel => _dockerWorkerStatus?.StoreAvailable == true ? "利用可能" : "未確認";
+    private string DockerWorkerItemCountLabel => _dockerWorkerStatus?.Available == true ? $"{_dockerWorkerStatus.ItemCount:N0} 件" : "-";
+    private string DockerWorkerEventCountLabel => _dockerWorkerStatus?.Available == true ? $"{_dockerWorkerStatus.EventCount:N0} 件" : "-";
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _error = null;
+        _operationMessage = null;
+        try
+        {
+            var overviewTask = Timeline.GetTimelineStoreOverviewAsync();
+            var workerTask = Timeline.GetTimelineWorkerStatusAsync();
+            await Task.WhenAll(overviewTask, workerTask);
+            _overview = await overviewTask;
+            _dockerWorkerStatus = await workerTask;
+            _events.Clear();
+            _page = 1;
+            if (_overview.Available)
+            {
+                await LoadEventPageAsync(reset: true);
+            }
+            else if (!string.IsNullOrWhiteSpace(_overview.Message))
+            {
+                _operationMessage = "時間軸はまだ作成されていません。";
+            }
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task RebuildAsync()
+    {
+        _rebuilding = true;
+        _error = null;
+        _operationMessage = "各プロダクトの CLI からデータを取得し、Timeline の時間軸を作成しています。";
+        try
+        {
+            _workerStatus = await Timeline.RebuildTimelineStoreAsync();
+            _operationMessage = WorkerStatusLabel(_workerStatus);
+            while (IsWorkerActive(_workerStatus))
+            {
+                await Task.Delay(TimeSpan.FromSeconds(2));
+                _workerStatus = await Timeline.GetTimelineRebuildStatusAsync(_workerStatus.JobId);
+                _operationMessage = WorkerStatusLabel(_workerStatus);
+                await InvokeAsync(StateHasChanged);
+            }
+
+            if (string.Equals(_workerStatus.State, "failed", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException(string.IsNullOrWhiteSpace(_workerStatus.Error)
+                    ? "時間軸の再構築に失敗しました。"
+                    : _workerStatus.Error);
+            }
+
+            var itemCount = _workerStatus.Result?.ItemCount ?? _workerStatus.ItemCount;
+            var eventCount = _workerStatus.Result?.EventCount ?? _workerStatus.EventCount;
+            _operationMessage = $"時間軸を作成しました。{itemCount:N0} 件 / {eventCount:N0} イベント";
+            _overview = await Timeline.GetTimelineStoreOverviewAsync();
+            _events.Clear();
+            _page = 1;
+            if (_overview.Available)
+            {
+                await LoadEventPageAsync(reset: true);
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _rebuilding = false;
+        }
+    }
+
+    private static bool IsWorkerActive(TimelineWorkerJobStatus? status)
+    {
+        var state = status?.State ?? "";
+        return string.Equals(state, "queued", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(state, "running", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string WorkerStatusLabel(TimelineWorkerJobStatus? status)
+    {
+        if (status is null)
+        {
+            return "時間軸再構築を開始しています。";
+        }
+
+        var state = status.State switch
+        {
+            "queued" => "待機中",
+            "running" => "処理中",
+            "completed" => "完了",
+            "failed" => "失敗",
+            _ => status.State,
+        };
+        var message = status.Stage switch
+        {
+            "queued" => "開始待ちです。",
+            "collecting" => "各プロダクトの CLI からデータを取得しています。",
+            "completed" => "時間軸の作成が完了しました。",
+            "failed" => "時間軸の作成に失敗しました。",
+            _ => "時間軸を再構築しています。",
+        };
+        return $"{state}: {message}";
+    }
+
+    private async Task LoadNextPageAsync()
+    {
+        if (_pagination?.HasNext != true)
+        {
+            return;
+        }
+
+        _loadingMore = true;
+        _error = null;
+        try
+        {
+            _page += 1;
+            await LoadEventPageAsync(reset: false);
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+            _page = Math.Max(1, _page - 1);
+        }
+        finally
+        {
+            _loadingMore = false;
+        }
+    }
+
+    private async Task LoadEventPageAsync(bool reset)
+    {
+        var result = await Timeline.GetTimelineEventsAsync(_page, PageSize);
+        _pagination = result.Pagination;
+        if (!string.IsNullOrWhiteSpace(result.Message))
+        {
+            _operationMessage = result.Message;
+        }
+        if (reset)
+        {
+            _events.Clear();
+        }
+        _events.AddRange(result.Events);
+    }
+
+    private async Task DownloadAsync()
+    {
+        var suggestedName = $"Timeline-store-{DateTime.Now:yyyyMMdd-HHmmss}.zip";
+        var save = await Js.InvokeAsync<BrowserSaveHandle>("timelineDownload.beginSave", suggestedName);
+        if (!save.Accepted)
+        {
+            if (!string.IsNullOrWhiteSpace(save.Message))
+            {
+                _error = save.Message;
+            }
+            return;
+        }
+
+        _downloading = true;
+        _error = null;
+        _operationMessage = "保存済みの時間軸から ZIP を作成しています。";
+        try
+        {
+            var result = await Timeline.DownloadTimelineExportAsync();
+            if (string.IsNullOrWhiteSpace(result.ArchivePath))
+            {
+                throw new InvalidOperationException("ダウンロードファイルを作成できませんでした。");
+            }
+
+            var fileName = ArchiveFileName(result.ArchivePath, suggestedName);
+            await Js.InvokeVoidAsync(
+                "timelineDownload.saveUrl",
+                save.Id,
+                DownloadFileUrl(result.ArchivePath),
+                fileName);
+            _operationMessage = $"保存しました。{result.ItemCount:N0} 件 / {result.EventCount:N0} イベント";
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _downloading = false;
+        }
+    }
+
+    private static string EventTimeLabel(TimelineEventRow row)
+    {
+        if (!string.IsNullOrWhiteSpace(row.OccurredAt))
+        {
+            return UiFormat.ShortDate(row.OccurredAt);
+        }
+        if (row.RelativeStartSec is double seconds)
+        {
+            return $"+{FormatDuration(seconds)}";
+        }
+        return $"#{row.Sequence + 1}";
+    }
+
+    private static string FormatDuration(double seconds)
+    {
+        if (seconds < 0)
+        {
+            seconds = 0;
+        }
+        var span = TimeSpan.FromSeconds(seconds);
+        return span.TotalHours >= 1
+            ? $"{(int)span.TotalHours:00}:{span.Minutes:00}:{span.Seconds:00}"
+            : $"{span.Minutes:00}:{span.Seconds:00}";
+    }
+
+    private static string ActorLabel(TimelineEventRow row)
+    {
+        if (!string.IsNullOrWhiteSpace(row.ActorLabel))
+        {
+            return row.ActorLabel;
+        }
+        if (!string.IsNullOrWhiteSpace(row.ActorType))
+        {
+            return row.ActorType;
+        }
+        return "-";
+    }
+
+    private static string ProductIcon(string productId) => productId switch
+    {
+        "audio" => "file-audio",
+        "windows-codex" => "terminal",
+        "chatgpt" => "comments",
+        "image" => "image",
+        _ => "box",
+    };
+
+    private static string ProductPillClass(string productId) => productId switch
+    {
+        "audio" => "tfa-status-pill border-teal-200 bg-teal-50 text-teal-800",
+        "windows-codex" => "tfa-status-pill border-slate-300 bg-slate-50 text-slate-700",
+        "chatgpt" => "tfa-status-pill border-sky-200 bg-sky-50 text-sky-800",
+        "image" => "tfa-status-pill border-emerald-200 bg-emerald-50 text-emerald-800",
+        _ => "tfa-status-pill border-line bg-slate-50 text-slate-700",
+    };
+
+    private static string EventTypeLabel(string value) => value switch
+    {
+        "audio_turn" => "音声区間",
+        "message" => "メッセージ",
+        "image_event" => "画像イベント",
+        "" => "-",
+        _ => value,
+    };
+
+    private static string ContentKindLabel(string value) => value switch
+    {
+        "phone_tokens" => "音声単位",
+        "text" => "テキスト",
+        "image_summary" => "画像情報",
+        _ => value,
+    };
+
+    private static string ContentPreview(string value)
+    {
+        var text = (value ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return "-";
+        }
+        const int limit = 600;
+        return text.Length <= limit ? text : $"{text[..limit]}...";
+    }
+
+    private static string DownloadFileUrl(string archivePath) =>
+        $"api/download/file?path={Uri.EscapeDataString(archivePath)}";
+
+    private static string ArchiveFileName(string archivePath, string fallback)
+    {
+        var text = (archivePath ?? "").Trim().Replace('\\', '/');
+        var fileName = text.Split('/', StringSplitOptions.RemoveEmptyEntries).LastOrDefault();
+        return string.IsNullOrWhiteSpace(fileName) ? fallback : fileName;
+    }
+}

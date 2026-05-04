@@ -66,6 +66,136 @@ public sealed class TimelineHelperClient
             ?? new TimelineAppSettings();
     }
 
+    public async Task<TimelineConsoleLogResult> GetConsoleLogsAsync(
+        long afterId = 0,
+        int limit = 120,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            return await _http.GetFromJsonAsync<TimelineConsoleLogResult>(
+                    $"timeline/console/logs?afterId={Math.Max(0, afterId)}&limit={Math.Clamp(limit, 1, 300)}",
+                    JsonOptions,
+                    cancellationToken)
+                ?? new TimelineConsoleLogResult();
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Failed to load Timeline console logs.");
+            return new TimelineConsoleLogResult { Message = "コンソールログを取得できませんでした。" };
+        }
+    }
+
+    public async Task<TimelineConsoleLogResult> ClearConsoleLogsAsync(CancellationToken cancellationToken = default)
+    {
+        var response = await _http.PostAsync("timeline/console/clear", content: null, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            throw new InvalidOperationException(ErrorMessageFromBody(body)
+                ?? $"コンソールログをクリアできませんでした。HTTP {(int)response.StatusCode}");
+        }
+
+        return await response.Content.ReadFromJsonAsync<TimelineConsoleLogResult>(JsonOptions, cancellationToken)
+            ?? new TimelineConsoleLogResult();
+    }
+
+    public async Task<TimelineStoreOverview> GetTimelineStoreOverviewAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            return await _http.GetFromJsonAsync<TimelineStoreOverview>(
+                    "timeline/store/overview",
+                    JsonOptions,
+                    cancellationToken)
+                ?? new TimelineStoreOverview { Message = "時間軸の状態を取得できませんでした。" };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to load Timeline store overview.");
+            return new TimelineStoreOverview { Message = "補助サーバーから時間軸の状態を取得できませんでした。" };
+        }
+    }
+
+    public async Task<TimelineEventListResult> GetTimelineEventsAsync(
+        int page = 1,
+        int pageSize = 100,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            return await _http.GetFromJsonAsync<TimelineEventListResult>(
+                    $"timeline/events?page={Math.Max(1, page)}&pageSize={Math.Max(1, pageSize)}",
+                    JsonOptions,
+                    cancellationToken)
+                ?? new TimelineEventListResult { Message = "時間軸一覧を取得できませんでした。" };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to load Timeline events.");
+            return new TimelineEventListResult { Message = "補助サーバーから時間軸一覧を取得できませんでした。" };
+        }
+    }
+
+    public async Task<TimelineWorkerJobStatus> RebuildTimelineStoreAsync(CancellationToken cancellationToken = default)
+    {
+        var response = await _http.PostAsync("timeline/rebuild", content: null, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            throw new InvalidOperationException(ErrorMessageFromBody(body)
+                ?? $"時間軸を再構築できませんでした。HTTP {(int)response.StatusCode}");
+        }
+
+        return await response.Content.ReadFromJsonAsync<TimelineWorkerJobStatus>(JsonOptions, cancellationToken)
+            ?? new TimelineWorkerJobStatus();
+    }
+
+    public async Task<TimelineWorkerJobStatus> GetTimelineRebuildStatusAsync(
+        string jobId = "",
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var url = "timeline/rebuild/status";
+            if (!string.IsNullOrWhiteSpace(jobId))
+            {
+                url += $"?jobId={Uri.EscapeDataString(jobId)}";
+            }
+            return await _http.GetFromJsonAsync<TimelineWorkerJobStatus>(
+                    url,
+                    JsonOptions,
+                    cancellationToken)
+                ?? new TimelineWorkerJobStatus { Message = "時間軸再構築の状態を取得できませんでした。" };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to load Timeline rebuild status.");
+            return new TimelineWorkerJobStatus { State = "unknown", Message = "時間軸再構築の状態を取得できませんでした。" };
+        }
+    }
+
+    public async Task<TimelineDockerWorkerStatus> GetTimelineWorkerStatusAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            return await _http.GetFromJsonAsync<TimelineDockerWorkerStatus>(
+                    "timeline/worker/status",
+                    JsonOptions,
+                    cancellationToken)
+                ?? new TimelineDockerWorkerStatus { Message = "Timeline worker の状態を取得できませんでした。" };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to load Timeline worker status.");
+            return new TimelineDockerWorkerStatus { State = "unknown", Message = "Timeline worker の状態を取得できませんでした。" };
+        }
+    }
+
     public async Task<TimelineProductOverview> GetAudioOverviewAsync(CancellationToken cancellationToken = default)
     {
         try
@@ -501,6 +631,127 @@ public sealed class TimelineHelperClient
             ?? OfflineChatGptOverview("設定を保存しましたが、状態を読み取れませんでした。");
     }
 
+    public async Task<ImageOverview> GetImageOverviewAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            return await _http.GetFromJsonAsync<ImageOverview>(
+                    "products/image/overview",
+                    JsonOptions,
+                    cancellationToken)
+                ?? OfflineImageOverview("補助サーバーから状態を取得できませんでした。");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to load TimelineForImage overview.");
+            return OfflineImageOverview("補助サーバーに接続できません。start.bat から起動してください。");
+        }
+    }
+
+    public async Task<ImageItemListResult> GetImageItemsAsync(
+        int page = 1,
+        int pageSize = 100,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            return await _http.GetFromJsonAsync<ImageItemListResult>(
+                    $"products/image/items?page={Math.Max(1, page)}&pageSize={Math.Max(1, pageSize)}",
+                    JsonOptions,
+                    cancellationToken)
+                ?? new ImageItemListResult();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to load TimelineForImage items.");
+            return new ImageItemListResult();
+        }
+    }
+
+    public async Task<ImageFileListResult> GetImageFilesAsync(
+        int page = 1,
+        int pageSize = 100,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            return await _http.GetFromJsonAsync<ImageFileListResult>(
+                    $"products/image/files?page={Math.Max(1, page)}&pageSize={Math.Max(1, pageSize)}",
+                    JsonOptions,
+                    cancellationToken)
+                ?? new ImageFileListResult();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to load TimelineForImage files.");
+            return new ImageFileListResult();
+        }
+    }
+
+    public async Task<ImageRefreshResult> RefreshImageAsync(
+        ImageRefreshRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var response = await _http.PostAsJsonAsync("products/image/refresh", request, JsonOptions, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            throw new InvalidOperationException(ErrorMessageFromBody(body)
+                ?? $"更新を実行できませんでした。HTTP {(int)response.StatusCode}");
+        }
+
+        return await response.Content.ReadFromJsonAsync<ImageRefreshResult>(JsonOptions, cancellationToken)
+            ?? new ImageRefreshResult();
+    }
+
+    public async Task<ImageItemsDownloadResult> DownloadImageItemsAsync(
+        ImageItemsRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var response = await _http.PostAsJsonAsync("products/image/items/download", request, JsonOptions, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            throw new InvalidOperationException(ErrorMessageFromBody(body)
+                ?? $"ダウンロードを作成できませんでした。HTTP {(int)response.StatusCode}");
+        }
+
+        return await response.Content.ReadFromJsonAsync<ImageItemsDownloadResult>(JsonOptions, cancellationToken)
+            ?? new ImageItemsDownloadResult();
+    }
+
+    public async Task<TimelineThreadItemsDeleteResult> DeleteImageItemsAsync(
+        ImageItemsRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var response = await _http.PostAsJsonAsync("products/image/items/delete-generated", request, JsonOptions, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            throw new InvalidOperationException(ErrorMessageFromBody(body)
+                ?? $"生成物を削除できませんでした。HTTP {(int)response.StatusCode}");
+        }
+
+        return await response.Content.ReadFromJsonAsync<TimelineThreadItemsDeleteResult>(JsonOptions, cancellationToken)
+            ?? new TimelineThreadItemsDeleteResult();
+    }
+
+    public async Task<ImageOverview> SaveImageSettingsAsync(
+        ImageSettingsSaveRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var response = await _http.PostAsJsonAsync("products/image/settings", request, JsonOptions, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            throw new InvalidOperationException(ErrorMessageFromBody(body)
+                ?? $"設定を保存できませんでした。HTTP {(int)response.StatusCode}");
+        }
+
+        return await response.Content.ReadFromJsonAsync<ImageOverview>(JsonOptions, cancellationToken)
+            ?? OfflineImageOverview("設定を保存しましたが、状態を読み取れませんでした。");
+    }
+
     private static TimelineProductOverview OfflineOverview(string message) => new()
     {
         ProductFound = false,
@@ -520,6 +771,13 @@ public sealed class TimelineHelperClient
     {
         ProductFound = false,
         ProductPath = @"C:\apps\TimelineForChatGPT",
+        Message = message,
+    };
+
+    private static ImageOverview OfflineImageOverview(string message) => new()
+    {
+        ProductFound = false,
+        ProductPath = @"C:\apps\TimelineForImage",
         Message = message,
     };
 

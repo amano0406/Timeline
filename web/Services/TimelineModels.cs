@@ -17,12 +17,16 @@ public sealed class TimelineAppSettings
     public List<TimelineDisplayLanguageOption> DisplayLanguages { get; set; } = [];
     public string TimeZoneId { get; set; } = "Asia/Tokyo";
     public List<TimelineTimeZoneOption> TimeZones { get; set; } = [];
+    public string WorkDirectory { get; set; } = @"C:\TimelineData\Timeline\work";
+    public string StoreDirectory { get; set; } = @"C:\TimelineData\Timeline\store";
 }
 
 public sealed class TimelineAppSettingsSaveRequest
 {
     public string DisplayLanguageId { get; set; } = "ja-JP";
     public string TimeZoneId { get; set; } = "Asia/Tokyo";
+    public string WorkDirectory { get; set; } = @"C:\TimelineData\Timeline\work";
+    public string StoreDirectory { get; set; } = @"C:\TimelineData\Timeline\store";
 }
 
 public sealed class TimelineDisplayLanguageOption
@@ -35,6 +39,30 @@ public sealed class TimelineTimeZoneOption
 {
     public string Id { get; set; } = "";
     public string Label { get; set; } = "";
+}
+
+public sealed class TimelineConsoleLogResult
+{
+    public List<TimelineConsoleLogEntry> Entries { get; set; } = [];
+    public long LastId { get; set; }
+    public int Count { get; set; }
+    public string Message { get; set; } = "";
+}
+
+public sealed class TimelineConsoleLogEntry
+{
+    public long Id { get; set; }
+    public string OccurredAt { get; set; } = "";
+    public string Level { get; set; } = "";
+    public string Kind { get; set; } = "";
+    public string ProductName { get; set; } = "";
+    public string CommandLine { get; set; } = "";
+    public string OperationId { get; set; } = "";
+    public int? ExitCode { get; set; }
+    public int? DurationMs { get; set; }
+    public string Stdout { get; set; } = "";
+    public string Stderr { get; set; } = "";
+    public string Message { get; set; } = "";
 }
 
 public sealed class TimelineProductOverview
@@ -288,6 +316,95 @@ public sealed class TimelineExportProductResult
     public int ItemCount { get; set; }
     public int EventCount { get; set; }
     public string Message { get; set; } = "";
+}
+
+public sealed class TimelineStoreOverview
+{
+    public bool Available { get; set; }
+    public string StoreDirectory { get; set; } = "";
+    public string RebuildId { get; set; } = "";
+    public string CreatedAt { get; set; } = "";
+    public int ItemCount { get; set; }
+    public int EventCount { get; set; }
+    public int ProductCount { get; set; }
+    public List<TimelineExportProductResult> Products { get; set; } = [];
+    public string ManifestPath { get; set; } = "";
+    public string ItemsPath { get; set; } = "";
+    public string EventsPath { get; set; } = "";
+    public string Message { get; set; } = "";
+}
+
+public sealed class TimelineRebuildResult
+{
+    public string RebuildId { get; set; } = "";
+    public string StoreDirectory { get; set; } = "";
+    public string PackagePath { get; set; } = "";
+    public string ManifestPath { get; set; } = "";
+    public string ItemsPath { get; set; } = "";
+    public string EventsPath { get; set; } = "";
+    public int ItemCount { get; set; }
+    public int EventCount { get; set; }
+    public List<TimelineExportProductResult> Products { get; set; } = [];
+}
+
+public sealed class TimelineWorkerJobStatus
+{
+    public string JobId { get; set; } = "";
+    public string Kind { get; set; } = "";
+    public string State { get; set; } = "";
+    public string Stage { get; set; } = "";
+    public string Message { get; set; } = "";
+    public string Error { get; set; } = "";
+    public string StartedAt { get; set; } = "";
+    public string UpdatedAt { get; set; } = "";
+    public string CompletedAt { get; set; } = "";
+    public int ItemCount { get; set; }
+    public int EventCount { get; set; }
+    public TimelineRebuildResult? Result { get; set; }
+}
+
+public sealed class TimelineDockerWorkerStatus
+{
+    public bool Available { get; set; }
+    public string Worker { get; set; } = "";
+    public string State { get; set; } = "";
+    public string UpdatedAt { get; set; } = "";
+    public string WorkDirectory { get; set; } = "";
+    public string StoreDirectory { get; set; } = "";
+    public bool StoreAvailable { get; set; }
+    public string RebuildId { get; set; } = "";
+    public string CreatedAt { get; set; } = "";
+    public int ItemCount { get; set; }
+    public int EventCount { get; set; }
+    public string Message { get; set; } = "";
+}
+
+public sealed class TimelineEventListResult
+{
+    public bool Available { get; set; }
+    public int Total { get; set; }
+    public TimelinePagination Pagination { get; set; } = new();
+    public List<TimelineEventRow> Events { get; set; } = [];
+    public string Message { get; set; } = "";
+}
+
+public sealed class TimelineEventRow
+{
+    public string EventId { get; set; } = "";
+    public string Product { get; set; } = "";
+    public string ProductName { get; set; } = "";
+    public string ItemId { get; set; } = "";
+    public string EventType { get; set; } = "";
+    public int Sequence { get; set; }
+    public string OccurredAt { get; set; } = "";
+    public string EndedAt { get; set; } = "";
+    public double? RelativeStartSec { get; set; }
+    public double? RelativeEndSec { get; set; }
+    public string TimeBasis { get; set; } = "";
+    public string ActorType { get; set; } = "";
+    public string ActorLabel { get; set; } = "";
+    public string ContentKind { get; set; } = "";
+    public string ContentValue { get; set; } = "";
 }
 
 public sealed class BrowserSaveHandle
@@ -564,6 +681,113 @@ public sealed class ChatGptJobRow
     public long ArchiveSizeBytes { get; set; }
     public string RunDirectory { get; set; } = "";
     public string CurrentConversation { get; set; } = "";
+}
+
+public sealed class ImageOverview
+{
+    public bool ProductFound { get; set; }
+    public string ProductPath { get; set; } = "";
+    public bool SettingsValid { get; set; }
+    public ImageSettings Settings { get; set; } = new();
+    public int SourceFileCount { get; set; }
+    public int ItemCount { get; set; }
+    public ImageRefreshResult LatestRefresh { get; set; } = new();
+    public string Message { get; set; } = "";
+}
+
+public sealed class ImageSettings
+{
+    public string SettingsPath { get; set; } = "";
+    public List<ImageInputRoot> InputRoots { get; set; } = [];
+    public ImageDirectoryRoot OutputRoot { get; set; } = new();
+    public List<string> Issues { get; set; } = [];
+}
+
+public sealed class ImageInputRoot
+{
+    public string Id { get; set; } = "";
+    public string DisplayName { get; set; } = "";
+    public string Path { get; set; } = "";
+    public string DisplayPath { get; set; } = "";
+    public bool Enabled { get; set; } = true;
+    public bool Exists { get; set; }
+}
+
+public sealed class ImageDirectoryRoot
+{
+    public string Id { get; set; } = "";
+    public string DisplayName { get; set; } = "";
+    public string Path { get; set; } = "";
+    public string DisplayPath { get; set; } = "";
+    public bool Exists { get; set; }
+}
+
+public sealed class ImageItemListResult
+{
+    public int Total { get; set; }
+    public TimelinePagination Pagination { get; set; } = new();
+    public List<ImageItemRow> Items { get; set; } = [];
+}
+
+public sealed class ImageFileListResult
+{
+    public int Total { get; set; }
+    public TimelinePagination Pagination { get; set; } = new();
+    public List<ImageItemRow> Files { get; set; } = [];
+}
+
+public sealed class ImageItemRow
+{
+    public string ItemId { get; set; } = "";
+    public string RelativePath { get; set; } = "";
+    public string SourcePath { get; set; } = "";
+    public string SourceDisplayName { get; set; } = "";
+    public long SizeBytes { get; set; }
+    public string ModifiedAt { get; set; } = "";
+    public string OutputDirectory { get; set; } = "";
+    public string TimelinePath { get; set; } = "";
+    public string ConvertInfoPath { get; set; } = "";
+    public string ImageRecordPath { get; set; } = "";
+    public bool HasTimeline { get; set; }
+    public bool HasImageRecord { get; set; }
+}
+
+public sealed class ImageRefreshRequest
+{
+    public bool ReprocessDuplicates { get; set; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? MaxItems { get; set; }
+}
+
+public sealed class ImageRefreshResult
+{
+    public string RunId { get; set; } = "";
+    public string State { get; set; } = "";
+    public int SourceCount { get; set; }
+    public int ProcessedCount { get; set; }
+    public int SkippedCount { get; set; }
+    public int FailedCount { get; set; }
+    public string ArchivePath { get; set; } = "";
+}
+
+public sealed class ImageItemsRequest
+{
+    public List<string> ItemIds { get; set; } = [];
+    public bool DryRun { get; set; }
+}
+
+public sealed class ImageItemsDownloadResult
+{
+    public string ArchivePath { get; set; } = "";
+    public List<string> ItemIds { get; set; } = [];
+}
+
+public sealed class ImageSettingsSaveRequest
+{
+    public List<ImageInputRoot> InputRoots { get; set; } = [];
+    public ImageDirectoryRoot OutputRoot { get; set; } = new();
+    public string OutputRootPath { get; set; } = "";
 }
 
 public sealed class HelperHealth

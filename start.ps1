@@ -5,6 +5,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 $repoRoot = $PSScriptRoot
+& (Join-Path $repoRoot "scripts\check-powershell-ascii.ps1") -RepoRoot $repoRoot
 . (Join-Path $repoRoot "scripts\docker-runtime.ps1")
 
 Initialize-TimelineDocker -RepoRoot $repoRoot
@@ -13,7 +14,13 @@ Start-TimelineHelperServer -RepoRoot $repoRoot -AudioProductPath "C:\apps\Timeli
 $docker = Get-TimelineDockerCommand
 $composeArgs = Get-TimelineComposeArgs -RepoRoot $repoRoot
 
-Write-Host "Starting Timeline web..."
+foreach ($path in @("C:\TimelineData\Timeline\work", "C:\TimelineData\Timeline\store")) {
+    if (-not (Test-Path -LiteralPath $path)) {
+        New-Item -ItemType Directory -Path $path | Out-Null
+    }
+}
+
+Write-Host "Starting Timeline web and worker..."
 Invoke-TimelineWithFileLock -RepoRoot $repoRoot -LockName "docker-compose.lock" -ScriptBlock {
     $logDir = Join-Path $repoRoot ".docker"
     if (-not (Test-Path -LiteralPath $logDir)) {
@@ -37,7 +44,7 @@ Invoke-TimelineWithFileLock -RepoRoot $repoRoot -LockName "docker-compose.lock" 
         $env:DOCKER_CONFIG = $dockerConfigDir
         $process = Start-Process `
             -FilePath $docker `
-            -ArgumentList (@("compose") + @($composeArgs) + @("up", "-d", "--build", "--remove-orphans", "web")) `
+            -ArgumentList (@("compose") + @($composeArgs) + @("up", "-d", "--build", "--remove-orphans", "web", "worker")) `
             -WorkingDirectory $repoRoot `
             -NoNewWindow `
             -PassThru `
@@ -90,6 +97,7 @@ Write-Host "Connected local products:"
 Write-Host "  C:\apps\TimelineForAudio"
 Write-Host "  C:\apps\TimelineForWindowsCodex"
 Write-Host "  C:\apps\TimelineForChatGPT"
+Write-Host "  C:\apps\TimelineForImage"
 Write-Host ""
 Write-Host "Health:"
 Write-Host "  Web: OK"

@@ -1,0 +1,272 @@
+@implements IAsyncDisposable
+@inject TimelineHelperClient HelperClient
+
+<div class="timeline-console">
+    @if (_open)
+    {
+        <section class="timeline-console-panel" aria-label="CLIコンソールログ">
+            <header class="timeline-console-header">
+                <div class="timeline-console-title">
+                    <FaIcon Name="terminal" Class="tfa-icon" />
+                    <span>CLIログ</span>
+                </div>
+                <div class="timeline-console-actions">
+                    <span class="timeline-console-status">@StatusLabel</span>
+                    <button type="button" class="timeline-console-action" @onclick="ClearAsync" disabled="@_clearing">
+                        <FaIcon Name="@(_clearing ? "spinner" : "trash")" Class="@($"tfa-icon {(_clearing ? "fa-spin" : "")}")" />
+                        <span>クリア</span>
+                    </button>
+                    <button type="button" class="timeline-console-action" @onclick="ToggleOpen" aria-label="閉じる">
+                        <FaIcon Name="xmark" Class="tfa-icon" />
+                    </button>
+                </div>
+            </header>
+
+            <div class="timeline-console-body">
+                @if (_entries.Count == 0)
+                {
+                    <div class="timeline-console-empty">まだCLIログはありません。</div>
+                }
+                else
+                {
+                    @foreach (var entry in _entries.OrderByDescending(e => e.Id))
+                    {
+                        <article class="@EntryClass(entry)">
+                            <div class="timeline-console-entry-meta">
+                                <span>@FormatOccurredAt(entry.OccurredAt)</span>
+                                @if (!string.IsNullOrWhiteSpace(entry.ProductName))
+                                {
+                                    <span>@entry.ProductName</span>
+                                }
+                                @if (entry.ExitCode is not null)
+                                {
+                                    <span>exit @entry.ExitCode</span>
+                                }
+                                @if (entry.DurationMs is not null)
+                                {
+                                    <span>@FormatDuration(entry.DurationMs.Value)</span>
+                                }
+                            </div>
+                            @if (!string.IsNullOrWhiteSpace(entry.Message))
+                            {
+                                <div class="timeline-console-entry-message">@entry.Message</div>
+                            }
+                            @if (!string.IsNullOrWhiteSpace(entry.CommandLine))
+                            {
+                                <pre class="timeline-console-command"><code>@entry.CommandLine</code></pre>
+                            }
+                            @if (!string.IsNullOrWhiteSpace(entry.Stdout))
+                            {
+                                <details class="timeline-console-detail">
+                                    <summary>stdout</summary>
+                                    <pre><code>@entry.Stdout</code></pre>
+                                </details>
+                            }
+                            @if (!string.IsNullOrWhiteSpace(entry.Stderr))
+                            {
+                                @if (IsError(entry))
+                                {
+                                    <details class="timeline-console-detail timeline-console-detail-error" open>
+                                        <summary>stderr</summary>
+                                        <pre><code>@entry.Stderr</code></pre>
+                                    </details>
+                                }
+                                else
+                                {
+                                    <details class="timeline-console-detail timeline-console-detail-error">
+                                        <summary>stderr</summary>
+                                        <pre><code>@entry.Stderr</code></pre>
+                                    </details>
+                                }
+                            }
+                        </article>
+                    }
+                }
+            </div>
+        </section>
+    }
+
+    <button type="button"
+            class="timeline-console-fab"
+            @onclick="ToggleOpen"
+            aria-expanded="@_open"
+            aria-label="CLIログを開く">
+        <FaIcon Name="terminal" Class="tfa-icon" />
+        <span>コンソール</span>
+        @if (_unread > 0)
+        {
+            <span class="timeline-console-badge">@UnreadLabel</span>
+        }
+    </button>
+</div>
+
+@code {
+    private readonly List<TimelineConsoleLogEntry> _entries = [];
+    private CancellationTokenSource? _pollingCts;
+    private PeriodicTimer? _timer;
+    private Task? _pollingTask;
+    private long _lastId;
+    private bool _open;
+    private bool _polling;
+    private bool _clearing;
+    private int _unread;
+    private string _status = "待機中";
+
+    private string StatusLabel => _polling ? "更新中" : _status;
+    private string UnreadLabel => _unread > 99 ? "99+" : _unread.ToString();
+
+    protected override async Task OnInitializedAsync()
+    {
+        _pollingCts = new CancellationTokenSource();
+        await LoadLogsAsync(_pollingCts.Token);
+        _timer = new PeriodicTimer(TimeSpan.FromSeconds(2));
+        _pollingTask = PollAsync(_pollingCts.Token);
+    }
+
+    private void ToggleOpen()
+    {
+        _open = !_open;
+        if (_open)
+        {
+            _unread = 0;
+        }
+    }
+
+    private async Task ClearAsync()
+    {
+        if (_clearing)
+        {
+            return;
+        }
+
+        _clearing = true;
+        try
+        {
+            var result = await HelperClient.ClearConsoleLogsAsync();
+            _entries.Clear();
+            _lastId = result.LastId;
+            _unread = 0;
+            _status = "クリア済み";
+        }
+        catch
+        {
+            _status = "クリア失敗";
+        }
+        finally
+        {
+            _clearing = false;
+        }
+    }
+
+    private async Task PollAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            while (_timer is not null && await _timer.WaitForNextTickAsync(cancellationToken))
+            {
+                await LoadLogsAsync(cancellationToken);
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+
+    private async Task LoadLogsAsync(CancellationToken cancellationToken)
+    {
+        if (_polling)
+        {
+            return;
+        }
+
+        _polling = true;
+        try
+        {
+            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeoutCts.CancelAfter(TimeSpan.FromMilliseconds(1500));
+            var result = await HelperClient.GetConsoleLogsAsync(_lastId, 120, timeoutCts.Token);
+            if (result.Entries.Count > 0)
+            {
+                foreach (var entry in result.Entries)
+                {
+                    if (_entries.All(existing => existing.Id != entry.Id))
+                    {
+                        _entries.Add(entry);
+                    }
+                }
+
+                _lastId = Math.Max(_lastId, result.LastId);
+                _entries.Sort((left, right) => left.Id.CompareTo(right.Id));
+                while (_entries.Count > 200)
+                {
+                    _entries.RemoveAt(0);
+                }
+                if (!_open)
+                {
+                    _unread += result.Entries.Count;
+                }
+            }
+
+            _status = "待機中";
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            _status = "応答待ち";
+        }
+        catch
+        {
+            _status = "未接続";
+        }
+        finally
+        {
+            _polling = false;
+        }
+    }
+
+    private static string EntryClass(TimelineConsoleLogEntry entry)
+    {
+        var level = IsError(entry)
+            ? "timeline-console-entry-error"
+            : string.Equals(entry.Level, "success", StringComparison.OrdinalIgnoreCase)
+                ? "timeline-console-entry-success"
+                : "timeline-console-entry-info";
+        return $"timeline-console-entry {level}";
+    }
+
+    private static bool IsError(TimelineConsoleLogEntry entry) =>
+        string.Equals(entry.Level, "error", StringComparison.OrdinalIgnoreCase);
+
+    private static string FormatOccurredAt(string value)
+    {
+        if (DateTimeOffset.TryParse(value, out var occurredAt))
+        {
+            return occurredAt.LocalDateTime.ToString("HH:mm:ss");
+        }
+
+        return "--:--:--";
+    }
+
+    private static string FormatDuration(int durationMs) =>
+        durationMs >= 1000 ? $"{durationMs / 1000.0:0.0}s" : $"{durationMs}ms";
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_pollingCts is not null)
+        {
+            await _pollingCts.CancelAsync();
+        }
+        _timer?.Dispose();
+        if (_pollingTask is not null)
+        {
+            try
+            {
+                await _pollingTask;
+            }
+            catch (OperationCanceledException)
+            {
+            }
+        }
+        _pollingCts?.Dispose();
+    }
+}

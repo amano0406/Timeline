@@ -11,3 +11,19 @@ services:
       Timeline__HelperBaseUrl: http://host.docker.internal:19001
     ports:
       - "19000:8080"
+
+  worker:
+    image: timeline-worker:latest
+    build:
+      context: .
+      dockerfile: worker/Dockerfile
+    environment:
+      Timeline__WorkDirectory: /data/work
+      Timeline__StoreDirectory: /data/store
+    volumes:
+      - type: bind
+        source: C:\TimelineData\Timeline\work
+        target: /data/work
+      - type: bind
+        source: C:\TimelineData\Timeline\store
+        target: /data/store

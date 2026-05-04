@@ -1,6 +1,5 @@
 @page "/"
 @inject TimelineHelperClient Timeline
-@inject IJSRuntime Js
 
 <PageTitle>Timeline</PageTitle>
 
@@ -12,14 +11,14 @@
         </h1>
     </div>
     <div class="flex flex-wrap gap-2">
-        <button class="tfa-button-secondary gap-2" @onclick="LoadAsync" disabled="@(_loading || _downloadingExport)">
+        <button class="tfa-button-secondary gap-2" @onclick="LoadAsync" disabled="@_loading">
             <FaIcon Name="rotate" Class="@($"tfa-icon {(_loading ? "fa-spin" : "")}")" />
             <span>状態更新</span>
         </button>
-        <button class="tfa-button-primary gap-2" @onclick="DownloadTimelineExportAsync" disabled="@(_loading || _downloadingExport)">
-            <FaIcon Name="@(_downloadingExport ? "spinner" : "download")" Class="@($"tfa-icon {(_downloadingExport ? "fa-spin" : "")}")" />
-            <span>@(_downloadingExport ? "作成中" : "全データをダウンロード")</span>
-        </button>
+        <a class="tfa-button-primary gap-2" href="timeline">
+            <FaIcon Name="timeline" Class="tfa-icon" />
+            <span>時間軸を開く</span>
+        </a>
     </div>
 </div>
 
@@ -105,7 +104,6 @@ else
 @code {
     private ProductRuntimeOverview? _overview;
     private bool _loading = true;
-    private bool _downloadingExport;
     private string? _actingProductId;
     private string? _actingAction;
     private string? _error;
@@ -141,48 +139,6 @@ else
     private async Task RestartAsync(ProductRuntimeRow product)
     {
         await InvokeRuntimeActionAsync(product, "restart");
-    }
-
-    private async Task DownloadTimelineExportAsync()
-    {
-        var suggestedName = $"Timeline-export-{DateTime.Now:yyyyMMdd-HHmmss}.zip";
-        var save = await Js.InvokeAsync<BrowserSaveHandle>("timelineDownload.beginSave", suggestedName);
-        if (!save.Accepted)
-        {
-            if (!string.IsNullOrWhiteSpace(save.Message))
-            {
-                _error = save.Message;
-            }
-            return;
-        }
-
-        _downloadingExport = true;
-        _error = null;
-        _operationMessage = null;
-        try
-        {
-            var result = await Timeline.DownloadTimelineExportAsync();
-            if (string.IsNullOrWhiteSpace(result.ArchivePath))
-            {
-                throw new InvalidOperationException("ダウンロードファイルを作成できませんでした。");
-            }
-
-            var fileName = ArchiveFileName(result.ArchivePath, suggestedName);
-            await Js.InvokeVoidAsync(
-                "timelineDownload.saveUrl",
-                save.Id,
-                DownloadFileUrl(result.ArchivePath),
-                fileName);
-            _operationMessage = $"保存しました。{result.ItemCount} 件 / {result.EventCount} イベント";
-        }
-        catch (Exception ex)
-        {
-            _error = ex.Message;
-        }
-        finally
-        {
-            _downloadingExport = false;
-        }
     }
 
     private async Task InvokeRuntimeActionAsync(ProductRuntimeRow product, string action)
@@ -309,6 +265,7 @@ else
         "audio" => "file-audio",
         "windows-codex" => "terminal",
         "chatgpt" => "comments",
+        "image" => "image",
         _ => "box",
     };
 
@@ -317,24 +274,16 @@ else
         "audio" => "text-teal-700",
         "windows-codex" => "text-slate-700",
         "chatgpt" => "text-sky-800",
+        "image" => "text-emerald-700",
         _ => "text-slate-700",
     };
 
     private static string ProductDescription(ProductRuntimeRow product) => product.Id switch
     {
-        "audio" => "音声ファイル一覧",
+        "audio" => "ファイル一覧",
         "windows-codex" => "スレッド一覧",
         "chatgpt" => "スレッド一覧",
+        "image" => "ファイル一覧",
         _ => product.Description,
     };
-
-    private static string DownloadFileUrl(string archivePath) =>
-        $"api/download/file?path={Uri.EscapeDataString(archivePath)}";
-
-    private static string ArchiveFileName(string archivePath, string fallback)
-    {
-        var text = (archivePath ?? "").Trim().Replace('\\', '/');
-        var fileName = text.Split('/', StringSplitOptions.RemoveEmptyEntries).LastOrDefault();
-        return string.IsNullOrWhiteSpace(fileName) ? fallback : fileName;
-    }
 }

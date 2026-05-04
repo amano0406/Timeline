@@ -167,11 +167,13 @@ function Start-TimelineHelperServer {
         [Parameter(Mandatory = $true)]
         [string]$AudioProductPath,
         [string]$WindowsCodexProductPath = "C:\apps\TimelineForWindowsCodex",
-        [string]$ChatGptProductPath = "C:\apps\TimelineForChatGPT"
+        [string]$ChatGptProductPath = "C:\apps\TimelineForChatGPT",
+        [string]$ImageProductPath = "C:\apps\TimelineForImage"
     )
 
     if (Test-TimelineHelperServer) {
-        return
+        Stop-TimelineHelperServer
+        Start-Sleep -Milliseconds 300
     }
 
     $scriptPath = Join-Path $RepoRoot "scripts\timeline-helper-server.ps1"
@@ -192,7 +194,9 @@ function Start-TimelineHelperServer {
         "-WindowsCodexProductPath",
         "`"$WindowsCodexProductPath`"",
         "-ChatGptProductPath",
-        "`"$ChatGptProductPath`""
+        "`"$ChatGptProductPath`"",
+        "-ImageProductPath",
+        "`"$ImageProductPath`""
     )
 
     Start-Process -FilePath "powershell.exe" -ArgumentList $arguments -WindowStyle Hidden | Out-Null

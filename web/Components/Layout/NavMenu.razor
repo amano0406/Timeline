@@ -17,9 +17,15 @@
                 </NavLink>
                 <NavLink class="flex items-center gap-2 rounded-md px-3 py-2 text-slate-200 hover:bg-white/10 hover:text-white"
                          ActiveClass="bg-white/15 text-white"
+                         href="timeline">
+                    <FaIcon Name="timeline" Class="tfa-icon" />
+                    <span>時間軸</span>
+                </NavLink>
+                <NavLink class="flex items-center gap-2 rounded-md px-3 py-2 text-slate-200 hover:bg-white/10 hover:text-white"
+                         ActiveClass="bg-white/15 text-white"
                          href="timeline/settings">
                     <FaIcon Name="sliders" Class="tfa-icon" />
-                    <span>設定</span>
+                    <span>基本設定</span>
                 </NavLink>
             </div>
 
@@ -33,7 +39,7 @@
                              ActiveClass="bg-white/15 text-white"
                              href="audio/files">
                         <FaIcon Name="list-ul" Class="tfa-icon" />
-                        <span>音声ファイル一覧</span>
+                        <span>ファイル一覧</span>
                     </NavLink>
                     <NavLink class="flex items-center gap-2 rounded-md px-3 py-2 text-slate-200 hover:bg-white/10 hover:text-white"
                              ActiveClass="bg-white/15 text-white"
@@ -86,16 +92,33 @@
                 </div>
             </section>
 
+            <section>
+                <div class="flex items-center gap-2 px-3 py-2 font-semibold text-white">
+                    <FaIcon Name="image" Class="tfa-icon text-teal-300" />
+                    <span>TimelineForImage</span>
+                </div>
+                <div class="ml-3 border-l border-white/10 pl-3">
+                    <NavLink class="flex items-center gap-2 rounded-md px-3 py-2 text-slate-200 hover:bg-white/10 hover:text-white"
+                             ActiveClass="bg-white/15 text-white"
+                             href="image">
+                        <FaIcon Name="images" Class="tfa-icon" />
+                        <span>ファイル一覧</span>
+                    </NavLink>
+                    <NavLink class="flex items-center gap-2 rounded-md px-3 py-2 text-slate-200 hover:bg-white/10 hover:text-white"
+                             ActiveClass="bg-white/15 text-white"
+                             href="image/settings">
+                        <FaIcon Name="gear" Class="tfa-icon" />
+                        <span>設定</span>
+                    </NavLink>
+                </div>
+            </section>
+
             <section class="border-t border-white/10 pt-3">
                 <div class="px-3 text-xs font-semibold uppercase tracking-normal text-slate-400">他プロダクト</div>
                 <div class="mt-2 grid gap-1">
                     <div class="flex items-center gap-2 rounded-md px-3 py-2 text-slate-500">
                         <FaIcon Name="video" Class="tfa-icon" />
                         <span>TimelineForVideo</span>
-                    </div>
-                    <div class="flex items-center gap-2 rounded-md px-3 py-2 text-slate-500">
-                        <FaIcon Name="image" Class="tfa-icon" />
-                        <span>TimelineForImage</span>
                     </div>
                 </div>
             </section>

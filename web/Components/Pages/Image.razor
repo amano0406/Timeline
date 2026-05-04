@@ -1,0 +1,523 @@
+@page "/image"
+@inject TimelineHelperClient Timeline
+@inject IJSRuntime Js
+
+<PageTitle>画像ファイル一覧 - Timeline</PageTitle>
+
+<div class="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+    <div>
+        <h1 class="tfa-title flex items-center gap-2">
+            <FaIcon Name="image" Class="tfa-icon text-accent" />
+            <span>画像ファイル一覧</span>
+        </h1>
+    </div>
+    <div class="flex flex-wrap gap-2">
+        <button class="tfa-button-secondary gap-2" @onclick="LoadAsync" disabled="@Busy">
+            <FaIcon Name="rotate" Class="@($"tfa-icon {(_loading ? "fa-spin" : "")}")" />
+            <span>一覧更新</span>
+        </button>
+        <button class="tfa-button-primary gap-2" @onclick="StartRefreshAsync" disabled="@(Busy || !CanRefresh)">
+            <FaIcon Name="@(_refreshing ? "spinner" : "play")" Class="@($"tfa-icon {(_refreshing ? "fa-spin" : "")}")" />
+            <span>@(_refreshing ? "分析開始中" : "再スキャンして分析")</span>
+        </button>
+    </div>
+</div>
+
+@if (_error is not null)
+{
+    <div class="tfa-alert-danger mb-5 flex items-start gap-2">
+        <FaIcon Name="triangle-exclamation" Class="tfa-icon mt-0.5" />
+        <span>@_error</span>
+    </div>
+}
+
+@if (_operationMessage is not null)
+{
+    <div class="tfa-alert-info mb-5 flex items-start gap-2">
+        <FaIcon Name="circle-info" Class="tfa-icon mt-0.5" />
+        <span>@_operationMessage</span>
+    </div>
+}
+
+@if (_loading && _overview is null)
+{
+    <section class="tfa-card tfa-card-pad flex items-center gap-3">
+        <FaIcon Name="spinner" Class="tfa-icon fa-spin text-accent" />
+        <span class="text-sm text-slate-600">読み込み中</span>
+    </section>
+}
+else if (_overview is not null)
+{
+    @if (!_overview.ProductFound)
+    {
+        <div class="tfa-alert-danger mb-5 flex items-start gap-2">
+            <FaIcon Name="folder-open" Class="tfa-icon mt-0.5" />
+            <span>TimelineForImage が見つかりません。</span>
+        </div>
+    }
+    else if (!_overview.SettingsValid)
+    {
+        <div class="tfa-alert-warn mb-5 flex items-start gap-2">
+            <FaIcon Name="triangle-exclamation" Class="tfa-icon mt-0.5" />
+            <span>@EmptyText(_overview.Message)</span>
+        </div>
+    }
+
+    @if (ShowInputDirectoryWarning)
+    {
+        <div class="tfa-alert-warn mb-5 flex items-start gap-2">
+            <FaIcon Name="folder-open" Class="tfa-icon mt-0.5" />
+            <div>
+                <div>@InputDirectoryWarningTitle</div>
+                <div class="mt-1 break-all font-mono text-xs">@InputDirectoryWarningDetail</div>
+            </div>
+        </div>
+    }
+
+    <div class="grid gap-4 md:grid-cols-4">
+        <section class="tfa-card tfa-card-pad">
+            <div class="flex items-start justify-between gap-3">
+                <div>
+                    <div class="tfa-kicker">総ファイル数</div>
+                    <div class="mt-2 text-3xl font-semibold">@_overview.SourceFileCount</div>
+                </div>
+                <span class="tfa-icon-box text-emerald-700">
+                    <FaIcon Name="images" Class="tfa-icon" />
+                </span>
+            </div>
+        </section>
+        <section class="tfa-card tfa-card-pad">
+            <div class="flex items-start justify-between gap-3">
+                <div>
+                    <div class="tfa-kicker">未処理ファイル数</div>
+                    <div class="mt-2 text-3xl font-semibold">@UnprocessedCount</div>
+                </div>
+                <span class="tfa-icon-box text-slate-600">
+                    <FaIcon Name="circle-minus" Class="tfa-icon" />
+                </span>
+            </div>
+        </section>
+        <section class="tfa-card tfa-card-pad">
+            <div class="flex items-start justify-between gap-3">
+                <div>
+                    <div class="tfa-kicker">生成済みファイル数</div>
+                    <div class="mt-2 text-3xl font-semibold">@_overview.ItemCount</div>
+                </div>
+                <span class="tfa-icon-box text-sky-800">
+                    <FaIcon Name="file-lines" Class="tfa-icon" />
+                </span>
+            </div>
+        </section>
+        <section class="tfa-card tfa-card-pad">
+            <div class="flex items-start justify-between gap-3">
+                <div>
+                    <div class="tfa-kicker">処理ステータス</div>
+                    <div class="mt-2 text-2xl font-semibold">@ProcessingLabel</div>
+                </div>
+                <span class="@($"tfa-icon-box {ProcessingIconClass}")">
+                    <FaIcon Name="@ProcessingIcon" Class="@($"tfa-icon {(_refreshing ? "fa-spin" : "")}")" />
+                </span>
+            </div>
+        </section>
+    </div>
+
+    <section class="tfa-card mt-5 overflow-hidden">
+        <div class="tfa-card-pad flex items-center justify-between gap-3 border-b border-line">
+            <h2 class="flex items-center gap-2 text-lg font-semibold">
+                <FaIcon Name="images" Class="tfa-icon text-accent" />
+                <span>画像ファイル一覧</span>
+            </h2>
+            <span class="text-sm text-slate-500">@ListStatusLabel</span>
+        </div>
+
+        @if (Items.Count == 0)
+        {
+            <div class="p-5 text-sm text-slate-600">画像はありません。</div>
+        }
+        else
+        {
+            <div class="tfa-file-actionbar">
+                <div class="tfa-file-actionbar-count">
+                    <FaIcon Name="check-square" Class="tfa-icon text-slate-500" />
+                    <span>@SelectionSummary</span>
+                </div>
+                <div class="tfa-file-actionbar-actions">
+                    <button class="tfa-button-secondary gap-2" @onclick="DeleteSelectedAsync" disabled="@(Busy || !HasGeneratedSelection)">
+                        <FaIcon Name="@(_deleting ? "spinner" : "trash-can")" Class="@($"tfa-icon {(_deleting ? "fa-spin" : "")}")" />
+                        <span>生成物を削除</span>
+                    </button>
+                    <button class="tfa-button-secondary gap-2" @onclick="DownloadSelectedAsync" disabled="@(Busy || !HasGeneratedSelection)">
+                        <FaIcon Name="@(_downloading ? "spinner" : "download")" Class="@($"tfa-icon {(_downloading ? "fa-spin" : "")}")" />
+                        <span>ダウンロード</span>
+                    </button>
+                    <button class="tfa-button-secondary gap-2" @onclick="DownloadAllAsync" disabled="@(Busy || _overview.ItemCount == 0)">
+                        <FaIcon Name="@(_downloading ? "spinner" : "download")" Class="@($"tfa-icon {(_downloading ? "fa-spin" : "")}")" />
+                        <span>すべてダウンロード</span>
+                    </button>
+                    <button class="tfa-button-secondary gap-2" @onclick="ClearSelection" disabled="@(Busy || !HasSelection)">
+                        <FaIcon Name="xmark" Class="tfa-icon" />
+                        <span>選択解除</span>
+                    </button>
+                </div>
+            </div>
+
+            <div class="overflow-x-auto">
+                <table class="tfa-table">
+                    <thead>
+                        <tr>
+                            <th class="w-10">
+                                <input type="checkbox"
+                                       checked="@AllSelected"
+                                       @onchange="ToggleAll"
+                                       disabled="@Busy"
+                                       aria-label="すべての画像を選択" />
+                            </th>
+                            <th>ファイル</th>
+                            <th>日時</th>
+                            <th>サイズ</th>
+                            <th>生成物</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var item in Items)
+                        {
+                            <tr>
+                                <td class="w-10">
+                                    <input type="checkbox"
+                                           checked="@IsSelected(item)"
+                                           @onchange="args => ToggleItem(item, IsChecked(args))"
+                                           disabled="@Busy"
+                                           aria-label="@($"{DisplayName(item)} を選択")" />
+                                </td>
+                                <td class="min-w-80">
+                                    <div class="font-medium text-slate-900">@DisplayName(item)</div>
+                                    <div class="mt-1 break-all text-xs text-slate-500">@EmptyText(item.RelativePath)</div>
+                                </td>
+                                <td class="whitespace-nowrap">@ShortDate(item.ModifiedAt)</td>
+                                <td class="whitespace-nowrap">@FormatBytes(item.SizeBytes)</td>
+                                <td class="whitespace-nowrap">
+                                    <span class="@ArtifactPillClass(item)">
+                                        <FaIcon Name="file-lines" Class="tfa-icon !h-3 !w-3" />
+                                        <span>@ArtifactLabel(item)</span>
+                                    </span>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            @if (_hasMore && !_loadingMore)
+            {
+                <div class="border-t border-line p-4 text-center">
+                    <button class="tfa-button-secondary gap-2" @onclick="LoadNextPageAsync">
+                        <FaIcon Name="plus" Class="tfa-icon" />
+                        <span>さらに表示</span>
+                    </button>
+                </div>
+            }
+        }
+    </section>
+}
+
+@code {
+    private const int PageSize = 100;
+    private ImageOverview? _overview;
+    private readonly List<ImageItemRow> _items = [];
+    private readonly HashSet<string> _selected = new(StringComparer.OrdinalIgnoreCase);
+    private int _nextPage = 1;
+    private bool _hasMore;
+    private bool _loading = true;
+    private bool _loadingMore;
+    private bool _refreshing;
+    private bool _downloading;
+    private bool _deleting;
+    private string? _error;
+    private string? _operationMessage;
+
+    private IReadOnlyList<ImageItemRow> Items => _items;
+    private bool Busy => _loading || _loadingMore || _refreshing || _downloading || _deleting;
+    private bool HasSelection => _selected.Count > 0;
+    private bool HasGeneratedSelection => SelectedGeneratedItemIds().Count > 0;
+    private bool AllSelected => Items.Count > 0 && Items.All(item => _selected.Contains(item.ItemId));
+    private bool CanRefresh => _overview?.ProductFound == true;
+    private int UnprocessedCount => Math.Max(0, (_overview?.SourceFileCount ?? 0) - (_overview?.ItemCount ?? 0));
+    private string ProcessingLabel => _refreshing ? "分析中" : "待機中";
+    private string ProcessingIcon => _refreshing ? "spinner" : "circle-check";
+    private string ProcessingIconClass => _refreshing ? "text-sky-800" : "text-teal-700";
+    private string SelectionSummary => HasSelection ? $"{_selected.Count} 件選択中" : "未選択";
+    private string ListStatusLabel => _overview is null ? "" : $"{_items.Count} / {_overview.SourceFileCount} 件";
+    private bool ShowInputDirectoryWarning =>
+        _overview?.ProductFound == true &&
+        _overview.SettingsValid &&
+        _overview.SourceFileCount == 0;
+    private string InputDirectoryWarningTitle =>
+        MissingInputRoots.Count > 0
+            ? "入力ディレクトリが見つかりません。"
+            : "入力ディレクトリに画像ファイルがありません。";
+    private string InputDirectoryWarningDetail =>
+        string.Join(" / ", (_overview?.Settings.InputRoots ?? []).Select(DirectoryDisplay));
+    private IReadOnlyList<ImageInputRoot> MissingInputRoots =>
+        _overview?.Settings.InputRoots.Where(root => !root.Exists).ToList() ?? [];
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _error = null;
+        try
+        {
+            _overview = await Timeline.GetImageOverviewAsync();
+            _items.Clear();
+            _selected.Clear();
+            _nextPage = 1;
+            await LoadNextPageAsync();
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task LoadNextPageAsync()
+    {
+        _loadingMore = true;
+        try
+        {
+            var result = await Timeline.GetImageFilesAsync(_nextPage, PageSize);
+            _items.AddRange(result.Files);
+            _hasMore = result.Pagination.HasNext;
+            _nextPage += 1;
+        }
+        finally
+        {
+            _loadingMore = false;
+        }
+    }
+
+    private async Task StartRefreshAsync()
+    {
+        _refreshing = true;
+        _error = null;
+        _operationMessage = null;
+        try
+        {
+            var result = await Timeline.RefreshImageAsync(new ImageRefreshRequest());
+            _operationMessage = RefreshMessage(result);
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _refreshing = false;
+        }
+    }
+
+    private async Task DownloadSelectedAsync()
+    {
+        await DownloadAsync(SelectedGeneratedItemIds(), $"TimelineForImage-selected-{DateTime.Now:yyyyMMdd-HHmmss}.zip");
+    }
+
+    private async Task DownloadAllAsync()
+    {
+        await DownloadAsync([], $"TimelineForImage-all-{DateTime.Now:yyyyMMdd-HHmmss}.zip");
+    }
+
+    private async Task DownloadAsync(List<string> itemIds, string suggestedName)
+    {
+        var save = await Js.InvokeAsync<BrowserSaveHandle>("timelineDownload.beginSave", suggestedName);
+        if (!save.Accepted)
+        {
+            return;
+        }
+
+        _downloading = true;
+        _error = null;
+        _operationMessage = null;
+        try
+        {
+            var result = await Timeline.DownloadImageItemsAsync(new ImageItemsRequest { ItemIds = itemIds });
+            if (string.IsNullOrWhiteSpace(result.ArchivePath))
+            {
+                throw new InvalidOperationException("ダウンロードファイルを作成できませんでした。");
+            }
+
+            await Js.InvokeVoidAsync(
+                "timelineDownload.saveUrl",
+                save.Id,
+                DownloadFileUrl(result.ArchivePath),
+                ArchiveFileName(result.ArchivePath, suggestedName));
+            _operationMessage = "保存しました。";
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _downloading = false;
+        }
+    }
+
+    private async Task DeleteSelectedAsync()
+    {
+        var itemIds = SelectedGeneratedItemIds();
+        if (itemIds.Count == 0)
+        {
+            return;
+        }
+
+        var accepted = await Js.InvokeAsync<bool>("confirm", $"{itemIds.Count} 件の生成物を削除します。元画像は削除しません。");
+        if (!accepted)
+        {
+            return;
+        }
+
+        _deleting = true;
+        _error = null;
+        _operationMessage = null;
+        try
+        {
+            var result = await Timeline.DeleteImageItemsAsync(new ImageItemsRequest { ItemIds = itemIds });
+            _operationMessage = $"{result.DeletedCount} 件削除しました。";
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _deleting = false;
+        }
+    }
+
+    private void ToggleAll(ChangeEventArgs args)
+    {
+        if (IsChecked(args))
+        {
+            foreach (var item in Items)
+            {
+                if (!string.IsNullOrWhiteSpace(item.ItemId))
+                {
+                    _selected.Add(item.ItemId);
+                }
+            }
+        }
+        else
+        {
+            ClearSelection();
+        }
+    }
+
+    private void ToggleItem(ImageItemRow item, bool selected)
+    {
+        if (string.IsNullOrWhiteSpace(item.ItemId))
+        {
+            return;
+        }
+        if (selected)
+        {
+            _selected.Add(item.ItemId);
+        }
+        else
+        {
+            _selected.Remove(item.ItemId);
+        }
+    }
+
+    private void ClearSelection() => _selected.Clear();
+
+    private bool IsSelected(ImageItemRow item) =>
+        !string.IsNullOrWhiteSpace(item.ItemId) && _selected.Contains(item.ItemId);
+
+    private List<string> SelectedGeneratedItemIds() =>
+        Items.Where(item => _selected.Contains(item.ItemId) && HasGeneratedItem(item))
+            .Select(item => item.ItemId)
+            .Where(itemId => !string.IsNullOrWhiteSpace(itemId))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+    private static bool IsChecked(ChangeEventArgs args) =>
+        args.Value is bool value && value;
+
+    private static string DisplayName(ImageItemRow item) =>
+        !string.IsNullOrWhiteSpace(item.SourceDisplayName) ? item.SourceDisplayName : EmptyText(item.RelativePath);
+
+    private static string DirectoryDisplay(ImageInputRoot root) =>
+        !string.IsNullOrWhiteSpace(root.DisplayPath) ? root.DisplayPath : EmptyText(root.Path);
+
+    private static string ArtifactLabel(ImageItemRow item) =>
+        HasGeneratedItem(item) ? "作成済み" : "未作成";
+
+    private static string ArtifactPillClass(ImageItemRow item) =>
+        HasGeneratedItem(item)
+            ? "tfa-status-pill border-teal-200 bg-teal-50 text-teal-800"
+            : "tfa-status-pill border-amber-200 bg-amber-50 text-amber-800";
+
+    private static bool HasGeneratedItem(ImageItemRow item) =>
+        item.HasTimeline && item.HasImageRecord;
+
+    private static string RefreshMessage(ImageRefreshResult result)
+    {
+        if (result.ProcessedCount > 0)
+        {
+            var message = $"{result.ProcessedCount} 件の分析を開始しました。処理状況は一覧更新で確認できます。";
+            if (result.FailedCount > 0)
+            {
+                message += $" 失敗: {result.FailedCount} 件。";
+            }
+            return message;
+        }
+
+        if (result.SkippedCount > 0)
+        {
+            return "新しく分析する画像はありませんでした。";
+        }
+
+        return "再スキャンを開始しました。処理状況は一覧更新で確認できます。";
+    }
+
+    private static string EmptyText(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? "-" : value;
+
+    private static string ShortDate(string? value)
+    {
+        if (DateTimeOffset.TryParse(value, out var date))
+        {
+            return date.ToLocalTime().ToString("yyyy-MM-dd HH:mm");
+        }
+        return EmptyText(value);
+    }
+
+    private static string FormatBytes(long value)
+    {
+        if (value <= 0)
+        {
+            return "-";
+        }
+        string[] units = ["B", "KB", "MB", "GB"];
+        var size = (double)value;
+        var index = 0;
+        while (size >= 1024 && index < units.Length - 1)
+        {
+            size /= 1024;
+            index += 1;
+        }
+        return $"{size:0.#} {units[index]}";
+    }
+
+    private static string DownloadFileUrl(string archivePath) =>
+        $"api/download/file?path={Uri.EscapeDataString(archivePath)}";
+
+    private static string ArchiveFileName(string archivePath, string fallback)
+    {
+        var text = (archivePath ?? "").Trim().Replace('\\', '/');
+        var fileName = text.Split('/', StringSplitOptions.RemoveEmptyEntries).LastOrDefault();
+        return string.IsNullOrWhiteSpace(fileName) ? fallback : fileName;
+    }
+}

@@ -2,13 +2,17 @@
 @inject TimelineHelperClient Timeline
 @inject IJSRuntime Js
 
-<PageTitle>設定 - Timeline</PageTitle>
+<PageTitle>TimelineForAudio 設定 - Timeline</PageTitle>
 
-<div class="mb-6">
+<div class="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
     <h1 class="tfa-title flex items-center gap-2">
         <FaIcon Name="gear" Class="tfa-icon text-accent" />
-        <span>設定</span>
+        <span>TimelineForAudio 設定</span>
     </h1>
+    <a class="tfa-button-secondary gap-2" href="audio/files">
+        <FaIcon Name="arrow-left" Class="tfa-icon" />
+        <span>一覧に戻る</span>
+    </a>
 </div>
 
 @if (_error is not null)

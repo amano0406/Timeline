@@ -5,6 +5,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 $repoRoot = $PSScriptRoot
+& (Join-Path $repoRoot "scripts\check-powershell-ascii.ps1") -RepoRoot $repoRoot
 . (Join-Path $repoRoot "scripts\docker-runtime.ps1")
 
 Initialize-TimelineDocker -RepoRoot $repoRoot

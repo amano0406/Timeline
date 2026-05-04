@@ -127,22 +127,22 @@ else if (_overview is not null)
         <section class="tfa-card tfa-card-pad">
             <div class="flex items-start justify-between gap-3">
                 <div>
-                    <div class="tfa-kicker">処理ステータス</div>
-                    <div class="mt-2 text-2xl font-semibold">@CurrentStateLabel</div>
+                    <div class="tfa-kicker">スレッド数</div>
+                    <div class="mt-2 text-3xl font-semibold">@ThreadCountLabel</div>
                 </div>
-                <span class="@($"tfa-icon-box {CurrentStateIconClass}")">
-                    <FaIcon Name="@CurrentStateIcon" Class="@($"tfa-icon {(_refreshing ? "fa-spin" : "")}")" />
+                <span class="tfa-icon-box text-sky-800">
+                    <FaIcon Name="comments" Class="tfa-icon" />
                 </span>
             </div>
         </section>
         <section class="tfa-card tfa-card-pad">
             <div class="flex items-start justify-between gap-3">
                 <div>
-                    <div class="tfa-kicker">スレッド数</div>
-                    <div class="mt-2 text-3xl font-semibold">@Current.ThreadCount</div>
+                    <div class="tfa-kicker">生成済みスレッド数</div>
+                    <div class="mt-2 text-3xl font-semibold">@GeneratedThreadCount</div>
                 </div>
-                <span class="tfa-icon-box text-sky-800">
-                    <FaIcon Name="comments" Class="tfa-icon" />
+                <span class="tfa-icon-box text-teal-700">
+                    <FaIcon Name="file-lines" Class="tfa-icon" />
                 </span>
             </div>
         </section>
@@ -160,11 +160,11 @@ else if (_overview is not null)
         <section class="tfa-card tfa-card-pad">
             <div class="flex items-start justify-between gap-3">
                 <div>
-                    <div class="tfa-kicker">出力ディレクトリ</div>
-                    <div class="mt-2 truncate text-lg font-semibold">@OutputRootLabel</div>
+                    <div class="tfa-kicker">処理ステータス</div>
+                    <div class="mt-2 text-2xl font-semibold">@CurrentStateLabel</div>
                 </div>
-                <span class="tfa-icon-box text-slate-600">
-                    <FaIcon Name="database" Class="tfa-icon" />
+                <span class="@($"tfa-icon-box {CurrentStateIconClass}")">
+                    <FaIcon Name="@CurrentStateIcon" Class="@($"tfa-icon {(_refreshing ? "fa-spin" : "")}")" />
                 </span>
             </div>
         </section>
@@ -325,7 +325,6 @@ else if (_overview is not null)
     private string? _operationMessage;
 
     private WindowsCodexCurrent Current => _overview?.Current ?? new WindowsCodexCurrent();
-    private WindowsCodexSettings Settings => _overview?.Settings ?? new WindowsCodexSettings();
     private IReadOnlyList<TimelineThreadRow> Threads => _threads;
     private bool ListBusy => _loading || _loadingMoreThreads || _autoLoadingThreads;
     private string ThreadListStatusLabel => ListBusy
@@ -333,8 +332,9 @@ else if (_overview is not null)
         : _lastLoadedAt is null
             ? $"{Threads.Count} / {Math.Max(_threadTotal, Threads.Count)} 件"
             : $"{Threads.Count} / {Math.Max(_threadTotal, Threads.Count)} 件、最終更新 {_lastLoadedAt.Value:HH:mm:ss}";
+    private int ThreadCountLabel => Math.Max(Math.Max(_threadTotal, Threads.Count), Current.ThreadCount);
+    private int GeneratedThreadCount => Current.Available ? Current.ThreadCount : 0;
     private int TotalMessageCount => Threads.Sum(thread => thread.MessageCount);
-    private string OutputRootLabel => ShortPath(Settings.OutputsRootDisplayPath);
     private bool CanRefresh => _overview?.ProductFound == true && _overview.SettingsValid;
     private string CurrentStateLabel => _refreshing ? "分析中" : Current.Available ? StateLabel(Current.State) : "未作成";
     private string CurrentStateIcon => _refreshing ? "spinner" : Current.Available && Current.State.Equals("completed", StringComparison.OrdinalIgnoreCase) ? "circle-check" : "circle-info";
@@ -745,18 +745,6 @@ else if (_overview is not null)
 
     private static string ThreadUrl(TimelineThreadRow thread) =>
         $"windows-codex/thread/{Uri.EscapeDataString(thread.ItemId)}";
-
-    private static string ShortPath(string? path)
-    {
-        if (string.IsNullOrWhiteSpace(path))
-        {
-            return "-";
-        }
-
-        var trimmed = path.Trim().TrimEnd('\\', '/');
-        var separator = Math.Max(trimmed.LastIndexOf('\\'), trimmed.LastIndexOf('/'));
-        return separator >= 0 && separator + 1 < trimmed.Length ? trimmed[(separator + 1)..] : trimmed;
-    }
 
     private static string StateLabel(string? state)
     {

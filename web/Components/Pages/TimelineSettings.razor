@@ -1,12 +1,13 @@
 @page "/timeline/settings"
 @inject TimelineHelperClient Timeline
+@inject IJSRuntime Js
 
-<PageTitle>Timeline 設定 - Timeline</PageTitle>
+<PageTitle>基本設定 - Timeline</PageTitle>
 
 <div class="mb-6">
     <h1 class="tfa-title flex items-center gap-2">
         <FaIcon Name="sliders" Class="tfa-icon text-accent" />
-        <span>Timeline 設定</span>
+        <span>基本設定</span>
     </h1>
 </div>
 
@@ -41,7 +42,7 @@ else
             <span>表示</span>
         </h2>
 
-        <div class="mt-4 grid gap-5 lg:grid-cols-2">
+        <div class="mt-4 grid gap-5">
             <div>
                 <label class="mb-2 block text-sm font-medium text-slate-700" for="timeline-display-language">表示言語</label>
                 <select id="timeline-display-language" class="tfa-input" @bind="_displayLanguageId">
@@ -68,6 +69,41 @@ else
         </div>
     </section>
 
+    <section class="tfa-card tfa-card-pad mt-5">
+        <h2 class="flex items-center gap-2 text-lg font-semibold">
+            <FaIcon Name="database" Class="tfa-icon text-accent" />
+            <span>保存先</span>
+        </h2>
+
+        <div class="mt-4 grid gap-4">
+            <div>
+                <div class="mb-2 text-sm font-medium text-slate-700">作業ディレクトリ</div>
+                <div class="rounded-md border border-line bg-slate-50 p-4">
+                    <div class="grid gap-3 lg:grid-cols-[1fr_auto] lg:items-center">
+                        <div class="min-w-0 break-all font-mono text-sm text-slate-900">@EmptyText(_workDirectory)</div>
+                        <button class="tfa-button-secondary gap-2" @onclick="PickWorkDirectoryAsync">
+                            <FaIcon Name="folder-open" Class="tfa-icon" />
+                            <span>変更</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div>
+                <div class="mb-2 text-sm font-medium text-slate-700">時間軸ストア</div>
+                <div class="rounded-md border border-line bg-slate-50 p-4">
+                    <div class="grid gap-3 lg:grid-cols-[1fr_auto] lg:items-center">
+                        <div class="min-w-0 break-all font-mono text-sm text-slate-900">@EmptyText(_storeDirectory)</div>
+                        <button class="tfa-button-secondary gap-2" @onclick="PickStoreDirectoryAsync">
+                            <FaIcon Name="folder-open" Class="tfa-icon" />
+                            <span>変更</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
     <div class="mt-5 flex flex-wrap gap-3">
         <button class="tfa-button-primary gap-2" @onclick="SaveAsync" disabled="@_saving">
             <FaIcon Name="@(_saving ? "spinner" : "floppy-disk")" Class="@($"tfa-icon {(_saving ? "fa-spin" : "")}")" />
@@ -84,6 +120,8 @@ else
     private string? _error;
     private string _displayLanguageId = "ja-JP";
     private string _timeZoneId = "Asia/Tokyo";
+    private string _workDirectory = @"C:\TimelineData\Timeline\work";
+    private string _storeDirectory = @"C:\TimelineData\Timeline\store";
 
     private IReadOnlyList<TimelineDisplayLanguageOption> DisplayLanguages => _settings?.DisplayLanguages ?? [];
     private IReadOnlyList<TimelineTimeZoneOption> TimeZones => _settings?.TimeZones ?? [];
@@ -102,6 +140,8 @@ else
             _settings = await Timeline.GetTimelineSettingsAsync();
             _displayLanguageId = string.IsNullOrWhiteSpace(_settings.DisplayLanguageId) ? "ja-JP" : _settings.DisplayLanguageId;
             _timeZoneId = string.IsNullOrWhiteSpace(_settings.TimeZoneId) ? "Asia/Tokyo" : _settings.TimeZoneId;
+            _workDirectory = string.IsNullOrWhiteSpace(_settings.WorkDirectory) ? @"C:\TimelineData\Timeline\work" : _settings.WorkDirectory;
+            _storeDirectory = string.IsNullOrWhiteSpace(_settings.StoreDirectory) ? @"C:\TimelineData\Timeline\store" : _settings.StoreDirectory;
         }
         finally
         {
@@ -116,13 +156,26 @@ else
         _error = null;
         try
         {
+            if (string.IsNullOrWhiteSpace(_workDirectory))
+            {
+                throw new InvalidOperationException("作業ディレクトリを設定してください。");
+            }
+            if (string.IsNullOrWhiteSpace(_storeDirectory))
+            {
+                throw new InvalidOperationException("時間軸ストアを設定してください。");
+            }
+
             _settings = await Timeline.SaveTimelineSettingsAsync(new TimelineAppSettingsSaveRequest
             {
                 DisplayLanguageId = _displayLanguageId,
                 TimeZoneId = _timeZoneId,
+                WorkDirectory = _workDirectory,
+                StoreDirectory = _storeDirectory,
             });
             _displayLanguageId = _settings.DisplayLanguageId;
             _timeZoneId = _settings.TimeZoneId;
+            _workDirectory = _settings.WorkDirectory;
+            _storeDirectory = _settings.StoreDirectory;
             _saved = true;
         }
         catch (Exception ex)
@@ -134,4 +187,45 @@ else
             _saving = false;
         }
     }
+
+    private async Task PickWorkDirectoryAsync()
+    {
+        var path = await PickDirectoryAsync("作業ディレクトリを選択", _workDirectory);
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return;
+        }
+
+        _workDirectory = path;
+        _saved = false;
+    }
+
+    private async Task PickStoreDirectoryAsync()
+    {
+        var path = await PickDirectoryAsync("時間軸ストアを選択", _storeDirectory);
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return;
+        }
+
+        _storeDirectory = path;
+        _saved = false;
+    }
+
+    private async Task<string?> PickDirectoryAsync(string title, string initialPath)
+    {
+        _error = null;
+        try
+        {
+            return await Js.InvokeAsync<string?>("timelineDirectoryPicker.pick", title, initialPath);
+        }
+        catch (JSException ex)
+        {
+            _error = ex.Message;
+            return null;
+        }
+    }
+
+    private static string EmptyText(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? "-" : value;
 }

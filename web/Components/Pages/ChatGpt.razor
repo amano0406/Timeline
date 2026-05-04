@@ -139,17 +139,6 @@ else if (_overview is not null)
         <section class="tfa-card tfa-card-pad">
             <div class="flex items-start justify-between gap-3">
                 <div>
-                    <div class="tfa-kicker">処理ステータス</div>
-                    <div class="mt-2 text-2xl font-semibold">@ProcessingSummaryLabel</div>
-                </div>
-                <span class="@($"tfa-icon-box {ProcessingSummaryIconClass}")">
-                    <FaIcon Name="@ProcessingSummaryIcon" Class="@($"tfa-icon {(ShowProcessingProgress ? "fa-spin" : "")}")" />
-                </span>
-            </div>
-        </section>
-        <section class="tfa-card tfa-card-pad">
-            <div class="flex items-start justify-between gap-3">
-                <div>
                     <div class="tfa-kicker">メッセージ数</div>
                     <div class="mt-2 text-3xl font-semibold">@TotalMessageCount</div>
                 </div>
@@ -165,7 +154,18 @@ else if (_overview is not null)
                     <div class="mt-2 text-2xl font-semibold">アップロード</div>
                 </div>
                 <span class="tfa-icon-box text-slate-600">
-                    <FaIcon Name="sliders" Class="tfa-icon" />
+                    <FaIcon Name="file-zipper" Class="tfa-icon" />
+                </span>
+            </div>
+        </section>
+        <section class="tfa-card tfa-card-pad">
+            <div class="flex items-start justify-between gap-3">
+                <div>
+                    <div class="tfa-kicker">処理ステータス</div>
+                    <div class="mt-2 text-2xl font-semibold">@ProcessingSummaryLabel</div>
+                </div>
+                <span class="@($"tfa-icon-box {ProcessingSummaryIconClass}")">
+                    <FaIcon Name="@ProcessingSummaryIcon" Class="@($"tfa-icon {(ShowProcessingProgress ? "fa-spin" : "")}")" />
                 </span>
             </div>
         </section>

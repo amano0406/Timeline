@@ -4,7 +4,9 @@ param(
     [string]$TimelineProductPath = "C:\apps\Timeline",
     [string]$AudioProductPath = "C:\apps\TimelineForAudio",
     [string]$WindowsCodexProductPath = "C:\apps\TimelineForWindowsCodex",
-    [string]$ChatGptProductPath = "C:\apps\TimelineForChatGPT"
+    [string]$ChatGptProductPath = "C:\apps\TimelineForChatGPT",
+    [string]$ImageProductPath = "C:\apps\TimelineForImage",
+    [switch]$ImportOnly
 )
 
 Set-StrictMode -Version Latest
@@ -24,6 +26,9 @@ $allowedOrigins = @(
 $script:TimelineHardwareDevicesCache = $null
 $script:TimelineModelInventoryCache = $null
 $script:TimelineModelInventoryCacheAt = $null
+$script:TimelineConsoleLogEntries = [System.Collections.Generic.List[object]]::new()
+$script:TimelineConsoleLogNextId = [long]0
+$script:TimelineConsoleLogLimit = 300
 
 function ConvertTo-TimelineJson {
     param([Parameter(Mandatory = $true)][object]$Payload)
@@ -93,6 +98,7 @@ function Read-TimelineAppSettings {
     $displayLanguageId = "ja-JP"
     $timeZoneId = "Asia/Tokyo"
     $workDirectory = "C:\TimelineData\Timeline\work"
+    $storeDirectory = "C:\TimelineData\Timeline\store"
     if (Test-Path -LiteralPath $path) {
         try {
             $payload = Get-Content -LiteralPath $path -Raw -Encoding UTF8 | ConvertFrom-Json
@@ -108,11 +114,16 @@ function Read-TimelineAppSettings {
             if ($workDirectoryCandidate) {
                 $workDirectory = $workDirectoryCandidate
             }
+            $storeDirectoryCandidate = Convert-TimelineText -Value (Get-PropertyValue -Object $payload -Name "storeDirectory" -Default "")
+            if ($storeDirectoryCandidate) {
+                $storeDirectory = $storeDirectoryCandidate
+            }
         }
         catch {
             $displayLanguageId = "ja-JP"
             $timeZoneId = "Asia/Tokyo"
             $workDirectory = "C:\TimelineData\Timeline\work"
+            $storeDirectory = "C:\TimelineData\Timeline\store"
         }
     }
 
@@ -128,6 +139,7 @@ function Read-TimelineAppSettings {
         timeZoneId = $timeZoneId
         timeZones = @(Get-TimelineTimeZoneOptions)
         workDirectory = $workDirectory
+        storeDirectory = $storeDirectory
     }
 }
 
@@ -159,6 +171,10 @@ function Write-TimelineAppSettings {
     if (-not $workDirectory) {
         $workDirectory = Convert-TimelineText -Value (Get-PropertyValue -Object $current -Name "workDirectory" -Default "C:\TimelineData\Timeline\work")
     }
+    $storeDirectory = Convert-TimelineText -Value (Get-PropertyValue -Object $Request -Name "storeDirectory" -Default "")
+    if (-not $storeDirectory) {
+        $storeDirectory = Convert-TimelineText -Value (Get-PropertyValue -Object $current -Name "storeDirectory" -Default "C:\TimelineData\Timeline\store")
+    }
 
     if (-not (Test-Path -LiteralPath $TimelineProductPath)) {
         [System.IO.Directory]::CreateDirectory($TimelineProductPath) | Out-Null
@@ -169,6 +185,7 @@ function Write-TimelineAppSettings {
         displayLanguageId = $displayLanguageId
         timeZoneId = $timeZoneId
         workDirectory = $workDirectory
+        storeDirectory = $storeDirectory
     }
     Write-TimelineUtf8JsonFile -Path (Get-TimelineAppSettingsPath) -Payload $payload
     return Read-TimelineAppSettings
@@ -596,6 +613,20 @@ function Convert-TimelineAudioInt {
     }
 }
 
+function Convert-TimelineLong {
+    param([object]$Value)
+
+    if ($null -eq $Value) {
+        return 0
+    }
+    try {
+        return [long]$Value
+    }
+    catch {
+        return 0
+    }
+}
+
 function Convert-TimelineText {
     param([object]$Value)
 
@@ -622,6 +653,153 @@ function Format-TimelineProcessArgument {
         return $text
     }
     return '"' + $text.Replace('"', '\"') + '"'
+}
+
+function Protect-TimelineConsoleText {
+    param([string]$Text)
+
+    $value = [string]$Text
+    if (-not $value) {
+        return ""
+    }
+
+    $value = $value -replace 'hf_[A-Za-z0-9_\-=]{8,}', 'hf_****'
+    $value = $value -replace '(?i)(--(?:token|hf-token|huggingface-token|api-key|password|secret)\s+)([^\s]+)', '$1[hidden]'
+    $value = $value -replace '(?i)(--(?:token|hf-token|huggingface-token|api-key|password|secret)=)([^\s]+)', '$1[hidden]'
+    return $value
+}
+
+function Get-TimelineRedactedArguments {
+    param([string[]]$Arguments = @())
+
+    $redacted = @()
+    $hideNext = $false
+    $sensitiveNames = @("token", "hf-token", "huggingface-token", "api-key", "password", "secret")
+    foreach ($argument in @($Arguments)) {
+        $text = [string]$argument
+        if ($hideNext) {
+            $redacted += "[hidden]"
+            $hideNext = $false
+            continue
+        }
+
+        if ($text.StartsWith("--")) {
+            $withoutPrefix = $text.TrimStart("-")
+            $name = $withoutPrefix
+            $hasInlineValue = $false
+            if ($withoutPrefix.Contains("=")) {
+                $name = $withoutPrefix.Substring(0, $withoutPrefix.IndexOf("="))
+                $hasInlineValue = $true
+            }
+            if ($sensitiveNames -contains $name.ToLowerInvariant()) {
+                if ($hasInlineValue) {
+                    $redacted += "--$name=[hidden]"
+                }
+                else {
+                    $redacted += $text
+                    $hideNext = $true
+                }
+                continue
+            }
+        }
+
+        $redacted += (Protect-TimelineConsoleText -Text $text)
+    }
+
+    return $redacted
+}
+
+function Join-TimelineCommandLine {
+    param(
+        [string]$FileName,
+        [string[]]$Arguments = @()
+    )
+
+    return ((@($FileName) + @(Get-TimelineRedactedArguments -Arguments $Arguments)) | ForEach-Object { Format-TimelineProcessArgument -Value ([string]$_) }) -join " "
+}
+
+function Get-TimelineConsoleTextPreview {
+    param(
+        [string]$Text,
+        [int]$MaxLength = 3000
+    )
+
+    $value = Protect-TimelineConsoleText -Text $Text
+    if ($value.Length -le $MaxLength) {
+        return $value
+    }
+    return "... (trimmed)`n" + $value.Substring($value.Length - $MaxLength)
+}
+
+function Add-TimelineConsoleLog {
+    param(
+        [string]$Level = "info",
+        [string]$Kind = "message",
+        [string]$ProductName = "",
+        [string]$CommandLine = "",
+        [string]$OperationId = "",
+        [Nullable[int]]$ExitCode = $null,
+        [Nullable[int]]$DurationMs = $null,
+        [string]$Stdout = "",
+        [string]$Stderr = "",
+        [string]$Message = ""
+    )
+
+    $script:TimelineConsoleLogNextId += 1
+    $entry = [ordered]@{
+        id = $script:TimelineConsoleLogNextId
+        occurredAt = [DateTimeOffset]::Now.ToString("o")
+        level = $Level
+        kind = $Kind
+        productName = $ProductName
+        commandLine = $CommandLine
+        operationId = $OperationId
+        exitCode = $ExitCode
+        durationMs = $DurationMs
+        stdout = Get-TimelineConsoleTextPreview -Text $Stdout
+        stderr = Get-TimelineConsoleTextPreview -Text $Stderr
+        message = $Message
+    }
+
+    $script:TimelineConsoleLogEntries.Add($entry)
+    while ($script:TimelineConsoleLogEntries.Count -gt $script:TimelineConsoleLogLimit) {
+        $script:TimelineConsoleLogEntries.RemoveAt(0)
+    }
+}
+
+function Get-TimelineConsoleLogs {
+    param(
+        [long]$AfterId = 0,
+        [int]$Limit = 120
+    )
+
+    $take = [Math]::Min([Math]::Max(1, $Limit), 300)
+    $currentLastId = $script:TimelineConsoleLogNextId
+    if ($AfterId -gt $currentLastId) {
+        $AfterId = 0
+    }
+    $entries = @($script:TimelineConsoleLogEntries |
+        Where-Object { [long](Get-PropertyValue -Object $_ -Name "id" -Default 0) -gt $AfterId } |
+        Select-Object -Last $take)
+    $lastId = $AfterId
+    if ($entries.Count -gt 0) {
+        $lastId = [long](Get-PropertyValue -Object $entries[-1] -Name "id" -Default $AfterId)
+    }
+
+    return [ordered]@{
+        entries = @($entries)
+        lastId = $lastId
+        count = $script:TimelineConsoleLogEntries.Count
+    }
+}
+
+function Clear-TimelineConsoleLogs {
+    $script:TimelineConsoleLogEntries.Clear()
+    return [ordered]@{
+        entries = @()
+        lastId = $script:TimelineConsoleLogNextId
+        count = 0
+    }
 }
 
 function Get-TimelinePowerShellPath {
@@ -773,6 +951,67 @@ function Invoke-TimelineProcess {
     }
 }
 
+function Invoke-TimelineLoggedProcess {
+    param(
+        [string]$FileName,
+        [string[]]$Arguments,
+        [string]$WorkingDirectory,
+        [int]$TimeoutSeconds = 25,
+        [hashtable]$Environment = @{},
+        [string]$ProductName = ""
+    )
+
+    $operationId = [guid]::NewGuid().ToString("N")
+    $commandLine = Join-TimelineCommandLine -FileName $FileName -Arguments $Arguments
+    Add-TimelineConsoleLog `
+        -Level "info" `
+        -Kind "command" `
+        -ProductName $ProductName `
+        -CommandLine $commandLine `
+        -OperationId $operationId `
+        -Message "CLI start."
+
+    $startedAt = [DateTimeOffset]::Now
+    try {
+        $result = Invoke-TimelineProcess `
+            -FileName $FileName `
+            -Arguments $Arguments `
+            -WorkingDirectory $WorkingDirectory `
+            -TimeoutSeconds $TimeoutSeconds `
+            -Environment $Environment
+
+        $durationMs = [int]([DateTimeOffset]::Now - $startedAt).TotalMilliseconds
+        $exitCode = [int]$result.exitCode
+        $level = if ($exitCode -eq 0) { "success" } else { "error" }
+        $message = if ($exitCode -eq 0) { "CLI completed." } else { "CLI failed." }
+        Add-TimelineConsoleLog `
+            -Level $level `
+            -Kind "result" `
+            -ProductName $ProductName `
+            -CommandLine $commandLine `
+            -OperationId $operationId `
+            -ExitCode $exitCode `
+            -DurationMs $durationMs `
+            -Stdout ([string]$result.stdout) `
+            -Stderr ([string]$result.stderr) `
+            -Message $message
+        return $result
+    }
+    catch {
+        $durationMs = [int]([DateTimeOffset]::Now - $startedAt).TotalMilliseconds
+        Add-TimelineConsoleLog `
+            -Level "error" `
+            -Kind "result" `
+            -ProductName $ProductName `
+            -CommandLine $commandLine `
+            -OperationId $operationId `
+            -DurationMs $durationMs `
+            -Stderr $_.Exception.Message `
+            -Message "CLI execution error."
+        throw
+    }
+}
+
 function Invoke-TimelineProcessNoOutput {
     param(
         [string]$FileName,
@@ -824,10 +1063,91 @@ function ConvertFrom-TimelineJsonOutput {
         $endIndex = $jsonText.LastIndexOf("}", [System.StringComparison]::Ordinal)
     }
     if ($startIndex -lt 0 -or $endIndex -lt $startIndex) {
-        throw "TimelineForAudio CLI did not return JSON."
+        throw "Product CLI did not return JSON."
     }
     $jsonText = $jsonText.Substring($startIndex, $endIndex - $startIndex + 1)
-    return $jsonText | ConvertFrom-Json
+    $payload = $jsonText | ConvertFrom-Json
+    $okProperty = $payload.PSObject.Properties["ok"]
+    if ($null -ne $okProperty -and $okProperty.Value -is [bool] -and -not [bool]$okProperty.Value) {
+        $errorPayload = Get-PropertyValue -Object $payload -Name "error" -Default @{}
+        $message = Convert-TimelineText -Value (Get-PropertyValue -Object $errorPayload -Name "message" -Default "")
+        if (-not $message) {
+            $message = Convert-TimelineText -Value (Get-PropertyValue -Object $payload -Name "message" -Default "")
+        }
+        if (-not $message) {
+            $message = "Product CLI returned ok=false."
+        }
+        throw $message
+    }
+    return $payload
+}
+
+function ConvertFrom-TimelineJsonStringLiteral {
+    param([string]$Text)
+
+    $builder = [System.Text.StringBuilder]::new()
+    for ($index = 0; $index -lt $Text.Length; $index++) {
+        $char = $Text[$index]
+        if ($char -ne [char]92) {
+            [void]$builder.Append($char)
+            continue
+        }
+
+        $index++
+        if ($index -ge $Text.Length) {
+            [void]$builder.Append([char]92)
+            break
+        }
+
+        $escaped = $Text[$index]
+        switch ([string]$escaped) {
+            '"' { [void]$builder.Append('"') }
+            '\' { [void]$builder.Append('\') }
+            '/' { [void]$builder.Append('/') }
+            'b' { [void]$builder.Append([char]8) }
+            'f' { [void]$builder.Append([char]12) }
+            'n' { [void]$builder.Append([char]10) }
+            'r' { [void]$builder.Append([char]13) }
+            't' { [void]$builder.Append([char]9) }
+            'u' {
+                if ($index + 4 -lt $Text.Length) {
+                    $hex = $Text.Substring($index + 1, 4)
+                    if ($hex -match '^[0-9a-fA-F]{4}$') {
+                        [void]$builder.Append([char]([Convert]::ToInt32($hex, 16)))
+                        $index += 4
+                        break
+                    }
+                }
+                [void]$builder.Append($escaped)
+            }
+            default {
+                [void]$builder.Append($escaped)
+            }
+        }
+    }
+
+    return $builder.ToString()
+}
+
+function Get-TimelineJsonStringPropertyFromOutput {
+    param(
+        [string]$Text,
+        [string[]]$Names
+    )
+
+    $source = [string]$Text
+    foreach ($name in @($Names)) {
+        $pattern = '"{0}"\s*:\s*"((?:\\.|[^"\\])*)"' -f [System.Text.RegularExpressions.Regex]::Escape([string]$name)
+        $match = [System.Text.RegularExpressions.Regex]::Match(
+            $source,
+            $pattern,
+            [System.Text.RegularExpressions.RegexOptions]::Singleline)
+        if ($match.Success) {
+            return ConvertFrom-TimelineJsonStringLiteral -Text $match.Groups[1].Value
+        }
+    }
+
+    return ""
 }
 
 function Invoke-TimelineProductCliText {
@@ -847,20 +1167,22 @@ function Invoke-TimelineProductCliText {
     $cliScript = Join-Path $ProductPath "cli.ps1"
     if (Test-Path -LiteralPath $cliScript) {
         $powershellArgs = @("-NoLogo", "-NoProfile", "-WindowStyle", "Hidden", "-ExecutionPolicy", "Bypass", "-File", $cliScript) + @($CliArgs)
-        $result = Invoke-TimelineProcess `
+        $result = Invoke-TimelineLoggedProcess `
             -FileName (Get-TimelinePowerShellPath) `
             -Arguments $powershellArgs `
             -WorkingDirectory $ProductPath `
             -TimeoutSeconds $TimeoutSeconds `
-            -Environment (Get-TimelineChildProcessEnvironment)
+            -Environment (Get-TimelineChildProcessEnvironment) `
+            -ProductName $ProductName
     }
     elseif (Test-Path -LiteralPath $cliBatch) {
-        $result = Invoke-TimelineProcess `
+        $result = Invoke-TimelineLoggedProcess `
             -FileName (Join-Path $env:SystemRoot "System32\cmd.exe") `
             -Arguments (@("/d", "/c", $cliBatch) + @($CliArgs)) `
             -WorkingDirectory $ProductPath `
             -TimeoutSeconds $TimeoutSeconds `
-            -Environment (Get-TimelineChildProcessEnvironment)
+            -Environment (Get-TimelineChildProcessEnvironment) `
+            -ProductName $ProductName
     }
     else {
         throw "$ProductName CLI launcher was not found. Expected cli.bat or cli.ps1 under: $ProductPath"
@@ -869,7 +1191,23 @@ function Invoke-TimelineProductCliText {
     $stdout = [string]$result.stdout
     $stderr = [string]$result.stderr
     if ([int]$result.exitCode -ne 0 -and -not $AllowFailure) {
-        $message = if ($stderr.Trim()) { $stderr.Trim() } elseif ($stdout.Trim()) { $stdout.Trim() } else { "exit code $([int]$result.exitCode)" }
+        $jsonMessage = ""
+        foreach ($candidate in @($stdout, $stderr)) {
+            if (-not ([string]$candidate).Trim()) {
+                continue
+            }
+            try {
+                [void](ConvertFrom-TimelineJsonOutput -Text ([string]$candidate))
+            }
+            catch {
+                $candidateMessage = [string]$_.Exception.Message
+                if ($candidateMessage -and -not $candidateMessage.Equals("Product CLI did not return JSON.", [System.StringComparison]::OrdinalIgnoreCase)) {
+                    $jsonMessage = $candidateMessage
+                    break
+                }
+            }
+        }
+        $message = if ($jsonMessage) { $jsonMessage } elseif ($stderr.Trim()) { $stderr.Trim() } elseif ($stdout.Trim()) { $stdout.Trim() } else { "exit code $([int]$result.exitCode)" }
         throw "$ProductName CLI failed: $message"
     }
 
@@ -1015,6 +1353,63 @@ function Get-TimelineAppWorkDirectory {
     return [System.IO.Path]::GetFullPath($localPath)
 }
 
+function Get-TimelineAppStoreDirectory {
+    $defaultRoot = "C:\TimelineData\Timeline\store"
+    $storeDirectory = $defaultRoot
+    $path = Get-TimelineAppSettingsPath
+    if (Test-Path -LiteralPath $path) {
+        try {
+            $payload = Get-Content -LiteralPath $path -Raw -Encoding UTF8 | ConvertFrom-Json
+            $candidate = Convert-TimelineText -Value (Get-PropertyValue -Object $payload -Name "storeDirectory" -Default "")
+            if ($candidate) {
+                $storeDirectory = $candidate
+            }
+        }
+        catch {
+            $storeDirectory = $defaultRoot
+        }
+    }
+
+    $localPath = Convert-TimelineWindowsPath -Path $storeDirectory
+    if (-not $localPath) {
+        $localPath = $defaultRoot
+    }
+    if (-not [System.IO.Path]::IsPathRooted($localPath)) {
+        $localPath = Join-Path $defaultRoot $localPath
+    }
+    [System.IO.Directory]::CreateDirectory($localPath) | Out-Null
+    return [System.IO.Path]::GetFullPath($localPath)
+}
+
+function Get-TimelineStoreManifestPath {
+    return Join-Path (Get-TimelineAppStoreDirectory) "manifest.json"
+}
+
+function Get-TimelineStoreItemsPath {
+    return Join-Path (Get-TimelineAppStoreDirectory) "items.jsonl"
+}
+
+function Get-TimelineStoreEventsPath {
+    return Join-Path (Get-TimelineAppStoreDirectory) "events.jsonl"
+}
+
+function Get-TimelineWorkerDirectory {
+    $root = Join-Path (Get-TimelineAppWorkDirectory) "worker"
+    [System.IO.Directory]::CreateDirectory($root) | Out-Null
+    return [System.IO.Path]::GetFullPath($root)
+}
+
+function Get-TimelineWorkerJobStatusPath {
+    param([string]$JobId)
+
+    $safeJobId = Get-TimelineZipSafeSegment -Value $JobId
+    return Join-Path (Get-TimelineWorkerDirectory) "$safeJobId.json"
+}
+
+function Get-TimelineDockerWorkerHeartbeatPath {
+    return Join-Path (Get-TimelineWorkerDirectory) "docker-worker-heartbeat.json"
+}
+
 function Get-TimelineLocalDownloadRoot {
     $root = Join-Path (Get-TimelineAppWorkDirectory) "downloads"
     [System.IO.Directory]::CreateDirectory($root) | Out-Null
@@ -1112,6 +1507,12 @@ function Test-TimelinePathUnderRoot {
 }
 
 function Get-TimelineDownloadRoots {
+    return @(
+        (Get-TimelineLocalDownloadRoot)
+    )
+}
+
+function Get-TimelineLocalDownloadRoots {
     return @(
         (Get-TimelineLocalDownloadRoot)
     )
@@ -1391,7 +1792,7 @@ function Convert-TimelineThreadItemRow {
         [string]$RootPath = ""
     )
 
-    $itemId = Convert-TimelineText -Value (Get-PropertyValueAny -Object $Item -Names @("item_id", "itemId", "thread_id", "threadId", "conversation_id", "conversationId") -Default "")
+    $itemId = Convert-TimelineText -Value (Get-PropertyValueAny -Object $Item -Names @("item_id", "itemId", "thread_id", "threadId", "conversation_id", "conversationId", "id") -Default "")
     $title = Convert-TimelineText -Value (Get-PropertyValueAny -Object $Item -Names @("title", "preferred_title", "preferredTitle", "name") -Default "")
     if (-not $title) {
         $title = Convert-TimelineText -Value (Get-PropertyValue -Object $Item -Name "first_user_message_excerpt" -Default "")
@@ -1401,20 +1802,100 @@ function Convert-TimelineThreadItemRow {
     }
 
     $directoryPath = Convert-TimelineText -Value (Get-PropertyValueAny -Object $Item -Names @("directoryPath", "directory_path", "item_dir", "itemDir") -Default "")
+    $timelinePath = Resolve-TimelineThreadArtifactPath `
+        -Value (Convert-TimelineText -Value (Get-PropertyValueAny -Object $Item -Names @("timeline_path", "timelinePath") -Default "")) `
+        -RootPath $RootPath
+    $convertInfoPath = Resolve-TimelineThreadArtifactPath `
+        -Value (Convert-TimelineText -Value (Get-PropertyValueAny -Object $Item -Names @("convert_info_path", "convertInfoPath") -Default "")) `
+        -RootPath $RootPath
+    if (-not $directoryPath -and $timelinePath) {
+        $directoryPath = [System.IO.Path]::GetDirectoryName($timelinePath)
+    }
     if (-not $directoryPath -and $RootPath -and $itemId) {
         $directoryPath = Join-Path $RootPath $itemId
+    }
+    if (-not $timelinePath -and $directoryPath) {
+        $timelinePath = Join-Path $directoryPath "timeline.json"
+    }
+    if (-not $convertInfoPath -and $directoryPath) {
+        $convertInfoPath = Join-Path $directoryPath "convert_info.json"
+    }
+
+    $createdAt = Convert-TimelineText -Value (Get-PropertyValueAny -Object $Item -Names @("created_at", "createdAt", "started_at_utc", "startedAtUtc") -Default "")
+    $updatedAt = Convert-TimelineText -Value (Get-PropertyValueAny -Object $Item -Names @("updated_at", "updatedAt", "ended_at_utc", "endedAtUtc") -Default "")
+    $messageCount = Convert-TimelineAudioInt -Value (Get-PropertyValueAny -Object $Item -Names @("message_count", "messageCount", "event_count", "eventCount") -Default 0)
+    if ($timelinePath -and (Test-Path -LiteralPath $timelinePath -PathType Leaf)) {
+        $timeline = Read-TimelineChatGptJsonFile -Path $timelinePath
+        if ($null -ne $timeline) {
+            $timelineTitle = Convert-TimelineText -Value (Get-PropertyValue -Object $timeline -Name "title" -Default "")
+            if ($timelineTitle) {
+                $title = $timelineTitle
+            }
+            if (-not $createdAt) {
+                $createdAt = Convert-TimelineText -Value (Get-PropertyValue -Object $timeline -Name "created_at" -Default "")
+            }
+            if (-not $updatedAt) {
+                $updatedAt = Convert-TimelineText -Value (Get-PropertyValue -Object $timeline -Name "updated_at" -Default "")
+            }
+            if ($messageCount -le 0) {
+                $messageCount = @(Get-PropertyValue -Object $timeline -Name "messages" -Default @()).Count
+            }
+        }
     }
 
     return [ordered]@{
         itemId = $itemId
         title = $title
-        createdAt = Convert-TimelineText -Value (Get-PropertyValueAny -Object $Item -Names @("created_at", "createdAt", "started_at_utc", "startedAtUtc") -Default "")
-        updatedAt = Convert-TimelineText -Value (Get-PropertyValueAny -Object $Item -Names @("updated_at", "updatedAt", "ended_at_utc", "endedAtUtc") -Default "")
-        messageCount = Convert-TimelineAudioInt -Value (Get-PropertyValueAny -Object $Item -Names @("message_count", "messageCount", "event_count", "eventCount") -Default 0)
+        createdAt = $createdAt
+        updatedAt = $updatedAt
+        messageCount = $messageCount
         directoryPath = $directoryPath
-        timelinePath = if ($directoryPath) { Join-Path $directoryPath "timeline.json" } else { "" }
-        convertInfoPath = if ($directoryPath) { Join-Path $directoryPath "convert_info.json" } else { "" }
+        timelinePath = $timelinePath
+        convertInfoPath = $convertInfoPath
     }
+}
+
+function Resolve-TimelineThreadArtifactPath {
+    param(
+        [string]$Value,
+        [string]$RootPath = ""
+    )
+
+    $text = Convert-TimelineText -Value $Value
+    if (-not $text) {
+        return ""
+    }
+    $localPath = Convert-TimelineWindowsPath -Path $text
+    if ([System.IO.Path]::IsPathRooted($localPath)) {
+        return $localPath
+    }
+    if ($RootPath) {
+        return Join-Path $RootPath $localPath.Replace("/", "\")
+    }
+    return $localPath
+}
+
+function Convert-TimelineThreadItemsListResult {
+    param(
+        [object]$Payload,
+        [string]$RootPath = ""
+    )
+
+    $items = @(Get-PropertyValue -Object $Payload -Name "items" -Default @())
+    $threads = @()
+    foreach ($item in @($items)) {
+        $threads += Convert-TimelineThreadItemRow -Item $item -RootPath $RootPath
+    }
+
+    $total = Convert-TimelineAudioInt -Value (Get-PropertyValueAny -Object $Payload -Names @("total_items", "totalItems", "item_count", "itemCount", "total") -Default $threads.Count)
+    $pagination = Convert-TimelinePagination `
+        -Payload $Payload `
+        -TotalNames @("total_items", "totalItems", "item_count", "itemCount", "total") `
+        -ReturnedNames @("returned_items", "returnedItems")
+    return New-TimelineThreadListResult `
+        -Threads $threads `
+        -Pagination $pagination `
+        -Total $total
 }
 
 function New-TimelineThreadListResult {
@@ -1484,6 +1965,37 @@ function Get-TimelineManifestItemCount {
         return $itemCount
     }
     return @(Get-PropertyValue -Object $manifest -Name "items" -Default @()).Count
+}
+
+function Get-TimelineImageSourceFileCount {
+    param([object]$Settings)
+
+    $extensions = @(Get-PropertyValueAny -Object $Settings -Names @("imageExtensions", "image_extensions") -Default @(".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".tif", ".tiff", ".heic"))
+    $extensionSet = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    foreach ($extension in @($extensions)) {
+        $text = ([string]$extension).Trim()
+        if (-not $text) {
+            continue
+        }
+        if (-not $text.StartsWith(".")) {
+            $text = ".$text"
+        }
+        [void]$extensionSet.Add($text)
+    }
+
+    $count = 0
+    foreach ($root in @(Get-PropertyValueAny -Object $Settings -Names @("inputRoots", "input_roots") -Default @())) {
+        $rootPath = Convert-TimelineImageLocalPath -Path (Convert-TimelineText -Value $root)
+        if (-not $rootPath -or -not (Test-Path -LiteralPath $rootPath)) {
+            continue
+        }
+        foreach ($file in @(Get-ChildItem -LiteralPath $rootPath -File -Recurse -ErrorAction SilentlyContinue)) {
+            if ($extensionSet.Contains($file.Extension)) {
+                $count += 1
+            }
+        }
+    }
+    return $count
 }
 
 function Get-TimelineSafeChildDirectory {
@@ -1746,7 +2258,10 @@ function Get-TimelineWindowsCodexThreads {
     $settingsPayload = Read-TimelineWindowsCodexSettingsFile
     $outputRoot = Convert-TimelineText -Value (Get-PropertyValueAny -Object $settingsPayload -Names @("outputRoot", "outputs_root") -Default "")
     $masterLocalPath = Convert-TimelineWindowsPath -Path $outputRoot
-    return Get-TimelineThreadRowsPageFromRoot -RootPath $masterLocalPath -Page $Page -PageSize $PageSize
+    $payload = Invoke-TimelineWindowsCodexCliJson `
+        -CliArgs @("items", "list", "--page", ([string][Math]::Max(1, $Page)), "--page-size", ([string][Math]::Max(1, $PageSize)), "--json") `
+        -TimeoutSeconds 180
+    return Convert-TimelineThreadItemsListResult -Payload $payload -RootPath $masterLocalPath
 }
 
 function Get-TimelineWindowsCodexOverview {
@@ -1807,12 +2322,9 @@ function Write-TimelineWindowsCodexSettings {
         $outputsRoot = "C:\TimelineData\windows-codex"
     }
 
-    $payload = [ordered]@{
-        schemaVersion = 1
-        outputRoot = $outputsRoot
-    }
-    $settingsPath = Join-Path $WindowsCodexProductPath "settings.json"
-    Write-TimelineUtf8JsonFile -Path $settingsPath -Payload $payload
+    [void](Invoke-TimelineWindowsCodexCliJson `
+        -CliArgs @("settings", "master", "set", $outputsRoot, "--json") `
+        -TimeoutSeconds 120)
 
     return Get-TimelineWindowsCodexOverview
 }
@@ -1853,8 +2365,14 @@ function Start-TimelineWindowsCodexDownload {
         $args += @("--item-id", $itemId)
     }
 
-    $payload = Invoke-TimelineWindowsCodexCliJson -CliArgs $args -TimeoutSeconds 900
-    $archivePath = Convert-TimelineDownloadLocalPath -Path (Convert-TimelineText -Value (Get-PropertyValueAny -Object $payload -Names @("destination_path", "destinationPath", "archive_path", "archivePath", "download_path", "downloadPath") -Default ""))
+    $stdout = Invoke-TimelineProductCliText `
+        -ProductPath $WindowsCodexProductPath `
+        -ProductName "TimelineForWindowsCodex" `
+        -CliArgs $args `
+        -TimeoutSeconds 900
+    $archivePath = Convert-TimelineDownloadLocalPath -Path (Get-TimelineJsonStringPropertyFromOutput `
+        -Text $stdout `
+        -Names @("destination_path", "destinationPath", "archive_path", "archivePath", "download_path", "downloadPath"))
     if (-not $archivePath -or -not (Test-TimelineDownloadFileAllowed -Path $archivePath)) {
         throw "TimelineForWindowsCodex CLI did not create a downloadable ZIP in the Timeline work directory."
     }
@@ -1908,6 +2426,17 @@ function Get-TimelineRuntimeProductDefinitions {
             cliPath = (Join-Path $ChatGptProductPath "cli.ps1")
             startPath = (Join-Path $ChatGptProductPath "start.ps1")
             stopPath = (Join-Path $ChatGptProductPath "stop.ps1")
+        },
+        [ordered]@{
+            id = "image"
+            displayName = "TimelineForImage"
+            description = "image"
+            pagePath = "image"
+            settingsPath = "image/settings"
+            productPath = $ImageProductPath
+            cliPath = (Join-Path $ImageProductPath "cli.ps1")
+            startPath = (Join-Path $ImageProductPath "start.ps1")
+            stopPath = (Join-Path $ImageProductPath "stop.ps1")
         }
     )
 }
@@ -2001,22 +2530,24 @@ function Invoke-TimelineProductStart {
     $powershell = Get-TimelinePowerShellPath
     if ($Restart -and (Test-Path -LiteralPath ([string]$definition.stopPath))) {
         $stopScript = [string]$definition.stopPath
-        [void](Invoke-TimelineProcess `
+        [void](Invoke-TimelineLoggedProcess `
             -FileName $powershell `
             -Arguments @("-NoLogo", "-NoProfile", "-WindowStyle", "Hidden", "-ExecutionPolicy", "Bypass", "-File", $stopScript) `
             -WorkingDirectory $productPath `
             -TimeoutSeconds 180 `
-            -Environment (Get-TimelineChildProcessEnvironment))
+            -Environment (Get-TimelineChildProcessEnvironment) `
+            -ProductName ([string]$definition.displayName))
     }
 
     if (Test-Path -LiteralPath ([string]$definition.startPath)) {
         $startScript = [string]$definition.startPath
-        $result = Invoke-TimelineProcess `
+        $result = Invoke-TimelineLoggedProcess `
             -FileName $powershell `
             -Arguments @("-NoLogo", "-NoProfile", "-WindowStyle", "Hidden", "-ExecutionPolicy", "Bypass", "-File", $startScript) `
             -WorkingDirectory $productPath `
             -TimeoutSeconds 240 `
-            -Environment (Get-TimelineChildProcessEnvironment)
+            -Environment (Get-TimelineChildProcessEnvironment) `
+            -ProductName ([string]$definition.displayName)
         if ([int]$result.exitCode -ne 0) {
             $combinedOutput = "$([string]$result.stdout)`n$([string]$result.stderr)"
             if (-not (Test-TimelineProductStartOutputSuccess -Text $combinedOutput)) {
@@ -2073,6 +2604,427 @@ function Convert-TimelineChatGptLocalPath {
         return $text
     }
     return Join-Path $ChatGptProductPath $text
+}
+
+function Invoke-TimelineImageCliJson {
+    param(
+        [string[]]$CliArgs,
+        [int]$TimeoutSeconds = 120
+    )
+
+    $stdout = Invoke-TimelineImageCliText -CliArgs $CliArgs -TimeoutSeconds $TimeoutSeconds
+    return ConvertFrom-TimelineJsonOutput -Text $stdout
+}
+
+function Invoke-TimelineImageCliText {
+    param(
+        [string[]]$CliArgs,
+        [int]$TimeoutSeconds = 120
+    )
+
+    $stdout = Invoke-TimelineProductCliText `
+        -ProductPath $ImageProductPath `
+        -ProductName "TimelineForImage" `
+        -CliArgs (@("--json") + @($CliArgs)) `
+        -TimeoutSeconds $TimeoutSeconds
+    return $stdout
+}
+
+function Convert-TimelineImageLocalPath {
+    param([string]$Path)
+
+    $text = ([string]$Path).Trim()
+    if (-not $text) {
+        return ""
+    }
+    if ($text.Equals("/workspace", [System.StringComparison]::OrdinalIgnoreCase)) {
+        return $ImageProductPath
+    }
+    if ($text.StartsWith("/workspace/", [System.StringComparison]::OrdinalIgnoreCase)) {
+        return (Join-Path $ImageProductPath $text.Substring("/workspace/".Length).Replace("/", "\"))
+    }
+    if ($text.StartsWith("/mnt/c/", [System.StringComparison]::OrdinalIgnoreCase)) {
+        return "C:\" + $text.Substring(7).Replace("/", "\")
+    }
+    if ([System.IO.Path]::IsPathRooted($text)) {
+        return $text
+    }
+    return Join-Path $ImageProductPath $text
+}
+
+function Convert-TimelineImageDirectoryRoot {
+    param(
+        [string]$Id,
+        [string]$DisplayName,
+        [string]$Path
+    )
+
+    $localPath = Convert-TimelineImageLocalPath -Path $Path
+    return [ordered]@{
+        id = $Id
+        displayName = $DisplayName
+        path = $Path
+        displayPath = if ($localPath) { $localPath } else { $Path }
+        exists = if ($localPath) { Test-Path -LiteralPath $localPath } else { $false }
+    }
+}
+
+function Convert-TimelineImageInputRoot {
+    param(
+        [string]$Path,
+        [int]$Index
+    )
+
+    $localPath = Convert-TimelineImageLocalPath -Path $Path
+    return [ordered]@{
+        id = "input-$Index"
+        displayName = if ($localPath) { Split-Path -Leaf $localPath.TrimEnd('\', '/') } else { "Input $Index" }
+        path = $Path
+        displayPath = if ($localPath) { $localPath } else { $Path }
+        enabled = $true
+        exists = if ($localPath) { Test-Path -LiteralPath $localPath } else { $false }
+    }
+}
+
+function Convert-TimelineImageSettingsStatus {
+    param([object]$Payload)
+
+    $settings = Get-PropertyValue -Object $Payload -Name "settings" -Default @{}
+    $resolved = Get-PropertyValue -Object $Payload -Name "resolved" -Default @{}
+    $inputRoots = @()
+    $index = 1
+    foreach ($root in @(Get-PropertyValue -Object $settings -Name "input_roots" -Default @())) {
+        $inputRoots += Convert-TimelineImageInputRoot -Path (Convert-TimelineText -Value $root) -Index $index
+        $index += 1
+    }
+
+    $outputRoot = Convert-TimelineText -Value (Get-PropertyValue -Object $settings -Name "output_root" -Default "")
+    if (-not $outputRoot) {
+        $outputRoot = Convert-TimelineText -Value (Get-PropertyValue -Object $resolved -Name "output_root" -Default "")
+    }
+    return [ordered]@{
+        settingsPath = Convert-TimelineImageLocalPath -Path (Convert-TimelineText -Value (Get-PropertyValue -Object $Payload -Name "settings_path" -Default ""))
+        inputRoots = @($inputRoots)
+        outputRoot = Convert-TimelineImageDirectoryRoot -Id "output" -DisplayName "Output" -Path $outputRoot
+        issues = @()
+    }
+}
+
+function Get-TimelineImageSettingsFilePath {
+    $settingsPath = Join-Path $ImageProductPath "settings.json"
+    if (Test-Path -LiteralPath $settingsPath) {
+        return $settingsPath
+    }
+    return Join-Path $ImageProductPath "settings.example.json"
+}
+
+function Read-TimelineImageSettingsPayload {
+    $path = Get-TimelineImageSettingsFilePath
+    if (-not (Test-Path -LiteralPath $path)) {
+        return [ordered]@{
+            schemaVersion = 1
+            inputRoots = @("C:\TimelineData\input-image\")
+            outputRoot = "C:\TimelineData\image"
+        }
+    }
+    try {
+        return Get-Content -LiteralPath $path -Raw -Encoding UTF8 | ConvertFrom-Json
+    }
+    catch {
+        return [ordered]@{
+            schemaVersion = 1
+            inputRoots = @("C:\TimelineData\input-image\")
+            outputRoot = "C:\TimelineData\image"
+        }
+    }
+}
+
+function Convert-TimelineImageSettingsFile {
+    param([object]$Payload)
+
+    $inputRoots = @()
+    $index = 1
+    foreach ($root in @(Get-PropertyValueAny -Object $Payload -Names @("inputRoots", "input_roots") -Default @())) {
+        $inputRoots += Convert-TimelineImageInputRoot -Path (Convert-TimelineText -Value $root) -Index $index
+        $index += 1
+    }
+
+    $outputRoot = Convert-TimelineText -Value (Get-PropertyValueAny -Object $Payload -Names @("outputRoot", "output_root") -Default "C:\TimelineData\image")
+
+    return [ordered]@{
+        settingsPath = Get-TimelineImageSettingsFilePath
+        inputRoots = @($inputRoots)
+        outputRoot = Convert-TimelineImageDirectoryRoot -Id "output" -DisplayName "Output" -Path $outputRoot
+        issues = @()
+    }
+}
+
+function Convert-TimelineImagePagination {
+    param(
+        [object]$Payload,
+        [string]$RowsProperty = "items"
+    )
+
+    $count = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $Payload -Name "count" -Default 0)
+    $page = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $Payload -Name "page" -Default 1)
+    $pageSize = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $Payload -Name "page_size" -Default 50)
+    $pageCount = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $Payload -Name "page_count" -Default 1)
+    if ($pageSize -le 0) {
+        $pageSize = 50
+    }
+    $offset = [Math]::Max(0, ($page - 1) * $pageSize)
+    $returned = @(Get-PropertyValue -Object $Payload -Name $RowsProperty -Default @()).Count
+    return [ordered]@{
+        mode = "page"
+        page = $page
+        pageSize = $pageSize
+        totalItems = $count
+        totalPages = $pageCount
+        returnedItems = $returned
+        offset = $offset
+        rangeStart = if ($count -gt 0) { $offset + 1 } else { 0 }
+        rangeEnd = [Math]::Min($count, $offset + $returned)
+        hasPrevious = $page -gt 1
+        hasNext = $page -lt $pageCount
+    }
+}
+
+function Convert-TimelineImageItemRow {
+    param([object]$Row)
+
+    $itemId = Convert-TimelineText -Value (Get-PropertyValue -Object $Row -Name "item_id" -Default "")
+    $sourcePath = Convert-TimelineText -Value (Get-PropertyValue -Object $Row -Name "source_path" -Default "")
+    $outputDir = Convert-TimelineText -Value (Get-PropertyValue -Object $Row -Name "output_dir" -Default "")
+    $localOutputDir = Convert-TimelineImageLocalPath -Path $outputDir
+    $timelinePath = if ($localOutputDir) { Join-Path $localOutputDir "timeline.json" } else { "" }
+    $convertInfoPath = if ($localOutputDir) { Join-Path $localOutputDir "convert_info.json" } else { "" }
+    $imageRecordPath = if ($localOutputDir) { Join-Path $localOutputDir "image_record.json" } else { "" }
+    return [ordered]@{
+        itemId = $itemId
+        relativePath = Convert-TimelineText -Value (Get-PropertyValue -Object $Row -Name "relative_path" -Default "")
+        sourcePath = Convert-TimelineImageLocalPath -Path $sourcePath
+        sourceDisplayName = Split-Path -Leaf (Convert-TimelineImageLocalPath -Path $sourcePath)
+        sizeBytes = Convert-TimelineLong -Value (Get-PropertyValue -Object $Row -Name "size_bytes" -Default 0)
+        modifiedAt = Convert-TimelineText -Value (Get-PropertyValue -Object $Row -Name "modified_at" -Default "")
+        outputDirectory = $localOutputDir
+        timelinePath = $timelinePath
+        convertInfoPath = $convertInfoPath
+        imageRecordPath = $imageRecordPath
+        hasTimeline = if ($timelinePath) { Test-Path -LiteralPath $timelinePath -PathType Leaf } else { $false }
+        hasImageRecord = if ($imageRecordPath) { Test-Path -LiteralPath $imageRecordPath -PathType Leaf } else { $false }
+    }
+}
+
+function Get-TimelineImageCurrentOutputRoot {
+    $payload = Read-TimelineImageSettingsPayload
+    $outputRoot = Convert-TimelineText -Value (Get-PropertyValueAny -Object $payload -Names @("outputRoot", "output_root") -Default "C:\TimelineData\image")
+    return Convert-TimelineImageLocalPath -Path $outputRoot
+}
+
+function Convert-TimelineImageFileRow {
+    param(
+        [object]$Row,
+        [string]$OutputRoot
+    )
+
+    $itemId = Convert-TimelineText -Value (Get-PropertyValue -Object $Row -Name "item_id" -Default "")
+    $sourcePath = Convert-TimelineText -Value (Get-PropertyValue -Object $Row -Name "source_path" -Default "")
+    $localSourcePath = Convert-TimelineImageLocalPath -Path $sourcePath
+    $localOutputDir = if ($OutputRoot -and $itemId) { Join-Path (Join-Path $OutputRoot "items") $itemId } else { "" }
+    $timelinePath = if ($localOutputDir) { Join-Path $localOutputDir "timeline.json" } else { "" }
+    $convertInfoPath = if ($localOutputDir) { Join-Path $localOutputDir "convert_info.json" } else { "" }
+    $imageRecordPath = if ($localOutputDir) { Join-Path $localOutputDir "image_record.json" } else { "" }
+    return [ordered]@{
+        itemId = $itemId
+        relativePath = Convert-TimelineText -Value (Get-PropertyValue -Object $Row -Name "relative_path" -Default "")
+        sourcePath = $localSourcePath
+        sourceDisplayName = if ($localSourcePath) { Split-Path -Leaf $localSourcePath } else { Convert-TimelineText -Value (Get-PropertyValue -Object $Row -Name "display_name" -Default "") }
+        sizeBytes = Convert-TimelineLong -Value (Get-PropertyValue -Object $Row -Name "size_bytes" -Default 0)
+        modifiedAt = Convert-TimelineText -Value (Get-PropertyValue -Object $Row -Name "modified_at" -Default "")
+        outputDirectory = $localOutputDir
+        timelinePath = $timelinePath
+        convertInfoPath = $convertInfoPath
+        imageRecordPath = $imageRecordPath
+        hasTimeline = if ($timelinePath) { Test-Path -LiteralPath $timelinePath -PathType Leaf } else { $false }
+        hasImageRecord = if ($imageRecordPath) { Test-Path -LiteralPath $imageRecordPath -PathType Leaf } else { $false }
+    }
+}
+
+function Get-TimelineImageOverview {
+    $productFound = Test-Path -LiteralPath $ImageProductPath
+    if (-not $productFound) {
+        return [ordered]@{
+            productFound = $false
+            productPath = $ImageProductPath
+            settingsValid = $false
+            settings = [ordered]@{}
+            sourceFileCount = 0
+            itemCount = 0
+            latestRefresh = [ordered]@{}
+            message = "TimelineForImage was not found."
+        }
+    }
+
+    try {
+        $settingsPayload = Read-TimelineImageSettingsPayload
+        $settings = Convert-TimelineImageSettingsFile -Payload $settingsPayload
+        $outputPath = Convert-TimelineText -Value (Get-PropertyValueAny -Object $settingsPayload -Names @("outputRoot", "output_root") -Default "")
+        $outputLocalPath = Convert-TimelineImageLocalPath -Path $outputPath
+        return [ordered]@{
+            productFound = $true
+            productPath = $ImageProductPath
+            settingsValid = $true
+            settings = $settings
+            sourceFileCount = Get-TimelineImageSourceFileCount -Settings $settingsPayload
+            itemCount = Get-TimelineManifestItemCount -RootPath $outputLocalPath
+            latestRefresh = [ordered]@{}
+            message = ""
+        }
+    }
+    catch {
+        $settings = Convert-TimelineImageSettingsFile -Payload (Read-TimelineImageSettingsPayload)
+        return [ordered]@{
+            productFound = $true
+            productPath = $ImageProductPath
+            settingsValid = $false
+            settings = $settings
+            sourceFileCount = 0
+            itemCount = 0
+            latestRefresh = [ordered]@{}
+            message = $_.Exception.Message
+        }
+    }
+}
+
+function Get-TimelineImageItems {
+    param(
+        [int]$Page = 1,
+        [int]$PageSize = 100
+    )
+
+    $payload = Invoke-TimelineImageCliJson -CliArgs @("items", "list", "--page", ([string][Math]::Max(1, $Page)), "--page-size", ([string][Math]::Max(1, $PageSize))) -TimeoutSeconds 120
+    $items = @()
+    foreach ($row in @(Get-PropertyValue -Object $payload -Name "items" -Default @())) {
+        $items += Convert-TimelineImageItemRow -Row $row
+    }
+    return [ordered]@{
+        total = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $payload -Name "count" -Default 0)
+        pagination = Convert-TimelineImagePagination -Payload $payload
+        items = @($items)
+    }
+}
+
+function Get-TimelineImageFiles {
+    param(
+        [int]$Page = 1,
+        [int]$PageSize = 100
+    )
+
+    $payload = Invoke-TimelineImageCliJson -CliArgs @("files", "list", "--page", ([string][Math]::Max(1, $Page)), "--page-size", ([string][Math]::Max(1, $PageSize))) -TimeoutSeconds 120
+    $outputRoot = Get-TimelineImageCurrentOutputRoot
+    $files = @()
+    foreach ($row in @(Get-PropertyValue -Object $payload -Name "files" -Default @())) {
+        $files += Convert-TimelineImageFileRow -Row $row -OutputRoot $outputRoot
+    }
+    return [ordered]@{
+        total = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $payload -Name "count" -Default 0)
+        pagination = Convert-TimelineImagePagination -Payload $payload -RowsProperty "files"
+        files = @($files)
+    }
+}
+
+function Start-TimelineImageRefresh {
+    param([object]$Request)
+
+    $args = @("items", "refresh")
+    $maxItems = Convert-TimelineNullableInt -Value (Get-PropertyValue -Object $Request -Name "maxItems" -Default $null)
+    if ($null -ne $maxItems -and $maxItems -gt 0) {
+        $args += @("--max-items", ([string]$maxItems))
+    }
+    if ([bool](Get-PropertyValue -Object $Request -Name "reprocessDuplicates" -Default $false)) {
+        $args += "--reprocess-duplicates"
+    }
+    $payload = Invoke-TimelineImageCliJson -CliArgs $args -TimeoutSeconds 900
+    return [ordered]@{
+        runId = Convert-TimelineText -Value (Get-PropertyValue -Object $payload -Name "run_id" -Default "")
+        state = Convert-TimelineText -Value (Get-PropertyValue -Object $payload -Name "state" -Default "")
+        sourceCount = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $payload -Name "source_count" -Default 0)
+        processedCount = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $payload -Name "processed_count" -Default 0)
+        skippedCount = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $payload -Name "skipped_count" -Default 0)
+        failedCount = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $payload -Name "failed_count" -Default 0)
+        archivePath = Convert-TimelineImageLocalPath -Path (Convert-TimelineText -Value (Get-PropertyValue -Object $payload -Name "archive_path" -Default ""))
+    }
+}
+
+function Start-TimelineImageDownload {
+    param([object]$Request)
+
+    $itemIds = @(Get-TimelineRequestItemIds -Request $Request)
+    $destination = Resolve-TimelineManagedDownloadDirectory `
+        -ProductId "image" `
+        -RequestedPath (Convert-TimelineText -Value (Get-PropertyValueAny -Object $Request -Names @("destinationPath", "downloadPath", "to") -Default ""))
+    $args = @("items", "download")
+    if ($itemIds.Count -eq 0) {
+        $args += "--all"
+    }
+    else {
+        foreach ($itemId in $itemIds) {
+            $args += @("--item-id", $itemId)
+        }
+    }
+    $args += @("--to", $destination, "--overwrite")
+
+    $payload = Invoke-TimelineImageCliJson -CliArgs $args -TimeoutSeconds 900
+    $archivePath = Convert-TimelineImageLocalPath -Path (Convert-TimelineText -Value (Get-PropertyValueAny -Object $payload -Names @("archive_path", "archivePath", "download_path", "downloadPath") -Default ""))
+    if (-not $archivePath -or -not (Test-Path -LiteralPath $archivePath -PathType Leaf)) {
+        throw "TimelineForImage CLI did not create a download ZIP."
+    }
+    if (-not (Test-TimelineDownloadFileAllowed -Path $archivePath)) {
+        throw "TimelineForImage CLI does not support Timeline-managed download destination yet."
+    }
+    return [ordered]@{
+        archivePath = [string]$archivePath
+        itemIds = @($itemIds)
+    }
+}
+
+function Remove-TimelineImageItems {
+    param([object]$Request)
+
+    $itemIds = @(Get-TimelineRequestItemIds -Request $Request)
+    $args = @("items", "remove")
+    foreach ($itemId in $itemIds) {
+        $args += @("--item-id", $itemId)
+    }
+    if ([bool](Get-PropertyValue -Object $Request -Name "dryRun" -Default $false)) {
+        $args += "--dry-run"
+    }
+    $payload = Invoke-TimelineImageCliJson -CliArgs $args -TimeoutSeconds 900
+    return [ordered]@{
+        itemIds = @($itemIds)
+        deletedCount = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $payload -Name "removed_count" -Default 0)
+        missingItemIds = @(Convert-TimelineStringArray -Value (Get-PropertyValue -Object $payload -Name "missing" -Default @()))
+    }
+}
+
+function Write-TimelineImageSettings {
+    param([object]$Request)
+
+    $args = @("settings", "save")
+    foreach ($root in @(Get-PropertyValue -Object $Request -Name "inputRoots" -Default @())) {
+        $path = Convert-TimelineText -Value (Get-PropertyValue -Object $root -Name "path" -Default "")
+        if ($path) {
+            $args += @("--input-root", $path)
+        }
+    }
+    $outputRoot = Get-PropertyValue -Object $Request -Name "outputRoot" -Default @{}
+    $outputPath = Convert-TimelineText -Value (Get-PropertyValue -Object $outputRoot -Name "path" -Default (Get-PropertyValue -Object $Request -Name "outputRootPath" -Default ""))
+    if ($outputPath) {
+        $args += @("--output-root", $outputPath)
+    }
+
+    [void](Invoke-TimelineImageCliText -CliArgs $args -TimeoutSeconds 120)
+    return Get-TimelineImageOverview
 }
 
 function Read-TimelineChatGptJsonFile {
@@ -2209,17 +3161,14 @@ function Write-TimelineChatGptSettings {
         throw "Output directory is required."
     }
 
-    $payload = [ordered]@{
-        outputRoot = $outputPath
-    }
-
     $localPath = Convert-TimelineChatGptLocalPath -Path $outputPath
     if ($localPath) {
         [System.IO.Directory]::CreateDirectory($localPath) | Out-Null
     }
 
-    $settingsPath = Join-Path $ChatGptProductPath "settings.json"
-    Write-TimelineUtf8JsonFile -Path $settingsPath -Payload $payload
+    [void](Invoke-TimelineChatGptCliJson `
+        -CliArgs @("settings", "output", "set", $outputPath, "--json") `
+        -TimeoutSeconds 120)
     return Get-TimelineChatGptOverview
 }
 
@@ -2410,7 +3359,10 @@ function Get-TimelineChatGptThreads {
     $settings = Read-TimelineChatGptSettings
     $outputRoot = Convert-TimelineChatGptDirectoryRoot -Root $settings.outputRoot -FallbackId "output" -FallbackDisplayName "Output"
     $masterLocalPath = [string]$outputRoot.displayPath
-    return Get-TimelineThreadRowsPageFromRoot -RootPath $masterLocalPath -Page $Page -PageSize $PageSize
+    $payload = Invoke-TimelineChatGptCliJson `
+        -CliArgs @("items", "list", "--page", ([string][Math]::Max(1, $Page)), "--page-size", ([string][Math]::Max(1, $PageSize)), "--json") `
+        -TimeoutSeconds 180
+    return Convert-TimelineThreadItemsListResult -Payload $payload -RootPath $masterLocalPath
 }
 
 function Get-TimelineChatGptOverview {
@@ -2521,10 +3473,14 @@ function Start-TimelineChatGptDownload {
         -ProductId "chatgpt" `
         -RequestedPath $requestedOutputPath
 
-    $payload = Invoke-TimelineChatGptCliJson `
+    $stdout = Invoke-TimelineProductCliText `
+        -ProductPath $ChatGptProductPath `
+        -ProductName "TimelineForChatGPT" `
         -CliArgs @("items", "download", "--to", $hostOutputPath, "--overwrite", "--json") `
         -TimeoutSeconds 900
-    $archivePath = Convert-TimelineDownloadLocalPath -Path (Convert-TimelineText -Value (Get-PropertyValueAny -Object $payload -Names @("download_path", "downloadPath", "destination_path", "destinationPath", "archive_path", "archivePath") -Default ""))
+    $archivePath = Convert-TimelineDownloadLocalPath -Path (Get-TimelineJsonStringPropertyFromOutput `
+        -Text $stdout `
+        -Names @("download_path", "downloadPath", "destination_path", "destinationPath", "archive_path", "archivePath"))
     if (-not $archivePath -or -not (Test-TimelineDownloadFileAllowed -Path $archivePath)) {
         throw "TimelineForChatGPT CLI did not create a downloadable ZIP in the Timeline work directory."
     }
@@ -2912,34 +3868,29 @@ function New-TimelineAudioItemsDownload {
     }
     $itemIds = @($itemIds | Select-Object -Unique)
 
-    $args = @("items", "download", "--json")
-    if ($itemIds.Count -gt 0) {
-        $args += @("--item-id", ($itemIds -join ","))
-    }
     $outputPath = Convert-TimelineText -Value (Get-PropertyValue -Object $Request -Name "outputPath" -Default "")
     $hostOutputPath = Resolve-TimelineManagedDownloadFile `
         -ProductId "audio" `
         -FilePrefix "TimelineForAudio-items" `
         -RequestedPath $outputPath
 
+    $args = @("items", "download", "--output", $hostOutputPath, "--json")
+    if ($itemIds.Count -gt 0) {
+        $args += @("--item-id", ($itemIds -join ","))
+    }
+
     $payload = Invoke-TimelineAudioCliJson -CliArgs $args -TimeoutSeconds 900
     $result = Convert-TimelineAudioDownloadItemsResult -Payload $payload
-    $sourceArchivePath = Convert-TimelineDownloadLocalPath -Path (Convert-TimelineText -Value (Get-PropertyValue -Object $result -Name "archivePath" -Default ""))
-    if (-not $sourceArchivePath -or -not (Test-Path -LiteralPath $sourceArchivePath -PathType Leaf)) {
-        throw "TimelineForAudio CLI did not create a downloadable ZIP."
+    $returnedArchivePath = Convert-TimelineText -Value (Get-PropertyValue -Object $result -Name "archivePath" -Default "")
+    $archivePath = Convert-TimelineDownloadLocalPath -Path $returnedArchivePath
+    if (-not $archivePath -or -not (Test-Path -LiteralPath $archivePath -PathType Leaf)) {
+        throw "TimelineForAudio CLI did not create a downloadable ZIP. Returned path: $returnedArchivePath"
     }
-    if (-not [System.IO.Path]::GetExtension($sourceArchivePath).Equals(".zip", [System.StringComparison]::OrdinalIgnoreCase)) {
+    if (-not [System.IO.Path]::GetExtension($archivePath).Equals(".zip", [System.StringComparison]::OrdinalIgnoreCase)) {
         throw "TimelineForAudio CLI created an unexpected download file type."
     }
-
-    if (Test-Path -LiteralPath $hostOutputPath -PathType Leaf) {
-        Remove-Item -LiteralPath $hostOutputPath -Force
-    }
-    Copy-Item -LiteralPath $sourceArchivePath -Destination $hostOutputPath -Force
-
-    $archivePath = Convert-TimelineDownloadLocalPath -Path $hostOutputPath
     if (-not $archivePath -or -not (Test-TimelineDownloadFileAllowed -Path $archivePath)) {
-        throw "TimelineForAudio download ZIP could not be staged in the Timeline work directory."
+        throw "TimelineForAudio CLI did not create the ZIP in the Timeline work directory. Returned path: $returnedArchivePath"
     }
 
     return [ordered]@{
@@ -3190,6 +4141,80 @@ function Write-TimelineExportThreadTimeline {
     return $eventCount
 }
 
+function Write-TimelineExportImageTimeline {
+    param(
+        [object]$Timeline,
+        [string]$ProductId,
+        [string]$DisplayName,
+        [string]$ItemId,
+        [string]$RawTimelinePath,
+        [string]$RawConvertInfoPath,
+        [System.IO.StreamWriter]$ItemsWriter,
+        [System.IO.StreamWriter]$EventsWriter
+    )
+
+    $source = Get-PropertyValue -Object $Timeline -Name "source" -Default @{}
+    $resolvedItemId = Convert-TimelineText -Value (Get-PropertyValueAny -Object $Timeline -Names @("item_id", "itemId", "record_id", "recordId") -Default $ItemId)
+    if (-not $resolvedItemId) {
+        $resolvedItemId = $ItemId
+    }
+    $title = Convert-TimelineText -Value (Get-PropertyValueAny -Object $source -Names @("relative_path", "path", "display_name") -Default $resolvedItemId)
+    $events = @(Get-PropertyValue -Object $Timeline -Name "events" -Default @())
+
+    Write-TimelineExportJsonLine -Writer $ItemsWriter -Payload ([ordered]@{
+        schemaVersion = 1
+        product = $ProductId
+        productName = $DisplayName
+        itemId = $resolvedItemId
+        itemType = "image"
+        title = $title
+        createdAt = ""
+        updatedAt = ""
+        eventCount = $events.Count
+        sourceRef = [ordered]@{
+            timelinePath = $RawTimelinePath
+            convertInfoPath = $RawConvertInfoPath
+        }
+    })
+
+    $eventCount = 0
+    $sequence = 0
+    foreach ($event in $events) {
+        $time = Convert-TimelineText -Value (Get-PropertyValueAny -Object $event -Names @("time", "created_at", "createdAt", "timestamp") -Default "")
+        $summary = Get-PropertyValue -Object $event -Name "summary" -Default @{}
+        Write-TimelineExportJsonLine -Writer $EventsWriter -Payload ([ordered]@{
+            schemaVersion = 1
+            eventId = "${ProductId}:${resolvedItemId}:image:$sequence"
+            product = $ProductId
+            itemId = $resolvedItemId
+            eventType = Convert-TimelineText -Value (Get-PropertyValue -Object $event -Name "type" -Default "image_event")
+            sequence = $sequence
+            time = [ordered]@{
+                absoluteStartAt = $time
+                absoluteEndAt = $time
+                relativeStartSec = $null
+                relativeEndSec = $null
+                timeBasis = if ($time) { "absolute" } else { "sequence" }
+            }
+            actor = [ordered]@{
+                type = "source"
+                label = "image"
+            }
+            content = [ordered]@{
+                kind = "image_summary"
+                value = ConvertTo-TimelineJson $summary
+            }
+            sourceRef = [ordered]@{
+                timelinePath = $RawTimelinePath
+                convertInfoPath = $RawConvertInfoPath
+            }
+        })
+        $sequence += 1
+        $eventCount += 1
+    }
+    return $eventCount
+}
+
 function Add-TimelineExportProductArchive {
     param(
         [string]$ProductId,
@@ -3238,6 +4263,17 @@ function Add-TimelineExportProductArchive {
             $rawConvertInfoPath = "products/$safeProductId/items/$itemId/convert_info.json"
             if ($ProductId.Equals("audio", [System.StringComparison]::OrdinalIgnoreCase)) {
                 $eventCount = Write-TimelineExportAudioTimeline `
+                    -Timeline $timeline `
+                    -ProductId $ProductId `
+                    -DisplayName $DisplayName `
+                    -ItemId $itemId `
+                    -RawTimelinePath $rawTimelinePath `
+                    -RawConvertInfoPath $rawConvertInfoPath `
+                    -ItemsWriter $ItemsWriter `
+                    -EventsWriter $EventsWriter
+            }
+            elseif ($ProductId.Equals("image", [System.StringComparison]::OrdinalIgnoreCase)) {
+                $eventCount = Write-TimelineExportImageTimeline `
                     -Timeline $timeline `
                     -ProductId $ProductId `
                     -DisplayName $DisplayName `
@@ -3301,6 +4337,23 @@ function Invoke-TimelineProductDownloadForExport {
             archivePath = Convert-TimelineText -Value (Get-PropertyValue -Object $payload -Name "archivePath" -Default "")
         }
     }
+    if ($ProductId -eq "image") {
+        $overview = Get-TimelineImageOverview
+        $itemCount = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $overview -Name "itemCount" -Default 0)
+        if ($itemCount -le 0) {
+            return [ordered]@{
+                productId = $ProductId
+                displayName = $DisplayName
+                archivePath = ""
+            }
+        }
+        $payload = Start-TimelineImageDownload -Request ([pscustomobject]@{})
+        return [ordered]@{
+            productId = $ProductId
+            displayName = $DisplayName
+            archivePath = Convert-TimelineText -Value (Get-PropertyValue -Object $payload -Name "archivePath" -Default "")
+        }
+    }
 
     throw "Unsupported product: $ProductId"
 }
@@ -3320,7 +4373,8 @@ function New-TimelineExportDownload {
     $products = @(
         [ordered]@{ productId = "audio"; displayName = "TimelineForAudio" },
         [ordered]@{ productId = "windows-codex"; displayName = "TimelineForWindowsCodex" },
-        [ordered]@{ productId = "chatgpt"; displayName = "TimelineForChatGPT" }
+        [ordered]@{ productId = "chatgpt"; displayName = "TimelineForChatGPT" },
+        [ordered]@{ productId = "image"; displayName = "TimelineForImage" }
     )
 
     $itemsPath = Join-Path $packageRoot "timeline\items.jsonl"
@@ -3395,6 +4449,584 @@ function New-TimelineExportDownload {
         eventCount = $eventCount
         products = @($productResults)
     }
+}
+
+function Get-TimelineStoreProductDisplayName {
+    param([string]$ProductId)
+
+    switch ($ProductId) {
+        "audio" { return "TimelineForAudio" }
+        "windows-codex" { return "TimelineForWindowsCodex" }
+        "chatgpt" { return "TimelineForChatGPT" }
+        "image" { return "TimelineForImage" }
+        default { return $ProductId }
+    }
+}
+
+function Get-TimelineStoreEventSortKey {
+    param(
+        [object]$Event,
+        [int]$Ordinal
+    )
+
+    $product = Convert-TimelineText -Value (Get-PropertyValue -Object $Event -Name "product" -Default "")
+    $itemId = Convert-TimelineText -Value (Get-PropertyValue -Object $Event -Name "itemId" -Default "")
+    $sequence = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $Event -Name "sequence" -Default 0)
+    $time = Get-PropertyValue -Object $Event -Name "time" -Default @{}
+    $absoluteStartAt = Convert-TimelineText -Value (Get-PropertyValue -Object $time -Name "absoluteStartAt" -Default "")
+    if ($absoluteStartAt) {
+        return ("0|{0}|{1}|{2}|{3:D10}|{4:D10}" -f $absoluteStartAt, $product, $itemId, $sequence, $Ordinal)
+    }
+
+    $relativeStart = Get-PropertyValue -Object $time -Name "relativeStartSec" -Default $null
+    $relativeText = Convert-TimelineText -Value $relativeStart
+    if ($relativeText) {
+        $relativeNumber = Convert-TimelineAudioNumber -Value $relativeStart
+        return ("1|{0}|{1}|{2}|{3:D10}|{4:D10}" -f $product, $itemId, ("{0:0000000000.000000}" -f [double]$relativeNumber), $sequence, $Ordinal)
+    }
+
+    return ("2|{0}|{1}|{2:D10}|{3:D10}" -f $product, $itemId, $sequence, $Ordinal)
+}
+
+function Sort-TimelineStoreEventsFile {
+    param([string]$EventsPath)
+
+    if (-not $EventsPath -or -not (Test-Path -LiteralPath $EventsPath -PathType Leaf)) {
+        return
+    }
+
+    $rows = [System.Collections.Generic.List[object]]::new()
+    $ordinal = 0
+    foreach ($line in [System.IO.File]::ReadLines($EventsPath)) {
+        $text = ([string]$line).Trim()
+        if (-not $text) {
+            continue
+        }
+        try {
+            $event = $text | ConvertFrom-Json
+            $rows.Add([pscustomobject]@{
+                sortKey = Get-TimelineStoreEventSortKey -Event $event -Ordinal $ordinal
+                ordinal = $ordinal
+                line = $text
+            })
+        }
+        catch {
+            $rows.Add([pscustomobject]@{
+                sortKey = ("9|{0:D10}" -f $ordinal)
+                ordinal = $ordinal
+                line = $text
+            })
+        }
+        $ordinal += 1
+    }
+
+    if ($rows.Count -le 1) {
+        return
+    }
+
+    $tempPath = "$EventsPath.tmp"
+    $writer = [System.IO.StreamWriter]::new($tempPath, $false, [System.Text.UTF8Encoding]::new($false))
+    try {
+        foreach ($row in @($rows | Sort-Object sortKey, ordinal)) {
+            $writer.WriteLine([string]$row.line)
+        }
+    }
+    finally {
+        $writer.Dispose()
+    }
+    Move-Item -LiteralPath $tempPath -Destination $EventsPath -Force
+}
+
+function New-TimelineStoreRebuild {
+    $storeRoot = Get-TimelineAppStoreDirectory
+    $rebuildsRoot = Join-Path $storeRoot "rebuilds"
+    [System.IO.Directory]::CreateDirectory($rebuildsRoot) | Out-Null
+
+    $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
+    $suffix = ([guid]::NewGuid().ToString("N")).Substring(0, 8)
+    $rebuildId = "rebuild-$stamp-$suffix"
+    $stagingRoot = Join-Path (Join-Path (Get-TimelineAppWorkDirectory) "timeline-store-staging") $rebuildId
+    $packageRoot = Join-Path $stagingRoot "package"
+    $rebuildRoot = Join-Path $rebuildsRoot $rebuildId
+    if (Test-Path -LiteralPath $rebuildRoot) {
+        Remove-Item -LiteralPath $rebuildRoot -Recurse -Force
+    }
+    [System.IO.Directory]::CreateDirectory((Join-Path $packageRoot "timeline")) | Out-Null
+
+    $products = @(
+        [ordered]@{ productId = "audio"; displayName = "TimelineForAudio" },
+        [ordered]@{ productId = "windows-codex"; displayName = "TimelineForWindowsCodex" },
+        [ordered]@{ productId = "chatgpt"; displayName = "TimelineForChatGPT" },
+        [ordered]@{ productId = "image"; displayName = "TimelineForImage" }
+    )
+
+    $itemsPath = Join-Path $packageRoot "timeline\items.jsonl"
+    $eventsPath = Join-Path $packageRoot "timeline\events.jsonl"
+    $itemsWriter = [System.IO.StreamWriter]::new($itemsPath, $false, [System.Text.UTF8Encoding]::new($false))
+    $eventsWriter = [System.IO.StreamWriter]::new($eventsPath, $false, [System.Text.UTF8Encoding]::new($false))
+    $productResults = @()
+    try {
+        foreach ($product in $products) {
+            $download = Invoke-TimelineProductDownloadForExport -ProductId ([string]$product.productId) -DisplayName ([string]$product.displayName)
+            $productResults += Add-TimelineExportProductArchive `
+                -ProductId ([string]$product.productId) `
+                -DisplayName ([string]$product.displayName) `
+                -ArchivePath ([string]$download.archivePath) `
+                -PackageRoot $packageRoot `
+                -ItemsWriter $itemsWriter `
+                -EventsWriter $eventsWriter
+        }
+    }
+    catch {
+        Remove-Item -LiteralPath $stagingRoot -Recurse -Force -ErrorAction SilentlyContinue
+        throw
+    }
+    finally {
+        $itemsWriter.Dispose()
+        $eventsWriter.Dispose()
+    }
+
+    $itemCount = 0
+    $eventCount = 0
+    foreach ($productResult in $productResults) {
+        $itemCount += [int](Get-PropertyValue -Object $productResult -Name "itemCount" -Default 0)
+        $eventCount += [int](Get-PropertyValue -Object $productResult -Name "eventCount" -Default 0)
+    }
+
+    if ($itemCount -le 0) {
+        Remove-Item -LiteralPath $stagingRoot -Recurse -Force -ErrorAction SilentlyContinue
+        throw "No Timeline items were found. Check each product list first."
+    }
+
+    Sort-TimelineStoreEventsFile -EventsPath $eventsPath
+
+    $manifest = [ordered]@{
+        schemaVersion = 1
+        artifactType = "timeline_store"
+        createdAt = (Get-Date).ToString("o")
+        rebuildId = $rebuildId
+        packagePath = $rebuildRoot
+        itemCount = $itemCount
+        eventCount = $eventCount
+        products = @($productResults)
+        files = [ordered]@{
+            items = "items.jsonl"
+            events = "events.jsonl"
+            packageItems = "timeline/items.jsonl"
+            packageEvents = "timeline/events.jsonl"
+        }
+    }
+    Write-TimelineUtf8JsonFile -Path (Join-Path $packageRoot "manifest.json") -Payload $manifest
+    Set-Content -LiteralPath (Join-Path $packageRoot "README.md") -Encoding UTF8 -Value @(
+        "# Timeline Store",
+        "",
+        "This directory is the current Timeline store package.",
+        "",
+        "- timeline/items.jsonl: one row per managed item.",
+        "- timeline/events.jsonl: one row per timeline event, sorted for Timeline browsing.",
+        "- products/: product download contents expanded for inspection.",
+        "- source-downloads/: raw product CLI download ZIPs."
+    )
+
+    try {
+        Move-Item -LiteralPath $packageRoot -Destination $rebuildRoot
+        Copy-Item -LiteralPath (Join-Path $rebuildRoot "manifest.json") -Destination (Get-TimelineStoreManifestPath) -Force
+        Copy-Item -LiteralPath (Join-Path $rebuildRoot "timeline\items.jsonl") -Destination (Get-TimelineStoreItemsPath) -Force
+        Copy-Item -LiteralPath (Join-Path $rebuildRoot "timeline\events.jsonl") -Destination (Get-TimelineStoreEventsPath) -Force
+    }
+    catch {
+        Remove-Item -LiteralPath $rebuildRoot -Recurse -Force -ErrorAction SilentlyContinue
+        throw
+    }
+    finally {
+        Remove-Item -LiteralPath $stagingRoot -Recurse -Force -ErrorAction SilentlyContinue
+    }
+
+    return [ordered]@{
+        rebuildId = $rebuildId
+        storeDirectory = $storeRoot
+        packagePath = $rebuildRoot
+        manifestPath = Get-TimelineStoreManifestPath
+        itemsPath = Get-TimelineStoreItemsPath
+        eventsPath = Get-TimelineStoreEventsPath
+        itemCount = $itemCount
+        eventCount = $eventCount
+        products = @($productResults)
+    }
+}
+
+function Get-TimelineStoreOverview {
+    $storeRoot = Get-TimelineAppStoreDirectory
+    $manifestPath = Get-TimelineStoreManifestPath
+    $itemsPath = Get-TimelineStoreItemsPath
+    $eventsPath = Get-TimelineStoreEventsPath
+    if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
+        return [ordered]@{
+            available = $false
+            storeDirectory = $storeRoot
+            rebuildId = ""
+            createdAt = ""
+            itemCount = 0
+            eventCount = 0
+            productCount = 0
+            products = @()
+            manifestPath = $manifestPath
+            itemsPath = $itemsPath
+            eventsPath = $eventsPath
+            message = "Timeline store has not been rebuilt yet."
+        }
+    }
+
+    try {
+        $manifest = Get-Content -LiteralPath $manifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
+        $products = @(Get-PropertyValue -Object $manifest -Name "products" -Default @())
+        $available = (Test-Path -LiteralPath $itemsPath -PathType Leaf) -and (Test-Path -LiteralPath $eventsPath -PathType Leaf)
+        return [ordered]@{
+            available = $available
+            storeDirectory = $storeRoot
+            rebuildId = Convert-TimelineText -Value (Get-PropertyValue -Object $manifest -Name "rebuildId" -Default "")
+            createdAt = Convert-TimelineText -Value (Get-PropertyValue -Object $manifest -Name "createdAt" -Default "")
+            itemCount = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $manifest -Name "itemCount" -Default 0)
+            eventCount = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $manifest -Name "eventCount" -Default 0)
+            productCount = $products.Count
+            products = @($products)
+            manifestPath = $manifestPath
+            itemsPath = $itemsPath
+            eventsPath = $eventsPath
+            message = if ($available) { "" } else { "Timeline store files were not found. Rebuild the Timeline store." }
+        }
+    }
+    catch {
+        return [ordered]@{
+            available = $false
+            storeDirectory = $storeRoot
+            rebuildId = ""
+            createdAt = ""
+            itemCount = 0
+            eventCount = 0
+            productCount = 0
+            products = @()
+            manifestPath = $manifestPath
+            itemsPath = $itemsPath
+            eventsPath = $eventsPath
+            message = "Timeline store could not be read. Rebuild the Timeline store."
+        }
+    }
+}
+
+function Convert-TimelineStoreEventRow {
+    param([object]$Event)
+
+    $time = Get-PropertyValue -Object $Event -Name "time" -Default @{}
+    $actor = Get-PropertyValue -Object $Event -Name "actor" -Default @{}
+    $content = Get-PropertyValue -Object $Event -Name "content" -Default @{}
+    $productId = Convert-TimelineText -Value (Get-PropertyValue -Object $Event -Name "product" -Default "")
+
+    return [ordered]@{
+        eventId = Convert-TimelineText -Value (Get-PropertyValue -Object $Event -Name "eventId" -Default "")
+        product = $productId
+        productName = Get-TimelineStoreProductDisplayName -ProductId $productId
+        itemId = Convert-TimelineText -Value (Get-PropertyValue -Object $Event -Name "itemId" -Default "")
+        eventType = Convert-TimelineText -Value (Get-PropertyValue -Object $Event -Name "eventType" -Default "")
+        sequence = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $Event -Name "sequence" -Default 0)
+        occurredAt = Convert-TimelineText -Value (Get-PropertyValue -Object $time -Name "absoluteStartAt" -Default "")
+        endedAt = Convert-TimelineText -Value (Get-PropertyValue -Object $time -Name "absoluteEndAt" -Default "")
+        relativeStartSec = Get-PropertyValue -Object $time -Name "relativeStartSec" -Default $null
+        relativeEndSec = Get-PropertyValue -Object $time -Name "relativeEndSec" -Default $null
+        timeBasis = Convert-TimelineText -Value (Get-PropertyValue -Object $time -Name "timeBasis" -Default "")
+        actorType = Convert-TimelineText -Value (Get-PropertyValue -Object $actor -Name "type" -Default "")
+        actorLabel = Convert-TimelineText -Value (Get-PropertyValue -Object $actor -Name "label" -Default "")
+        contentKind = Convert-TimelineText -Value (Get-PropertyValue -Object $content -Name "kind" -Default "")
+        contentValue = Convert-TimelineText -Value (Get-PropertyValue -Object $content -Name "value" -Default "")
+    }
+}
+
+function Get-TimelineStoreEvents {
+    param(
+        [int]$Page = 1,
+        [int]$PageSize = 100
+    )
+
+    $overview = Get-TimelineStoreOverview
+    if (-not [bool](Get-PropertyValue -Object $overview -Name "available" -Default $false)) {
+        return [ordered]@{
+            available = $false
+            total = 0
+            pagination = New-TimelinePagination -Page $Page -PageSize $PageSize -TotalItems 0 -ReturnedItems 0
+            events = @()
+            message = Convert-TimelineText -Value (Get-PropertyValue -Object $overview -Name "message" -Default "")
+        }
+    }
+
+    $eventsPath = Get-TimelineStoreEventsPath
+    $effectivePage = [Math]::Max(1, $Page)
+    $effectivePageSize = [Math]::Max(1, $PageSize)
+    $offset = ($effectivePage - 1) * $effectivePageSize
+    $rows = @()
+    $total = 0
+    foreach ($line in [System.IO.File]::ReadLines($eventsPath)) {
+        $text = ([string]$line).Trim()
+        if (-not $text) {
+            continue
+        }
+
+        if ($total -ge $offset -and $rows.Count -lt $effectivePageSize) {
+            try {
+                $rows += Convert-TimelineStoreEventRow -Event ($text | ConvertFrom-Json)
+            }
+            catch {
+            }
+        }
+        $total += 1
+    }
+
+    return [ordered]@{
+        available = $true
+        total = $total
+        pagination = New-TimelinePagination -Page $effectivePage -PageSize $effectivePageSize -TotalItems $total -ReturnedItems $rows.Count
+        events = @($rows)
+        message = ""
+    }
+}
+
+function New-TimelineStoreDownload {
+    $overview = Get-TimelineStoreOverview
+    if (-not [bool](Get-PropertyValue -Object $overview -Name "available" -Default $false)) {
+        throw "Timeline store has not been rebuilt yet. Rebuild the Timeline store first."
+    }
+
+    $manifestPath = Get-TimelineStoreManifestPath
+    $manifest = Get-Content -LiteralPath $manifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    $packagePath = Convert-TimelineWindowsPath -Path (Convert-TimelineText -Value (Get-PropertyValue -Object $manifest -Name "packagePath" -Default ""))
+    if (-not $packagePath -or -not (Test-Path -LiteralPath $packagePath -PathType Container)) {
+        throw "Timeline store package was not found. Rebuild the Timeline store."
+    }
+
+    $downloadRoot = Get-TimelineExportDownloadRoot
+    $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
+    $archivePath = Join-Path $downloadRoot "Timeline-store-$stamp.zip"
+    if (Test-Path -LiteralPath $archivePath) {
+        Remove-Item -LiteralPath $archivePath -Force
+    }
+    [System.IO.Compression.ZipFile]::CreateFromDirectory($packagePath, $archivePath, [System.IO.Compression.CompressionLevel]::Optimal, $false)
+
+    return [ordered]@{
+        archivePath = $archivePath
+        itemCount = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $manifest -Name "itemCount" -Default 0)
+        eventCount = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $manifest -Name "eventCount" -Default 0)
+        products = @(Get-PropertyValue -Object $manifest -Name "products" -Default @())
+    }
+}
+
+function New-TimelineWorkerJobId {
+    $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
+    $suffix = ([guid]::NewGuid().ToString("N")).Substring(0, 8)
+    return "timeline-$stamp-$suffix"
+}
+
+function Write-TimelineWorkerJobStatus {
+    param([object]$Status)
+
+    $jobId = Convert-TimelineText -Value (Get-PropertyValue -Object $Status -Name "jobId" -Default "")
+    if (-not $jobId) {
+        throw "Worker job id is required."
+    }
+    $path = Get-TimelineWorkerJobStatusPath -JobId $jobId
+    Write-TimelineUtf8JsonFile -Path $path -Payload $Status
+    return $Status
+}
+
+function Read-TimelineWorkerJobStatus {
+    param([string]$JobId)
+
+    $path = Get-TimelineWorkerJobStatusPath -JobId $JobId
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+        return [ordered]@{
+            jobId = $JobId
+            kind = "timeline_rebuild"
+            state = "missing"
+            stage = ""
+            message = "Worker job was not found."
+            error = ""
+            startedAt = ""
+            updatedAt = ""
+            completedAt = ""
+            itemCount = 0
+            eventCount = 0
+            result = $null
+        }
+    }
+    return Get-Content -LiteralPath $path -Raw -Encoding UTF8 | ConvertFrom-Json
+}
+
+function Get-TimelineLatestWorkerJobStatus {
+    $jobs = @(Get-ChildItem -LiteralPath (Get-TimelineWorkerDirectory) -Filter "timeline-*.json" -File -ErrorAction SilentlyContinue |
+        Sort-Object LastWriteTimeUtc -Descending)
+    if ($jobs.Count -eq 0) {
+        return [ordered]@{
+            jobId = ""
+            kind = "timeline_rebuild"
+            state = "none"
+            stage = ""
+            message = "No Timeline worker job has been started."
+            error = ""
+            startedAt = ""
+            updatedAt = ""
+            completedAt = ""
+            itemCount = 0
+            eventCount = 0
+            result = $null
+        }
+    }
+
+    try {
+        return Get-Content -LiteralPath ([string]$jobs[0].FullName) -Raw -Encoding UTF8 | ConvertFrom-Json
+    }
+    catch {
+        return [ordered]@{
+            jobId = ""
+            kind = "timeline_rebuild"
+            state = "unreadable"
+            stage = ""
+            message = "Latest Timeline worker job could not be read."
+            error = $_.Exception.Message
+            startedAt = ""
+            updatedAt = ""
+            completedAt = ""
+            itemCount = 0
+            eventCount = 0
+            result = $null
+        }
+    }
+}
+
+function Get-TimelineDockerWorkerStatus {
+    $path = Get-TimelineDockerWorkerHeartbeatPath
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+        return [ordered]@{
+            available = $false
+            worker = "timeline-worker"
+            state = "missing"
+            updatedAt = ""
+            workDirectory = ""
+            storeDirectory = ""
+            storeAvailable = $false
+            rebuildId = ""
+            createdAt = ""
+            itemCount = 0
+            eventCount = 0
+            message = "Timeline Docker worker heartbeat was not found."
+        }
+    }
+
+    try {
+        $payload = Get-Content -LiteralPath $path -Raw -Encoding UTF8 | ConvertFrom-Json
+        return [ordered]@{
+            available = $true
+            worker = Convert-TimelineText -Value (Get-PropertyValue -Object $payload -Name "worker" -Default "timeline-worker")
+            state = Convert-TimelineText -Value (Get-PropertyValue -Object $payload -Name "state" -Default "")
+            updatedAt = Convert-TimelineText -Value (Get-PropertyValue -Object $payload -Name "updatedAt" -Default "")
+            workDirectory = Convert-TimelineText -Value (Get-PropertyValue -Object $payload -Name "workDirectory" -Default "")
+            storeDirectory = Convert-TimelineText -Value (Get-PropertyValue -Object $payload -Name "storeDirectory" -Default "")
+            storeAvailable = [bool](Get-PropertyValue -Object $payload -Name "storeAvailable" -Default $false)
+            rebuildId = Convert-TimelineText -Value (Get-PropertyValue -Object $payload -Name "rebuildId" -Default "")
+            createdAt = Convert-TimelineText -Value (Get-PropertyValue -Object $payload -Name "createdAt" -Default "")
+            itemCount = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $payload -Name "itemCount" -Default 0)
+            eventCount = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $payload -Name "eventCount" -Default 0)
+            message = ""
+        }
+    }
+    catch {
+        return [ordered]@{
+            available = $false
+            worker = "timeline-worker"
+            state = "unreadable"
+            updatedAt = ""
+            workDirectory = ""
+            storeDirectory = ""
+            storeAvailable = $false
+            rebuildId = ""
+            createdAt = ""
+            itemCount = 0
+            eventCount = 0
+            message = $_.Exception.Message
+        }
+    }
+}
+
+function Test-TimelineWorkerJobActive {
+    param([object]$Status)
+
+    $state = Convert-TimelineText -Value (Get-PropertyValue -Object $Status -Name "state" -Default "")
+    return @("queued", "running") -contains $state
+}
+
+function Start-TimelineStoreRebuildWorker {
+    $latest = Get-TimelineLatestWorkerJobStatus
+    if (Test-TimelineWorkerJobActive -Status $latest) {
+        return $latest
+    }
+
+    $jobId = New-TimelineWorkerJobId
+    $now = [DateTimeOffset]::Now.ToString("o")
+    $status = [ordered]@{
+        jobId = $jobId
+        kind = "timeline_rebuild"
+        state = "queued"
+        stage = "queued"
+        message = "Timeline rebuild worker has been queued."
+        error = ""
+        startedAt = $now
+        updatedAt = $now
+        completedAt = ""
+        itemCount = 0
+        eventCount = 0
+        result = $null
+    }
+    Write-TimelineWorkerJobStatus -Status $status | Out-Null
+
+    $workerScript = Join-Path $TimelineProductPath "scripts\timeline-store-worker.ps1"
+    if (-not (Test-Path -LiteralPath $workerScript -PathType Leaf)) {
+        $status.state = "failed"
+        $status.stage = "failed"
+        $status.message = "Timeline worker script was not found."
+        $status.error = $workerScript
+        $status.completedAt = [DateTimeOffset]::Now.ToString("o")
+        $status.updatedAt = $status.completedAt
+        Write-TimelineWorkerJobStatus -Status $status | Out-Null
+        return $status
+    }
+
+    $arguments = @(
+        "-NoLogo",
+        "-NoProfile",
+        "-STA",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        $workerScript,
+        "-JobId",
+        $jobId,
+        "-TimelineProductPath",
+        $TimelineProductPath,
+        "-AudioProductPath",
+        $AudioProductPath,
+        "-WindowsCodexProductPath",
+        $WindowsCodexProductPath,
+        "-ChatGptProductPath",
+        $ChatGptProductPath,
+        "-ImageProductPath",
+        $ImageProductPath
+    )
+
+    $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
+    $startInfo.FileName = Get-TimelinePowerShellPath
+    $startInfo.Arguments = ($arguments | ForEach-Object { Format-TimelineProcessArgument -Value ([string]$_) }) -join " "
+    $startInfo.WorkingDirectory = $TimelineProductPath
+    $startInfo.UseShellExecute = $false
+    $startInfo.CreateNoWindow = $true
+    [System.Diagnostics.Process]::Start($startInfo) | Out-Null
+    return Read-TimelineWorkerJobStatus -JobId $jobId
 }
 
 function Remove-TimelineAudioGeneratedArtifacts {
@@ -4448,6 +6080,10 @@ function Send-TimelineFileResponse {
     }
 }
 
+if ($ImportOnly) {
+    return
+}
+
 $listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Any, $Port)
 try {
     $listener.Start()
@@ -4495,8 +6131,52 @@ try {
                 continue
             }
 
+            if ($method -eq "GET" -and $uri.AbsolutePath -eq "/timeline/console/logs") {
+                $query = [System.Web.HttpUtility]::ParseQueryString($uri.Query)
+                $afterId = 0L
+                [void][long]::TryParse(([string]$query["afterId"]), [ref]$afterId)
+                $limit = 120
+                [void][int]::TryParse(([string]$query["limit"]), [ref]$limit)
+                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Get-TimelineConsoleLogs -AfterId $afterId -Limit $limit))
+                continue
+            }
+
+            if ($method -eq "POST" -and $uri.AbsolutePath -eq "/timeline/console/clear") {
+                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Clear-TimelineConsoleLogs))
+                continue
+            }
+
+            if ($method -eq "GET" -and $uri.AbsolutePath -eq "/timeline/store/overview") {
+                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Get-TimelineStoreOverview))
+                continue
+            }
+
+            if ($method -eq "POST" -and $uri.AbsolutePath -eq "/timeline/rebuild") {
+                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Start-TimelineStoreRebuildWorker))
+                continue
+            }
+
+            if ($method -eq "GET" -and $uri.AbsolutePath -eq "/timeline/rebuild/status") {
+                $query = [System.Web.HttpUtility]::ParseQueryString($uri.Query)
+                $jobId = Convert-TimelineText -Value ([string]$query["jobId"])
+                $status = if ($jobId) { Read-TimelineWorkerJobStatus -JobId $jobId } else { Get-TimelineLatestWorkerJobStatus }
+                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson $status)
+                continue
+            }
+
+            if ($method -eq "GET" -and $uri.AbsolutePath -eq "/timeline/worker/status") {
+                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Get-TimelineDockerWorkerStatus))
+                continue
+            }
+
+            if ($method -eq "GET" -and $uri.AbsolutePath -eq "/timeline/events") {
+                $query = [System.Web.HttpUtility]::ParseQueryString($uri.Query)
+                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Get-TimelineStoreEvents -Page (Get-TimelineRequestPage -Query $query) -PageSize (Get-TimelineRequestPageSize -Query $query)))
+                continue
+            }
+
             if ($method -eq "POST" -and $uri.AbsolutePath -eq "/timeline/export/download") {
-                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (New-TimelineExportDownload))
+                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (New-TimelineStoreDownload))
                 continue
             }
 
@@ -4641,6 +6321,47 @@ try {
             if ($method -eq "POST" -and $uri.AbsolutePath -eq "/products/chatgpt/settings") {
                 $payload = if ([string]$request.Body) { $request.Body | ConvertFrom-Json } else { @{} }
                 Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Write-TimelineChatGptSettings -Request $payload))
+                continue
+            }
+
+            if ($method -eq "GET" -and $uri.AbsolutePath -eq "/products/image/overview") {
+                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Get-TimelineImageOverview))
+                continue
+            }
+
+            if ($method -eq "GET" -and $uri.AbsolutePath -eq "/products/image/items") {
+                $query = [System.Web.HttpUtility]::ParseQueryString($uri.Query)
+                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Get-TimelineImageItems -Page (Get-TimelineRequestPage -Query $query) -PageSize (Get-TimelineRequestPageSize -Query $query)))
+                continue
+            }
+
+            if ($method -eq "GET" -and $uri.AbsolutePath -eq "/products/image/files") {
+                $query = [System.Web.HttpUtility]::ParseQueryString($uri.Query)
+                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Get-TimelineImageFiles -Page (Get-TimelineRequestPage -Query $query) -PageSize (Get-TimelineRequestPageSize -Query $query)))
+                continue
+            }
+
+            if ($method -eq "POST" -and $uri.AbsolutePath -eq "/products/image/refresh") {
+                $payload = if ([string]$request.Body) { $request.Body | ConvertFrom-Json } else { @{} }
+                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Start-TimelineImageRefresh -Request $payload))
+                continue
+            }
+
+            if ($method -eq "POST" -and $uri.AbsolutePath -eq "/products/image/items/download") {
+                $payload = if ([string]$request.Body) { $request.Body | ConvertFrom-Json } else { @{} }
+                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Start-TimelineImageDownload -Request $payload))
+                continue
+            }
+
+            if ($method -eq "POST" -and $uri.AbsolutePath -eq "/products/image/items/delete-generated") {
+                $payload = if ([string]$request.Body) { $request.Body | ConvertFrom-Json } else { @{} }
+                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Remove-TimelineImageItems -Request $payload))
+                continue
+            }
+
+            if ($method -eq "POST" -and $uri.AbsolutePath -eq "/products/image/settings") {
+                $payload = if ([string]$request.Body) { $request.Body | ConvertFrom-Json } else { @{} }
+                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Write-TimelineImageSettings -Request $payload))
                 continue
             }
 
