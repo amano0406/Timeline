@@ -56,4 +56,31 @@ foreach ($path in $helperPaths) {
     Write-Host "PASS helper $path $($response.RawContentLength) bytes ${elapsed}s"
 }
 
+$audioFilesUrl = "$HelperBaseUrl/products/audio/files?page=1&pageSize=3"
+$audioFilesPayload = Invoke-RestMethod -Uri $audioFilesUrl -TimeoutSec $TimeoutSeconds
+$audioFilesProperty = $audioFilesPayload.PSObject.Properties["files"]
+if ($null -eq $audioFilesProperty) {
+    throw "Audio files response did not include files."
+}
+
+$audioFiles = @($audioFilesProperty.Value)
+if ($audioFiles.Count -gt 0) {
+    $firstAudioFile = $audioFiles[0]
+    $verbalizationProperty = $firstAudioFile.PSObject.Properties["audioVerbalization"]
+    if ($null -eq $verbalizationProperty) {
+        throw "Audio file row did not include audioVerbalization."
+    }
+
+    $verbalization = $verbalizationProperty.Value
+    $stateProperty = $verbalization.PSObject.Properties["state"]
+    if ($null -eq $stateProperty -or -not [string]$stateProperty.Value) {
+        throw "Audio verbalization state was empty."
+    }
+
+    Write-Host "PASS helper /products/audio/files audio verbalization status $($stateProperty.Value)"
+}
+else {
+    Write-Host "SKIP helper /products/audio/files audio verbalization status no files"
+}
+
 Write-Host "Timeline Web smoke check passed."
