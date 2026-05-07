@@ -390,6 +390,10 @@ else if (_overview is not null)
             await InvokeAsync(StateHasChanged);
             await LoadThreadPageAsync(1, reset: true);
         }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
         finally
         {
             _loading = false;

@@ -1,6 +1,7 @@
 @page "/timeline"
 @inject TimelineHelperClient Timeline
 @inject IJSRuntime Js
+@implements IDisposable
 
 <PageTitle>時間軸 - Timeline</PageTitle>
 
@@ -16,9 +17,13 @@
             <FaIcon Name="rotate" Class="@($"tfa-icon {(_loading ? "fa-spin" : "")}")" />
             <span>一覧更新</span>
         </button>
-        <button class="tfa-button-primary gap-2" @onclick="RebuildAsync" disabled="@Busy">
+        <button class="tfa-button-primary gap-2" @onclick="RebuildAsync" disabled="@(Busy || AudioVerbalizationActive)">
             <FaIcon Name="@(_rebuilding ? "spinner" : "arrows-rotate")" Class="@($"tfa-icon {(_rebuilding ? "fa-spin" : "")}")" />
             <span>@(_rebuilding ? "再構築中" : "時間軸を再構築")</span>
+        </button>
+        <button class="tfa-button-secondary gap-2" @onclick="StartAudioVerbalizationBulkAsync" disabled="@(!CanStartAudioVerbalization || Busy || AudioVerbalizationActive)">
+            <FaIcon Name="@AudioVerbalizationIcon" Class="@($"tfa-icon {AudioVerbalizationIconSpin}")" />
+            <span>@AudioVerbalizationButtonLabel</span>
         </button>
         <button class="tfa-button-secondary gap-2" @onclick="DownloadAsync" disabled="@(!CanDownload || Busy)">
             <FaIcon Name="@(_downloading ? "spinner" : "download")" Class="@($"tfa-icon {(_downloading ? "fa-spin" : "")}")" />
@@ -35,7 +40,7 @@
     </div>
 }
 
-@if (_operationMessage is not null)
+@if (ShouldShowOperationMessage)
 {
     <div class="tfa-alert-info mb-5 flex items-start gap-2">
         <FaIcon Name="circle-info" Class="tfa-icon mt-0.5" />
@@ -135,6 +140,90 @@ else
         </div>
     </section>
 
+    @if (ShouldShowAudioVerbalizationProgress)
+    {
+        <section class="tfa-card tfa-run-progress mt-5">
+            <div class="tfa-run-progress-head">
+                <div class="tfa-run-progress-summary">
+                    <div class="tfa-run-progress-title">
+                        <span class="tfa-icon-box text-sky-800">
+                            <FaIcon Name="@AudioVerbalizationIcon" Class="@($"tfa-icon {AudioVerbalizationIconSpin}")" />
+                        </span>
+                        <div class="tfa-run-progress-title-text">
+                            <h2>音声言語化の進捗</h2>
+                            <div class="tfa-run-progress-meta">
+                                <span class="@AudioVerbalizationStatePill">@AudioVerbalizationStateLabel</span>
+                                @if (!string.IsNullOrWhiteSpace(_audioVerbalizationStatus?.JobId))
+                                {
+                                    <span class="tfa-run-progress-id">実行ID: @_audioVerbalizationStatus.JobId</span>
+                                }
+                                @if (!string.IsNullOrWhiteSpace(AudioVerbalizationCurrentFile))
+                                {
+                                    <span class="tfa-run-progress-current-inline">処理中ファイル: @AudioVerbalizationCurrentFile</span>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                    <div class="tfa-run-progress-rate">
+                        <div class="tfa-run-progress-percent">@ProgressLabel(AudioVerbalizationProgressPercent)</div>
+                        <div class="tfa-run-progress-count">@AudioVerbalizationProgressCountLabel</div>
+                    </div>
+                </div>
+
+                <div class="tfa-run-progress-bar-track"
+                     role="progressbar"
+                     aria-label="音声言語化の進捗"
+                     aria-valuemin="0"
+                     aria-valuemax="100"
+                     aria-valuenow="@ProgressAriaValue(AudioVerbalizationProgressPercent)">
+                    <div class="tfa-run-progress-bar" style="@ProgressBarStyle(AudioVerbalizationProgressPercent)"></div>
+                </div>
+            </div>
+
+            <div class="tfa-run-progress-body">
+                <div class="tfa-run-progress-actions">
+                    <button type="button"
+                            class="tfa-run-progress-toggle"
+                            @onclick="ToggleAudioVerbalizationDetails"
+                            aria-expanded="@_audioVerbalizationDetailsOpen">
+                        <FaIcon Name="@(_audioVerbalizationDetailsOpen ? "chevron-up" : "chevron-down")" Class="tfa-icon !h-3 !w-3" />
+                        <span>@(_audioVerbalizationDetailsOpen ? "詳細を閉じる" : "詳細を表示")</span>
+                    </button>
+                </div>
+
+                @if (_audioVerbalizationDetailsOpen && _audioVerbalizationStatus is not null)
+                {
+                    <div class="tfa-run-metrics">
+                        <div class="tfa-run-metric">
+                            <div class="tfa-kicker">要確認</div>
+                            <div>@_audioVerbalizationStatus.ReviewItems 件</div>
+                        </div>
+                        <div class="tfa-run-metric">
+                            <div class="tfa-kicker">失敗</div>
+                            <div>@_audioVerbalizationStatus.FailedItems 件</div>
+                        </div>
+                        <div class="tfa-run-metric">
+                            <div class="tfa-kicker">スキップ</div>
+                            <div>@_audioVerbalizationStatus.SkippedItems 件</div>
+                        </div>
+                        <div class="tfa-run-metric">
+                            <div class="tfa-kicker">言語化済み区間</div>
+                            <div>@_audioVerbalizationStatus.VerbalizedTurns / @_audioVerbalizationStatus.TotalTurns</div>
+                        </div>
+                        <div class="tfa-run-metric">
+                            <div class="tfa-kicker">未解決区間</div>
+                            <div>@_audioVerbalizationStatus.UnresolvedTurns 件</div>
+                        </div>
+                        <div class="tfa-run-metric">
+                            <div class="tfa-kicker">残り目安</div>
+                            <div>@RunDurationLabel(_audioVerbalizationStatus.EstimatedRemainingSec)</div>
+                        </div>
+                    </div>
+                }
+            </div>
+        </section>
+    }
+
     @if (_overview?.Available != true)
     {
         <section class="tfa-card tfa-card-pad mt-5">
@@ -151,6 +240,128 @@ else
     }
     else
     {
+        <section class="tfa-card mt-5 overflow-hidden">
+            <div class="tfa-card-pad flex flex-col gap-3 border-b border-line lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                    <h2 class="flex items-center gap-2 text-lg font-semibold">
+                        <FaIcon Name="file-lines" Class="tfa-icon text-accent" />
+                        <span>分析用データ</span>
+                    </h2>
+                </div>
+                <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
+                    <label class="sr-only" for="llm-preview-product">対象</label>
+                    <select id="llm-preview-product"
+                            class="tfa-input min-w-56"
+                            value="@_llmPreviewProduct"
+                            @onchange="ChangeLlmPreviewProductAsync"
+                            disabled="@_llmPreviewLoading">
+                        <option value="">全体</option>
+                        <option value="audio">TimelineForAudio</option>
+                        <option value="windows-codex">TimelineForWindowsCodex</option>
+                        <option value="chatgpt">TimelineForChatGPT</option>
+                        <option value="image">TimelineForImage</option>
+                    </select>
+                    <button type="button"
+                            class="tfa-button-secondary gap-2"
+                            @onclick="LoadLlmInputPreviewAsync"
+                            disabled="@_llmPreviewLoading">
+                        <FaIcon Name="@(_llmPreviewLoading ? "spinner" : "rotate")" Class="@($"tfa-icon {(_llmPreviewLoading ? "fa-spin" : "")}")" />
+                        <span>@(_llmPreviewLoading ? "確認中" : "確認")</span>
+                    </button>
+                </div>
+            </div>
+
+            @if (_llmPreviewLoading)
+            {
+                <div class="tfa-card-pad flex items-center gap-3 text-sm text-slate-600">
+                    <FaIcon Name="spinner" Class="tfa-icon fa-spin text-accent" />
+                    <span>確認中</span>
+                </div>
+            }
+            else if (_llmInputPreview is null)
+            {
+                <div class="tfa-card-pad text-sm text-slate-600">分析用データを確認できます。</div>
+            }
+            else
+            {
+                <div class="tfa-card-pad border-b border-line">
+                    <div class="grid gap-3 md:grid-cols-4">
+                        <div class="rounded-md border border-line bg-slate-50 p-3">
+                            <div class="tfa-kicker">取得</div>
+                            <div class="mt-1 text-lg font-semibold text-slate-900">@_llmInputPreview.Items.Count 件</div>
+                        </div>
+                        <div class="rounded-md border border-line bg-slate-50 p-3">
+                            <div class="tfa-kicker">読める候補</div>
+                            <div class="mt-1 text-lg font-semibold text-slate-900">@LlmPreviewReadableLabel</div>
+                        </div>
+                        <div class="rounded-md border border-line bg-slate-50 p-3">
+                            <div class="tfa-kicker">未言語化音声</div>
+                            <div class="mt-1 text-lg font-semibold text-slate-900">@_llmInputPreview.Stats.SkippedAudioNotVerbalized.ToString("N0") 件</div>
+                        </div>
+                        <div class="rounded-md border border-line bg-slate-50 p-3">
+                            <div class="tfa-kicker">走査</div>
+                            <div class="mt-1 text-lg font-semibold text-slate-900">@_llmInputPreview.Stats.ScannedEvents.ToString("N0") 件</div>
+                        </div>
+                    </div>
+                    @if (!string.IsNullOrWhiteSpace(_llmInputPreview.Message))
+                    {
+                        <div class="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                            @LlmPreviewMessageLabel(_llmInputPreview.Message)
+                        </div>
+                    }
+                </div>
+
+                @if (_llmInputPreview.Items.Count == 0)
+                {
+                    <div class="p-6 text-sm text-slate-600">表示できる分析用データがありません。</div>
+                }
+                else
+                {
+                    <div class="divide-y divide-line">
+                        @foreach (var item in _llmInputPreview.Items)
+                        {
+                            <article class="p-4">
+                                <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                                    <div class="min-w-0">
+                                        <div class="flex flex-wrap items-center gap-2">
+                                            <span class="@ProductPillClass(item.SourceProduct)">
+                                                <FaIcon Name="@ProductIcon(item.SourceProduct)" Class="tfa-icon !h-3 !w-3" />
+                                                <span>@item.SourceProductName</span>
+                                            </span>
+                                            <span class="text-xs text-slate-500">@UiFormat.ShortDate(item.OccurredAt)</span>
+                                            @if (!string.IsNullOrWhiteSpace(item.Actor.Label))
+                                            {
+                                                <span class="text-xs text-slate-500">@item.Actor.Label</span>
+                                            }
+                                        </div>
+                                        <div class="mt-2 break-all text-sm font-medium text-slate-900">@EmptyText(item.Title)</div>
+                                    </div>
+                                    <span class="tfa-status-pill border-slate-200 bg-slate-50 text-slate-700">@ContentKindLabel(item.ContentKind)</span>
+                                </div>
+                                <div class="mt-3 max-w-5xl text-sm leading-6 text-slate-800" style="white-space: pre-wrap; overflow-wrap: anywhere;">@ContentPreview(item.Text)</div>
+                                @if (item.Notes.Count > 0)
+                                {
+                                    <div class="mt-2 flex flex-wrap gap-2">
+                                        @foreach (var note in item.Notes.Take(2))
+                                        {
+                                            <span class="rounded border border-line bg-slate-50 px-2 py-1 text-xs text-slate-600">@LlmPreviewNoteLabel(note)</span>
+                                        }
+                                    </div>
+                                }
+                            </article>
+                        }
+                    </div>
+
+                    <PaginationControls CurrentPage="@_llmPreviewPage"
+                                        PageSize="@LlmPreviewPageSize"
+                                        TotalItems="@LlmPreviewTotalItems"
+                                        Disabled="@_llmPreviewLoading"
+                                        Label="分析用データのページ移動"
+                                        PageChanged="ChangeLlmPreviewPageAsync" />
+                }
+            }
+        </section>
+
         <section class="tfa-card mt-5 overflow-hidden">
             <div class="tfa-card-pad flex flex-col gap-3 border-b border-line sm:flex-row sm:items-center sm:justify-between">
                 <div>
@@ -220,21 +431,34 @@ else
 
 @code {
     private const int PageSize = 100;
+    private const int LlmPreviewPageSize = 5;
     private TimelineStoreOverview? _overview;
     private TimelinePagination? _pagination;
     private TimelineDockerWorkerStatus? _dockerWorkerStatus;
+    private AudioVerbalizationBulkStatus? _audioVerbalizationStatus;
+    private TimelineLlmInputPreviewResult? _llmInputPreview;
     private readonly List<TimelineEventRow> _events = [];
     private int _page = 1;
+    private int _llmPreviewPage = 1;
     private bool _loading = true;
     private bool _loadingMore;
+    private bool _llmPreviewLoading;
     private bool _rebuilding;
     private bool _downloading;
+    private bool _verbalizing;
+    private bool _pollingAudioVerbalization;
+    private bool _audioVerbalizationDetailsOpen;
+    private string _llmPreviewProduct = "";
     private string? _error;
     private string? _operationMessage;
     private TimelineWorkerJobStatus? _workerStatus;
+    private CancellationTokenSource? _pollingCts;
+    private CancellationTokenSource? _operationMessageAutoClearCts;
 
-    private bool Busy => _loading || _loadingMore || _rebuilding || _downloading;
+    private bool Busy => _loading || _loadingMore || _rebuilding || _downloading || _verbalizing;
+    private bool ShouldShowOperationMessage => !string.IsNullOrWhiteSpace(_operationMessage);
     private bool CanDownload => _overview?.Available == true;
+    private bool CanStartAudioVerbalization => _overview?.Available == true;
     private string EventCountLabel => _overview?.Available == true ? $"{_overview.EventCount:N0} 件" : "-";
     private string ItemCountLabel => _overview?.Available == true ? $"{_overview.ItemCount:N0} 件" : "-";
     private string ProductCountLabel => _overview?.Available == true ? $"{_overview.ProductCount:N0} 件" : "-";
@@ -268,30 +492,101 @@ else
     private string DockerWorkerStoreLabel => _dockerWorkerStatus?.StoreAvailable == true ? "利用可能" : "未確認";
     private string DockerWorkerItemCountLabel => _dockerWorkerStatus?.Available == true ? $"{_dockerWorkerStatus.ItemCount:N0} 件" : "-";
     private string DockerWorkerEventCountLabel => _dockerWorkerStatus?.Available == true ? $"{_dockerWorkerStatus.EventCount:N0} 件" : "-";
+    private string LlmPreviewReadableLabel => _llmInputPreview is null
+        ? "-"
+        : _llmInputPreview.Total > 0
+            ? $"{_llmInputPreview.Total:N0} 件{(_llmInputPreview.Stats.Partial ? "以上" : "")}"
+            : $"{_llmInputPreview.Stats.TotalReadableItems:N0} 件";
+    private int LlmPreviewTotalItems => _llmInputPreview?.Total > 0
+        ? LlmPreviewEstimatedTotalItems()
+        : _llmInputPreview?.Items.Count ?? 0;
+    private int LlmPreviewEstimatedTotalItems()
+    {
+        if (_llmInputPreview is null)
+        {
+            return 0;
+        }
 
-    protected override async Task OnInitializedAsync() => await LoadAsync();
+        if (!_llmInputPreview.Stats.Partial || _llmInputPreview.Items.Count < LlmPreviewPageSize)
+        {
+            return _llmInputPreview.Total;
+        }
+
+        var nextPageStart = _llmPreviewPage * LlmPreviewPageSize;
+        return Math.Max(_llmInputPreview.Total, nextPageStart + LlmPreviewPageSize);
+    }
+
+    private bool AudioVerbalizationActive => IsActiveAudioVerbalization(_audioVerbalizationStatus);
+    private bool ShouldShowAudioVerbalizationProgress =>
+        _audioVerbalizationStatus is not null
+        && (_verbalizing || AudioVerbalizationActive || IsFailedAudioVerbalization(_audioVerbalizationStatus));
+    private string AudioVerbalizationButtonLabel =>
+        _verbalizing
+            ? "言語化開始中"
+            : AudioVerbalizationActive
+                ? "音声言語化中"
+                : "未言語化をすべて言語化";
+    private int AudioVerbalizationFinishedItems =>
+        _audioVerbalizationStatus is null
+            ? 0
+            : _audioVerbalizationStatus.CompletedItems + _audioVerbalizationStatus.ReviewItems + _audioVerbalizationStatus.FailedItems + _audioVerbalizationStatus.SkippedItems;
+    private double AudioVerbalizationProgressPercent =>
+        _audioVerbalizationStatus is null
+            ? 0
+            : _audioVerbalizationStatus.ProgressPercent > 0
+                ? _audioVerbalizationStatus.ProgressPercent
+                : _audioVerbalizationStatus.TotalItems > 0
+                    ? (double)AudioVerbalizationFinishedItems / _audioVerbalizationStatus.TotalItems * 100
+                    : 0;
+    private string AudioVerbalizationProgressCountLabel =>
+        _audioVerbalizationStatus is null
+            ? "0 / 0 件"
+            : $"{AudioVerbalizationFinishedItems} / {_audioVerbalizationStatus.TotalItems} 件";
+    private string AudioVerbalizationCurrentFile => _audioVerbalizationStatus?.CurrentFileName ?? "";
+    private string AudioVerbalizationStateLabel => AudioVerbalizationStateText(_audioVerbalizationStatus?.State ?? "");
+    private string AudioVerbalizationStatePill => AudioVerbalizationStatePillClass(_audioVerbalizationStatus?.State ?? "");
+    private string AudioVerbalizationIcon =>
+        (_audioVerbalizationStatus?.State ?? "").ToLowerInvariant() switch
+        {
+            "running" or "queued" or "starting" => "spinner",
+            "completed" => "circle-check",
+            "failed" => "triangle-exclamation",
+            _ => "language",
+        };
+    private string AudioVerbalizationIconSpin => AudioVerbalizationActive || _verbalizing ? "fa-spin" : "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        _pollingCts = new CancellationTokenSource();
+        await LoadAsync();
+        _ = PollAudioVerbalizationAsync(_pollingCts.Token);
+    }
 
     private async Task LoadAsync()
     {
         _loading = true;
         _error = null;
-        _operationMessage = null;
+        SetOperationMessage(null);
         try
         {
             var overviewTask = Timeline.GetTimelineStoreOverviewAsync();
             var workerTask = Timeline.GetTimelineWorkerStatusAsync();
-            await Task.WhenAll(overviewTask, workerTask);
+            var verbalizationTask = Timeline.GetAudioVerbalizationBulkStatusAsync();
+            await Task.WhenAll(overviewTask, workerTask, verbalizationTask);
             _overview = await overviewTask;
             _dockerWorkerStatus = await workerTask;
+            _audioVerbalizationStatus = await verbalizationTask;
             _events.Clear();
             _page = 1;
+            _llmInputPreview = null;
+            _llmPreviewPage = 1;
             if (_overview.Available)
             {
                 await LoadEventPageAsync(reset: true);
             }
             else if (!string.IsNullOrWhiteSpace(_overview.Message))
             {
-                _operationMessage = "時間軸はまだ作成されていません。";
+                SetOperationMessage("時間軸はまだ作成されていません。");
             }
         }
         finally
@@ -300,20 +595,67 @@ else
         }
     }
 
+    private async Task PollAudioVerbalizationAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                await Task.Delay(TimeSpan.FromSeconds(5), cancellationToken);
+                if (AudioVerbalizationActive)
+                {
+                    await InvokeAsync(RefreshAudioVerbalizationStatusAsync);
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+
+    private async Task RefreshAudioVerbalizationStatusAsync()
+    {
+        if (_pollingAudioVerbalization || _loading || _verbalizing)
+        {
+            return;
+        }
+
+        _pollingAudioVerbalization = true;
+        var hadActive = AudioVerbalizationActive;
+        try
+        {
+            _audioVerbalizationStatus = await Timeline.GetAudioVerbalizationBulkStatusAsync(_audioVerbalizationStatus?.JobId ?? "");
+            if (hadActive && !AudioVerbalizationActive)
+            {
+                var message = AudioVerbalizationStatusMessage(_audioVerbalizationStatus);
+                SetOperationMessage(message, AudioVerbalizationMessageAutoClearDelay(_audioVerbalizationStatus));
+            }
+        }
+        catch (Exception ex)
+        {
+            _error ??= ex.Message;
+        }
+        finally
+        {
+            _pollingAudioVerbalization = false;
+            StateHasChanged();
+        }
+    }
+
     private async Task RebuildAsync()
     {
         _rebuilding = true;
         _error = null;
-        _operationMessage = "各プロダクトの CLI からデータを取得し、Timeline の時間軸を作成しています。";
+        SetOperationMessage("各プロダクトの CLI からデータを取得し、Timeline の時間軸を作成しています。");
         try
         {
             _workerStatus = await Timeline.RebuildTimelineStoreAsync();
-            _operationMessage = WorkerStatusLabel(_workerStatus);
+            SetOperationMessage(WorkerStatusLabel(_workerStatus));
             while (IsWorkerActive(_workerStatus))
             {
                 await Task.Delay(TimeSpan.FromSeconds(2));
                 _workerStatus = await Timeline.GetTimelineRebuildStatusAsync(_workerStatus.JobId);
-                _operationMessage = WorkerStatusLabel(_workerStatus);
+                SetOperationMessage(WorkerStatusLabel(_workerStatus));
                 await InvokeAsync(StateHasChanged);
             }
 
@@ -326,10 +668,12 @@ else
 
             var itemCount = _workerStatus.Result?.ItemCount ?? _workerStatus.ItemCount;
             var eventCount = _workerStatus.Result?.EventCount ?? _workerStatus.EventCount;
-            _operationMessage = $"時間軸を作成しました。{itemCount:N0} 件 / {eventCount:N0} イベント";
+            SetOperationMessage($"時間軸を作成しました。{itemCount:N0} 件 / {eventCount:N0} イベント");
             _overview = await Timeline.GetTimelineStoreOverviewAsync();
             _events.Clear();
             _page = 1;
+            _llmInputPreview = null;
+            _llmPreviewPage = 1;
             if (_overview.Available)
             {
                 await LoadEventPageAsync(reset: true);
@@ -345,12 +689,162 @@ else
         }
     }
 
+    private void ToggleAudioVerbalizationDetails() => _audioVerbalizationDetailsOpen = !_audioVerbalizationDetailsOpen;
+
+    private async Task StartAudioVerbalizationBulkAsync()
+    {
+        if (_overview?.Available != true)
+        {
+            _error = "先に時間軸を再構築してください。音声の言語化では時間軸の周辺情報をヒントとして使います。";
+            return;
+        }
+
+        _verbalizing = true;
+        _error = null;
+        SetOperationMessage(null);
+        await InvokeAsync(StateHasChanged);
+        try
+        {
+            _audioVerbalizationStatus = await Timeline.StartAudioVerbalizationBulkAsync();
+            SetOperationMessage(
+                AudioVerbalizationStatusMessage(_audioVerbalizationStatus),
+                AudioVerbalizationMessageAutoClearDelay(_audioVerbalizationStatus));
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _verbalizing = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
     private static bool IsWorkerActive(TimelineWorkerJobStatus? status)
     {
         var state = status?.State ?? "";
         return string.Equals(state, "queued", StringComparison.OrdinalIgnoreCase)
             || string.Equals(state, "running", StringComparison.OrdinalIgnoreCase);
     }
+
+    private static bool IsActiveAudioVerbalization(AudioVerbalizationBulkStatus? status) =>
+        status is not null
+        && (
+            status.State.Equals("running", StringComparison.OrdinalIgnoreCase)
+            || status.State.Equals("queued", StringComparison.OrdinalIgnoreCase)
+            || status.State.Equals("starting", StringComparison.OrdinalIgnoreCase)
+        );
+
+    private static bool IsFailedAudioVerbalization(AudioVerbalizationBulkStatus? status) =>
+        status is not null
+        && status.State.Equals("failed", StringComparison.OrdinalIgnoreCase);
+
+    private static string AudioVerbalizationStatusMessage(AudioVerbalizationBulkStatus? status)
+    {
+        if (status is null)
+        {
+            return "音声言語化の状態を確認しています。";
+        }
+
+        if (status.TotalItems == 0 && status.State.Equals("completed", StringComparison.OrdinalIgnoreCase))
+        {
+            return "未言語化の音声はありませんでした。";
+        }
+
+        if (IsActiveAudioVerbalization(status))
+        {
+            return "未言語化の音声を時間軸の周辺情報を使って順番に言語化しています。";
+        }
+
+        if (status.State.Equals("failed", StringComparison.OrdinalIgnoreCase))
+        {
+            return string.IsNullOrWhiteSpace(status.Message)
+                ? "音声言語化に失敗しました。"
+                : status.Message;
+        }
+
+        if (status.FailedItems > 0)
+        {
+            return $"音声言語化が完了しました。失敗 {status.FailedItems:N0} 件。";
+        }
+
+        return status.ReviewItems > 0
+            ? $"音声言語化が完了しました。要確認 {status.ReviewItems:N0} 件。"
+            : "音声言語化が完了しました。";
+    }
+
+    private static TimeSpan? AudioVerbalizationMessageAutoClearDelay(AudioVerbalizationBulkStatus? status)
+    {
+        if (status is null)
+        {
+            return null;
+        }
+
+        if (status.State.Equals("completed", StringComparison.OrdinalIgnoreCase)
+            && status.FailedItems <= 0)
+        {
+            return TimeSpan.FromSeconds(10);
+        }
+
+        return null;
+    }
+
+    private void SetOperationMessage(string? message, TimeSpan? autoClearAfter = null)
+    {
+        _operationMessageAutoClearCts?.Cancel();
+        _operationMessageAutoClearCts?.Dispose();
+        _operationMessageAutoClearCts = null;
+        _operationMessage = message;
+
+        if (string.IsNullOrWhiteSpace(message) || autoClearAfter is null)
+        {
+            return;
+        }
+
+        _operationMessageAutoClearCts = new CancellationTokenSource();
+        _ = ClearOperationMessageAfterAsync(autoClearAfter.Value, _operationMessageAutoClearCts.Token);
+    }
+
+    private async Task ClearOperationMessageAfterAsync(TimeSpan delay, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await Task.Delay(delay, cancellationToken);
+            await InvokeAsync(() =>
+            {
+                if (!cancellationToken.IsCancellationRequested)
+                {
+                    _operationMessage = null;
+                    StateHasChanged();
+                }
+            });
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+
+    private static string AudioVerbalizationStateText(string state) =>
+        state.ToLowerInvariant() switch
+        {
+            "running" => "言語化中",
+            "queued" or "starting" => "待機中",
+            "completed" => "完了",
+            "failed" => "失敗",
+            "unknown" or "unreadable" => "確認不可",
+            _ => "未実行",
+        };
+
+    private static string AudioVerbalizationStatePillClass(string state) =>
+        state.ToLowerInvariant() switch
+        {
+            "running" => "tfa-status-pill border-sky-200 bg-sky-50 text-sky-800",
+            "queued" or "starting" => "tfa-status-pill border-amber-200 bg-amber-50 text-amber-900",
+            "completed" => "tfa-status-pill border-teal-200 bg-teal-50 text-teal-800",
+            "failed" or "unknown" or "unreadable" => "tfa-status-pill border-red-200 bg-red-50 text-red-800",
+            _ => "tfa-status-pill border-slate-200 bg-slate-50 text-slate-700",
+        };
 
     private static string WorkerStatusLabel(TimelineWorkerJobStatus? status)
     {
@@ -410,13 +904,65 @@ else
         _pagination = result.Pagination;
         if (!string.IsNullOrWhiteSpace(result.Message))
         {
-            _operationMessage = result.Message;
+            SetOperationMessage(result.Message);
         }
         if (reset)
         {
             _events.Clear();
         }
         _events.AddRange(result.Events);
+    }
+
+    private async Task ChangeLlmPreviewProductAsync(ChangeEventArgs args)
+    {
+        _llmPreviewProduct = args.Value?.ToString() ?? "";
+        _llmPreviewPage = 1;
+        await LoadLlmInputPreviewAsync();
+    }
+
+    private async Task ChangeLlmPreviewPageAsync(int page)
+    {
+        if (page == _llmPreviewPage)
+        {
+            return;
+        }
+
+        _llmPreviewPage = Math.Max(1, page);
+        await LoadLlmInputPreviewAsync();
+    }
+
+    private async Task LoadLlmInputPreviewAsync()
+    {
+        if (_overview?.Available != true)
+        {
+            SetOperationMessage("時間軸を再構築すると分析用データを確認できます。");
+            return;
+        }
+
+        _llmPreviewLoading = true;
+        _error = null;
+        try
+        {
+            _llmInputPreview = await Timeline.GetTimelineLlmInputPreviewAsync(
+                purpose: "preview",
+                product: _llmPreviewProduct,
+                page: _llmPreviewPage,
+                pageSize: LlmPreviewPageSize,
+                maxChars: 800);
+
+            if (!_llmInputPreview.Available && !string.IsNullOrWhiteSpace(_llmInputPreview.Message))
+            {
+                SetOperationMessage(_llmInputPreview.Message);
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _llmPreviewLoading = false;
+        }
     }
 
     private async Task DownloadAsync()
@@ -434,7 +980,7 @@ else
 
         _downloading = true;
         _error = null;
-        _operationMessage = "保存済みの時間軸から ZIP を作成しています。";
+        SetOperationMessage("保存済みの時間軸から ZIP を作成しています。");
         try
         {
             var result = await Timeline.DownloadTimelineExportAsync();
@@ -449,7 +995,7 @@ else
                 save.Id,
                 DownloadFileUrl(result.ArchivePath),
                 fileName);
-            _operationMessage = $"保存しました。{result.ItemCount:N0} 件 / {result.EventCount:N0} イベント";
+            SetOperationMessage($"保存しました。{result.ItemCount:N0} 件 / {result.EventCount:N0} イベント");
         }
         catch (Exception ex)
         {
@@ -485,6 +1031,18 @@ else
             ? $"{(int)span.TotalHours:00}:{span.Minutes:00}:{span.Seconds:00}"
             : $"{span.Minutes:00}:{span.Seconds:00}";
     }
+
+    private static string RunDurationLabel(double seconds) =>
+        seconds > 0 ? UiFormat.Duration(seconds) : "-";
+
+    private static string ProgressBarStyle(double percent) =>
+        $"width:{Math.Clamp(percent, 0, 100):0.##}%";
+
+    private static int ProgressAriaValue(double percent) =>
+        (int)Math.Round(Math.Clamp(percent, 0, 100));
+
+    private static string ProgressLabel(double percent) =>
+        $"{Math.Clamp(percent, 0, 100):0.#}%";
 
     private static string ActorLabel(TimelineEventRow row)
     {
@@ -529,6 +1087,7 @@ else
     private static string ContentKindLabel(string value) => value switch
     {
         "phone_tokens" => "音声単位",
+        "audio_verbalized_text" => "音声言語化",
         "text" => "テキスト",
         "image_summary" => "画像情報",
         _ => value,
@@ -545,6 +1104,49 @@ else
         return text.Length <= limit ? text : $"{text[..limit]}...";
     }
 
+    private static string EmptyText(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? "-" : value;
+
+    private static string LlmPreviewMessageLabel(string message) =>
+        message switch
+        {
+            "Timeline LLM input preview reached the scan limit before scanning all matching events." => "一部だけ確認しています。正確な全件処理は専用ジョブで扱います。",
+            "Timeline LLM input preview reached the scan limit before filling the page." => "一部だけ確認しています。正確な全件処理は専用ジョブで扱います。",
+            _ => message,
+        };
+
+    private static string LlmPreviewNoteLabel(string note)
+    {
+        if (note.StartsWith("Audio phone tokens were verbalized by Timeline. Status:", StringComparison.OrdinalIgnoreCase))
+        {
+            var status = note.Split(':', StringSplitOptions.TrimEntries).LastOrDefault()?.TrimEnd('.') ?? "";
+            return $"音声言語化: {AudioVerbalizationCandidateStatusLabel(status)}";
+        }
+
+        if (note.StartsWith("Audio verbalization confidence:", StringComparison.OrdinalIgnoreCase))
+        {
+            var value = note.Split(':', StringSplitOptions.TrimEntries).LastOrDefault()?.TrimEnd('.') ?? "";
+            return $"信頼度: {value}";
+        }
+
+        if (note.Equals("Text was truncated for preview.", StringComparison.OrdinalIgnoreCase))
+        {
+            return "一部表示";
+        }
+
+        return note;
+    }
+
+    private static string AudioVerbalizationCandidateStatusLabel(string status) =>
+        status.ToLowerInvariant() switch
+        {
+            "candidate" => "候補",
+            "needs_review" => "要確認",
+            "stale" => "再言語化必要",
+            "completed" => "完了",
+            _ => string.IsNullOrWhiteSpace(status) ? "-" : status,
+        };
+
     private static string DownloadFileUrl(string archivePath) =>
         $"api/download/file?path={Uri.EscapeDataString(archivePath)}";
 
@@ -553,5 +1155,13 @@ else
         var text = (archivePath ?? "").Trim().Replace('\\', '/');
         var fileName = text.Split('/', StringSplitOptions.RemoveEmptyEntries).LastOrDefault();
         return string.IsNullOrWhiteSpace(fileName) ? fallback : fileName;
+    }
+
+    public void Dispose()
+    {
+        _operationMessageAutoClearCts?.Cancel();
+        _operationMessageAutoClearCts?.Dispose();
+        _pollingCts?.Cancel();
+        _pollingCts?.Dispose();
     }
 }

@@ -74,7 +74,14 @@
 </head>
 <body>
 <main>
-  <h1>Timeline サブ製品管理設計</h1>
+  <h1>Timeline サブ製品管理設計（旧案）</h1>
+
+  <div class="note">
+    この資料はサブ製品管理を検討した初期メモです。現在の実装方針は
+    <code>settings-unification-design.html</code> と
+    <code>settings-unification-todo.md</code> を優先します。
+    製品をまとめる親ディレクトリ概念は採用せず、製品ごとの管理配置だけを扱います。
+  </div>
 
   <p>
     Timeline は親製品であり、TimelineForAudio、TimelineForWindowsCodex、
@@ -93,7 +100,7 @@
     <li>Timeline 本体が、各サブ製品の導入状態を把握できるようにする。</li>
     <li>CLI 呼び出し先を固定パスではなく設定から解決する。</li>
     <li>開発環境の <code>C:\apps</code> 配置は維持する。</li>
-    <li>一般ユーザー向けには <code>C:\TimelineProducts</code> 配下の管理配置へ移行できるようにする。</li>
+    <li>一般ユーザー向けにも、製品ごとの管理配置を設定できるようにする。</li>
     <li>将来的に Release ZIP、Git clone、配信サーバー方式へ拡張できる形にする。</li>
   </ul>
 
@@ -105,13 +112,11 @@
 
   <pre><code>{
   "productRegistry": {
-    "productsDirectory": "C:\\TimelineProducts",
     "products": [
       {
         "id": "audio",
         "displayName": "TimelineForAudio",
-        "installPath": "C:\\TimelineProducts\\TimelineForAudio",
-        "developmentPath": "C:\\apps\\TimelineForAudio",
+        "path": "C:\\apps\\TimelineForAudio",
         "sourceType": "release",
         "sourceUrl": "",
         "version": "",
@@ -124,14 +129,14 @@
 
   <h2>パス解決ルール</h2>
   <ol>
-    <li><code>installPath</code> が存在すれば、それを使う。</li>
-    <li><code>installPath</code> が存在せず、<code>developmentPath</code> が存在すれば、それを使う。</li>
-    <li>どちらも存在しない場合は、<code>installPath</code> を未インストール先として表示する。</li>
+    <li><code>path</code> が存在すれば、それを使う。</li>
+    <li><code>path</code> が存在しない場合は、製品が見つからない状態として表示する。</li>
+    <li>旧形式の <code>installPath</code> や <code>developmentPath</code> は読み取り時の移行互換だけで扱う。</li>
   </ol>
 
   <p>
     このルールにより、開発者の <code>C:\apps</code> 環境はそのまま動き、
-    一般ユーザー環境では <code>C:\TimelineProducts</code> 配下へ自然に誘導できる。
+    一般ユーザー環境でも選択した製品配置から CLI を呼び出せる。
   </p>
 
   <h2>入手方式の比較</h2>
@@ -176,8 +181,8 @@
   <ol>
     <li>製品レジストリを追加する。</li>
     <li>Helper と Worker の製品パス解決をレジストリ経由にする。</li>
-    <li>ダッシュボードで未インストール、開発パス利用、管理パス利用を表示する。</li>
-    <li>製品管理ページを追加する。</li>
+    <li>設定ハブで製品が見つからない状態と管理配置を表示する。</li>
+    <li>独立した製品管理ページではなく、設定ハブへ統合する。</li>
     <li>ローカルパス登録を実装する。</li>
     <li>Release ZIP のインストールを実装する。</li>
     <li>更新、アンインストール、整合性チェックを実装する。</li>
@@ -192,7 +197,11 @@
     <li><code>start.ps1</code> の製品一覧表示を Helper が解決したパスにする。</li>
   </ul>
 
-  <h2>未実装</h2>
+  <h2>現行の別作業</h2>
+  <p>
+    以下は設定統合の残作業ではなく、製品配布・更新管理として別途設計する。
+    削除や上書きを伴うため、確認ダイアログ、操作ログ、失敗時の復旧方針を決めてから実装する。
+  </p>
   <ul>
     <li>Release ZIP の自動ダウンロード。</li>
     <li>Git clone による導入。</li>

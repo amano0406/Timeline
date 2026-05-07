@@ -104,6 +104,49 @@ public sealed class TimelineHelperClient
             ?? new TimelineConsoleLogResult();
     }
 
+    public async Task<TimelineOperationLogListResult> GetOperationLogsAsync(
+        int limit = 100,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            return await _http.GetFromJsonAsync<TimelineOperationLogListResult>(
+                    $"timeline/operations?limit={Math.Clamp(limit, 1, 300)}",
+                    JsonOptions,
+                    cancellationToken)
+                ?? new TimelineOperationLogListResult { Message = "操作ログを取得できませんでした。" };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to load Timeline operation logs.");
+            return new TimelineOperationLogListResult { Message = "補助サーバーから操作ログを取得できませんでした。" };
+        }
+    }
+
+    public async Task<TimelineOperationLogDetailResult> GetOperationLogDetailAsync(
+        string operationId,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(operationId))
+        {
+            return new TimelineOperationLogDetailResult { Message = "操作IDが空です。" };
+        }
+
+        try
+        {
+            return await _http.GetFromJsonAsync<TimelineOperationLogDetailResult>(
+                    $"timeline/operations/detail?operationId={Uri.EscapeDataString(operationId)}",
+                    JsonOptions,
+                    cancellationToken)
+                ?? new TimelineOperationLogDetailResult { Message = "操作ログの詳細を取得できませんでした。" };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to load Timeline operation log detail.");
+            return new TimelineOperationLogDetailResult { Message = "補助サーバーから操作ログの詳細を取得できませんでした。" };
+        }
+    }
+
     public async Task<TimelineStoreOverview> GetTimelineStoreOverviewAsync(CancellationToken cancellationToken = default)
     {
         try
@@ -138,6 +181,55 @@ public sealed class TimelineHelperClient
         {
             _logger.LogWarning(ex, "Failed to load Timeline events.");
             return new TimelineEventListResult { Message = "補助サーバーから時間軸一覧を取得できませんでした。" };
+        }
+    }
+
+    public async Task<TimelineLlmInputPreviewResult> GetTimelineLlmInputPreviewAsync(
+        string purpose = "preview",
+        string product = "",
+        string from = "",
+        string to = "",
+        int page = 1,
+        int pageSize = 50,
+        int maxChars = 4000,
+        int scanLimit = 5000,
+        bool countTotal = false,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var query = new List<string>
+            {
+                $"purpose={Uri.EscapeDataString(purpose)}",
+                $"page={Math.Max(1, page)}",
+                $"pageSize={Math.Clamp(pageSize, 1, 200)}",
+                $"maxChars={Math.Clamp(maxChars, 200, 20000)}",
+                $"scanLimit={Math.Clamp(scanLimit, 100, 50000)}",
+                $"countTotal={countTotal.ToString().ToLowerInvariant()}",
+            };
+            if (!string.IsNullOrWhiteSpace(product))
+            {
+                query.Add($"product={Uri.EscapeDataString(product)}");
+            }
+            if (!string.IsNullOrWhiteSpace(from))
+            {
+                query.Add($"from={Uri.EscapeDataString(from)}");
+            }
+            if (!string.IsNullOrWhiteSpace(to))
+            {
+                query.Add($"to={Uri.EscapeDataString(to)}");
+            }
+
+            return await _http.GetFromJsonAsync<TimelineLlmInputPreviewResult>(
+                    $"timeline/llm-input/preview?{string.Join("&", query)}",
+                    JsonOptions,
+                    cancellationToken)
+                ?? new TimelineLlmInputPreviewResult { Message = "LLM入力データを取得できませんでした。" };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to load Timeline LLM input preview.");
+            return new TimelineLlmInputPreviewResult { Message = "補助サーバーからLLM入力データを取得できませんでした。" };
         }
     }
 
@@ -217,21 +309,10 @@ public sealed class TimelineHelperClient
         int page = 1,
         int pageSize = 100,
         CancellationToken cancellationToken = default)
-    {
-        try
-        {
-            return await _http.GetFromJsonAsync<AudioFileListResult>(
-                    $"products/audio/files?page={Math.Max(1, page)}&pageSize={Math.Max(1, pageSize)}",
-                    JsonOptions,
-                    cancellationToken)
-                ?? new AudioFileListResult();
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Failed to load TimelineForAudio files.");
-            return new AudioFileListResult();
-        }
-    }
+        => await GetRequiredJsonAsync<AudioFileListResult>(
+            $"products/audio/files?page={Math.Max(1, page)}&pageSize={Math.Max(1, pageSize)}",
+            "音声ファイル一覧を取得できませんでした。",
+            cancellationToken);
 
     public async Task<AudioFileDetailResult> GetAudioFileDetailAsync(
         string sourceId,
@@ -316,6 +397,45 @@ public sealed class TimelineHelperClient
             ?? new AudioVerbalizationStatus { Message = "音声の言語化状態を取得できませんでした。" };
     }
 
+    public async Task<AudioVerbalizationBulkStatus> GetAudioVerbalizationBulkStatusAsync(
+        string jobId = "",
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var url = "timeline/audio-verbalization/bulk/status";
+            if (!string.IsNullOrWhiteSpace(jobId))
+            {
+                url += $"?jobId={Uri.EscapeDataString(jobId)}";
+            }
+            return await _http.GetFromJsonAsync<AudioVerbalizationBulkStatus>(
+                    url,
+                    JsonOptions,
+                    cancellationToken)
+                ?? new AudioVerbalizationBulkStatus { Message = "一括言語化の状態を取得できませんでした。" };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to load audio verbalization bulk status.");
+            return new AudioVerbalizationBulkStatus { State = "unknown", Message = "一括言語化の状態を取得できませんでした。" };
+        }
+    }
+
+    public async Task<AudioVerbalizationBulkStatus> StartAudioVerbalizationBulkAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var response = await _http.PostAsync("timeline/audio-verbalization/bulk/start", content: null, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            throw new InvalidOperationException(ErrorMessageFromBody(body)
+                ?? $"一括言語化を開始できませんでした。HTTP {(int)response.StatusCode}");
+        }
+
+        return await response.Content.ReadFromJsonAsync<AudioVerbalizationBulkStatus>(JsonOptions, cancellationToken)
+            ?? new AudioVerbalizationBulkStatus { Message = "一括言語化の状態を取得できませんでした。" };
+    }
+
     public async Task<AudioVerbalizationOllamaStatus> GetAudioVerbalizationOllamaStatusAsync(
         string baseUrl = "",
         string model = "",
@@ -345,21 +465,10 @@ public sealed class TimelineHelperClient
         int page = 1,
         int pageSize = 100,
         CancellationToken cancellationToken = default)
-    {
-        try
-        {
-            return await _http.GetFromJsonAsync<TimelineThreadListResult>(
-                    $"products/windows-codex/items?page={Math.Max(1, page)}&pageSize={Math.Max(1, pageSize)}",
-                    JsonOptions,
-                    cancellationToken)
-                ?? new TimelineThreadListResult();
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Failed to load TimelineForWindowsCodex threads.");
-            return new TimelineThreadListResult();
-        }
-    }
+        => await GetRequiredJsonAsync<TimelineThreadListResult>(
+            $"products/windows-codex/items?page={Math.Max(1, page)}&pageSize={Math.Max(1, pageSize)}",
+            "Windows Codex のスレッド一覧を取得できませんでした。",
+            cancellationToken);
 
     public async Task<AudioModelInventoryResult> GetAudioModelsAsync(CancellationToken cancellationToken = default)
     {
@@ -431,7 +540,13 @@ public sealed class TimelineHelperClient
         CancellationToken cancellationToken = default)
     {
         var response = await _http.PostAsJsonAsync("products/audio/settings", request, JsonOptions, cancellationToken);
-        response.EnsureSuccessStatusCode();
+        if (!response.IsSuccessStatusCode)
+        {
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            throw new InvalidOperationException(ErrorMessageFromBody(body)
+                ?? $"設定を保存できませんでした。HTTP {(int)response.StatusCode}");
+        }
+
         return await response.Content.ReadFromJsonAsync<TimelineProductOverview>(JsonOptions, cancellationToken)
             ?? OfflineOverview("設定を保存しましたが、状態を読み取れませんでした。");
     }
@@ -465,29 +580,6 @@ public sealed class TimelineHelperClient
 
         return await response.Content.ReadFromJsonAsync<TimelineExportDownloadResult>(JsonOptions, cancellationToken)
             ?? new TimelineExportDownloadResult();
-    }
-
-    public Task<ProductRuntimeRow> StartProductAsync(string productId, CancellationToken cancellationToken = default) =>
-        InvokeProductRuntimeActionAsync(productId, "start", cancellationToken);
-
-    public Task<ProductRuntimeRow> RestartProductAsync(string productId, CancellationToken cancellationToken = default) =>
-        InvokeProductRuntimeActionAsync(productId, "restart", cancellationToken);
-
-    private async Task<ProductRuntimeRow> InvokeProductRuntimeActionAsync(
-        string productId,
-        string action,
-        CancellationToken cancellationToken)
-    {
-        var response = await _http.PostAsync($"products/runtime/{Uri.EscapeDataString(productId)}/{action}", content: null, cancellationToken);
-        if (!response.IsSuccessStatusCode)
-        {
-            var body = await response.Content.ReadAsStringAsync(cancellationToken);
-            throw new InvalidOperationException(ErrorMessageFromBody(body)
-                ?? $"操作を実行できませんでした。HTTP {(int)response.StatusCode}");
-        }
-
-        return await response.Content.ReadFromJsonAsync<ProductRuntimeRow>(JsonOptions, cancellationToken)
-            ?? new ProductRuntimeRow { Id = productId, State = "unknown", Message = "操作後の状態を読み取れませんでした。" };
     }
 
     public async Task<WindowsCodexOverview> GetWindowsCodexOverviewAsync(CancellationToken cancellationToken = default)
@@ -613,21 +705,10 @@ public sealed class TimelineHelperClient
         int page = 1,
         int pageSize = 100,
         CancellationToken cancellationToken = default)
-    {
-        try
-        {
-            return await _http.GetFromJsonAsync<TimelineThreadListResult>(
-                    $"products/chatgpt/items?page={Math.Max(1, page)}&pageSize={Math.Max(1, pageSize)}",
-                    JsonOptions,
-                    cancellationToken)
-                ?? new TimelineThreadListResult();
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Failed to load TimelineForChatGPT threads.");
-            return new TimelineThreadListResult();
-        }
-    }
+        => await GetRequiredJsonAsync<TimelineThreadListResult>(
+            $"products/chatgpt/items?page={Math.Max(1, page)}&pageSize={Math.Max(1, pageSize)}",
+            "ChatGPT のスレッド一覧を取得できませんでした。",
+            cancellationToken);
 
     public async Task<ChatGptThreadDetail> GetChatGptThreadAsync(
         string itemId,
@@ -737,39 +818,37 @@ public sealed class TimelineHelperClient
         int page = 1,
         int pageSize = 100,
         CancellationToken cancellationToken = default)
-    {
-        try
-        {
-            return await _http.GetFromJsonAsync<ImageItemListResult>(
-                    $"products/image/items?page={Math.Max(1, page)}&pageSize={Math.Max(1, pageSize)}",
-                    JsonOptions,
-                    cancellationToken)
-                ?? new ImageItemListResult();
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Failed to load TimelineForImage items.");
-            return new ImageItemListResult();
-        }
-    }
+        => await GetRequiredJsonAsync<ImageItemListResult>(
+            $"products/image/items?page={Math.Max(1, page)}&pageSize={Math.Max(1, pageSize)}",
+            "画像の生成物一覧を取得できませんでした。",
+            cancellationToken);
 
     public async Task<ImageFileListResult> GetImageFilesAsync(
         int page = 1,
         int pageSize = 100,
         CancellationToken cancellationToken = default)
+        => await GetRequiredJsonAsync<ImageFileListResult>(
+            $"products/image/files?page={Math.Max(1, page)}&pageSize={Math.Max(1, pageSize)}",
+            "画像ファイル一覧を取得できませんでした。",
+            cancellationToken);
+
+    public async Task<ImageFileDetailResult> GetImageFileDetailAsync(
+        string sourcePath,
+        CancellationToken cancellationToken = default)
     {
         try
         {
-            return await _http.GetFromJsonAsync<ImageFileListResult>(
-                    $"products/image/files?page={Math.Max(1, page)}&pageSize={Math.Max(1, pageSize)}",
+            var url = $"products/image/files/detail?path={Uri.EscapeDataString(sourcePath)}";
+            return await _http.GetFromJsonAsync<ImageFileDetailResult>(
+                    url,
                     JsonOptions,
                     cancellationToken)
-                ?? new ImageFileListResult();
+                ?? new ImageFileDetailResult { Message = "画像詳細を取得できませんでした。" };
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to load TimelineForImage files.");
-            return new ImageFileListResult();
+            _logger.LogWarning(ex, "Failed to load TimelineForImage file detail.");
+            return new ImageFileDetailResult { Message = "画像詳細を取得できませんでした。" };
         }
     }
 
@@ -865,6 +944,27 @@ public sealed class TimelineHelperClient
         ProductPath = @"C:\apps\TimelineForImage",
         Message = message,
     };
+
+    private async Task<T> GetRequiredJsonAsync<T>(
+        string url,
+        string failureMessage,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await _http.GetFromJsonAsync<T>(url, JsonOptions, cancellationToken)
+                ?? throw new InvalidOperationException($"{failureMessage} 応答が空です。");
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "{Message}", failureMessage);
+            throw new InvalidOperationException(failureMessage, ex);
+        }
+    }
 
     private static AudioModelInventoryResult OfflineModels(string message) => new()
     {

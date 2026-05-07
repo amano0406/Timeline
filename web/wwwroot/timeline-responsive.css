@@ -116,6 +116,10 @@
   overscroll-behavior: contain;
 }
 
+.tfa-main .tfa-card > .tfa-long-list-scroll {
+  max-height: min(78vh, 72rem);
+}
+
 .tfa-main .tfa-card > .overflow-x-auto .tfa-table thead,
 .tfa-main .tfa-card > .overflow-x-auto .tfa-table th {
   position: sticky;
@@ -296,6 +300,10 @@
     max-height: min(62vh, 32rem);
     overflow: auto;
     overscroll-behavior: contain;
+  }
+
+  .tfa-main .tfa-card > .tfa-long-list-scroll {
+    max-height: min(70vh, 40rem);
   }
 
   .tfa-pagination {

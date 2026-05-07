@@ -2,13 +2,17 @@
 @inject TimelineHelperClient Timeline
 @inject IJSRuntime Js
 
-<PageTitle>基本設定 - Timeline</PageTitle>
+<PageTitle>設定 - Timeline</PageTitle>
 
-<div class="mb-6">
+<div class="mb-6 flex flex-wrap items-center justify-between gap-3">
     <h1 class="tfa-title flex items-center gap-2">
         <FaIcon Name="sliders" Class="tfa-icon text-accent" />
-        <span>基本設定</span>
+        <span>設定</span>
     </h1>
+    <button class="tfa-button-secondary gap-2" @onclick="LoadAsync" disabled="@_loading">
+        <FaIcon Name="@(_loading ? "spinner" : "rotate")" Class="@($"tfa-icon {(_loading ? "fa-spin" : "")}")" />
+        <span>更新</span>
+    </button>
 </div>
 
 @if (_error is not null)
@@ -23,7 +27,7 @@
 {
     <div class="tfa-alert-info mb-5 flex items-start gap-2">
         <FaIcon Name="circle-check" Class="tfa-icon mt-0.5" />
-        <span>設定を保存しました。</span>
+        <span>Timeline設定を保存しました。</span>
     </div>
 }
 
@@ -104,16 +108,158 @@ else
         </div>
     </section>
 
+    <section class="mt-5 grid gap-4">
+        <div class="tfa-card tfa-card-pad">
+            <h2 class="flex items-center gap-2 text-lg font-semibold">
+                <FaIcon Name="boxes-stacked" Class="tfa-icon text-accent" />
+                <span>製品</span>
+            </h2>
+        </div>
+
+        @foreach (var product in Products)
+        {
+            var runtime = RuntimeFor(product.Id);
+            <article class="tfa-card tfa-card-pad">
+                <div class="flex flex-wrap items-start justify-between gap-3">
+                    <div class="min-w-0">
+                        <h3 class="flex items-center gap-2 text-lg font-semibold">
+                            <FaIcon Name="@ProductIcon(product.Id)" Class="tfa-icon text-accent" />
+                            <span>@DisplayName(product)</span>
+                        </h3>
+                        <div class="mt-2 flex flex-wrap gap-2 text-xs">
+                            <span class="@RuntimePillClass(runtime)">@RuntimeLabel(runtime)</span>
+                            @if (!product.Enabled)
+                            {
+                                <span class="rounded-full bg-slate-100 px-2 py-1 text-slate-600">無効</span>
+                            }
+                        </div>
+                    </div>
+                    <div class="flex flex-wrap gap-2">
+                        <a class="tfa-button-secondary gap-2" href="@RuntimePage(runtime)">
+                            <FaIcon Name="arrow-up-right-from-square" Class="tfa-icon" />
+                            <span>画面を開く</span>
+                        </a>
+                        <a class="tfa-button-secondary gap-2"
+                           href="@ProductSettingsLink(product.Id)"
+                           @onclick="@(() => SelectProductSettings(product.Id))">
+                            <FaIcon Name="gear" Class="tfa-icon" />
+                            <span>製品設定</span>
+                        </a>
+                    </div>
+                </div>
+
+                <div class="mt-5 grid gap-4">
+                    <div>
+                        <div class="mb-2 text-sm font-medium text-slate-700">管理配置</div>
+                        <div class="rounded-md border border-line bg-slate-50 p-4">
+                            <div class="grid gap-3 lg:grid-cols-[1fr_auto] lg:items-center">
+                                <div class="min-w-0 break-all font-mono text-sm text-slate-900">@EmptyText(ProductConfiguredPath(product, runtime))</div>
+                                <button class="tfa-button-secondary gap-2" @onclick="@(() => PickProductDirectoryAsync(product))">
+                                    <FaIcon Name="folder-open" Class="tfa-icon" />
+                                    <span>変更</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="grid gap-3 text-sm lg:grid-cols-2">
+                        <div class="rounded-md border border-line bg-slate-50 p-3">
+                            <div class="tfa-kicker">現在の参照先</div>
+                            <div class="mt-1 break-all font-mono text-slate-900">@EmptyText(runtime?.ProductPath)</div>
+                        </div>
+                        <div class="rounded-md border border-line bg-slate-50 p-3">
+                            <div class="tfa-kicker">利用状態</div>
+                            <div class="mt-1 text-slate-900">@RuntimeMessage(runtime)</div>
+                        </div>
+                    </div>
+
+                    <div>
+                        <div class="mb-2 flex flex-wrap items-center gap-2 text-sm font-medium text-slate-700">
+                            <span>製品操作</span>
+                            <span class="rounded-full bg-slate-100 px-2 py-1 text-xs text-slate-600">準備中</span>
+                        </div>
+                        <p class="mb-3 text-sm text-slate-600">
+                            インストール、更新、アンインストールは確認ダイアログと配信方式を確定してから接続します。
+                        </p>
+                        <div class="flex flex-wrap gap-2">
+                            <button type="button" class="tfa-button-secondary gap-2 opacity-60" disabled>
+                                <FaIcon Name="download" Class="tfa-icon" />
+                                <span>インストール</span>
+                            </button>
+                            <button type="button" class="tfa-button-secondary gap-2 opacity-60" disabled>
+                                <FaIcon Name="rotate" Class="tfa-icon" />
+                                <span>更新</span>
+                            </button>
+                            <button type="button" class="tfa-button-secondary gap-2 opacity-60" disabled>
+                                <FaIcon Name="trash-can" Class="tfa-icon" />
+                                <span>アンインストール</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </article>
+        }
+    </section>
+
     <div class="mt-5 flex flex-wrap gap-3">
         <button class="tfa-button-primary gap-2" @onclick="SaveAsync" disabled="@_saving">
             <FaIcon Name="@(_saving ? "spinner" : "floppy-disk")" Class="@($"tfa-icon {(_saving ? "fa-spin" : "")}")" />
-            <span>保存</span>
+            <span>Timeline設定を保存</span>
+        </button>
+        <button class="tfa-button-secondary gap-2" @onclick="LoadAsync" disabled="@_saving">
+            <FaIcon Name="rotate-left" Class="tfa-icon" />
+            <span>戻す</span>
         </button>
     </div>
+
+    <section id="product-specific-settings" class="tfa-card tfa-card-pad mt-5 scroll-mt-6">
+        <h2 class="flex items-center gap-2 text-lg font-semibold">
+            <FaIcon Name="gear" Class="tfa-icon text-accent" />
+            <span>製品別設定</span>
+        </h2>
+
+        <div class="mt-4 flex flex-wrap gap-2">
+            @foreach (var product in Products)
+            {
+                <button type="button"
+                        class="@ProductSettingsTabClass(product.Id)"
+                        @onclick="@(() => SelectProductSettings(product.Id))">
+                    <FaIcon Name="@ProductIcon(product.Id)" Class="tfa-icon" />
+                    <span>@DisplayName(product)</span>
+                </button>
+            }
+        </div>
+    </section>
+
+    <div class="mt-5">
+        @switch (_selectedProductSettingsId)
+        {
+            case "audio":
+                <AudioSettings Embedded="true" />
+                break;
+            case "windows-codex":
+                <WindowsCodexSettingsPage Embedded="true" />
+                break;
+            case "chatgpt":
+                <ChatGptSettings Embedded="true" />
+                break;
+            case "image":
+                <ImageSettings Embedded="true" />
+                break;
+            default:
+                <section class="tfa-card tfa-card-pad text-sm text-slate-600">
+                    製品を選択してください。
+                </section>
+                break;
+        }
+    </div>
+
 }
 
 @code {
     private TimelineAppSettings? _settings;
+    private ProductRuntimeOverview _runtime = new();
+    private TimelineProductRegistry _registry = new();
     private bool _loading = true;
     private bool _saving;
     private bool _saved;
@@ -122,26 +268,47 @@ else
     private string _timeZoneId = "Asia/Tokyo";
     private string _workDirectory = @"C:\TimelineData\Timeline\work";
     private string _storeDirectory = @"C:\TimelineData\Timeline\store";
+    private string _selectedProductSettingsId = "audio";
+
+    [SupplyParameterFromQuery(Name = "product")]
+    private string? ProductQuery { get; set; }
 
     private IReadOnlyList<TimelineDisplayLanguageOption> DisplayLanguages => _settings?.DisplayLanguages ?? [];
     private IReadOnlyList<TimelineTimeZoneOption> TimeZones => _settings?.TimeZones ?? [];
+    private IReadOnlyList<TimelineProductRegistryProduct> Products => _registry.Products;
 
     protected override async Task OnInitializedAsync()
     {
         await LoadAsync();
     }
 
+    protected override void OnParametersSet()
+    {
+        if (TryNormalizeProductId(ProductQuery, out var productId))
+        {
+            _selectedProductSettingsId = productId;
+        }
+    }
+
     private async Task LoadAsync()
     {
         _loading = true;
+        _saved = false;
         _error = null;
         try
         {
             _settings = await Timeline.GetTimelineSettingsAsync();
+            _runtime = await Timeline.GetProductRuntimeOverviewAsync();
             _displayLanguageId = string.IsNullOrWhiteSpace(_settings.DisplayLanguageId) ? "ja-JP" : _settings.DisplayLanguageId;
             _timeZoneId = string.IsNullOrWhiteSpace(_settings.TimeZoneId) ? "Asia/Tokyo" : _settings.TimeZoneId;
             _workDirectory = string.IsNullOrWhiteSpace(_settings.WorkDirectory) ? @"C:\TimelineData\Timeline\work" : _settings.WorkDirectory;
             _storeDirectory = string.IsNullOrWhiteSpace(_settings.StoreDirectory) ? @"C:\TimelineData\Timeline\store" : _settings.StoreDirectory;
+            _registry = CloneRegistry(_settings.ProductRegistry);
+            EnsureSelectedProductSettings();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
         }
         finally
         {
@@ -171,11 +338,14 @@ else
                 TimeZoneId = _timeZoneId,
                 WorkDirectory = _workDirectory,
                 StoreDirectory = _storeDirectory,
+                ProductRegistry = _registry,
             });
             _displayLanguageId = _settings.DisplayLanguageId;
             _timeZoneId = _settings.TimeZoneId;
             _workDirectory = _settings.WorkDirectory;
             _storeDirectory = _settings.StoreDirectory;
+            _registry = CloneRegistry(_settings.ProductRegistry);
+            _runtime = await Timeline.GetProductRuntimeOverviewAsync();
             _saved = true;
         }
         catch (Exception ex)
@@ -212,6 +382,18 @@ else
         _saved = false;
     }
 
+    private async Task PickProductDirectoryAsync(TimelineProductRegistryProduct product)
+    {
+        var path = await PickDirectoryAsync($"{DisplayName(product)} の管理配置を選択", ProductConfiguredPath(product, RuntimeFor(product.Id)));
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return;
+        }
+
+        product.Path = path;
+        _saved = false;
+    }
+
     private async Task<string?> PickDirectoryAsync(string title, string initialPath)
     {
         _error = null;
@@ -224,6 +406,128 @@ else
             _error = ex.Message;
             return null;
         }
+    }
+
+    private void SelectProductSettings(string productId)
+    {
+        _selectedProductSettingsId = productId;
+    }
+
+    private ProductRuntimeRow? RuntimeFor(string productId) =>
+        _runtime.Products.FirstOrDefault(product => string.Equals(product.Id, productId, StringComparison.OrdinalIgnoreCase));
+
+    private static TimelineProductRegistry CloneRegistry(TimelineProductRegistry? source)
+    {
+        source ??= new TimelineProductRegistry();
+        return new TimelineProductRegistry
+        {
+            Products = (source.Products ?? []).Select(product => new TimelineProductRegistryProduct
+            {
+                Id = product.Id,
+                DisplayName = product.DisplayName,
+                Path = product.Path,
+                SourceType = product.SourceType,
+                SourceUrl = product.SourceUrl,
+                Version = product.Version,
+                Enabled = product.Enabled,
+                Required = product.Required,
+            }).ToList(),
+        };
+    }
+
+    private static string DisplayName(TimelineProductRegistryProduct product) =>
+        string.IsNullOrWhiteSpace(product.DisplayName) ? product.Id : product.DisplayName;
+
+    private static string ProductConfiguredPath(TimelineProductRegistryProduct product, ProductRuntimeRow? runtime)
+    {
+        if (!string.IsNullOrWhiteSpace(product.Path))
+        {
+            return product.Path;
+        }
+
+        return runtime?.ProductPath ?? "";
+    }
+
+    private static string ProductIcon(string productId) => productId switch
+    {
+        "audio" => "file-audio",
+        "windows-codex" => "terminal",
+        "chatgpt" => "comments",
+        "image" => "image",
+        _ => "box",
+    };
+
+    private static string RuntimePage(ProductRuntimeRow? runtime) =>
+        string.IsNullOrWhiteSpace(runtime?.PagePath) ? "" : runtime.PagePath;
+
+    private static string ProductSettingsLink(string productId) =>
+        $"timeline/settings?product={Uri.EscapeDataString(productId)}#product-specific-settings";
+
+    private static string RuntimeLabel(ProductRuntimeRow? runtime)
+    {
+        if (runtime is null)
+        {
+            return "未確認";
+        }
+        if (!runtime.ProductFound)
+        {
+            return "未検出";
+        }
+        if (!runtime.ComposeFound)
+        {
+            return "CLI未検出";
+        }
+        return "利用可";
+    }
+
+    private static string RuntimePillClass(ProductRuntimeRow? runtime)
+    {
+        if (runtime?.ProductFound != true || !runtime.ComposeFound)
+        {
+            return "rounded-full bg-rose-50 px-2 py-1 text-rose-700";
+        }
+        return "rounded-full bg-teal-50 px-2 py-1 text-teal-700";
+    }
+
+    private static string RuntimeMessage(ProductRuntimeRow? runtime)
+    {
+        if (runtime is null)
+        {
+            return "状態を取得できていません。";
+        }
+        if (!string.IsNullOrWhiteSpace(runtime.Message))
+        {
+            return runtime.Message;
+        }
+        return RuntimeLabel(runtime);
+    }
+
+    private string ProductSettingsTabClass(string productId) =>
+        string.Equals(_selectedProductSettingsId, productId, StringComparison.OrdinalIgnoreCase)
+            ? "tfa-button-primary gap-2"
+            : "tfa-button-secondary gap-2";
+
+    private void EnsureSelectedProductSettings()
+    {
+        if (TryNormalizeProductId(ProductQuery, out var productId)
+            && Products.Any(product => string.Equals(product.Id, productId, StringComparison.OrdinalIgnoreCase)))
+        {
+            _selectedProductSettingsId = productId;
+            return;
+        }
+
+        if (Products.Any(product => string.Equals(product.Id, _selectedProductSettingsId, StringComparison.OrdinalIgnoreCase)))
+        {
+            return;
+        }
+
+        _selectedProductSettingsId = Products.FirstOrDefault()?.Id ?? "";
+    }
+
+    private static bool TryNormalizeProductId(string? value, out string productId)
+    {
+        productId = value?.Trim().ToLowerInvariant() ?? "";
+        return productId is "audio" or "windows-codex" or "chatgpt" or "image";
     }
 
     private static string EmptyText(string? value) =>

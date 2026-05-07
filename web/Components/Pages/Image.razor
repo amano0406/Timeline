@@ -180,7 +180,7 @@ else if (_overview is not null)
                     <tbody>
                         @foreach (var item in Items)
                         {
-                            <tr>
+                            <tr class="hover:bg-slate-50">
                                 <td class="w-10">
                                     <input type="checkbox"
                                            checked="@IsSelected(item)"
@@ -189,7 +189,12 @@ else if (_overview is not null)
                                            aria-label="@($"{DisplayName(item)} を選択")" />
                                 </td>
                                 <td class="min-w-80">
-                                    <div class="font-medium text-slate-900">@DisplayName(item)</div>
+                                    <a class="inline-flex items-center gap-2 font-medium text-accent hover:underline"
+                                       href="@DetailHref(item)"
+                                       title="画像詳細を開く">
+                                        <FaIcon Name="image" Class="tfa-icon !h-3.5 !w-3.5" />
+                                        <span>@DisplayName(item)</span>
+                                    </a>
                                     <div class="mt-1 break-all text-xs text-slate-500">@EmptyText(item.RelativePath)</div>
                                 </td>
                                 <td class="whitespace-nowrap">@ShortDate(item.ModifiedAt)</td>
@@ -468,6 +473,9 @@ else if (_overview is not null)
 
     private static string DisplayName(ImageItemRow item) =>
         !string.IsNullOrWhiteSpace(item.SourceDisplayName) ? item.SourceDisplayName : EmptyText(item.RelativePath);
+
+    private static string DetailHref(ImageItemRow item) =>
+        $"image/file-detail?path={Uri.EscapeDataString(item.SourcePath)}";
 
     private static string DirectoryDisplay(ImageInputRoot root) =>
         !string.IsNullOrWhiteSpace(root.DisplayPath) ? root.DisplayPath : EmptyText(root.Path);

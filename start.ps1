@@ -1,5 +1,7 @@
 [CmdletBinding()]
-param()
+param(
+    [switch]$NoOpen
+)
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
@@ -10,14 +12,22 @@ $repoRoot = $PSScriptRoot
 
 Initialize-TimelineDocker -RepoRoot $repoRoot
 
-$helperPort = 19001
-try {
-    Start-TimelineHelperServer -RepoRoot $repoRoot -Port $helperPort
+$helperPort = 0
+$helperStartError = $null
+foreach ($candidatePort in 19001..19010) {
+    try {
+        Start-TimelineHelperServer -RepoRoot $repoRoot -Port $candidatePort
+        $helperPort = $candidatePort
+        break
+    }
+    catch {
+        $helperStartError = $_
+        Write-Warning "Timeline helper server did not start on port $candidatePort. Trying the next port."
+    }
 }
-catch {
-    Write-Warning "Timeline helper server did not start on port $helperPort. Retrying on port 19002."
-    $helperPort = 19002
-    Start-TimelineHelperServer -RepoRoot $repoRoot -Port $helperPort
+
+if ($helperPort -le 0) {
+    throw "Timeline helper server did not start on any candidate port. $($helperStartError.Exception.Message)"
 }
 
 $docker = Get-TimelineDockerCommand
@@ -147,6 +157,9 @@ Write-Host ""
 Write-Host "Timeline is running."
 Write-Host "Web UI:"
 Write-Host "  http://127.0.0.1:19000"
+if (-not $NoOpen) {
+    Start-Process "http://127.0.0.1:19000" | Out-Null
+}
 Write-Host "Helper:"
 Write-Host "  http://127.0.0.1:$helperPort"
 Write-Host ""
@@ -181,5 +194,4 @@ if ($ollamaModelReady) {
 else {
     Write-Warning "Ollama model $ollamaModel is not available."
 }
-Start-Process "http://127.0.0.1:19000" | Out-Null
 exit 0

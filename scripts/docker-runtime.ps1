@@ -217,7 +217,7 @@ function Start-TimelineHelperServer {
 
 function Stop-TimelineHelperServer {
     $processes = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
-        Where-Object { $_.CommandLine -like "*timeline-helper-server.ps1*" }
+        Where-Object { $_.CommandLine -like "*-File*timeline-helper-server.ps1*" }
 
     foreach ($process in $processes) {
         Stop-Process -Id $process.ProcessId -Force -ErrorAction SilentlyContinue

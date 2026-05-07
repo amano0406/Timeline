@@ -135,7 +135,7 @@ else if (_file is not null)
 
                     @if (verbalization.State.Equals("not_implemented", StringComparison.OrdinalIgnoreCase))
                     {
-                        <p class="mt-3 text-sm text-amber-800">実行処理は次の段階で実装します。</p>
+                        <p class="mt-3 text-sm text-amber-800">この音声はまだ言語化を開始できません。時間軸データを作成してから再度確認してください。</p>
                     }
                     else if (verbalization.Available)
                     {
@@ -540,6 +540,8 @@ else if (_file is not null)
             "running" => "言語化中",
             "queued" => "待機中",
             "planned" => "準備済み",
+            "needs_review" => "一部未解決",
+            "stale" => "再言語化必要",
             "failed" => "エラー",
             "unavailable" => "対象外",
             "unreadable" => "読込不可",
@@ -552,7 +554,7 @@ else if (_file is not null)
         {
             "completed" => "tfa-status-pill border-teal-200 bg-teal-50 text-teal-800",
             "running" or "queued" => "tfa-status-pill border-sky-200 bg-sky-50 text-sky-800",
-            "planned" => "tfa-status-pill border-amber-200 bg-amber-50 text-amber-900",
+            "planned" or "needs_review" or "stale" => "tfa-status-pill border-amber-200 bg-amber-50 text-amber-900",
             "failed" or "unreadable" => "tfa-status-pill border-red-200 bg-red-50 text-red-800",
             "not_implemented" => "tfa-status-pill border-amber-200 bg-amber-50 text-amber-900",
             "unavailable" => "tfa-status-pill border-slate-200 bg-slate-50 text-slate-700",
@@ -566,17 +568,26 @@ else if (_file is not null)
             "running" => "spinner",
             "queued" => "clock",
             "planned" => "list-check",
+            "needs_review" => "triangle-exclamation",
+            "stale" => "arrows-rotate",
             "failed" or "unreadable" => "circle-xmark",
             "not_implemented" => "triangle-exclamation",
             _ => "circle-minus",
         };
 
-    private static string VerbalizationProgress(AudioVerbalizationStatus status) =>
-        status.TotalChunks > 0
+    private static string VerbalizationProgress(AudioVerbalizationStatus status)
+    {
+        if (status.UnresolvedTurns > 0 && status.TotalTurns > 0)
+        {
+            return $"{Math.Min(status.VerbalizedTurns, status.TotalTurns)} / {status.TotalTurns} 区間、未解決 {status.UnresolvedTurns}";
+        }
+
+        return status.TotalChunks > 0
             ? $"{Math.Min(status.CompletedChunks, status.TotalChunks)} / {status.TotalChunks} チャンク"
             : status.TotalTurns > 0
                 ? $"{Math.Min(status.VerbalizedTurns, status.TotalTurns)} / {status.TotalTurns} 区間"
                 : "-";
+    }
 
     private static bool ShouldShowVerbalizationRemaining(AudioVerbalizationStatus status) =>
         status.EstimatedRemainingSec > 0
@@ -599,6 +610,15 @@ else if (_file is not null)
         {
             return "言語化が完了しました。";
         }
+        if (status.Message.Equals("Audio verbalization completed with unresolved turns.", StringComparison.OrdinalIgnoreCase)
+            || status.Message.Equals("Audio verbalization has unresolved turns.", StringComparison.OrdinalIgnoreCase))
+        {
+            return "一部の区間を言語化できませんでした。再実行で改善する場合があります。";
+        }
+        if (status.Message.Equals("Audio verbalization input signature changed.", StringComparison.OrdinalIgnoreCase))
+        {
+            return "元データまたは内部設定が変わったため、再言語化が必要です。";
+        }
         if (status.Message.Equals("Audio verbalization worker has been queued.", StringComparison.OrdinalIgnoreCase))
         {
             return "言語化を開始しました。準備ができると処理が進みます。";
@@ -619,7 +639,7 @@ else if (_file is not null)
         status.State.Equals("planned", StringComparison.OrdinalIgnoreCase)
             ? $"言語化のチャンク計画を作成しました。{status.TotalChunks} チャンクを順番に処理する予定です。"
             : status.State.Equals("not_implemented", StringComparison.OrdinalIgnoreCase)
-                ? "言語化の設定と画面導線を追加しました。実行処理は次の段階で実装します。"
+                ? "この音声はまだ言語化を開始できません。時間軸データを作成してから再度確認してください。"
                 : string.IsNullOrWhiteSpace(VerbalizationDisplayMessage(status)) ? VerbalizationLabel(status.State) : VerbalizationDisplayMessage(status);
 
     private static string VerbalizedTurnLabel(string status) =>
@@ -628,6 +648,7 @@ else if (_file is not null)
             "confirmed" => "確認済み",
             "candidate" => "候補",
             "needs_review" => "要確認",
+            "unresolved" => "未解決",
             "failed" => "失敗",
             _ => string.IsNullOrWhiteSpace(status) ? "候補" : status,
         };

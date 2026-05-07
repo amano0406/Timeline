@@ -35,6 +35,12 @@ cd C:\apps\Timeline
 .\start.ps1
 ```
 
+開発中など、ブラウザーのタブを増やしたくない場合:
+
+```powershell
+.\start.ps1 -NoOpen
+```
+
 Web UI:
 
 ```text

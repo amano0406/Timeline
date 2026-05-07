@@ -104,8 +104,11 @@ function New-TimelineDefaultAudioVerbalizationSettings {
         language = "ja-JP"
         chunkMinMinutes = 5
         chunkMaxMinutes = 10
-        chunkMaxTurns = 80
+        chunkMaxTurns = 12
+        numPredict = 2048
         nearbyContextMinutes = 10
+        nearbyTimelineHintMaxEvents = 24
+        nearbyTimelineHintMaxChars = 500
         maxConcurrentJobs = 1
         autoRun = $false
         usePreviousChunkSummary = $true
@@ -130,8 +133,11 @@ function Resolve-TimelineInternalAudioVerbalizationSettings {
     $settings["language"] = $language
     $settings["chunkMinMinutes"] = 5
     $settings["chunkMaxMinutes"] = 10
-    $settings["chunkMaxTurns"] = 80
+    $settings["chunkMaxTurns"] = 12
+    $settings["numPredict"] = 2048
     $settings["nearbyContextMinutes"] = 10
+    $settings["nearbyTimelineHintMaxEvents"] = 24
+    $settings["nearbyTimelineHintMaxChars"] = 500
     $settings["maxConcurrentJobs"] = 1
     $settings["autoRun"] = $false
     $settings["usePreviousChunkSummary"] = $true
@@ -140,15 +146,12 @@ function Resolve-TimelineInternalAudioVerbalizationSettings {
 }
 
 function New-TimelineProductRegistryDefaults {
-    $productsDirectory = "C:\TimelineProducts"
     return [ordered]@{
-        productsDirectory = $productsDirectory
         products = @(
             [ordered]@{
                 id = "audio"
                 displayName = "TimelineForAudio"
-                installPath = Join-Path $productsDirectory "TimelineForAudio"
-                developmentPath = "C:\apps\TimelineForAudio"
+                path = "C:\apps\TimelineForAudio"
                 sourceType = "release"
                 sourceUrl = ""
                 version = ""
@@ -158,8 +161,7 @@ function New-TimelineProductRegistryDefaults {
             [ordered]@{
                 id = "windows-codex"
                 displayName = "TimelineForWindowsCodex"
-                installPath = Join-Path $productsDirectory "TimelineForWindowsCodex"
-                developmentPath = "C:\apps\TimelineForWindowsCodex"
+                path = "C:\apps\TimelineForWindowsCodex"
                 sourceType = "release"
                 sourceUrl = ""
                 version = ""
@@ -169,8 +171,7 @@ function New-TimelineProductRegistryDefaults {
             [ordered]@{
                 id = "chatgpt"
                 displayName = "TimelineForChatGPT"
-                installPath = Join-Path $productsDirectory "TimelineForChatGPT"
-                developmentPath = "C:\apps\TimelineForChatGPT"
+                path = "C:\apps\TimelineForChatGPT"
                 sourceType = "release"
                 sourceUrl = ""
                 version = ""
@@ -180,8 +181,7 @@ function New-TimelineProductRegistryDefaults {
             [ordered]@{
                 id = "image"
                 displayName = "TimelineForImage"
-                installPath = Join-Path $productsDirectory "TimelineForImage"
-                developmentPath = "C:\apps\TimelineForImage"
+                path = "C:\apps\TimelineForImage"
                 sourceType = "release"
                 sourceUrl = ""
                 version = ""
@@ -214,8 +214,16 @@ function Convert-TimelineProductDefinition {
     )
 
     $displayName = Convert-TimelineText -Value (Get-PropertyValue -Object $Source -Name "displayName" -Default (Get-PropertyValue -Object $Default -Name "displayName" -Default $ProductId))
-    $installPath = Convert-TimelineText -Value (Get-PropertyValue -Object $Source -Name "installPath" -Default (Get-PropertyValue -Object $Default -Name "installPath" -Default ""))
-    $developmentPath = Convert-TimelineText -Value (Get-PropertyValue -Object $Source -Name "developmentPath" -Default (Get-PropertyValue -Object $Default -Name "developmentPath" -Default ""))
+    $path = Convert-TimelineText -Value (Get-PropertyValue -Object $Source -Name "path" -Default "")
+    if (-not $path) {
+        $path = Convert-TimelineText -Value (Get-PropertyValue -Object $Source -Name "developmentPath" -Default "")
+    }
+    if (-not $path) {
+        $path = Convert-TimelineText -Value (Get-PropertyValue -Object $Source -Name "installPath" -Default "")
+    }
+    if (-not $path) {
+        $path = Convert-TimelineText -Value (Get-PropertyValue -Object $Default -Name "path" -Default "")
+    }
     $sourceType = Convert-TimelineText -Value (Get-PropertyValue -Object $Source -Name "sourceType" -Default (Get-PropertyValue -Object $Default -Name "sourceType" -Default "release"))
     $sourceUrl = Convert-TimelineText -Value (Get-PropertyValue -Object $Source -Name "sourceUrl" -Default (Get-PropertyValue -Object $Default -Name "sourceUrl" -Default ""))
     $version = Convert-TimelineText -Value (Get-PropertyValue -Object $Source -Name "version" -Default (Get-PropertyValue -Object $Default -Name "version" -Default ""))
@@ -225,8 +233,7 @@ function Convert-TimelineProductDefinition {
     return [ordered]@{
         id = $ProductId
         displayName = $displayName
-        installPath = $installPath
-        developmentPath = $developmentPath
+        path = $path
         sourceType = if ($sourceType) { $sourceType } else { "release" }
         sourceUrl = $sourceUrl
         version = $version
@@ -240,13 +247,6 @@ function Resolve-TimelineProductRegistry {
 
     $defaults = New-TimelineProductRegistryDefaults
     $registrySource = Get-PropertyValue -Object $Payload -Name "productRegistry" -Default $null
-    $productsDirectory = Convert-TimelineText -Value (Get-PropertyValue -Object $registrySource -Name "productsDirectory" -Default "")
-    if (-not $productsDirectory) {
-        $productsDirectory = Convert-TimelineText -Value (Get-PropertyValue -Object $Payload -Name "productsDirectory" -Default "")
-    }
-    if (-not $productsDirectory) {
-        $productsDirectory = Convert-TimelineText -Value (Get-PropertyValue -Object $defaults -Name "productsDirectory" -Default "C:\TimelineProducts")
-    }
 
     $rawConfiguredProducts = Get-PropertyValue -Object $registrySource -Name "products" -Default $null
     $configuredProducts = @()
@@ -275,14 +275,10 @@ function Resolve-TimelineProductRegistry {
         $hasConfiguredProduct = $configuredById.ContainsKey($productId)
         $source = if ($hasConfiguredProduct) { $configuredById[$productId] } else { $default }
         $product = Convert-TimelineProductDefinition -ProductId $productId -Source $source -Default $default
-        if (-not $hasConfiguredProduct -or -not (Convert-TimelineText -Value (Get-PropertyValue -Object $source -Name "installPath" -Default ""))) {
-            $product["installPath"] = Join-Path $productsDirectory ([string]$product.displayName)
-        }
         $products += $product
     }
 
     return [ordered]@{
-        productsDirectory = $productsDirectory
         products = @($products)
     }
 }
@@ -400,6 +396,7 @@ function Write-TimelineAppSettings {
         audioVerbalization = $audioVerbalization
     }
     Write-TimelineUtf8JsonFile -Path (Get-TimelineAppSettingsPath) -Payload $payload
+    Initialize-TimelineProductPathsFromRegistry
     return Read-TimelineAppSettings
 }
 
@@ -444,10 +441,14 @@ function Resolve-TimelineProductPath {
         [string]$FallbackPath
     )
 
-    $installPath = Convert-TimelineText -Value (Get-PropertyValue -Object $Product -Name "installPath" -Default "")
+    $path = Convert-TimelineText -Value (Get-PropertyValue -Object $Product -Name "path" -Default "")
     $developmentPath = Convert-TimelineText -Value (Get-PropertyValue -Object $Product -Name "developmentPath" -Default "")
+    $installPath = Convert-TimelineText -Value (Get-PropertyValue -Object $Product -Name "installPath" -Default "")
     $fallback = Convert-TimelineText -Value $FallbackPath
 
+    if ($path -and (Test-Path -LiteralPath $path)) {
+        return Get-TimelineFullPathOrOriginal -Path $path
+    }
     if ($installPath -and (Test-Path -LiteralPath $installPath)) {
         return Get-TimelineFullPathOrOriginal -Path $installPath
     }
@@ -456,6 +457,9 @@ function Resolve-TimelineProductPath {
     }
     if ($installPath) {
         return Get-TimelineFullPathOrOriginal -Path $installPath
+    }
+    if ($path) {
+        return Get-TimelineFullPathOrOriginal -Path $path
     }
     if ($developmentPath) {
         return Get-TimelineFullPathOrOriginal -Path $developmentPath
@@ -532,7 +536,7 @@ function Read-TimelineAudioSettings {
         }
     }
 
-    $payload = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json
+    $payload = Get-Content -LiteralPath $path -Raw -Encoding UTF8 | ConvertFrom-Json
     $inputRows = @()
     $inputIndex = 1
     foreach ($row in @(Get-PropertyValue -Object $payload -Name "inputRoots" -Default @())) {
@@ -630,7 +634,7 @@ function Write-TimelineAudioSettings {
     if ($Request.PSObject.Properties.Name -contains "token") {
         $saveArgs += @("--token", $token.Trim())
     }
-    [void](Invoke-TimelineAudioCliJson -CliArgs $saveArgs -TimeoutSeconds 60)
+    [void](Invoke-TimelineAudioCliText -CliArgs $saveArgs -TimeoutSeconds 60)
 
     $currentInputRoots = @(Invoke-TimelineAudioCliJson -CliArgs @("settings", "inputs", "list", "--json") -TimeoutSeconds 60)
     $requestedPaths = @($requestedInputRoots | ForEach-Object { ([string]$_.path).Trim() } | Where-Object { $_ })
@@ -643,7 +647,7 @@ function Write-TimelineAudioSettings {
         $currentPath = Convert-TimelineRootPath -Root $row
         $currentKey = $currentPath.Trim().TrimEnd('\', '/').ToLowerInvariant()
         if ($currentPath -and -not $requestedPathKeys.ContainsKey($currentKey)) {
-            [void](Invoke-TimelineAudioCliJson -CliArgs @("settings", "inputs", "remove", $currentPath, "--json") -TimeoutSeconds 60)
+            [void](Invoke-TimelineAudioCliText -CliArgs @("settings", "inputs", "remove", $currentPath, "--json") -TimeoutSeconds 60)
         }
     }
 
@@ -659,13 +663,13 @@ function Write-TimelineAudioSettings {
     foreach ($path in $requestedPaths) {
         $key = $path.Trim().TrimEnd('\', '/').ToLowerInvariant()
         if (-not $existingPathKeys.ContainsKey($key)) {
-            [void](Invoke-TimelineAudioCliJson -CliArgs @("settings", "inputs", "add", $path, "--json") -TimeoutSeconds 60)
+            [void](Invoke-TimelineAudioCliText -CliArgs @("settings", "inputs", "add", $path, "--json") -TimeoutSeconds 60)
             $existingPathKeys[$key] = $true
         }
     }
 
     if ($outputPath.Trim()) {
-        [void](Invoke-TimelineAudioCliJson -CliArgs @("settings", "master", "set", $outputPath.Trim(), "--json") -TimeoutSeconds 60)
+        [void](Invoke-TimelineAudioCliText -CliArgs @("settings", "master", "set", $outputPath.Trim(), "--json") -TimeoutSeconds 60)
     }
 
     $script:TimelineModelInventoryCache = $null
@@ -758,7 +762,7 @@ function Get-TimelineAudioRunProgressRows {
         }
 
         try {
-            $status = Get-Content -LiteralPath $statusPath -Raw | ConvertFrom-Json
+            $status = Get-Content -LiteralPath $statusPath -Raw -Encoding UTF8 | ConvertFrom-Json
             $state = ([string](Get-PropertyValue -Object $status -Name "state" -Default "")).Trim().ToLowerInvariant()
             if (-not $state) {
                 continue
@@ -1156,6 +1160,7 @@ function Add-TimelineConsoleLog {
         [string]$Level = "info",
         [string]$Kind = "message",
         [string]$ProductName = "",
+        [string]$Action = "",
         [string]$CommandLine = "",
         [string]$OperationId = "",
         [string]$ParentOperationId = "",
@@ -1163,16 +1168,27 @@ function Add-TimelineConsoleLog {
         [Nullable[int]]$DurationMs = $null,
         [string]$Stdout = "",
         [string]$Stderr = "",
-        [string]$Message = ""
+        [string]$Message = "",
+        [switch]$SkipOperationEvent
     )
 
     $script:TimelineConsoleLogNextId += 1
+    $entryAction = if ($Action) {
+        $Action
+    }
+    elseif ($Kind -eq "command" -or $Kind -eq "result") {
+        "cli"
+    }
+    else {
+        ""
+    }
     $entry = [ordered]@{
         id = $script:TimelineConsoleLogNextId
         occurredAt = [DateTimeOffset]::Now.ToString("o")
         level = $Level
         kind = $Kind
         productName = $ProductName
+        action = $entryAction
         commandLine = $CommandLine
         operationId = $OperationId
         parentOperationId = $ParentOperationId
@@ -1188,13 +1204,14 @@ function Add-TimelineConsoleLog {
         $script:TimelineConsoleLogEntries.RemoveAt(0)
     }
 
-    if ($OperationId) {
+    if ($OperationId -and -not $SkipOperationEvent) {
+        $eventAction = if ($entryAction) { $entryAction } else { "cli" }
         Write-TimelineOperationEvent `
             -OperationId $OperationId `
             -ParentOperationId $ParentOperationId `
             -Kind $Kind `
             -ProductName $ProductName `
-            -Action "cli" `
+            -Action $eventAction `
             -State $Level `
             -Message $Message `
             -CommandLine $CommandLine `
@@ -1240,6 +1257,197 @@ function Clear-TimelineConsoleLogs {
     }
 }
 
+function Get-TimelineOperationResultDetails {
+    param([object]$Result)
+
+    if ($null -eq $Result) {
+        return $null
+    }
+
+    $details = [ordered]@{}
+    foreach ($name in @(
+            "archivePath",
+            "archiveSizeBytes",
+            "itemCount",
+            "eventCount",
+            "state",
+            "runId",
+            "jobId",
+            "available",
+            "total",
+            "totalItems",
+            "completedItems",
+            "failedItems",
+            "deletedCount",
+            "message")) {
+        $value = Get-PropertyValue -Object $Result -Name $name -Default $null
+        if ($null -ne $value) {
+            if ($value -is [string]) {
+                if ($value) {
+                    $details[$name] = $value
+                }
+            }
+            else {
+                $details[$name] = $value
+            }
+        }
+    }
+
+    $pagination = Get-PropertyValue -Object $Result -Name "pagination" -Default $null
+    if ($null -ne $pagination) {
+        $details["pagination"] = [ordered]@{
+            page = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $pagination -Name "page" -Default 0)
+            pageSize = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $pagination -Name "pageSize" -Default 0)
+            totalItems = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $pagination -Name "totalItems" -Default 0)
+            totalPages = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $pagination -Name "totalPages" -Default 0)
+            returnedItems = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $pagination -Name "returnedItems" -Default 0)
+        }
+    }
+
+    $products = @(Get-PropertyValue -Object $Result -Name "products" -Default @())
+    if ($products.Count -gt 0 -and $products.Count -le 20) {
+        $details["products"] = @($products)
+    }
+
+    if ($details.Count -eq 0) {
+        return $null
+    }
+    return $details
+}
+
+function Convert-TimelineOperationSummary {
+    param(
+        [object]$Summary,
+        [string]$LogDirectory = ""
+    )
+
+    if ($null -eq $Summary) {
+        return $null
+    }
+
+    return [ordered]@{
+        operationId = Convert-TimelineText -Value (Get-PropertyValue -Object $Summary -Name "operationId" -Default "")
+        parentOperationId = Convert-TimelineText -Value (Get-PropertyValue -Object $Summary -Name "parentOperationId" -Default "")
+        kind = Convert-TimelineText -Value (Get-PropertyValue -Object $Summary -Name "kind" -Default "")
+        productName = Convert-TimelineText -Value (Get-PropertyValue -Object $Summary -Name "productName" -Default "")
+        action = Convert-TimelineText -Value (Get-PropertyValue -Object $Summary -Name "action" -Default "")
+        state = Convert-TimelineText -Value (Get-PropertyValue -Object $Summary -Name "state" -Default "")
+        message = Convert-TimelineText -Value (Get-PropertyValue -Object $Summary -Name "message" -Default "")
+        commandLine = Convert-TimelineText -Value (Get-PropertyValue -Object $Summary -Name "commandLine" -Default "")
+        exitCode = Get-PropertyValue -Object $Summary -Name "exitCode" -Default $null
+        durationMs = Get-PropertyValue -Object $Summary -Name "durationMs" -Default $null
+        updatedAt = Convert-TimelineText -Value (Get-PropertyValue -Object $Summary -Name "updatedAt" -Default "")
+        details = Get-PropertyValue -Object $Summary -Name "details" -Default $null
+        logDirectory = $LogDirectory
+    }
+}
+
+function Convert-TimelineOperationEvent {
+    param([object]$Event)
+
+    if ($null -eq $Event) {
+        return $null
+    }
+
+    return [ordered]@{
+        operationId = Convert-TimelineText -Value (Get-PropertyValue -Object $Event -Name "operationId" -Default "")
+        parentOperationId = Convert-TimelineText -Value (Get-PropertyValue -Object $Event -Name "parentOperationId" -Default "")
+        occurredAt = Convert-TimelineText -Value (Get-PropertyValue -Object $Event -Name "occurredAt" -Default "")
+        kind = Convert-TimelineText -Value (Get-PropertyValue -Object $Event -Name "kind" -Default "")
+        productName = Convert-TimelineText -Value (Get-PropertyValue -Object $Event -Name "productName" -Default "")
+        action = Convert-TimelineText -Value (Get-PropertyValue -Object $Event -Name "action" -Default "")
+        state = Convert-TimelineText -Value (Get-PropertyValue -Object $Event -Name "state" -Default "")
+        message = Convert-TimelineText -Value (Get-PropertyValue -Object $Event -Name "message" -Default "")
+        commandLine = Convert-TimelineText -Value (Get-PropertyValue -Object $Event -Name "commandLine" -Default "")
+        exitCode = Get-PropertyValue -Object $Event -Name "exitCode" -Default $null
+        durationMs = Get-PropertyValue -Object $Event -Name "durationMs" -Default $null
+        stdoutTail = Convert-TimelineText -Value (Get-PropertyValue -Object $Event -Name "stdoutTail" -Default "")
+        stderrTail = Convert-TimelineText -Value (Get-PropertyValue -Object $Event -Name "stderrTail" -Default "")
+        details = Get-PropertyValue -Object $Event -Name "details" -Default $null
+    }
+}
+
+function Get-TimelineOperationLogs {
+    param([int]$Limit = 100)
+
+    $root = Get-TimelineOperationLogRoot
+    $effectiveLimit = [Math]::Min([Math]::Max(1, $Limit), 300)
+    $directories = @(Get-ChildItem -LiteralPath $root -Directory -ErrorAction SilentlyContinue |
+        Sort-Object LastWriteTimeUtc -Descending)
+    $rows = @()
+    foreach ($directory in @($directories | Select-Object -First $effectiveLimit)) {
+        $summaryPath = Join-Path ([string]$directory.FullName) "summary.json"
+        if (-not (Test-Path -LiteralPath $summaryPath -PathType Leaf)) {
+            continue
+        }
+        try {
+            $summary = Get-Content -LiteralPath $summaryPath -Raw -Encoding UTF8 | ConvertFrom-Json
+            $rows += Convert-TimelineOperationSummary -Summary $summary -LogDirectory ([string]$directory.FullName)
+        }
+        catch {
+        }
+    }
+
+    return [ordered]@{
+        logRoot = $root
+        total = $directories.Count
+        operations = @($rows)
+        message = ""
+    }
+}
+
+function Get-TimelineOperationLogDetail {
+    param([string]$OperationId)
+
+    $safeOperationId = Get-TimelineZipSafeSegment -Value $OperationId
+    if (-not $safeOperationId) {
+        return [ordered]@{
+            available = $false
+            summary = $null
+            events = @()
+            logDirectory = ""
+            message = "Operation id is required."
+        }
+    }
+
+    $directory = Get-TimelineOperationDirectory -OperationId $safeOperationId
+    $summaryPath = Join-Path $directory "summary.json"
+    $eventsPath = Join-Path $directory "events.jsonl"
+    if (-not (Test-Path -LiteralPath $summaryPath -PathType Leaf)) {
+        return [ordered]@{
+            available = $false
+            summary = $null
+            events = @()
+            logDirectory = $directory
+            message = "Operation log was not found."
+        }
+    }
+
+    $summary = Get-Content -LiteralPath $summaryPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    $events = @()
+    if (Test-Path -LiteralPath $eventsPath -PathType Leaf) {
+        foreach ($line in [System.IO.File]::ReadLines($eventsPath)) {
+            $text = ([string]$line).Trim()
+            if (-not $text) {
+                continue
+            }
+            try {
+                $events += Convert-TimelineOperationEvent -Event ($text | ConvertFrom-Json)
+            }
+            catch {
+            }
+        }
+    }
+
+    return [ordered]@{
+        available = $true
+        summary = Convert-TimelineOperationSummary -Summary $summary -LogDirectory $directory
+        events = @($events)
+        logDirectory = $directory
+        message = ""
+    }
+}
+
 function Invoke-TimelineWebOperation {
     param(
         [string]$ProductName = "Timeline",
@@ -1261,10 +1469,22 @@ function Invoke-TimelineWebOperation {
         -State "started" `
         -Message "Web operation started." `
         -Details $Details
+    Add-TimelineConsoleLog `
+        -Level "info" `
+        -Kind $Kind `
+        -ProductName $ProductName `
+        -Action $Action `
+        -OperationId $operationId `
+        -Message "Web operation started." `
+        -SkipOperationEvent
 
     try {
         $result = & $ScriptBlock
         $durationMs = [int]([DateTimeOffset]::Now - $startedAt).TotalMilliseconds
+        $completedDetails = $Details
+        if ($null -eq $completedDetails) {
+            $completedDetails = Get-TimelineOperationResultDetails -Result $result
+        }
         Write-TimelineOperationEvent `
             -OperationId $operationId `
             -Kind $Kind `
@@ -1273,7 +1493,16 @@ function Invoke-TimelineWebOperation {
             -State "completed" `
             -Message "Web operation completed." `
             -DurationMs $durationMs `
-            -Details $Details
+            -Details $completedDetails
+        Add-TimelineConsoleLog `
+            -Level "success" `
+            -Kind $Kind `
+            -ProductName $ProductName `
+            -Action $Action `
+            -OperationId $operationId `
+            -DurationMs $durationMs `
+            -Message "Web operation completed." `
+            -SkipOperationEvent
         return $result
     }
     catch {
@@ -1288,6 +1517,16 @@ function Invoke-TimelineWebOperation {
             -DurationMs $durationMs `
             -Stderr $_.Exception.Message `
             -Details $Details
+        Add-TimelineConsoleLog `
+            -Level "error" `
+            -Kind $Kind `
+            -ProductName $ProductName `
+            -Action $Action `
+            -OperationId $operationId `
+            -DurationMs $durationMs `
+            -Stderr $_.Exception.Message `
+            -Message "Web operation failed." `
+            -SkipOperationEvent
         throw
     }
     finally {
@@ -1671,7 +1910,11 @@ function Invoke-TimelineProductCliText {
     $cliBatch = Join-Path $ProductPath "cli.bat"
     $cliScript = Join-Path $ProductPath "cli.ps1"
     if (Test-Path -LiteralPath $cliScript) {
-        $powershellArgs = @("-NoLogo", "-NoProfile", "-WindowStyle", "Hidden", "-ExecutionPolicy", "Bypass", "-File", $cliScript) + @($CliArgs)
+        $utf8CliInvoker = Join-Path $TimelineProductPath "scripts\invoke-product-cli-utf8.ps1"
+        if (-not (Test-Path -LiteralPath $utf8CliInvoker -PathType Leaf)) {
+            throw "Timeline product CLI UTF-8 invoker was not found: $utf8CliInvoker"
+        }
+        $powershellArgs = @("-NoLogo", "-NoProfile", "-WindowStyle", "Hidden", "-ExecutionPolicy", "Bypass", "-File", $utf8CliInvoker, "-ScriptPath", $cliScript) + @($CliArgs)
         $result = Invoke-TimelineLoggedProcess `
             -FileName (Get-TimelinePowerShellPath) `
             -Arguments $powershellArgs `
@@ -1731,6 +1974,19 @@ function Invoke-TimelineAudioCliJson {
         -CliArgs $CliArgs `
         -TimeoutSeconds $TimeoutSeconds
     return ConvertFrom-TimelineJsonOutput -Text $stdout
+}
+
+function Invoke-TimelineAudioCliText {
+    param(
+        [string[]]$CliArgs,
+        [int]$TimeoutSeconds = 25
+    )
+
+    return Invoke-TimelineProductCliText `
+        -ProductPath $AudioProductPath `
+        -ProductName "TimelineForAudio" `
+        -CliArgs $CliArgs `
+        -TimeoutSeconds $TimeoutSeconds
 }
 
 function Invoke-TimelineWindowsCodexCliJson {
@@ -2266,7 +2522,7 @@ function Get-TimelineThreadRows {
     }
 
     $rows = @()
-    foreach ($dir in @(Get-ChildItem -LiteralPath $RootPath -Directory -ErrorAction SilentlyContinue | Select-Object -First 500)) {
+    foreach ($dir in @(Get-ChildItem -LiteralPath $RootPath -Directory -ErrorAction SilentlyContinue)) {
         $timelinePath = Join-Path $dir.FullName "timeline.json"
         if (-not (Test-Path -LiteralPath $timelinePath)) {
             continue
@@ -2431,12 +2687,99 @@ function Get-TimelineThreadRowsPageFromRoot {
         [int]$PageSize = 100
     )
 
-    $allRows = @(Get-TimelineThreadRows -RootPath $RootPath)
-    $total = $allRows.Count
+    if (-not $RootPath -or -not (Test-Path -LiteralPath $RootPath)) {
+        return New-TimelineThreadListResult `
+            -Threads @() `
+            -Pagination (New-TimelinePagination -Page ([Math]::Max(1, $Page)) -PageSize ([Math]::Max(1, $PageSize)) -TotalItems 0 -ReturnedItems 0) `
+            -Total 0
+    }
+
     $effectivePage = [Math]::Max(1, $Page)
     $effectivePageSize = [Math]::Max(1, $PageSize)
     $offset = ($effectivePage - 1) * $effectivePageSize
-    $pageRows = @($allRows | Select-Object -Skip $offset -First $effectivePageSize)
+
+    $manifestPath = Join-Path $RootPath "manifest.json"
+    $manifest = Read-TimelineChatGptJsonFile -Path $manifestPath
+    $manifestItems = @()
+    if ($null -ne $manifest) {
+        $manifestItems = @(Get-PropertyValue -Object $manifest -Name "items" -Default @())
+    }
+    if ($manifestItems.Count -gt 0) {
+        $sortedManifestItems = @($manifestItems | Sort-Object {
+                $dateText = Convert-TimelineText -Value (Get-PropertyValueAny -Object $_ -Names @("updated_at", "updatedAt", "ended_at_utc", "endedAtUtc", "created_at", "createdAt", "started_at_utc", "startedAtUtc") -Default "")
+                if ($dateText) {
+                    try {
+                        return ([datetime]::Parse($dateText)).ToUniversalTime()
+                    }
+                    catch {
+                    }
+                }
+                return [datetime]::MinValue
+            } -Descending)
+        $manifestTotal = Convert-TimelineAudioInt -Value (Get-PropertyValueAny -Object $manifest -Names @("item_count", "itemCount", "total_items", "totalItems", "total") -Default $sortedManifestItems.Count)
+        if ($manifestTotal -le 0) {
+            $manifestTotal = $sortedManifestItems.Count
+        }
+        $pageManifestItems = @($sortedManifestItems | Select-Object -Skip $offset -First $effectivePageSize)
+        $pageManifestRows = @()
+        foreach ($item in @($pageManifestItems)) {
+            $pageManifestRows += Convert-TimelineThreadItemRow -Item $item -RootPath $RootPath
+        }
+        return New-TimelineThreadListResult `
+            -Threads $pageManifestRows `
+            -Pagination (New-TimelinePagination -Page $effectivePage -PageSize $effectivePageSize -TotalItems $manifestTotal -ReturnedItems $pageManifestRows.Count) `
+            -Total $manifestTotal
+    }
+
+    $candidates = @()
+    try {
+        foreach ($timelinePath in [System.IO.Directory]::EnumerateFiles($RootPath, "timeline.json", [System.IO.SearchOption]::AllDirectories)) {
+            try {
+                $file = [System.IO.FileInfo]::new($timelinePath)
+                $candidates += [pscustomobject]@{
+                    SortDate = $file.LastWriteTimeUtc
+                    Directory = $file.DirectoryName
+                    TimelinePath = $file.FullName
+                }
+            }
+            catch {
+            }
+        }
+    }
+    catch {
+    }
+
+    $sortedCandidates = @($candidates | Sort-Object SortDate -Descending)
+    $total = $sortedCandidates.Count
+    $pageCandidates = @($sortedCandidates | Select-Object -Skip $offset -First $effectivePageSize)
+    $pageRows = @()
+    foreach ($candidate in @($pageCandidates)) {
+        $timelinePath = [string]$candidate.TimelinePath
+        $timeline = Read-TimelineChatGptJsonFile -Path $timelinePath
+        if ($null -eq $timeline) {
+            continue
+        }
+
+        $messages = @(Get-PropertyValue -Object $timeline -Name "messages" -Default @())
+        $directoryPath = [string]$candidate.Directory
+        $itemId = Convert-TimelineText -Value (Get-PropertyValueAny -Object $timeline -Names @("thread_id", "conversation_id", "item_id", "id") -Default (Split-Path -Leaf $directoryPath))
+        $title = Convert-TimelineText -Value (Get-PropertyValue -Object $timeline -Name "title" -Default "")
+        if (-not $title) {
+            $title = $itemId
+        }
+
+        $pageRows += [ordered]@{
+            itemId = $itemId
+            title = $title
+            createdAt = Convert-TimelineText -Value (Get-PropertyValue -Object $timeline -Name "created_at" -Default "")
+            updatedAt = Convert-TimelineText -Value (Get-PropertyValue -Object $timeline -Name "updated_at" -Default "")
+            messageCount = $messages.Count
+            directoryPath = $directoryPath
+            timelinePath = $timelinePath
+            convertInfoPath = Join-Path $directoryPath "convert_info.json"
+        }
+    }
+
     return New-TimelineThreadListResult `
         -Threads $pageRows `
         -Pagination (New-TimelinePagination -Page $effectivePage -PageSize $effectivePageSize -TotalItems $total -ReturnedItems $pageRows.Count) `
@@ -2770,10 +3113,7 @@ function Get-TimelineWindowsCodexThreads {
     $settingsPayload = Read-TimelineWindowsCodexSettingsFile
     $outputRoot = Convert-TimelineText -Value (Get-PropertyValueAny -Object $settingsPayload -Names @("outputRoot", "outputs_root") -Default "")
     $masterLocalPath = Convert-TimelineWindowsPath -Path $outputRoot
-    $payload = Invoke-TimelineWindowsCodexCliJson `
-        -CliArgs @("items", "list", "--page", ([string][Math]::Max(1, $Page)), "--page-size", ([string][Math]::Max(1, $PageSize)), "--json") `
-        -TimeoutSeconds 180
-    return Convert-TimelineThreadItemsListResult -Payload $payload -RootPath $masterLocalPath
+    return Get-TimelineThreadRowsPageFromRoot -RootPath $masterLocalPath -Page $Page -PageSize $PageSize
 }
 
 function Get-TimelineWindowsCodexOverview {
@@ -2916,10 +3256,9 @@ function Get-TimelineRuntimeProductDefinitions {
             displayName = "TimelineForAudio"
             description = "audio"
             pagePath = "audio/files"
-            settingsPath = "audio/settings"
+            settingsPath = "timeline/settings?product=audio#product-specific-settings"
             productPath = $AudioProductPath
-            installPath = Convert-TimelineText -Value (Get-PropertyValue -Object $audioProduct -Name "installPath" -Default "")
-            developmentPath = Convert-TimelineText -Value (Get-PropertyValue -Object $audioProduct -Name "developmentPath" -Default "")
+            path = Convert-TimelineText -Value (Get-PropertyValue -Object $audioProduct -Name "path" -Default $AudioProductPath)
             sourceType = Convert-TimelineText -Value (Get-PropertyValue -Object $audioProduct -Name "sourceType" -Default "")
             sourceUrl = Convert-TimelineText -Value (Get-PropertyValue -Object $audioProduct -Name "sourceUrl" -Default "")
             version = Convert-TimelineText -Value (Get-PropertyValue -Object $audioProduct -Name "version" -Default "")
@@ -2933,10 +3272,9 @@ function Get-TimelineRuntimeProductDefinitions {
             displayName = "TimelineForWindowsCodex"
             description = "codex"
             pagePath = "windows-codex"
-            settingsPath = "windows-codex/settings"
+            settingsPath = "timeline/settings?product=windows-codex#product-specific-settings"
             productPath = $WindowsCodexProductPath
-            installPath = Convert-TimelineText -Value (Get-PropertyValue -Object $windowsCodexProduct -Name "installPath" -Default "")
-            developmentPath = Convert-TimelineText -Value (Get-PropertyValue -Object $windowsCodexProduct -Name "developmentPath" -Default "")
+            path = Convert-TimelineText -Value (Get-PropertyValue -Object $windowsCodexProduct -Name "path" -Default $WindowsCodexProductPath)
             sourceType = Convert-TimelineText -Value (Get-PropertyValue -Object $windowsCodexProduct -Name "sourceType" -Default "")
             sourceUrl = Convert-TimelineText -Value (Get-PropertyValue -Object $windowsCodexProduct -Name "sourceUrl" -Default "")
             version = Convert-TimelineText -Value (Get-PropertyValue -Object $windowsCodexProduct -Name "version" -Default "")
@@ -2950,10 +3288,9 @@ function Get-TimelineRuntimeProductDefinitions {
             displayName = "TimelineForChatGPT"
             description = "chatgpt"
             pagePath = "chatgpt"
-            settingsPath = "chatgpt/settings"
+            settingsPath = "timeline/settings?product=chatgpt#product-specific-settings"
             productPath = $ChatGptProductPath
-            installPath = Convert-TimelineText -Value (Get-PropertyValue -Object $chatGptProduct -Name "installPath" -Default "")
-            developmentPath = Convert-TimelineText -Value (Get-PropertyValue -Object $chatGptProduct -Name "developmentPath" -Default "")
+            path = Convert-TimelineText -Value (Get-PropertyValue -Object $chatGptProduct -Name "path" -Default $ChatGptProductPath)
             sourceType = Convert-TimelineText -Value (Get-PropertyValue -Object $chatGptProduct -Name "sourceType" -Default "")
             sourceUrl = Convert-TimelineText -Value (Get-PropertyValue -Object $chatGptProduct -Name "sourceUrl" -Default "")
             version = Convert-TimelineText -Value (Get-PropertyValue -Object $chatGptProduct -Name "version" -Default "")
@@ -2967,10 +3304,9 @@ function Get-TimelineRuntimeProductDefinitions {
             displayName = "TimelineForImage"
             description = "image"
             pagePath = "image"
-            settingsPath = "image/settings"
+            settingsPath = "timeline/settings?product=image#product-specific-settings"
             productPath = $ImageProductPath
-            installPath = Convert-TimelineText -Value (Get-PropertyValue -Object $imageProduct -Name "installPath" -Default "")
-            developmentPath = Convert-TimelineText -Value (Get-PropertyValue -Object $imageProduct -Name "developmentPath" -Default "")
+            path = Convert-TimelineText -Value (Get-PropertyValue -Object $imageProduct -Name "path" -Default $ImageProductPath)
             sourceType = Convert-TimelineText -Value (Get-PropertyValue -Object $imageProduct -Name "sourceType" -Default "")
             sourceUrl = Convert-TimelineText -Value (Get-PropertyValue -Object $imageProduct -Name "sourceUrl" -Default "")
             version = Convert-TimelineText -Value (Get-PropertyValue -Object $imageProduct -Name "version" -Default "")
@@ -3023,8 +3359,7 @@ function Convert-TimelineRuntimeStatus {
         pagePath = [string]$Definition.pagePath
         settingsPath = [string]$Definition.settingsPath
         productPath = $productPath
-        installPath = Convert-TimelineText -Value (Get-PropertyValue -Object $Definition -Name "installPath" -Default "")
-        developmentPath = Convert-TimelineText -Value (Get-PropertyValue -Object $Definition -Name "developmentPath" -Default "")
+        path = Convert-TimelineText -Value (Get-PropertyValue -Object $Definition -Name "path" -Default $productPath)
         sourceType = Convert-TimelineText -Value (Get-PropertyValue -Object $Definition -Name "sourceType" -Default "")
         sourceUrl = Convert-TimelineText -Value (Get-PropertyValue -Object $Definition -Name "sourceUrl" -Default "")
         version = Convert-TimelineText -Value (Get-PropertyValue -Object $Definition -Name "version" -Default "")
@@ -3368,6 +3703,286 @@ function Get-TimelineImageCurrentOutputRoot {
     return Convert-TimelineImageLocalPath -Path $outputRoot
 }
 
+function Get-TimelineImageExtensionSet {
+    param([object]$Settings)
+
+    $extensions = @(Get-PropertyValueAny -Object $Settings -Names @("imageExtensions", "image_extensions") -Default @(".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".tif", ".tiff", ".heic"))
+    $extensionSet = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    foreach ($extension in @($extensions)) {
+        $text = ([string]$extension).Trim()
+        if (-not $text) {
+            continue
+        }
+        if (-not $text.StartsWith(".")) {
+            $text = ".$text"
+        }
+        [void]$extensionSet.Add($text)
+    }
+    return $extensionSet
+}
+
+function Get-TimelineRelativePathFromRoots {
+    param(
+        [string]$Path,
+        [string[]]$RootPaths
+    )
+
+    $resolvedPath = $Path
+    try {
+        $resolvedPath = (Resolve-Path -LiteralPath $Path -ErrorAction Stop).Path
+    }
+    catch {
+    }
+
+    foreach ($rootPath in @($RootPaths)) {
+        if (-not $rootPath) {
+            continue
+        }
+        $resolvedRoot = $rootPath
+        try {
+            $resolvedRoot = (Resolve-Path -LiteralPath $rootPath -ErrorAction Stop).Path
+        }
+        catch {
+        }
+        $trimmedRoot = $resolvedRoot.TrimEnd('\', '/')
+        if (-not $trimmedRoot) {
+            continue
+        }
+        if ($resolvedPath.Equals($trimmedRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+            return Split-Path -Leaf $resolvedPath
+        }
+        $prefix = "$trimmedRoot\"
+        if ($resolvedPath.StartsWith($prefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+            return $resolvedPath.Substring($prefix.Length).Replace('\', '/')
+        }
+    }
+
+    return Split-Path -Leaf $resolvedPath
+}
+
+function Get-TimelineFileSha256 {
+    param([string]$Path)
+
+    if (-not $Path -or -not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+        return ""
+    }
+
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    $stream = $null
+    try {
+        $stream = [System.IO.File]::Open($Path, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
+        $bytes = $sha.ComputeHash($stream)
+        return ([System.BitConverter]::ToString($bytes)).Replace("-", "").ToLowerInvariant()
+    }
+    catch {
+        return ""
+    }
+    finally {
+        if ($null -ne $stream) {
+            $stream.Dispose()
+        }
+        $sha.Dispose()
+    }
+}
+
+function Get-TimelineImageGeneratedCatalog {
+    param([string]$OutputRoot)
+
+    $byKey = @{}
+    $byHashSize = @{}
+    $byHash = @{}
+    $rows = @()
+    $itemsRoot = if ($OutputRoot) { Join-Path $OutputRoot "items" } else { "" }
+    if (-not $itemsRoot -or -not (Test-Path -LiteralPath $itemsRoot -PathType Container)) {
+        return [ordered]@{ byKey = $byKey; byHashSize = $byHashSize; byHash = $byHash; rows = @() }
+    }
+
+    foreach ($dir in @(Get-ChildItem -LiteralPath $itemsRoot -Directory -ErrorAction SilentlyContinue)) {
+        $convertInfoPath = Join-Path $dir.FullName "convert_info.json"
+        if (-not (Test-Path -LiteralPath $convertInfoPath -PathType Leaf)) {
+            continue
+        }
+
+        try {
+            $payload = Get-Content -LiteralPath $convertInfoPath -Raw -Encoding UTF8 | ConvertFrom-Json
+            $source = Get-PropertyValue -Object $payload -Name "source" -Default @{}
+            $itemId = Convert-TimelineText -Value (Get-PropertyValueAny -Object $source -Names @("item_id", "itemId") -Default $dir.Name)
+            $sha256 = Convert-TimelineText -Value (Get-PropertyValue -Object $source -Name "sha256" -Default "")
+            $relativePath = Convert-TimelineText -Value (Get-PropertyValueAny -Object $source -Names @("relative_path", "relativePath") -Default "")
+            $sizeBytes = Convert-TimelineLong -Value (Get-PropertyValueAny -Object $source -Names @("size_bytes", "sizeBytes") -Default 0)
+            if (-not $itemId -or -not $sha256) {
+                continue
+            }
+
+            $row = [pscustomobject]@{
+                itemId = $itemId
+                sha256 = $sha256.ToLowerInvariant()
+                relativePath = $relativePath
+                sizeBytes = $sizeBytes
+                outputDirectory = $dir.FullName
+                timelinePath = Join-Path $dir.FullName "timeline.json"
+                convertInfoPath = $convertInfoPath
+                imageRecordPath = Join-Path $dir.FullName "image_record.json"
+            }
+            $rows += $row
+
+            if ($relativePath) {
+                $key = "$($row.sha256)|$relativePath"
+                if (-not $byKey.ContainsKey($key)) {
+                    $byKey[$key] = $row
+                }
+            }
+
+            $hashSizeKey = "$($row.sha256)|$sizeBytes"
+            if (-not $byHashSize.ContainsKey($hashSizeKey)) {
+                $byHashSize[$hashSizeKey] = @()
+            }
+            $byHashSize[$hashSizeKey] = @($byHashSize[$hashSizeKey]) + $row
+
+            if (-not $byHash.ContainsKey($row.sha256)) {
+                $byHash[$row.sha256] = @()
+            }
+            $byHash[$row.sha256] = @($byHash[$row.sha256]) + $row
+        }
+        catch {
+        }
+    }
+
+    return [ordered]@{ byKey = $byKey; byHashSize = $byHashSize; byHash = $byHash; rows = @($rows) }
+}
+
+function Get-TimelineImageGeneratedItemCount {
+    param([string]$OutputRoot)
+
+    $itemsRoot = if ($OutputRoot) { Join-Path $OutputRoot "items" } else { "" }
+    if (-not $itemsRoot -or -not (Test-Path -LiteralPath $itemsRoot -PathType Container)) {
+        return 0
+    }
+
+    $count = 0
+    foreach ($dir in @(Get-ChildItem -LiteralPath $itemsRoot -Directory -ErrorAction SilentlyContinue)) {
+        if ((Test-Path -LiteralPath (Join-Path $dir.FullName "timeline.json") -PathType Leaf) -or
+            (Test-Path -LiteralPath (Join-Path $dir.FullName "image_record.json") -PathType Leaf)) {
+            $count += 1
+        }
+    }
+    return $count
+}
+
+function Find-TimelineImageGeneratedCatalogRow {
+    param(
+        [object]$Catalog,
+        [string]$Sha256,
+        [string]$RelativePath,
+        [int64]$SizeBytes
+    )
+
+    $sha = ([string]$Sha256).Trim().ToLowerInvariant()
+    if (-not $sha) {
+        return $null
+    }
+
+    $byKey = Get-PropertyValue -Object $Catalog -Name "byKey" -Default @{}
+    $key = "$sha|$RelativePath"
+    if ($RelativePath -and $byKey.ContainsKey($key)) {
+        return $byKey[$key]
+    }
+
+    $byHashSize = Get-PropertyValue -Object $Catalog -Name "byHashSize" -Default @{}
+    $hashSizeKey = "$sha|$SizeBytes"
+    if ($byHashSize.ContainsKey($hashSizeKey)) {
+        $matches = @($byHashSize[$hashSizeKey])
+        if ($matches.Count -gt 0) {
+            return $matches[0]
+        }
+    }
+
+    $byHash = Get-PropertyValue -Object $Catalog -Name "byHash" -Default @{}
+    if ($byHash.ContainsKey($sha)) {
+        $matches = @($byHash[$sha])
+        if ($matches.Count -gt 0) {
+            return $matches[0]
+        }
+    }
+
+    return $null
+}
+
+function Get-TimelineImageSourceRowsFromSettings {
+    param([object]$Settings)
+
+    $extensionSet = Get-TimelineImageExtensionSet -Settings $Settings
+    $rootPaths = @()
+    foreach ($root in @(Get-PropertyValueAny -Object $Settings -Names @("inputRoots", "input_roots") -Default @())) {
+        $rootPath = Convert-TimelineImageLocalPath -Path (Convert-TimelineText -Value $root)
+        if ($rootPath -and (Test-Path -LiteralPath $rootPath)) {
+            $rootPaths += (Resolve-Path -LiteralPath $rootPath).Path
+        }
+    }
+
+    $rows = @()
+    foreach ($rootPath in @($rootPaths)) {
+        foreach ($file in @(Get-ChildItem -LiteralPath $rootPath -File -Recurse -ErrorAction SilentlyContinue)) {
+            if (-not $extensionSet.Contains($file.Extension)) {
+                continue
+            }
+
+            $relativePath = Get-TimelineRelativePathFromRoots -Path $file.FullName -RootPaths $rootPaths
+            $rows += [pscustomobject]@{
+                sourcePath = $file.FullName
+                sourceDisplayName = $file.Name
+                relativePath = $relativePath
+                sizeBytes = [int64]$file.Length
+                modifiedAt = $file.LastWriteTime.ToString("yyyy-MM-dd HH:mm:ss")
+                sortKey = $relativePath
+            }
+        }
+    }
+
+    return @($rows | Sort-Object sortKey)
+}
+
+function Convert-TimelineImageSourceFileRow {
+    param(
+        [object]$SourceRow,
+        [object]$Catalog
+    )
+
+    $sourcePath = Convert-TimelineText -Value (Get-PropertyValue -Object $SourceRow -Name "sourcePath" -Default "")
+    $relativePath = Convert-TimelineText -Value (Get-PropertyValue -Object $SourceRow -Name "relativePath" -Default "")
+    $sizeBytes = [int64](Convert-TimelineLong -Value (Get-PropertyValue -Object $SourceRow -Name "sizeBytes" -Default 0))
+    $sha256 = Get-TimelineFileSha256 -Path $sourcePath
+    $catalogRow = Find-TimelineImageGeneratedCatalogRow -Catalog $Catalog -Sha256 $sha256 -RelativePath $relativePath -SizeBytes $sizeBytes
+
+    $itemId = ""
+    $outputDirectory = ""
+    $timelinePath = ""
+    $convertInfoPath = ""
+    $imageRecordPath = ""
+    if ($null -ne $catalogRow) {
+        $itemId = Convert-TimelineText -Value (Get-PropertyValue -Object $catalogRow -Name "itemId" -Default "")
+        $outputDirectory = Convert-TimelineText -Value (Get-PropertyValue -Object $catalogRow -Name "outputDirectory" -Default "")
+        $timelinePath = Convert-TimelineText -Value (Get-PropertyValue -Object $catalogRow -Name "timelinePath" -Default "")
+        $convertInfoPath = Convert-TimelineText -Value (Get-PropertyValue -Object $catalogRow -Name "convertInfoPath" -Default "")
+        $imageRecordPath = Convert-TimelineText -Value (Get-PropertyValue -Object $catalogRow -Name "imageRecordPath" -Default "")
+    }
+
+    return [ordered]@{
+        itemId = $itemId
+        relativePath = $relativePath
+        sourcePath = $sourcePath
+        sourceDisplayName = Convert-TimelineText -Value (Get-PropertyValue -Object $SourceRow -Name "sourceDisplayName" -Default "")
+        sizeBytes = $sizeBytes
+        modifiedAt = Convert-TimelineText -Value (Get-PropertyValue -Object $SourceRow -Name "modifiedAt" -Default "")
+        outputDirectory = $outputDirectory
+        timelinePath = $timelinePath
+        convertInfoPath = $convertInfoPath
+        imageRecordPath = $imageRecordPath
+        hasTimeline = if ($timelinePath) { Test-Path -LiteralPath $timelinePath -PathType Leaf } else { $false }
+        hasImageRecord = if ($imageRecordPath) { Test-Path -LiteralPath $imageRecordPath -PathType Leaf } else { $false }
+    }
+}
+
 function Convert-TimelineImageFileRow {
     param(
         [object]$Row,
@@ -3423,7 +4038,7 @@ function Get-TimelineImageOverview {
             settingsValid = $true
             settings = $settings
             sourceFileCount = Get-TimelineImageSourceFileCount -Settings $settingsPayload
-            itemCount = Get-TimelineManifestItemCount -RootPath $outputLocalPath
+            itemCount = Get-TimelineImageGeneratedItemCount -OutputRoot $outputLocalPath
             latestRefresh = [ordered]@{}
             message = ""
         }
@@ -3467,16 +4082,247 @@ function Get-TimelineImageFiles {
         [int]$PageSize = 100
     )
 
-    $payload = Invoke-TimelineImageCliJson -CliArgs @("files", "list", "--page", ([string][Math]::Max(1, $Page)), "--page-size", ([string][Math]::Max(1, $PageSize))) -TimeoutSeconds 120
+    $settingsPayload = Read-TimelineImageSettingsPayload
     $outputRoot = Get-TimelineImageCurrentOutputRoot
+    $catalog = Get-TimelineImageGeneratedCatalog -OutputRoot $outputRoot
+    $sourceRows = @(Get-TimelineImageSourceRowsFromSettings -Settings $settingsPayload)
+    $total = $sourceRows.Count
+    $effectivePage = [Math]::Max(1, $Page)
+    $effectivePageSize = [Math]::Max(1, $PageSize)
+    $offset = ($effectivePage - 1) * $effectivePageSize
+    $pageRows = @($sourceRows | Select-Object -Skip $offset -First $effectivePageSize)
     $files = @()
-    foreach ($row in @(Get-PropertyValue -Object $payload -Name "files" -Default @())) {
-        $files += Convert-TimelineImageFileRow -Row $row -OutputRoot $outputRoot
+    foreach ($row in @($pageRows)) {
+        $files += Convert-TimelineImageSourceFileRow -SourceRow $row -Catalog $catalog
     }
     return [ordered]@{
-        total = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $payload -Name "count" -Default 0)
-        pagination = Convert-TimelineImagePagination -Payload $payload -RowsProperty "files"
+        total = $total
+        pagination = New-TimelinePagination -Page $effectivePage -PageSize $effectivePageSize -TotalItems $total -ReturnedItems $files.Count
         files = @($files)
+    }
+}
+
+function Read-TimelineImageJsonFile {
+    param([string]$Path)
+
+    if (-not $Path -or -not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+        return $null
+    }
+    try {
+        return Get-Content -LiteralPath $Path -Raw -Encoding UTF8 | ConvertFrom-Json
+    }
+    catch {
+        return $null
+    }
+}
+
+function Resolve-TimelineImageSourceFile {
+    param(
+        [object]$Settings,
+        [string]$SourcePath
+    )
+
+    $candidatePath = Convert-TimelineImageLocalPath -Path $SourcePath
+    if (-not $candidatePath -or -not (Test-Path -LiteralPath $candidatePath -PathType Leaf)) {
+        return $null
+    }
+
+    $extensionSet = Get-TimelineImageExtensionSet -Settings $Settings
+    $extension = [System.IO.Path]::GetExtension($candidatePath)
+    if (-not $extensionSet.Contains($extension)) {
+        return $null
+    }
+
+    $rootPaths = @()
+    foreach ($root in @(Get-PropertyValueAny -Object $Settings -Names @("inputRoots", "input_roots") -Default @())) {
+        $rootPath = Convert-TimelineImageLocalPath -Path (Convert-TimelineText -Value $root)
+        if ($rootPath -and (Test-Path -LiteralPath $rootPath -PathType Container)) {
+            $rootPaths += (Resolve-Path -LiteralPath $rootPath).Path
+        }
+    }
+
+    if ($rootPaths.Count -eq 0) {
+        return $null
+    }
+
+    $resolvedCandidate = (Resolve-Path -LiteralPath $candidatePath).Path
+    $candidateKey = Get-TimelineNormalizedPathKey -Path $resolvedCandidate
+    $matchedRoot = ""
+    foreach ($rootPath in @($rootPaths)) {
+        $rootKey = Get-TimelineNormalizedPathKey -Path $rootPath
+        if ($candidateKey.Equals($rootKey, [System.StringComparison]::OrdinalIgnoreCase) -or
+            $candidateKey.StartsWith("$rootKey\", [System.StringComparison]::OrdinalIgnoreCase)) {
+            $matchedRoot = $rootPath
+            break
+        }
+    }
+
+    if (-not $matchedRoot) {
+        return $null
+    }
+
+    $file = Get-Item -LiteralPath $resolvedCandidate
+    $relativePath = Get-TimelineRelativePathFromRoots -Path $file.FullName -RootPaths $rootPaths
+    return [pscustomobject]@{
+        sourcePath = $file.FullName
+        sourceDisplayName = $file.Name
+        relativePath = $relativePath
+        sizeBytes = [int64]$file.Length
+        modifiedAt = $file.LastWriteTime.ToString("yyyy-MM-dd HH:mm:ss")
+        rootPath = $matchedRoot
+    }
+}
+
+function Convert-TimelineImageTextBlock {
+    param(
+        [object]$Block,
+        [int]$Index
+    )
+
+    $confidence = Get-PropertyValue -Object $Block -Name "confidence" -Default @{}
+    return [ordered]@{
+        index = $Index
+        blockId = Convert-TimelineText -Value (Get-PropertyValueAny -Object $Block -Names @("block_id", "blockId") -Default "")
+        text = Convert-TimelineText -Value (Get-PropertyValue -Object $Block -Name "text" -Default "")
+        normalizedText = Convert-TimelineText -Value (Get-PropertyValueAny -Object $Block -Names @("normalized_text", "normalizedText") -Default "")
+        role = Convert-TimelineText -Value (Get-PropertyValue -Object $Block -Name "role" -Default "")
+        confidenceScore = Convert-TimelineAudioNumber -Value (Get-PropertyValue -Object $confidence -Name "score" -Default $null)
+        confidenceLevel = Convert-TimelineText -Value (Get-PropertyValue -Object $confidence -Name "level" -Default "")
+    }
+}
+
+function Convert-TimelineImageRecordSummary {
+    param(
+        [object]$ImageRecord,
+        [object]$Timeline,
+        [object]$ConvertInfo
+    )
+
+    $asset = Get-PropertyValue -Object $ImageRecord -Name "asset" -Default @{}
+    $recordTimeline = Get-PropertyValue -Object $ImageRecord -Name "timeline" -Default @{}
+    $image = Get-PropertyValue -Object $ImageRecord -Name "image" -Default @{}
+    $quality = Get-PropertyValue -Object $ImageRecord -Name "quality" -Default @{}
+    $classification = Get-PropertyValue -Object $ImageRecord -Name "classification" -Default @{}
+    $text = Get-PropertyValue -Object $ImageRecord -Name "text" -Default @{}
+    $review = Get-PropertyValue -Object $ImageRecord -Name "review" -Default @{}
+    $convertSource = Get-PropertyValue -Object $ConvertInfo -Name "source" -Default @{}
+    $timelineEvents = @(Get-PropertyValue -Object $Timeline -Name "events" -Default @())
+    $firstEvent = if ($timelineEvents.Count -gt 0) { $timelineEvents[0] } else { @{} }
+    $blocks = @(Get-PropertyValue -Object $text -Name "blocks" -Default @())
+
+    $warnings = @()
+    $warnings += @(Convert-TimelineStringArray -Value (Get-PropertyValue -Object $review -Name "warnings" -Default @()))
+    $warnings += @(Convert-TimelineStringArray -Value (Get-PropertyValue -Object $quality -Name "warnings" -Default @()))
+    $warnings += @(Convert-TimelineStringArray -Value (Get-PropertyValue -Object $convertSource -Name "warnings" -Default @()))
+
+    $width = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $image -Name "width" -Default 0)
+    if ($width -le 0) {
+        $width = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $convertSource -Name "width" -Default 0)
+    }
+    $height = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $image -Name "height" -Default 0)
+    if ($height -le 0) {
+        $height = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $convertSource -Name "height" -Default 0)
+    }
+
+    return [ordered]@{
+        timelineAt = Convert-TimelineText -Value (Get-PropertyValueAny -Object $recordTimeline -Names @("timeline_at", "timelineAt") -Default (Get-PropertyValue -Object $firstEvent -Name "time" -Default ""))
+        capturedAt = Convert-TimelineText -Value (Get-PropertyValueAny -Object $recordTimeline -Names @("captured_at", "capturedAt") -Default (Get-PropertyValue -Object $convertSource -Name "captured_at" -Default ""))
+        modifiedAt = Convert-TimelineText -Value (Get-PropertyValueAny -Object $recordTimeline -Names @("modified_at", "modifiedAt") -Default (Get-PropertyValue -Object $convertSource -Name "modified_at" -Default ""))
+        formatName = Convert-TimelineText -Value (Get-PropertyValueAny -Object $asset -Names @("format_name", "formatName") -Default (Get-PropertyValue -Object $convertSource -Name "format_name" -Default ""))
+        width = $width
+        height = $height
+        orientation = Convert-TimelineText -Value (Get-PropertyValue -Object $image -Name "orientation" -Default "")
+        cameraMake = Convert-TimelineText -Value (Get-PropertyValueAny -Object (Get-PropertyValue -Object $image -Name "camera" -Default @{}) -Names @("make") -Default (Get-PropertyValue -Object $convertSource -Name "camera_make" -Default ""))
+        cameraModel = Convert-TimelineText -Value (Get-PropertyValueAny -Object (Get-PropertyValue -Object $image -Name "camera" -Default @{}) -Names @("model") -Default (Get-PropertyValue -Object $convertSource -Name "camera_model" -Default ""))
+        imageKind = Convert-TimelineText -Value (Get-PropertyValueAny -Object $classification -Names @("image_kind", "imageKind") -Default "")
+        contentTypes = @(Convert-TimelineStringArray -Value (Get-PropertyValueAny -Object $classification -Names @("content_types", "contentTypes") -Default @()))
+        hasText = [bool](Get-PropertyValueAny -Object $text -Names @("has_text", "hasText") -Default $false)
+        fullText = Convert-TimelineText -Value (Get-PropertyValueAny -Object $text -Names @("full_text", "fullText") -Default "")
+        ocrBlockCount = $blocks.Count
+        brightnessLevel = Convert-TimelineText -Value (Get-PropertyValueAny -Object $quality -Names @("brightness_level", "brightnessLevel") -Default "")
+        contrastLevel = Convert-TimelineText -Value (Get-PropertyValueAny -Object $quality -Names @("contrast_level", "contrastLevel") -Default "")
+        brightness = Convert-TimelineAudioNumber -Value (Get-PropertyValue -Object $quality -Name "brightness" -Default $null)
+        contrast = Convert-TimelineAudioNumber -Value (Get-PropertyValue -Object $quality -Name "contrast" -Default $null)
+        needsReview = [bool](Get-PropertyValueAny -Object $review -Names @("needs_review", "needsReview") -Default $false)
+        warnings = @($warnings | Select-Object -Unique)
+    }
+}
+
+function Get-TimelineImageFileDetail {
+    param([string]$SourcePath)
+
+    $settingsPayload = Read-TimelineImageSettingsPayload
+    $sourceRow = Resolve-TimelineImageSourceFile -Settings $settingsPayload -SourcePath $SourcePath
+    if ($null -eq $sourceRow) {
+        return [ordered]@{
+            available = $false
+            message = "Image source file was not found."
+            file = $null
+            imageAvailable = $false
+            imageRecordAvailable = $false
+            timelineAvailable = $false
+            record = [ordered]@{}
+            textBlocks = @()
+        }
+    }
+
+    $outputRoot = Get-TimelineImageCurrentOutputRoot
+    $catalog = Get-TimelineImageGeneratedCatalog -OutputRoot $outputRoot
+    $file = Convert-TimelineImageSourceFileRow -SourceRow $sourceRow -Catalog $catalog
+    $imageRecordPath = Convert-TimelineText -Value (Get-PropertyValue -Object $file -Name "imageRecordPath" -Default "")
+    $timelinePath = Convert-TimelineText -Value (Get-PropertyValue -Object $file -Name "timelinePath" -Default "")
+    $convertInfoPath = Convert-TimelineText -Value (Get-PropertyValue -Object $file -Name "convertInfoPath" -Default "")
+    $imageRecord = Read-TimelineImageJsonFile -Path $imageRecordPath
+    $timeline = Read-TimelineImageJsonFile -Path $timelinePath
+    $convertInfo = Read-TimelineImageJsonFile -Path $convertInfoPath
+
+    $textBlocks = @()
+    $record = [ordered]@{}
+    if ($null -ne $imageRecord) {
+        $record = Convert-TimelineImageRecordSummary -ImageRecord $imageRecord -Timeline $timeline -ConvertInfo $convertInfo
+        $text = Get-PropertyValue -Object $imageRecord -Name "text" -Default @{}
+        $index = 1
+        foreach ($block in @(Get-PropertyValue -Object $text -Name "blocks" -Default @())) {
+            $converted = Convert-TimelineImageTextBlock -Block $block -Index $index
+            if (Convert-TimelineText -Value (Get-PropertyValue -Object $converted -Name "text" -Default "")) {
+                $textBlocks += $converted
+            }
+            $index += 1
+            if ($textBlocks.Count -ge 200) {
+                break
+            }
+        }
+    }
+
+    return [ordered]@{
+        available = $true
+        message = ""
+        file = $file
+        imageAvailable = $true
+        imageRecordAvailable = $null -ne $imageRecord
+        timelineAvailable = $null -ne $timeline
+        imageRecordPath = $imageRecordPath
+        timelinePath = $timelinePath
+        convertInfoPath = $convertInfoPath
+        record = $record
+        textBlocks = @($textBlocks)
+    }
+}
+
+function Get-TimelineImageMimeType {
+    param([string]$Path)
+
+    switch ([System.IO.Path]::GetExtension($Path).ToLowerInvariant()) {
+        ".jpg" { return "image/jpeg" }
+        ".jpeg" { return "image/jpeg" }
+        ".png" { return "image/png" }
+        ".webp" { return "image/webp" }
+        ".gif" { return "image/gif" }
+        ".bmp" { return "image/bmp" }
+        ".tif" { return "image/tiff" }
+        ".tiff" { return "image/tiff" }
+        ".heic" { return "image/heic" }
+        default { return "application/octet-stream" }
     }
 }
 
@@ -3903,10 +4749,7 @@ function Get-TimelineChatGptThreads {
     $settings = Read-TimelineChatGptSettings
     $outputRoot = Convert-TimelineChatGptDirectoryRoot -Root $settings.outputRoot -FallbackId "output" -FallbackDisplayName "Output"
     $masterLocalPath = [string]$outputRoot.displayPath
-    $payload = Invoke-TimelineChatGptCliJson `
-        -CliArgs @("items", "list", "--page", ([string][Math]::Max(1, $Page)), "--page-size", ([string][Math]::Max(1, $PageSize)), "--json") `
-        -TimeoutSeconds 180
-    return Convert-TimelineThreadItemsListResult -Payload $payload -RootPath $masterLocalPath
+    return Get-TimelineThreadRowsPageFromRoot -RootPath $masterLocalPath -Page $Page -PageSize $PageSize
 }
 
 function Get-TimelineChatGptOverview {
@@ -5337,6 +6180,525 @@ function Get-TimelineStoreEvents {
     }
 }
 
+function Convert-TimelineLlmDateTime {
+    param([string]$Value)
+
+    $text = Convert-TimelineText -Value $Value
+    if (-not $text) {
+        return $null
+    }
+
+    try {
+        return [System.DateTimeOffset]::Parse($text, [System.Globalization.CultureInfo]::InvariantCulture)
+    }
+    catch {
+        return $null
+    }
+}
+
+function Test-TimelineLlmEventInRange {
+    param(
+        [object]$Event,
+        [object]$From,
+        [object]$To
+    )
+
+    if ($null -eq $From -and $null -eq $To) {
+        return $true
+    }
+
+    $time = Get-PropertyValue -Object $Event -Name "time" -Default @{}
+    $occurredAt = Convert-TimelineText -Value (Get-PropertyValue -Object $time -Name "absoluteStartAt" -Default "")
+    $eventTime = Convert-TimelineLlmDateTime -Value $occurredAt
+    if ($null -eq $eventTime) {
+        return $true
+    }
+
+    if ($null -ne $From -and $eventTime -lt $From) {
+        return $false
+    }
+    if ($null -ne $To -and $eventTime -gt $To) {
+        return $false
+    }
+    return $true
+}
+
+function New-TimelineLlmInputSkip {
+    param([string]$Reason)
+
+    return [ordered]@{
+        included = $false
+        skipReason = $Reason
+        item = $null
+    }
+}
+
+function New-TimelineLlmInputIncluded {
+    param([object]$Item)
+
+    return [ordered]@{
+        included = $true
+        skipReason = ""
+        item = $Item
+    }
+}
+
+function Get-TimelineLlmAudioVerbalizationSequenceFromTurn {
+    param([object]$Turn)
+
+    $index = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $Turn -Name "index" -Default 0)
+    if ($index -gt 0) {
+        return ($index - 1)
+    }
+
+    $turnId = Convert-TimelineText -Value (Get-PropertyValue -Object $Turn -Name "turnId" -Default "")
+    $match = [System.Text.RegularExpressions.Regex]::Match($turnId, '^turn-(\d+)$')
+    if ($match.Success) {
+        return ([int]$match.Groups[1].Value - 1)
+    }
+
+    return -1
+}
+
+function Get-TimelineLlmAudioVerbalizationMap {
+    param([string]$ItemId)
+
+    $map = @{}
+    $safeItemId = Convert-TimelineText -Value $ItemId
+    if (-not $safeItemId) {
+        return $map
+    }
+
+    $directory = Get-TimelineAudioVerbalizationDirectory -AudioItemId $safeItemId
+    $resultPath = Join-Path $directory "audio-verbalization.json"
+    if (-not (Test-Path -LiteralPath $resultPath -PathType Leaf)) {
+        return $map
+    }
+
+    try {
+        $payload = Get-Content -LiteralPath $resultPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    }
+    catch {
+        return $map
+    }
+
+    $status = Get-PropertyValue -Object $payload -Name "status" -Default @{}
+    $model = Convert-TimelineText -Value (Get-PropertyValue -Object $status -Name "model" -Default "")
+    $language = Convert-TimelineText -Value (Get-PropertyValue -Object $status -Name "language" -Default "")
+    foreach ($turn in @(Get-PropertyValue -Object $payload -Name "turns" -Default @())) {
+        $sequence = Get-TimelineLlmAudioVerbalizationSequenceFromTurn -Turn $turn
+        if ($sequence -lt 0) {
+            continue
+        }
+
+        $text = Convert-TimelineText -Value (Get-PropertyValue -Object $turn -Name "text" -Default "")
+        $state = (Convert-TimelineText -Value (Get-PropertyValue -Object $turn -Name "status" -Default "")).ToLowerInvariant()
+        if (-not $text -or $state -eq "unresolved") {
+            continue
+        }
+
+        $basis = @()
+        foreach ($row in @(Get-PropertyValue -Object $turn -Name "basis" -Default @())) {
+            $basisText = Convert-TimelineText -Value $row
+            if ($basisText) {
+                $basis += $basisText
+            }
+        }
+
+        $uncertainTerms = @()
+        foreach ($row in @(Get-PropertyValue -Object $turn -Name "uncertainTerms" -Default @())) {
+            $term = Convert-TimelineText -Value $row
+            if ($term) {
+                $uncertainTerms += $term
+            }
+        }
+
+        $map[[string]$sequence] = [ordered]@{
+            text = $text
+            status = $state
+            confidence = [double](Convert-TimelineAudioNumber -Value (Get-PropertyValue -Object $turn -Name "confidence" -Default 0))
+            basis = @($basis)
+            uncertainTerms = @($uncertainTerms)
+            resultPath = $resultPath
+            model = $model
+            language = $language
+        }
+    }
+
+    return $map
+}
+
+function Get-TimelineLlmAudioVerbalizationTurn {
+    param(
+        [string]$ItemId,
+        [int]$Sequence,
+        [hashtable]$Cache = $null
+    )
+
+    $safeItemId = Convert-TimelineText -Value $ItemId
+    if (-not $safeItemId -or $Sequence -lt 0) {
+        return $null
+    }
+
+    if ($null -eq $Cache) {
+        $map = Get-TimelineLlmAudioVerbalizationMap -ItemId $safeItemId
+    }
+    else {
+        if (-not $Cache.ContainsKey($safeItemId)) {
+            $Cache[$safeItemId] = Get-TimelineLlmAudioVerbalizationMap -ItemId $safeItemId
+        }
+        $map = $Cache[$safeItemId]
+    }
+
+    if ($null -eq $map) {
+        return $null
+    }
+
+    $key = [string]$Sequence
+    if ($map.ContainsKey($key)) {
+        return $map[$key]
+    }
+
+    return $null
+}
+
+function Get-TimelineLlmJsonLineTextValue {
+    param(
+        [string]$Line,
+        [string]$Name
+    )
+
+    if (-not $Line -or -not $Name) {
+        return ""
+    }
+
+    $pattern = '"' + [System.Text.RegularExpressions.Regex]::Escape($Name) + '"\s*:\s*"([^"]*)"'
+    $match = [System.Text.RegularExpressions.Regex]::Match($Line, $pattern)
+    if (-not $match.Success) {
+        return ""
+    }
+
+    return [System.Text.RegularExpressions.Regex]::Unescape($match.Groups[1].Value)
+}
+
+function Get-TimelineLlmJsonLineIntValue {
+    param(
+        [string]$Line,
+        [string]$Name,
+        [int]$Default = 0
+    )
+
+    if (-not $Line -or -not $Name) {
+        return $Default
+    }
+
+    $pattern = '"' + [System.Text.RegularExpressions.Regex]::Escape($Name) + '"\s*:\s*(-?\d+)'
+    $match = [System.Text.RegularExpressions.Regex]::Match($Line, $pattern)
+    if (-not $match.Success) {
+        return $Default
+    }
+
+    return [int]$match.Groups[1].Value
+}
+
+function Convert-TimelineLlmInputEvent {
+    param(
+        [object]$Event,
+        [int]$MaxChars = 4000,
+        [hashtable]$AudioVerbalizationCache = $null
+    )
+
+    $productId = Convert-TimelineText -Value (Get-PropertyValue -Object $Event -Name "product" -Default "")
+    $eventId = Convert-TimelineText -Value (Get-PropertyValue -Object $Event -Name "eventId" -Default "")
+    $itemId = Convert-TimelineText -Value (Get-PropertyValue -Object $Event -Name "itemId" -Default "")
+    $eventType = Convert-TimelineText -Value (Get-PropertyValue -Object $Event -Name "eventType" -Default "")
+    $sequence = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $Event -Name "sequence" -Default 0)
+    $time = Get-PropertyValue -Object $Event -Name "time" -Default @{}
+    $actor = Get-PropertyValue -Object $Event -Name "actor" -Default @{}
+    $content = Get-PropertyValue -Object $Event -Name "content" -Default @{}
+    $sourceRef = Get-PropertyValue -Object $Event -Name "sourceRef" -Default @{}
+    $contentKind = Convert-TimelineText -Value (Get-PropertyValue -Object $content -Name "kind" -Default "")
+    $contentValue = Convert-TimelineText -Value (Get-PropertyValue -Object $content -Name "value" -Default "")
+    $verbalizedAudio = $null
+
+    $text = $contentValue
+    $kind = $eventType
+    $notes = @()
+    $createdBy = [ordered]@{
+        type = "source_product"
+        name = $productId
+        version = ""
+    }
+
+    if ($contentKind -eq "phone_tokens") {
+        $verbalizedAudio = Get-TimelineLlmAudioVerbalizationTurn -ItemId $itemId -Sequence $sequence -Cache $AudioVerbalizationCache
+        if ($null -eq $verbalizedAudio) {
+            return New-TimelineLlmInputSkip -Reason "audio_not_verbalized"
+        }
+
+        $text = Convert-TimelineText -Value (Get-PropertyValue -Object $verbalizedAudio -Name "text" -Default "")
+        $contentKind = "audio_verbalized_text"
+        $createdBy = [ordered]@{
+            type = "timeline"
+            name = "audio_verbalization"
+            version = Convert-TimelineText -Value (Get-PropertyValue -Object $verbalizedAudio -Name "model" -Default "")
+        }
+        $status = Convert-TimelineText -Value (Get-PropertyValue -Object $verbalizedAudio -Name "status" -Default "")
+        if ($status) {
+            $notes += "Audio phone tokens were verbalized by Timeline. Status: $status."
+        }
+        $confidence = [double](Convert-TimelineAudioNumber -Value (Get-PropertyValue -Object $verbalizedAudio -Name "confidence" -Default 0))
+        if ($confidence -gt 0) {
+            $notes += ("Audio verbalization confidence: {0:0.###}." -f $confidence)
+        }
+    }
+
+    if (-not $text -or $text -eq "[text]") {
+        return New-TimelineLlmInputSkip -Reason "empty_or_placeholder"
+    }
+
+    $max = [Math]::Max(200, $MaxChars)
+    if ($text.Length -gt $max) {
+        $text = $text.Substring(0, $max)
+        $notes += "Text was truncated for preview."
+    }
+
+    $occurredAt = Convert-TimelineText -Value (Get-PropertyValue -Object $time -Name "absoluteStartAt" -Default "")
+    $endedAt = Convert-TimelineText -Value (Get-PropertyValue -Object $time -Name "absoluteEndAt" -Default "")
+    $rawRefs = @()
+    $timelinePath = Convert-TimelineText -Value (Get-PropertyValue -Object $sourceRef -Name "timelinePath" -Default "")
+    $convertInfoPath = Convert-TimelineText -Value (Get-PropertyValue -Object $sourceRef -Name "convertInfoPath" -Default "")
+    if ($timelinePath) {
+        $rawRefs += $timelinePath
+    }
+    if ($convertInfoPath) {
+        $rawRefs += $convertInfoPath
+    }
+    if ($null -ne $verbalizedAudio) {
+        $resultPath = Convert-TimelineText -Value (Get-PropertyValue -Object $verbalizedAudio -Name "resultPath" -Default "")
+        if ($resultPath) {
+            $rawRefs += $resultPath
+        }
+    }
+
+    $item = [ordered]@{
+        id = $eventId
+        sourceProduct = $productId
+        sourceProductName = Get-TimelineStoreProductDisplayName -ProductId $productId
+        kind = $kind
+        occurredAt = $occurredAt
+        timeRange = [ordered]@{
+            from = $occurredAt
+            to = $endedAt
+        }
+        actor = [ordered]@{
+            type = Convert-TimelineText -Value (Get-PropertyValue -Object $actor -Name "type" -Default "")
+            label = Convert-TimelineText -Value (Get-PropertyValue -Object $actor -Name "label" -Default "")
+        }
+        title = $itemId
+        text = $text
+        contentKind = $contentKind
+        notes = @($notes)
+        sourceEventIds = @($eventId)
+        rawRefs = @($rawRefs)
+        createdBy = $createdBy
+    }
+
+    return New-TimelineLlmInputIncluded -Item $item
+}
+
+function Get-TimelineLlmInputPreview {
+    param(
+        [string]$Purpose = "preview",
+        [string]$Product = "",
+        [string]$From = "",
+        [string]$To = "",
+        [int]$Page = 1,
+        [int]$PageSize = 50,
+        [int]$MaxChars = 4000,
+        [int]$ScanLimit = 5000,
+        [bool]$CountTotal = $false
+    )
+
+    $overview = Get-TimelineStoreOverview
+    if (-not [bool](Get-PropertyValue -Object $overview -Name "available" -Default $false)) {
+        return [ordered]@{
+            available = $false
+            packId = ""
+            purpose = $Purpose
+            targetPeriod = [ordered]@{ from = $From; to = $To }
+            inputPolicy = [ordered]@{
+                textOnly = $true
+                excludeHardToReadIntermediateData = $true
+                securityRedaction = "minimal"
+            }
+            items = @()
+            total = 0
+            pagination = New-TimelinePagination -Page $Page -PageSize $PageSize -TotalItems 0 -ReturnedItems 0
+            stats = [ordered]@{
+                partial = $true
+                scanLimit = 0
+            }
+            assumptions = @()
+            message = Convert-TimelineText -Value (Get-PropertyValue -Object $overview -Name "message" -Default "")
+        }
+    }
+
+    $effectivePage = [Math]::Max(1, $Page)
+    $effectivePageSize = [Math]::Min(200, [Math]::Max(1, $PageSize))
+    $effectiveScanLimit = [Math]::Min(50000, [Math]::Max(100, $ScanLimit))
+    $offset = ($effectivePage - 1) * $effectivePageSize
+    $fromDate = Convert-TimelineLlmDateTime -Value $From
+    $toDate = Convert-TimelineLlmDateTime -Value $To
+    $productFilter = Convert-TimelineText -Value $Product
+    $purposeText = Convert-TimelineText -Value $Purpose
+    if (-not $purposeText) {
+        $purposeText = "preview"
+    }
+
+    $items = @()
+    $total = 0
+    $scanned = 0
+    $skippedHardToRead = 0
+    $skippedAudioNotVerbalized = 0
+    $skippedEmpty = 0
+    $scanLimitReached = $false
+    $eventsPath = Get-TimelineStoreEventsPath
+    $productNeedle = ""
+    if ($productFilter) {
+        $productNeedle = '"product":"' + $productFilter + '"'
+    }
+    $canFastSkipPhoneTokens = ($null -eq $fromDate -and $null -eq $toDate)
+    $audioVerbalizationCache = @{}
+
+    foreach ($line in [System.IO.File]::ReadLines($eventsPath)) {
+        $textLine = ([string]$line).Trim()
+        if (-not $textLine) {
+            continue
+        }
+
+        if ($productNeedle -and $textLine.IndexOf($productNeedle, [System.StringComparison]::Ordinal) -lt 0) {
+            continue
+        }
+
+        if ($canFastSkipPhoneTokens -and $textLine.IndexOf('"kind":"phone_tokens"', [System.StringComparison]::Ordinal) -ge 0) {
+            $lineProduct = Get-TimelineLlmJsonLineTextValue -Line $textLine -Name "product"
+            if ($lineProduct -eq "audio") {
+                $lineItemId = Get-TimelineLlmJsonLineTextValue -Line $textLine -Name "itemId"
+                $lineSequence = Get-TimelineLlmJsonLineIntValue -Line $textLine -Name "sequence" -Default -1
+                $lineVerbalization = Get-TimelineLlmAudioVerbalizationTurn -ItemId $lineItemId -Sequence $lineSequence -Cache $audioVerbalizationCache
+                if ($null -eq $lineVerbalization) {
+                    $scanned += 1
+                    $skippedAudioNotVerbalized += 1
+                    if ($scanned -ge $effectiveScanLimit) {
+                        $scanLimitReached = $true
+                        break
+                    }
+                    continue
+                }
+            }
+            else {
+                $scanned += 1
+                $skippedHardToRead += 1
+                if ($scanned -ge $effectiveScanLimit) {
+                    $scanLimitReached = $true
+                    break
+                }
+                continue
+            }
+        }
+
+        try {
+            $event = $textLine | ConvertFrom-Json
+        }
+        catch {
+            continue
+        }
+
+        $eventProduct = Convert-TimelineText -Value (Get-PropertyValue -Object $event -Name "product" -Default "")
+        if ($productFilter -and $eventProduct -ne $productFilter) {
+            continue
+        }
+        if (-not (Test-TimelineLlmEventInRange -Event $event -From $fromDate -To $toDate)) {
+            continue
+        }
+
+        $scanned += 1
+        $converted = Convert-TimelineLlmInputEvent -Event $event -MaxChars $MaxChars -AudioVerbalizationCache $audioVerbalizationCache
+        if (-not [bool](Get-PropertyValue -Object $converted -Name "included" -Default $false)) {
+            $reason = Convert-TimelineText -Value (Get-PropertyValue -Object $converted -Name "skipReason" -Default "")
+            if ($reason -eq "hard_to_read") {
+                $skippedHardToRead += 1
+            }
+            elseif ($reason -eq "audio_not_verbalized") {
+                $skippedAudioNotVerbalized += 1
+            }
+            elseif ($reason -eq "empty_or_placeholder") {
+                $skippedEmpty += 1
+            }
+            if ($scanned -ge $effectiveScanLimit) {
+                $scanLimitReached = $true
+                break
+            }
+            continue
+        }
+
+        if ($total -ge $offset -and $items.Count -lt $effectivePageSize) {
+            $items += Get-PropertyValue -Object $converted -Name "item" -Default $null
+        }
+        $total += 1
+
+        if (-not $CountTotal -and $items.Count -ge $effectivePageSize) {
+            break
+        }
+        if ($scanned -ge $effectiveScanLimit) {
+            $scanLimitReached = $true
+            break
+        }
+    }
+
+    $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
+    $packId = "llm-input-pack-$stamp"
+    $message = ""
+    if ($scanLimitReached) {
+        $message = "Timeline LLM input preview reached the scan limit before scanning all matching events."
+    }
+    return [ordered]@{
+        available = $true
+        packId = $packId
+        purpose = $purposeText
+        targetPeriod = [ordered]@{
+            from = $From
+            to = $To
+        }
+        inputPolicy = [ordered]@{
+            textOnly = $true
+            excludeHardToReadIntermediateData = $true
+            securityRedaction = "minimal"
+        }
+        items = @($items)
+        total = $total
+        pagination = New-TimelinePagination -Page $effectivePage -PageSize $effectivePageSize -TotalItems $total -ReturnedItems $items.Count
+        stats = [ordered]@{
+            partial = ($scanLimitReached -or (-not $CountTotal))
+            scanLimit = $effectiveScanLimit
+            scannedEvents = $scanned
+            includedItems = $items.Count
+            totalReadableItems = $total
+            skippedHardToRead = $skippedHardToRead
+            skippedAudioNotVerbalized = $skippedAudioNotVerbalized
+            skippedEmptyOrPlaceholder = $skippedEmpty
+        }
+        assumptions = @(
+            "Timeline master keeps raw references and intermediate data.",
+            "Normal LLM inputs are text-only and exclude hard-to-read intermediate data.",
+            "Audio text, when present, is a Timeline verbalization candidate from phone tokens with nearby context.",
+            "LLM generated results are derived data, not primary facts."
+        )
+        message = $message
+    }
+}
+
 function New-TimelineStoreDownload {
     $overview = Get-TimelineStoreOverview
     if (-not [bool](Get-PropertyValue -Object $overview -Name "available" -Default $false)) {
@@ -5357,13 +6719,26 @@ function New-TimelineStoreDownload {
         Remove-Item -LiteralPath $archivePath -Force
     }
     [System.IO.Compression.ZipFile]::CreateFromDirectory($packagePath, $archivePath, [System.IO.Compression.CompressionLevel]::Optimal, $false)
+    $archive = Get-Item -LiteralPath $archivePath
 
-    return [ordered]@{
+    $result = [ordered]@{
         archivePath = $archivePath
+        archiveSizeBytes = [int64]$archive.Length
         itemCount = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $manifest -Name "itemCount" -Default 0)
         eventCount = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $manifest -Name "eventCount" -Default 0)
         products = @(Get-PropertyValue -Object $manifest -Name "products" -Default @())
     }
+
+    Write-TimelineOperationEvent `
+        -OperationId $script:TimelineCurrentOperationId `
+        -Kind "web" `
+        -ProductName "Timeline" `
+        -Action "timeline_export_archive_created" `
+        -State "completed" `
+        -Message "Timeline archive created." `
+        -Details $result
+
+    return $result
 }
 
 function New-TimelineWorkerJobId {
@@ -5936,7 +7311,7 @@ function Get-TimelineAudioVerbalizationChunkPlan {
     )
 
     $chunkMaxMinutes = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $Settings -Name "chunkMaxMinutes" -Default 10)
-    $chunkMaxTurns = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $Settings -Name "chunkMaxTurns" -Default 80)
+    $chunkMaxTurns = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $Settings -Name "chunkMaxTurns" -Default 12)
     $chunkMaxSeconds = [Math]::Max(60, $chunkMaxMinutes * 60)
     $chunkMaxTurns = [Math]::Max(1, $chunkMaxTurns)
 
@@ -6003,6 +7378,8 @@ function New-TimelineAudioVerbalizationChunk {
             index = $turnIndex
             startSec = Convert-TimelineAudioNumber -Value (Get-PropertyValue -Object $turn -Name "startSec" -Default 0)
             endSec = Convert-TimelineAudioNumber -Value (Get-PropertyValue -Object $turn -Name "endSec" -Default 0)
+            absoluteStartAt = Convert-TimelineText -Value (Get-PropertyValue -Object $turn -Name "absoluteStartAt" -Default "")
+            absoluteEndAt = Convert-TimelineText -Value (Get-PropertyValue -Object $turn -Name "absoluteEndAt" -Default "")
             speaker = Convert-TimelineText -Value (Get-PropertyValue -Object $turn -Name "speaker" -Default "")
             phoneTokens = $phoneTokens
             confidence = Get-PropertyValue -Object $turn -Name "confidence" -Default $null
@@ -6032,21 +7409,609 @@ function New-TimelineAudioVerbalizationPlan {
     $turns = @(Get-PropertyValue -Object $Detail -Name "turns" -Default @())
     $chunks = Get-TimelineAudioVerbalizationChunkPlan -Turns $turns -Settings $VerbalizationSettings
     $now = [DateTimeOffset]::Now.ToString("o")
+    $source = [ordered]@{
+        audioItemId = Convert-TimelineText -Value (Get-PropertyValue -Object $file -Name "itemId" -Default "")
+        sourceFileIdentity = Convert-TimelineText -Value (Get-PropertyValue -Object $file -Name "sourceFileIdentity" -Default "")
+        fileName = Convert-TimelineText -Value (Get-PropertyValue -Object $file -Name "fileName" -Default "")
+        displayPath = Convert-TimelineText -Value (Get-PropertyValue -Object $file -Name "displayPath" -Default "")
+        durationSec = Get-PropertyValue -Object $file -Name "durationSec" -Default $null
+        turnCount = @($turns).Count
+    }
+    $signatureSet = New-TimelineAudioVerbalizationSignatureSet `
+        -Source $source `
+        -Settings $VerbalizationSettings `
+        -Chunks $chunks
 
     return [ordered]@{
         schemaVersion = 1
         createdAt = $now
-        source = [ordered]@{
-            audioItemId = Convert-TimelineText -Value (Get-PropertyValue -Object $file -Name "itemId" -Default "")
-            sourceFileIdentity = Convert-TimelineText -Value (Get-PropertyValue -Object $file -Name "sourceFileIdentity" -Default "")
-            fileName = Convert-TimelineText -Value (Get-PropertyValue -Object $file -Name "fileName" -Default "")
-            displayPath = Convert-TimelineText -Value (Get-PropertyValue -Object $file -Name "displayPath" -Default "")
-            durationSec = Get-PropertyValue -Object $file -Name "durationSec" -Default $null
-            turnCount = @($turns).Count
-        }
+        signature = Convert-TimelineText -Value (Get-PropertyValue -Object $signatureSet -Name "signature" -Default "")
+        summarySignature = Convert-TimelineText -Value (Get-PropertyValue -Object $signatureSet -Name "summarySignature" -Default "")
+        promptVersion = Convert-TimelineText -Value (Get-PropertyValue -Object $signatureSet -Name "promptVersion" -Default "")
+        signatureAlgorithm = Convert-TimelineText -Value (Get-PropertyValue -Object $signatureSet -Name "algorithm" -Default "sha256")
+        source = $source
         settings = $VerbalizationSettings
         chunks = @($chunks)
     }
+}
+
+function Get-TimelineSha256Hex {
+    param([string]$Text)
+
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $bytes = [System.Text.Encoding]::UTF8.GetBytes([string]$Text)
+        $hashBytes = $sha.ComputeHash($bytes)
+        return ([System.BitConverter]::ToString($hashBytes)).Replace("-", "").ToLowerInvariant()
+    }
+    finally {
+        $sha.Dispose()
+    }
+}
+
+function ConvertTo-TimelineSignatureJson {
+    param([object]$Payload)
+
+    return ConvertTo-Json -InputObject $Payload -Depth 60 -Compress
+}
+
+function Get-TimelineAudioVerbalizationPromptVersion {
+    return "audio-verbalization-v1"
+}
+
+function New-TimelineAudioVerbalizationSignatureSettings {
+    param([object]$Settings)
+
+    return [ordered]@{
+        provider = (Convert-TimelineText -Value (Get-PropertyValue -Object $Settings -Name "provider" -Default "ollama")).ToLowerInvariant()
+        language = Convert-TimelineText -Value (Get-PropertyValue -Object $Settings -Name "language" -Default "ja-JP")
+        model = Convert-TimelineText -Value (Get-PropertyValue -Object $Settings -Name "model" -Default "qwen3.5:9b")
+        chunkMaxMinutes = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $Settings -Name "chunkMaxMinutes" -Default 10)
+        chunkMaxTurns = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $Settings -Name "chunkMaxTurns" -Default 12)
+        numPredict = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $Settings -Name "numPredict" -Default 4096)
+        promptVersion = Get-TimelineAudioVerbalizationPromptVersion
+    }
+}
+
+function New-TimelineAudioVerbalizationSignatureSource {
+    param([object]$Source)
+
+    return [ordered]@{
+        audioItemId = Convert-TimelineText -Value (Get-PropertyValue -Object $Source -Name "audioItemId" -Default "")
+        sourceFileIdentity = Convert-TimelineText -Value (Get-PropertyValue -Object $Source -Name "sourceFileIdentity" -Default "")
+        durationSec = Get-PropertyValue -Object $Source -Name "durationSec" -Default $null
+        turnCount = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $Source -Name "turnCount" -Default 0)
+    }
+}
+
+function New-TimelineAudioVerbalizationSignatureChunks {
+    param([object[]]$Chunks)
+
+    $signatureChunks = @()
+    foreach ($chunk in @($Chunks)) {
+        $signatureTurns = @()
+        foreach ($turn in @(Get-PropertyValue -Object $chunk -Name "turns" -Default @())) {
+            $signatureTurns += [ordered]@{
+                turnId = Convert-TimelineText -Value (Get-PropertyValue -Object $turn -Name "turnId" -Default "")
+                index = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $turn -Name "index" -Default 0)
+                startSec = Get-PropertyValue -Object $turn -Name "startSec" -Default 0
+                endSec = Get-PropertyValue -Object $turn -Name "endSec" -Default 0
+                absoluteStartAt = Convert-TimelineText -Value (Get-PropertyValue -Object $turn -Name "absoluteStartAt" -Default "")
+                absoluteEndAt = Convert-TimelineText -Value (Get-PropertyValue -Object $turn -Name "absoluteEndAt" -Default "")
+                speaker = Convert-TimelineText -Value (Get-PropertyValue -Object $turn -Name "speaker" -Default "")
+                phoneTokens = Convert-TimelineText -Value (Get-PropertyValue -Object $turn -Name "phoneTokens" -Default "")
+            }
+        }
+        $signatureChunks += [ordered]@{
+            chunkId = Convert-TimelineText -Value (Get-PropertyValue -Object $chunk -Name "chunkId" -Default "")
+            sequence = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $chunk -Name "sequence" -Default 0)
+            startSec = Get-PropertyValue -Object $chunk -Name "startSec" -Default 0
+            endSec = Get-PropertyValue -Object $chunk -Name "endSec" -Default 0
+            turns = @($signatureTurns)
+        }
+    }
+
+    return @($signatureChunks)
+}
+
+function New-TimelineAudioVerbalizationSignatureSet {
+    param(
+        [object]$Source,
+        [object]$Settings,
+        [object[]]$Chunks
+    )
+
+    $summaryPayload = [ordered]@{
+        schemaVersion = 1
+        kind = "audio-verbalization-summary"
+        source = New-TimelineAudioVerbalizationSignatureSource -Source $Source
+        settings = New-TimelineAudioVerbalizationSignatureSettings -Settings $Settings
+    }
+    $fullPayload = [ordered]@{
+        schemaVersion = 1
+        kind = "audio-verbalization"
+        source = New-TimelineAudioVerbalizationSignatureSource -Source $Source
+        settings = New-TimelineAudioVerbalizationSignatureSettings -Settings $Settings
+        chunks = @(New-TimelineAudioVerbalizationSignatureChunks -Chunks $Chunks)
+    }
+
+    return [ordered]@{
+        schemaVersion = 1
+        algorithm = "sha256"
+        promptVersion = Get-TimelineAudioVerbalizationPromptVersion
+        signature = Get-TimelineSha256Hex -Text (ConvertTo-TimelineSignatureJson -Payload $fullPayload)
+        summarySignature = Get-TimelineSha256Hex -Text (ConvertTo-TimelineSignatureJson -Payload $summaryPayload)
+    }
+}
+
+function New-TimelineAudioVerbalizationSignatureSetFromDetail {
+    param(
+        [object]$Detail,
+        [object]$VerbalizationSettings
+    )
+
+    $file = Get-PropertyValue -Object $Detail -Name "file" -Default @{}
+    $turns = @(Get-PropertyValue -Object $Detail -Name "turns" -Default @())
+    $source = [ordered]@{
+        audioItemId = Convert-TimelineText -Value (Get-PropertyValue -Object $file -Name "itemId" -Default "")
+        sourceFileIdentity = Convert-TimelineText -Value (Get-PropertyValue -Object $file -Name "sourceFileIdentity" -Default "")
+        durationSec = Get-PropertyValue -Object $file -Name "durationSec" -Default $null
+        turnCount = @($turns).Count
+    }
+    $chunks = Get-TimelineAudioVerbalizationChunkPlan -Turns $turns -Settings $VerbalizationSettings
+    return New-TimelineAudioVerbalizationSignatureSet -Source $source -Settings $VerbalizationSettings -Chunks $chunks
+}
+
+function New-TimelineAudioVerbalizationSignatureSetFromFileRow {
+    param(
+        [object]$FileRow,
+        [object]$VerbalizationSettings
+    )
+
+    $source = [ordered]@{
+        audioItemId = Convert-TimelineText -Value (Get-PropertyValue -Object $FileRow -Name "itemId" -Default "")
+        sourceFileIdentity = Convert-TimelineText -Value (Get-PropertyValue -Object $FileRow -Name "sourceFileIdentity" -Default "")
+        durationSec = Get-PropertyValue -Object $FileRow -Name "durationSec" -Default $null
+        turnCount = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $FileRow -Name "turnCount" -Default 0)
+    }
+    return New-TimelineAudioVerbalizationSignatureSet -Source $source -Settings $VerbalizationSettings -Chunks @()
+}
+
+function Compare-TimelineAudioVerbalizationSignature {
+    param(
+        [object]$Status,
+        [object]$Expected
+    )
+
+    $storedSignature = Convert-TimelineText -Value (Get-PropertyValue -Object $Status -Name "signature" -Default "")
+    $storedSummarySignature = Convert-TimelineText -Value (Get-PropertyValue -Object $Status -Name "summarySignature" -Default "")
+    $expectedSignature = Convert-TimelineText -Value (Get-PropertyValue -Object $Expected -Name "signature" -Default "")
+    $expectedSummarySignature = Convert-TimelineText -Value (Get-PropertyValue -Object $Expected -Name "summarySignature" -Default "")
+    $signatureState = "missing"
+
+    if ($storedSignature -and $expectedSignature) {
+        $signatureState = if ($storedSignature.Equals($expectedSignature, [System.StringComparison]::OrdinalIgnoreCase)) { "current" } else { "changed" }
+    }
+    elseif ($storedSummarySignature -and $expectedSummarySignature) {
+        $signatureState = if ($storedSummarySignature.Equals($expectedSummarySignature, [System.StringComparison]::OrdinalIgnoreCase)) { "current" } else { "changed" }
+    }
+
+    return [ordered]@{
+        signature = $storedSignature
+        expectedSignature = $expectedSignature
+        summarySignature = $storedSummarySignature
+        expectedSummarySignature = $expectedSummarySignature
+        signatureState = $signatureState
+        promptVersion = Convert-TimelineText -Value (Get-PropertyValue -Object $Expected -Name "promptVersion" -Default "")
+    }
+}
+
+function Convert-TimelineDateTimeOffset {
+    param(
+        [string]$Value,
+        [ref]$Result
+    )
+
+    $text = Convert-TimelineText -Value $Value
+    if (-not $text) {
+        return $false
+    }
+    $parsed = [DateTimeOffset]::MinValue
+    if ([DateTimeOffset]::TryParse($text, [ref]$parsed)) {
+        $Result.Value = $parsed
+        return $true
+    }
+    return $false
+}
+
+function Get-TimelineAudioVerbalizationChunkAbsoluteTime {
+    param(
+        [object]$Chunk,
+        [switch]$End
+    )
+
+    $turns = @(Get-PropertyValue -Object $Chunk -Name "turns" -Default @())
+    if ($turns.Count -eq 0) {
+        return ""
+    }
+
+    if ($End) {
+        for ($index = $turns.Count - 1; $index -ge 0; $index--) {
+            $value = Convert-TimelineText -Value (Get-PropertyValue -Object $turns[$index] -Name "absoluteEndAt" -Default "")
+            if ($value) {
+                return $value
+            }
+        }
+        for ($index = $turns.Count - 1; $index -ge 0; $index--) {
+            $value = Convert-TimelineText -Value (Get-PropertyValue -Object $turns[$index] -Name "absoluteStartAt" -Default "")
+            if ($value) {
+                return $value
+            }
+        }
+        return ""
+    }
+
+    foreach ($turn in $turns) {
+        $value = Convert-TimelineText -Value (Get-PropertyValue -Object $turn -Name "absoluteStartAt" -Default "")
+        if ($value) {
+            return $value
+        }
+    }
+    foreach ($turn in $turns) {
+        $value = Convert-TimelineText -Value (Get-PropertyValue -Object $turn -Name "absoluteEndAt" -Default "")
+        if ($value) {
+            return $value
+        }
+    }
+    return ""
+}
+
+function Convert-TimelineAudioVerbalizationHintText {
+    param(
+        [string]$Text,
+        [int]$MaxChars = 500
+    )
+
+    $value = (Convert-TimelineText -Value $Text).Trim()
+    if (-not $value) {
+        return ""
+    }
+    $value = $value -replace "\s+", " "
+    if ($value.Length -le $MaxChars) {
+        return $value
+    }
+    return $value.Substring(0, [Math]::Max(0, $MaxChars)) + "..."
+}
+
+function Convert-TimelineAudioVerbalizationHintEvent {
+    param(
+        [object]$Event,
+        [DateTimeOffset]$TargetStart,
+        [int]$MaxChars
+    )
+
+    $time = Get-PropertyValue -Object $Event -Name "time" -Default @{}
+    $actor = Get-PropertyValue -Object $Event -Name "actor" -Default @{}
+    $content = Get-PropertyValue -Object $Event -Name "content" -Default @{}
+    $eventStartText = Convert-TimelineText -Value (Get-PropertyValue -Object $time -Name "absoluteStartAt" -Default "")
+    $eventStart = [DateTimeOffset]::MinValue
+    $deltaSec = $null
+    if (Convert-TimelineDateTimeOffset -Value $eventStartText -Result ([ref]$eventStart)) {
+        $deltaSec = [Math]::Round(($eventStart - $TargetStart).TotalSeconds, 1)
+    }
+
+    $productId = Convert-TimelineText -Value (Get-PropertyValue -Object $Event -Name "product" -Default "")
+    $contentValue = Convert-TimelineText -Value (Get-PropertyValue -Object $content -Name "value" -Default "")
+    return [ordered]@{
+        product = $productId
+        productName = Get-TimelineStoreProductDisplayName -ProductId $productId
+        eventType = Convert-TimelineText -Value (Get-PropertyValue -Object $Event -Name "eventType" -Default "")
+        occurredAt = $eventStartText
+        deltaSec = $deltaSec
+        actorType = Convert-TimelineText -Value (Get-PropertyValue -Object $actor -Name "type" -Default "")
+        actorLabel = Convert-TimelineText -Value (Get-PropertyValue -Object $actor -Name "label" -Default "")
+        contentKind = Convert-TimelineText -Value (Get-PropertyValue -Object $content -Name "kind" -Default "")
+        contentPreview = Convert-TimelineAudioVerbalizationHintText -Text $contentValue -MaxChars $MaxChars
+        itemId = Convert-TimelineText -Value (Get-PropertyValue -Object $Event -Name "itemId" -Default "")
+    }
+}
+
+function Test-TimelineAudioVerbalizationUsefulTextHint {
+    param([object]$Hint)
+
+    $contentKind = (Convert-TimelineText -Value (Get-PropertyValue -Object $Hint -Name "contentKind" -Default "")).ToLowerInvariant()
+    if ($contentKind -and $contentKind -ne "text" -and $contentKind -ne "markdown") {
+        return $false
+    }
+
+    $actorLabel = (Convert-TimelineText -Value (Get-PropertyValue -Object $Hint -Name "actorLabel" -Default "")).ToLowerInvariant()
+    if ($actorLabel -ne "user") {
+        return $false
+    }
+
+    $text = Convert-TimelineText -Value (Get-PropertyValue -Object $Hint -Name "contentPreview" -Default "")
+    if (-not $text) {
+        return $false
+    }
+
+    $lower = $text.ToLowerInvariant()
+    if ($lower.StartsWith("<environment_context", [System.StringComparison]::Ordinal)) {
+        return $false
+    }
+    if ($lower.StartsWith("<turn_aborted", [System.StringComparison]::Ordinal)) {
+        return $false
+    }
+    if ($lower.StartsWith("<tool", [System.StringComparison]::Ordinal)) {
+        return $false
+    }
+    if ($lower.StartsWith("the user interrupted", [System.StringComparison]::Ordinal)) {
+        return $false
+    }
+    if ($lower.StartsWith("selected text:", [System.StringComparison]::Ordinal)) {
+        return $false
+    }
+    return $true
+}
+
+function Get-TimelineAudioVerbalizationTextCandidateHints {
+    param(
+        [object[]]$Hints,
+        [int]$MaxCandidates = 8
+    )
+
+    $candidates = @()
+    foreach ($hint in @($Hints)) {
+        if (-not (Test-TimelineAudioVerbalizationUsefulTextHint -Hint $hint)) {
+            continue
+        }
+        $candidates += [ordered]@{
+            product = Convert-TimelineText -Value (Get-PropertyValue -Object $hint -Name "product" -Default "")
+            productName = Convert-TimelineText -Value (Get-PropertyValue -Object $hint -Name "productName" -Default "")
+            occurredAt = Convert-TimelineText -Value (Get-PropertyValue -Object $hint -Name "occurredAt" -Default "")
+            deltaSec = Get-PropertyValue -Object $hint -Name "deltaSec" -Default $null
+            actorLabel = Convert-TimelineText -Value (Get-PropertyValue -Object $hint -Name "actorLabel" -Default "")
+            contentPreview = Convert-TimelineText -Value (Get-PropertyValue -Object $hint -Name "contentPreview" -Default "")
+            itemId = Convert-TimelineText -Value (Get-PropertyValue -Object $hint -Name "itemId" -Default "")
+        }
+        if ($candidates.Count -ge $MaxCandidates) {
+            break
+        }
+    }
+
+    return @($candidates)
+}
+
+function Get-TimelineAudioVerbalizationExpectedTurnIds {
+    param([object[]]$Turns)
+
+    $ids = @()
+    foreach ($turn in @($Turns)) {
+        $turnId = Convert-TimelineText -Value (Get-PropertyValue -Object $turn -Name "turnId" -Default "")
+        if ($turnId) {
+            $ids += $turnId
+        }
+    }
+    return @($ids)
+}
+
+function Copy-TimelineAudioVerbalizationCompactTextHints {
+    param(
+        [object[]]$Hints,
+        [int]$MaxChars = 260
+    )
+
+    $copied = @()
+    foreach ($hint in @($Hints)) {
+        $contentPreview = Convert-TimelineAudioVerbalizationHintText `
+            -Text (Convert-TimelineText -Value (Get-PropertyValue -Object $hint -Name "contentPreview" -Default "")) `
+            -MaxChars $MaxChars
+        if (-not $contentPreview) {
+            continue
+        }
+        $copied += [ordered]@{
+            product = Convert-TimelineText -Value (Get-PropertyValue -Object $hint -Name "product" -Default "")
+            productName = Convert-TimelineText -Value (Get-PropertyValue -Object $hint -Name "productName" -Default "")
+            occurredAt = Convert-TimelineText -Value (Get-PropertyValue -Object $hint -Name "occurredAt" -Default "")
+            deltaSec = Get-PropertyValue -Object $hint -Name "deltaSec" -Default $null
+            actorLabel = Convert-TimelineText -Value (Get-PropertyValue -Object $hint -Name "actorLabel" -Default "")
+            contentPreview = $contentPreview
+            itemId = Convert-TimelineText -Value (Get-PropertyValue -Object $hint -Name "itemId" -Default "")
+        }
+    }
+    return @($copied)
+}
+
+function Get-TimelineAudioVerbalizationHintCandidates {
+    param(
+        [object]$Plan = $null,
+        [object]$Settings = $null
+    )
+
+    $eventsPath = Get-TimelineStoreEventsPath
+    if (-not (Test-Path -LiteralPath $eventsPath -PathType Leaf)) {
+        return @()
+    }
+
+    $dateKeys = [ordered]@{}
+    $windows = New-Object 'System.Collections.Generic.List[object]'
+    if ($null -ne $Plan) {
+        $planSettings = $Settings
+        if ($null -eq $planSettings) {
+            $planSettings = Get-PropertyValue -Object $Plan -Name "settings" -Default @{}
+        }
+        $contextMinutes = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $planSettings -Name "nearbyContextMinutes" -Default 10)
+        $contextMinutes = [Math]::Max(1, $contextMinutes)
+        foreach ($chunk in @(Get-PropertyValue -Object $Plan -Name "chunks" -Default @())) {
+            $startText = Get-TimelineAudioVerbalizationChunkAbsoluteTime -Chunk $chunk
+            $endText = Get-TimelineAudioVerbalizationChunkAbsoluteTime -Chunk $chunk -End
+            $targetStart = [DateTimeOffset]::MinValue
+            $targetEnd = [DateTimeOffset]::MinValue
+            if (-not (Convert-TimelineDateTimeOffset -Value $startText -Result ([ref]$targetStart))) {
+                continue
+            }
+            if (-not (Convert-TimelineDateTimeOffset -Value $endText -Result ([ref]$targetEnd))) {
+                $targetEnd = $targetStart
+            }
+            $windowStart = $targetStart.AddMinutes(-1 * $contextMinutes)
+            $windowEnd = $targetEnd.AddMinutes($contextMinutes)
+            [void]$windows.Add([pscustomobject]@{
+                start = $windowStart
+                end = $windowEnd
+            })
+
+            $day = $windowStart.Date
+            while ($day -le $windowEnd.Date) {
+                $dateKeys[$day.ToString("yyyy-MM-dd")] = $true
+                $day = $day.AddDays(1)
+            }
+        }
+
+        if ($windows.Count -eq 0) {
+            return @()
+        }
+    }
+
+    $candidates = New-Object 'System.Collections.Generic.List[object]'
+    $ordinal = 0
+    foreach ($line in [System.IO.File]::ReadLines($eventsPath)) {
+        $text = ([string]$line).Trim()
+        if (-not $text) {
+            continue
+        }
+        if ($dateKeys.Count -gt 0) {
+            $dateMatched = $false
+            foreach ($dateKey in @($dateKeys.Keys)) {
+                if ($text.Contains($dateKey)) {
+                    $dateMatched = $true
+                    break
+                }
+            }
+            if (-not $dateMatched) {
+                continue
+            }
+        }
+
+        try {
+            $event = $text | ConvertFrom-Json
+            $time = Get-PropertyValue -Object $event -Name "time" -Default @{}
+            $eventStartText = Convert-TimelineText -Value (Get-PropertyValue -Object $time -Name "absoluteStartAt" -Default "")
+            $eventStart = [DateTimeOffset]::MinValue
+            if (-not (Convert-TimelineDateTimeOffset -Value $eventStartText -Result ([ref]$eventStart))) {
+                continue
+            }
+            if ($windows.Count -gt 0) {
+                $inWindow = $false
+                foreach ($window in @($windows.ToArray())) {
+                    $windowStart = Get-PropertyValue -Object $window -Name "start" -Default ([DateTimeOffset]::MinValue)
+                    $windowEnd = Get-PropertyValue -Object $window -Name "end" -Default ([DateTimeOffset]::MinValue)
+                    if ($eventStart -ge $windowStart -and $eventStart -le $windowEnd) {
+                        $inWindow = $true
+                        break
+                    }
+                }
+                if (-not $inWindow) {
+                    continue
+                }
+            }
+
+            $content = Get-PropertyValue -Object $event -Name "content" -Default @{}
+            $contentKind = Convert-TimelineText -Value (Get-PropertyValue -Object $content -Name "kind" -Default "")
+            $contentValue = Convert-TimelineText -Value (Get-PropertyValue -Object $content -Name "value" -Default "")
+            if (-not $contentValue -or $contentKind -eq "phone_tokens") {
+                continue
+            }
+
+            [void]$candidates.Add([pscustomobject]@{
+                eventStart = $eventStart
+                ordinal = $ordinal
+                event = $event
+            })
+            $ordinal += 1
+        }
+        catch {
+        }
+    }
+
+    return @($candidates.ToArray())
+}
+
+function Get-TimelineAudioVerbalizationNearbyHints {
+    param(
+        [object]$Plan,
+        [object]$Chunk,
+        [object]$Settings,
+        [object[]]$HintCandidates = $null
+    )
+
+    $startText = Get-TimelineAudioVerbalizationChunkAbsoluteTime -Chunk $Chunk
+    $endText = Get-TimelineAudioVerbalizationChunkAbsoluteTime -Chunk $Chunk -End
+    $targetStart = [DateTimeOffset]::MinValue
+    $targetEnd = [DateTimeOffset]::MinValue
+    if (-not (Convert-TimelineDateTimeOffset -Value $startText -Result ([ref]$targetStart))) {
+        return @()
+    }
+    if (-not (Convert-TimelineDateTimeOffset -Value $endText -Result ([ref]$targetEnd))) {
+        $targetEnd = $targetStart
+    }
+
+    $contextMinutes = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $Settings -Name "nearbyContextMinutes" -Default 10)
+    $maxEvents = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $Settings -Name "nearbyTimelineHintMaxEvents" -Default 24)
+    $maxChars = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $Settings -Name "nearbyTimelineHintMaxChars" -Default 500)
+    $contextMinutes = [Math]::Max(1, $contextMinutes)
+    $maxEvents = [Math]::Max(1, $maxEvents)
+    $maxChars = [Math]::Max(120, $maxChars)
+    $windowStart = $targetStart.AddMinutes(-1 * $contextMinutes)
+    $windowEnd = $targetEnd.AddMinutes($contextMinutes)
+    $source = Get-PropertyValue -Object $Plan -Name "source" -Default @{}
+    $sourceAudioItemId = Convert-TimelineText -Value (Get-PropertyValue -Object $source -Name "audioItemId" -Default "")
+    if ($null -eq $HintCandidates) {
+        $HintCandidates = @(Get-TimelineAudioVerbalizationHintCandidates)
+    }
+
+    $candidates = @()
+    foreach ($candidate in @($HintCandidates)) {
+        try {
+            $event = Get-PropertyValue -Object $candidate -Name "event" -Default $null
+            if ($null -eq $event) {
+                continue
+            }
+            $productId = Convert-TimelineText -Value (Get-PropertyValue -Object $event -Name "product" -Default "")
+            $itemId = Convert-TimelineText -Value (Get-PropertyValue -Object $event -Name "itemId" -Default "")
+            if ($productId -eq "audio" -and $itemId -eq $sourceAudioItemId) {
+                continue
+            }
+
+            $eventStart = [DateTimeOffset]::MinValue
+            $candidateStart = Get-PropertyValue -Object $candidate -Name "eventStart" -Default $null
+            if ($candidateStart -is [DateTimeOffset]) {
+                $eventStart = $candidateStart
+            }
+            else {
+                $candidateStartText = Convert-TimelineText -Value $candidateStart
+                if (-not (Convert-TimelineDateTimeOffset -Value $candidateStartText -Result ([ref]$eventStart))) {
+                    continue
+                }
+            }
+            if ($eventStart -lt $windowStart -or $eventStart -gt $windowEnd) {
+                continue
+            }
+
+            $distanceSec = [Math]::Abs(($eventStart - $targetStart).TotalSeconds)
+            $ordinal = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $candidate -Name "ordinal" -Default 0)
+            $candidates += [pscustomobject]@{
+                distanceSec = $distanceSec
+                ordinal = $ordinal
+                event = $event
+            }
+        }
+        catch {
+        }
+    }
+
+    return @($candidates |
+        Sort-Object distanceSec, ordinal |
+        Select-Object -First $maxEvents |
+        ForEach-Object { Convert-TimelineAudioVerbalizationHintEvent -Event $_.event -TargetStart $targetStart -MaxChars $maxChars })
 }
 
 function New-TimelineAudioVerbalizationContext {
@@ -6054,7 +8019,8 @@ function New-TimelineAudioVerbalizationContext {
         [object]$Plan,
         [object]$Chunk,
         [object]$PreviousChunk,
-        [string]$PreviousSummaryPath = ""
+        [string]$PreviousSummaryPath = "",
+        [object[]]$HintCandidates = $null
     )
 
     $source = Get-PropertyValue -Object $Plan -Name "source" -Default @{}
@@ -6065,10 +8031,16 @@ function New-TimelineAudioVerbalizationContext {
         $previousChunkId = Convert-TimelineText -Value (Get-PropertyValue -Object $PreviousChunk -Name "chunkId" -Default "")
     }
 
+    $nearbyHints = @(Get-TimelineAudioVerbalizationNearbyHints -Plan $Plan -Chunk $Chunk -Settings $settings -HintCandidates $HintCandidates)
+    $turns = @(Get-PropertyValue -Object $Chunk -Name "turns" -Default @())
+    $expectedTurnIds = @(Get-TimelineAudioVerbalizationExpectedTurnIds -Turns $turns)
+
     return [ordered]@{
         schemaVersion = 1
         createdAt = [DateTimeOffset]::Now.ToString("o")
         chunkId = $chunkId
+        expectedTurnIds = @($expectedTurnIds)
+        expectedTurnCount = $expectedTurnIds.Count
         language = Convert-TimelineText -Value (Get-PropertyValue -Object $settings -Name "language" -Default "ja-JP")
         model = Convert-TimelineText -Value (Get-PropertyValue -Object $settings -Name "model" -Default "qwen3.5:9b")
         source = $source
@@ -6076,6 +8048,8 @@ function New-TimelineAudioVerbalizationContext {
             startSec = Get-PropertyValue -Object $Chunk -Name "startSec" -Default 0
             endSec = Get-PropertyValue -Object $Chunk -Name "endSec" -Default 0
             durationSec = Get-PropertyValue -Object $Chunk -Name "durationSec" -Default 0
+            absoluteStartAt = Get-TimelineAudioVerbalizationChunkAbsoluteTime -Chunk $Chunk -End:$false
+            absoluteEndAt = Get-TimelineAudioVerbalizationChunkAbsoluteTime -Chunk $Chunk -End:$true
         }
         rollingContext = [ordered]@{
             previousChunkId = $previousChunkId
@@ -6085,19 +8059,29 @@ function New-TimelineAudioVerbalizationContext {
             usePreviousChunkSummary = [bool](Get-PropertyValue -Object $settings -Name "usePreviousChunkSummary" -Default $true)
             useUnconfirmedVerbalizationAsWeakHint = [bool](Get-PropertyValue -Object $settings -Name "useUnconfirmedVerbalizationAsWeakHint" -Default $true)
         }
-        turns = @(Get-PropertyValue -Object $Chunk -Name "turns" -Default @())
+        nearbyTimelineHints = @($nearbyHints)
+        nearbyUserTextCandidates = @(Get-TimelineAudioVerbalizationTextCandidateHints -Hints $nearbyHints)
+        turns = @($turns)
     }
 }
 
 function Write-TimelineAudioVerbalizationContextFiles {
     param(
         [object]$Plan,
-        [string]$Directory
+        [string]$Directory,
+        [scriptblock]$ProgressCallback = $null
     )
 
     $contextDirectory = Join-Path $Directory "context"
     [System.IO.Directory]::CreateDirectory($contextDirectory) | Out-Null
     $chunks = @(Get-PropertyValue -Object $Plan -Name "chunks" -Default @())
+    $totalChunks = $chunks.Count
+    $completedChunks = 0
+    if ($null -ne $ProgressCallback) {
+        & $ProgressCallback "" $completedChunks $totalChunks
+    }
+    $settings = Get-PropertyValue -Object $Plan -Name "settings" -Default @{}
+    $hintCandidates = @(Get-TimelineAudioVerbalizationHintCandidates -Plan $Plan -Settings $settings)
     $written = @()
     $previousChunk = $null
     $previousSummaryPath = ""
@@ -6108,11 +8092,15 @@ function Write-TimelineAudioVerbalizationContextFiles {
             continue
         }
 
+        if ($null -ne $ProgressCallback) {
+            & $ProgressCallback $chunkId $completedChunks $totalChunks
+        }
         $context = New-TimelineAudioVerbalizationContext `
             -Plan $Plan `
             -Chunk $chunk `
             -PreviousChunk $previousChunk `
-            -PreviousSummaryPath $previousSummaryPath
+            -PreviousSummaryPath $previousSummaryPath `
+            -HintCandidates $hintCandidates
         $contextPath = Join-Path $contextDirectory "$chunkId.context.json"
         $summaryPath = Join-Path $contextDirectory "$chunkId.summary.json"
         Write-TimelineUtf8JsonFile -Path $contextPath -Payload $context
@@ -6133,6 +8121,10 @@ function Write-TimelineAudioVerbalizationContextFiles {
         }
         $previousChunk = $chunk
         $previousSummaryPath = $summaryPath
+        $completedChunks += 1
+        if ($null -ne $ProgressCallback) {
+            & $ProgressCallback $chunkId $completedChunks $totalChunks
+        }
     }
 
     return @($written)
@@ -6146,6 +8138,16 @@ function Get-TimelineOllamaChatUrl {
         $base = "http://127.0.0.1:11434"
     }
     return "$base/api/chat"
+}
+
+function Get-TimelineOllamaGenerateUrl {
+    param([string]$BaseUrl)
+
+    $base = (Convert-TimelineText -Value $BaseUrl).TrimEnd("/")
+    if (-not $base) {
+        $base = "http://127.0.0.1:11434"
+    }
+    return "$base/api/generate"
 }
 
 function ConvertFrom-TimelineLlmJsonText {
@@ -6169,6 +8171,107 @@ function ConvertFrom-TimelineLlmJsonText {
     return $jsonText | ConvertFrom-Json
 }
 
+function ConvertFrom-TimelineLlmPartialJsonText {
+    param(
+        [string]$Text,
+        [object]$Context
+    )
+
+    $source = Convert-TimelineText -Value $Text
+    if (-not $source) {
+        return $null
+    }
+
+    $expectedIds = @(Get-TimelineAudioVerbalizationExpectedTurnIds -Turns @(Get-PropertyValue -Object $Context -Name "turns" -Default @()))
+    if ($expectedIds.Count -le 0) {
+        $expectedIds = @(Get-PropertyValue -Object $Context -Name "expectedTurnIds" -Default @())
+    }
+
+    $allowed = @{}
+    foreach ($id in @($expectedIds)) {
+        $idText = Convert-TimelineText -Value $id
+        if ($idText -and -not $allowed.ContainsKey($idText)) {
+            $allowed[$idText] = $true
+        }
+    }
+
+    $summary = Get-TimelineJsonStringPropertyFromOutput -Text $source -Names @("summary")
+    $turns = @()
+    $seen = @{}
+    $matches = [System.Text.RegularExpressions.Regex]::Matches($source, '"turnId"\s*:\s*"([^"]+)"')
+    foreach ($match in @($matches)) {
+        $turnId = Convert-TimelineText -Value $match.Groups[1].Value
+        if (-not $turnId -or ($allowed.Count -gt 0 -and -not $allowed.ContainsKey($turnId)) -or $seen.ContainsKey($turnId)) {
+            continue
+        }
+
+        $start = $source.LastIndexOf("{", [int]$match.Index)
+        if ($start -lt 0) {
+            continue
+        }
+
+        $depth = 0
+        $inString = $false
+        $escaped = $false
+        $end = -1
+        for ($index = $start; $index -lt $source.Length; $index += 1) {
+            $ch = $source[$index]
+            if ($inString) {
+                if ($escaped) {
+                    $escaped = $false
+                    continue
+                }
+                if ($ch -eq "\") {
+                    $escaped = $true
+                    continue
+                }
+                if ($ch -eq '"') {
+                    $inString = $false
+                }
+                continue
+            }
+
+            if ($ch -eq '"') {
+                $inString = $true
+                continue
+            }
+            if ($ch -eq "{") {
+                $depth += 1
+                continue
+            }
+            if ($ch -eq "}") {
+                $depth -= 1
+                if ($depth -eq 0) {
+                    $end = $index
+                    break
+                }
+            }
+        }
+
+        if ($end -le $start) {
+            continue
+        }
+
+        $snippet = $source.Substring($start, $end - $start + 1)
+        try {
+            $turn = $snippet | ConvertFrom-Json
+            $seen[$turnId] = $true
+            $turns += $turn
+        }
+        catch {
+        }
+    }
+
+    if ($turns.Count -le 0) {
+        return $null
+    }
+
+    return [ordered]@{
+        summary = $summary
+        turns = @($turns)
+    }
+}
+
 function Invoke-TimelineOllamaChatJson {
     param(
         [object]$VerbalizationSettings,
@@ -6177,40 +8280,76 @@ function Invoke-TimelineOllamaChatJson {
 
     $model = Convert-TimelineText -Value (Get-PropertyValue -Object $VerbalizationSettings -Name "model" -Default "qwen3.5:9b")
     $baseUrl = Convert-TimelineText -Value (Get-PropertyValue -Object $VerbalizationSettings -Name "ollamaBaseUrl" -Default "http://127.0.0.1:11434")
-    $url = Get-TimelineOllamaChatUrl -BaseUrl $baseUrl
-    $contextJson = ConvertTo-Json -InputObject $Context -Depth 20
-    $systemPrompt = @"
-You convert uncertain acoustic phone-token timelines into likely readable text.
-Target language is the context language. Treat source tokens as uncertain.
-Use file name, timestamps, speaker labels, and rolling context only as weak hints.
-Do not invent unsupported details. Prefer low confidence when ambiguous.
-Return strict JSON only. Schema:
-{
-  "summary": "short summary for the next chunk",
-  "turns": [
-    {
-      "turnId": "turn-000001",
-      "text": "candidate readable text",
-      "confidence": 0.0,
-      "status": "candidate|needs_review|unresolved",
-      "basis": ["short reason"],
-      "uncertainTerms": ["term"]
+    $numPredict = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $VerbalizationSettings -Name "numPredict" -Default 4096)
+    if ($numPredict -lt 512) {
+        $numPredict = 4096
     }
-  ]
-}
+    $url = Get-TimelineOllamaGenerateUrl -BaseUrl $baseUrl
+    $contextJson = ConvertTo-Json -InputObject $Context -Depth 20
+    $responseFormat = [ordered]@{
+        type = "object"
+        properties = [ordered]@{
+            summary = [ordered]@{
+                type = "string"
+            }
+            turns = [ordered]@{
+                type = "array"
+                items = [ordered]@{
+                    type = "object"
+                    properties = [ordered]@{
+                        turnId = [ordered]@{ type = "string" }
+                        text = [ordered]@{ type = "string" }
+                        confidence = [ordered]@{ type = "number" }
+                        status = [ordered]@{
+                            type = "string"
+                            enum = @("candidate", "needs_review", "unresolved")
+                        }
+                        basis = [ordered]@{
+                            type = "array"
+                            items = [ordered]@{ type = "string" }
+                        }
+                        uncertainTerms = [ordered]@{
+                            type = "array"
+                            items = [ordered]@{ type = "string" }
+                        }
+                    }
+                    required = @("turnId", "text", "confidence", "status", "basis", "uncertainTerms")
+                }
+            }
+        }
+        required = @("summary", "turns")
+    }
+    $systemPrompt = @"
+You convert an audio phone-token timeline into likely readable text.
+The phone tokens are uncertain acoustic clues, not final text.
+Use the context language as the target language. For ja-JP, write Japanese.
+Use file name, timestamps, speaker labels, rolling context, nearbyTimelineHints, and nearbyUserTextCandidates as context hints.
+nearbyUserTextCandidates may contain a text message created from the same dictated audio shortly after the recording. Treat these candidates as high priority hints.
+If a nearby user text plausibly matches the audio time range, split or summarize it across the matching turns in timeline order.
+Include exactly one item for every turnId in context.expectedTurnIds. If context.expectedTurnIds is absent, use the turnIds in context.turns.
+Do not output any turnId that is not listed in context.expectedTurnIds.
+Do not continue the nearby text beyond the listed turnIds.
+If ambiguous, prefer a best-effort candidate with status needs_review and low confidence.
+Use unresolved only when the turn has no readable phone-token clue and no nearby text candidate can map to it.
+When status is unresolved, text must be an empty string.
+Do not use placeholder text such as pause, silence, unclear, unknown, gap, or interval.
+Keep each text under 160 characters. Keep basis short. Do not copy long phone-token strings.
+Return JSON only. The first character must be { and the last must be }.
+Do not include thoughts, reasoning, markdown, role, content, examples, or any key other than summary and turns.
+Schema: {"summary":"short summary","turns":[{"turnId":"turn-000001","text":"candidate readable text","confidence":0.0,"status":"candidate|needs_review|unresolved","basis":["short reason"],"uncertainTerms":["term"]}]}
 "@
 
+    $prompt = $systemPrompt + "`n`nContext JSON:`n" + $contextJson
     $body = [ordered]@{
         model = $model
+        prompt = $prompt
         stream = $false
         format = "json"
-        messages = @(
-            [ordered]@{ role = "system"; content = $systemPrompt },
-            [ordered]@{ role = "user"; content = $contextJson }
-        )
+        think = $false
         options = [ordered]@{
-            temperature = 0.2
+            temperature = 0.0
             num_ctx = 8192
+            num_predict = $numPredict
         }
     }
 
@@ -6225,12 +8364,135 @@ Return strict JSON only. Schema:
     catch {
         throw "Ollama request failed. Make sure Ollama is running at $baseUrl and model '$model' is available."
     }
-    $message = Get-PropertyValue -Object $response -Name "message" -Default $null
-    $content = Convert-TimelineText -Value (Get-PropertyValue -Object $message -Name "content" -Default "")
+    $content = Convert-TimelineText -Value (Get-PropertyValue -Object $response -Name "response" -Default "")
     if (-not $content) {
-        throw "Ollama response did not contain message content."
+        $responseError = Convert-TimelineText -Value (Get-PropertyValue -Object $response -Name "error" -Default "")
+        if ($responseError) {
+            throw "Ollama response contained an error: $responseError"
+        }
+        $doneReason = Convert-TimelineText -Value (Get-PropertyValue -Object $response -Name "done_reason" -Default "")
+        throw "Ollama response did not contain message content. done_reason=$doneReason thinking_length=0"
     }
-    return ConvertFrom-TimelineLlmJsonText -Text $content
+    try {
+        return ConvertFrom-TimelineLlmJsonText -Text $content
+    }
+    catch {
+        $originalError = $_.Exception.Message
+        $partialPayload = ConvertFrom-TimelineLlmPartialJsonText -Text $content -Context $Context
+        if ($null -ne $partialPayload) {
+            return $partialPayload
+        }
+
+        $repairPrompt = @"
+The previous assistant response was not valid JSON.
+Return strict JSON only. The first non-whitespace character must be { and the last must be }.
+Do not continue, explain, reason, or include markdown.
+Do not include thoughts, role, content, examples, or any key other than summary and turns.
+Use the original context turns. Include exactly one item for every context.expectedTurnIds entry.
+Do not output any turnId that is not listed in context.expectedTurnIds.
+If the invalid response cannot be mapped to a turn, use empty text, confidence 0, status unresolved.
+Schema:
+{
+  "summary": "short summary for the next chunk",
+  "turns": [
+    {
+      "turnId": "turn-000001",
+      "text": "candidate readable text",
+      "confidence": 0.0,
+      "status": "candidate|needs_review|unresolved",
+      "basis": ["short reason"],
+      "uncertainTerms": ["term"]
+    }
+  ]
+}
+"@
+        $repairContext = New-TimelineAudioVerbalizationRetryContext -Context $Context
+        $invalidResponsePreview = Convert-TimelineText -Value $content
+        if ($invalidResponsePreview.Length -gt 1200) {
+            $invalidResponsePreview = $invalidResponsePreview.Substring(0, 1200)
+        }
+        $repairPayload = [ordered]@{
+            context = $repairContext
+            invalidResponsePreview = $invalidResponsePreview
+            parseError = $originalError
+        }
+        $repairBody = [ordered]@{
+            model = $model
+            prompt = $repairPrompt + "`n`nRepair payload JSON:`n" + (ConvertTo-Json -InputObject $repairPayload -Depth 20)
+            stream = $false
+            format = $responseFormat
+            think = $false
+            options = [ordered]@{
+                temperature = 0.0
+                num_ctx = 8192
+                num_predict = $numPredict
+            }
+        }
+
+        try {
+            $repairResponse = Invoke-RestMethod `
+                -Method Post `
+                -Uri $url `
+                -Body (ConvertTo-Json -InputObject $repairBody -Depth 20) `
+                -ContentType "application/json; charset=utf-8" `
+                -TimeoutSec 900
+        }
+        catch {
+            throw $originalError
+        }
+
+        $repairContent = Convert-TimelineText -Value (Get-PropertyValue -Object $repairResponse -Name "response" -Default "")
+        if (-not $repairContent) {
+            throw $originalError
+        }
+        try {
+            return ConvertFrom-TimelineLlmJsonText -Text $repairContent
+        }
+        catch {
+            $repairPartialPayload = ConvertFrom-TimelineLlmPartialJsonText -Text $repairContent -Context $Context
+            if ($null -ne $repairPartialPayload) {
+                return $repairPartialPayload
+            }
+            throw $originalError
+        }
+    }
+}
+
+function New-TimelineAudioVerbalizationRetryContext {
+    param([object]$Context)
+
+    $turns = @()
+    foreach ($turn in @(Get-PropertyValue -Object $Context -Name "turns" -Default @())) {
+        $turns += [ordered]@{
+            turnId = Convert-TimelineText -Value (Get-PropertyValue -Object $turn -Name "turnId" -Default "")
+            index = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $turn -Name "index" -Default 0)
+            startSec = Get-PropertyValue -Object $turn -Name "startSec" -Default 0
+            endSec = Get-PropertyValue -Object $turn -Name "endSec" -Default 0
+            absoluteStartAt = Convert-TimelineText -Value (Get-PropertyValue -Object $turn -Name "absoluteStartAt" -Default "")
+            absoluteEndAt = Convert-TimelineText -Value (Get-PropertyValue -Object $turn -Name "absoluteEndAt" -Default "")
+            speaker = Convert-TimelineText -Value (Get-PropertyValue -Object $turn -Name "speaker" -Default "")
+            phoneTokens = Convert-TimelineText -Value (Get-PropertyValue -Object $turn -Name "phoneTokens" -Default "")
+        }
+    }
+    $expectedTurnIds = @(Get-TimelineAudioVerbalizationExpectedTurnIds -Turns $turns)
+    $nearbyUserTextCandidates = @(Copy-TimelineAudioVerbalizationCompactTextHints `
+            -Hints @(Get-PropertyValue -Object $Context -Name "nearbyUserTextCandidates" -Default @()) `
+            -MaxChars 260)
+
+    return [ordered]@{
+        schemaVersion = 1
+        createdAt = [DateTimeOffset]::Now.ToString("o")
+        retryReason = "no_readable_text_from_full_context"
+        chunkId = Convert-TimelineText -Value (Get-PropertyValue -Object $Context -Name "chunkId" -Default "")
+        expectedTurnIds = @($expectedTurnIds)
+        expectedTurnCount = $expectedTurnIds.Count
+        language = Convert-TimelineText -Value (Get-PropertyValue -Object $Context -Name "language" -Default "ja-JP")
+        source = Get-PropertyValue -Object $Context -Name "source" -Default @{}
+        timeRange = Get-PropertyValue -Object $Context -Name "timeRange" -Default @{}
+        rollingContext = Get-PropertyValue -Object $Context -Name "rollingContext" -Default @{}
+        nearbyUserTextCandidates = @($nearbyUserTextCandidates)
+        turns = @($turns)
+    }
 }
 
 function Get-TimelineAudioVerbalizationOllamaStatus {
@@ -6327,18 +8589,173 @@ function Convert-TimelineAudioVerbalizedTurn {
         }
     }
 
+    $text = Convert-TimelineText -Value (Get-PropertyValue -Object $match -Name "text" -Default "")
+    $status = Convert-TimelineText -Value (Get-PropertyValue -Object $match -Name "status" -Default "needs_review")
+    if (-not (Test-TimelineAudioVerbalizedTextUseful -Text $text)) {
+        $text = ""
+        $status = "unresolved"
+    }
+
     return [ordered]@{
         turnId = $turnId
         index = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $SourceTurn -Name "index" -Default 0)
         startSec = Get-PropertyValue -Object $SourceTurn -Name "startSec" -Default 0
         endSec = Get-PropertyValue -Object $SourceTurn -Name "endSec" -Default 0
         speaker = Convert-TimelineText -Value (Get-PropertyValue -Object $SourceTurn -Name "speaker" -Default "")
-        text = Convert-TimelineText -Value (Get-PropertyValue -Object $match -Name "text" -Default "")
+        text = $text
         confidence = Convert-TimelineAudioNumber -Value (Get-PropertyValue -Object $match -Name "confidence" -Default $null)
-        status = Convert-TimelineText -Value (Get-PropertyValue -Object $match -Name "status" -Default "needs_review")
+        status = $status
         basis = @($basis)
         uncertainTerms = @($uncertainTerms)
     }
+}
+
+function New-TimelineAudioUnresolvedTurn {
+    param(
+        [object]$SourceTurn,
+        [string]$Reason
+    )
+
+    return [ordered]@{
+        turnId = Convert-TimelineText -Value (Get-PropertyValue -Object $SourceTurn -Name "turnId" -Default "")
+        index = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $SourceTurn -Name "index" -Default 0)
+        startSec = Get-PropertyValue -Object $SourceTurn -Name "startSec" -Default 0
+        endSec = Get-PropertyValue -Object $SourceTurn -Name "endSec" -Default 0
+        speaker = Convert-TimelineText -Value (Get-PropertyValue -Object $SourceTurn -Name "speaker" -Default "")
+        text = ""
+        confidence = 0
+        status = "unresolved"
+        basis = @($Reason)
+        uncertainTerms = @()
+    }
+}
+
+function New-TimelineAudioUnresolvedTurns {
+    param(
+        [object[]]$SourceTurns,
+        [string]$Reason
+    )
+
+    $turns = @()
+    foreach ($sourceTurn in @($SourceTurns)) {
+        $turns += New-TimelineAudioUnresolvedTurn -SourceTurn $sourceTurn -Reason $Reason
+    }
+    return @($turns)
+}
+
+function Test-TimelineAudioVerbalizedTurnResolved {
+    param([object]$Turn)
+
+    $status = (Convert-TimelineText -Value (Get-PropertyValue -Object $Turn -Name "status" -Default "")).ToLowerInvariant()
+    $text = Convert-TimelineText -Value (Get-PropertyValue -Object $Turn -Name "text" -Default "")
+    return $status -ne "unresolved" -and (Test-TimelineAudioVerbalizedTextUseful -Text $text)
+}
+
+function Get-TimelineAudioResolvedTurnCount {
+    param([object[]]$Turns)
+
+    $count = 0
+    foreach ($turn in @($Turns)) {
+        if (Test-TimelineAudioVerbalizedTurnResolved -Turn $turn) {
+            $count += 1
+        }
+    }
+    return $count
+}
+
+function Get-TimelineAudioUnresolvedTurnCount {
+    param([object[]]$Turns)
+
+    $count = 0
+    foreach ($turn in @($Turns)) {
+        if (-not (Test-TimelineAudioVerbalizedTurnResolved -Turn $turn)) {
+            $count += 1
+        }
+    }
+    return $count
+}
+
+function Test-TimelineAudioVerbalizedTextUseful {
+    param([string]$Text)
+
+    $text = Convert-TimelineText -Value $Text
+    if (-not $text) {
+        return $false
+    }
+
+    $lower = $text.ToLowerInvariant()
+    $asciiPlaceholders = @(
+        "(pause)",
+        "[pause]",
+        "pause",
+        "(silence)",
+        "[silence]",
+        "silence",
+        "(unclear)",
+        "[unclear]",
+        "unclear",
+        "(unknown)",
+        "[unknown]",
+        "unknown",
+        "(gap)",
+        "[gap]",
+        "gap",
+        "(interval)",
+        "[interval]",
+        "interval",
+        "...",
+        "-"
+    )
+    foreach ($placeholder in $asciiPlaceholders) {
+        if ($lower -eq $placeholder) {
+            return $false
+        }
+    }
+
+    $jpPause = ([string][char]0xFF08) + ([string][char]0x9593) + ([string][char]0xFF09)
+    if ($text -eq $jpPause) {
+        return $false
+    }
+    $jpSilence = ([string][char]0xFF08) + ([string][char]0x7121) + ([string][char]0x97F3) + ([string][char]0xFF09)
+    if ($text -eq $jpSilence) {
+        return $false
+    }
+    $jpSilenceWord = ([string][char]0x7121) + ([string][char]0x97F3)
+    if ($text -eq $jpSilenceWord) {
+        return $false
+    }
+    $jpUnknown = ([string][char]0x4E0D) + ([string][char]0x660E)
+    if ($text.Contains($jpUnknown) -and $text.Length -le 12) {
+        return $false
+    }
+    $jpUnclear = ([string][char]0x4E0D) + ([string][char]0x660E) + ([string][char]0x77AD)
+    if ($text.Contains($jpUnclear) -and $text.Length -le 16) {
+        return $false
+    }
+
+    return $true
+}
+
+function Test-TimelineAudioVerbalizationRecoverableLlmError {
+    param([string]$Message)
+
+    $text = Convert-TimelineText -Value $Message
+    if (-not $text) {
+        return $false
+    }
+    if ($text.StartsWith("Ollama request failed.", [System.StringComparison]::OrdinalIgnoreCase)) {
+        return $false
+    }
+    if ($text.StartsWith("Ollama response contained an error:", [System.StringComparison]::OrdinalIgnoreCase)) {
+        return $false
+    }
+    if ($text.StartsWith("Ollama response did not contain message content.", [System.StringComparison]::OrdinalIgnoreCase)) {
+        return $true
+    }
+    if ($text -match "JSON" -or $text -match "ConvertFrom-Json" -or $text -match "Invalid JSON") {
+        return $true
+    }
+    return $true
 }
 
 function Write-TimelineAudioVerbalizationResultPayload {
@@ -6399,12 +8816,117 @@ function Copy-TimelineAudioVerbalizationStatus {
     return $copy
 }
 
+function Get-TimelineAudioVerbalizationPlanChunkCount {
+    param([string]$PlanPath)
+
+    $planPathText = Convert-TimelineText -Value $PlanPath
+    if (-not $planPathText -or -not (Test-Path -LiteralPath $planPathText -PathType Leaf)) {
+        return 0
+    }
+
+    try {
+        $planPayload = Get-Content -LiteralPath $planPathText -Raw -Encoding UTF8 | ConvertFrom-Json
+        return @(Get-PropertyValue -Object $planPayload -Name "chunks" -Default @()).Count
+    }
+    catch {
+        return 0
+    }
+}
+
+function New-TimelineAudioVerbalizationCountSnapshot {
+    param(
+        [object]$Status,
+        [object[]]$SourceTurns = @(),
+        [object[]]$ResultTurns = @(),
+        [object[]]$ResultChunks = @(),
+        [int]$FallbackTotalTurns = 0,
+        [int]$FallbackTotalChunks = 0
+    )
+
+    $sourceTurnCount = @($SourceTurns).Count
+    $resultTurnCount = @($ResultTurns).Count
+    $statusTotalTurns = [Math]::Max(0, (Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $Status -Name "totalTurns" -Default 0)))
+    $totalTurns = 0
+    if ($sourceTurnCount -gt 0) {
+        $totalTurns = $sourceTurnCount
+    }
+    elseif ($FallbackTotalTurns -gt 0) {
+        $totalTurns = $FallbackTotalTurns
+    }
+    elseif ($statusTotalTurns -gt 0) {
+        $totalTurns = $statusTotalTurns
+    }
+    else {
+        $totalTurns = $resultTurnCount
+    }
+
+    $verbalizedTurns = Get-TimelineAudioResolvedTurnCount -Turns $ResultTurns
+    $unresolvedTurns = Get-TimelineAudioUnresolvedTurnCount -Turns $ResultTurns
+    if ($totalTurns -le 0) {
+        $totalTurns = $verbalizedTurns + $unresolvedTurns
+    }
+
+    $statusState = (Convert-TimelineText -Value (Get-PropertyValue -Object $Status -Name "state" -Default "")).ToLowerInvariant()
+    if (@("completed", "needs_review") -contains $statusState) {
+        $coveredTurns = $verbalizedTurns + $unresolvedTurns
+        if ($totalTurns -gt $coveredTurns) {
+            $unresolvedTurns += ($totalTurns - $coveredTurns)
+        }
+    }
+
+    if ($totalTurns -gt 0) {
+        $verbalizedTurns = [Math]::Min($verbalizedTurns, $totalTurns)
+        $unresolvedTurns = [Math]::Min($unresolvedTurns, $totalTurns)
+        if (($verbalizedTurns + $unresolvedTurns) -gt $totalTurns) {
+            $unresolvedTurns = [Math]::Max(0, $totalTurns - $verbalizedTurns)
+        }
+    }
+
+    $resultChunkCount = @($ResultChunks).Count
+    $statusTotalChunks = [Math]::Max(0, (Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $Status -Name "totalChunks" -Default 0)))
+    $statusCompletedChunks = [Math]::Max(0, (Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $Status -Name "completedChunks" -Default 0)))
+    $totalChunks = 0
+    if ($FallbackTotalChunks -gt 0) {
+        $totalChunks = $FallbackTotalChunks
+    }
+    elseif ($statusTotalChunks -gt 0) {
+        $totalChunks = $statusTotalChunks
+    }
+    elseif ($resultChunkCount -gt 0) {
+        $totalChunks = $resultChunkCount
+    }
+
+    if ($totalTurns -gt 0 -and $totalChunks -gt $totalTurns) {
+        $totalChunks = $totalTurns
+    }
+
+    $completedChunks = $resultChunkCount
+    if ($completedChunks -le 0 -and $statusCompletedChunks -gt 0) {
+        $completedChunks = $statusCompletedChunks
+    }
+    if ($totalChunks -le 0 -and $completedChunks -gt 0) {
+        $totalChunks = $completedChunks
+    }
+    if ($totalChunks -gt 0) {
+        $completedChunks = [Math]::Min($completedChunks, $totalChunks)
+    }
+
+    return [ordered]@{
+        totalTurns = $totalTurns
+        verbalizedTurns = $verbalizedTurns
+        unresolvedTurns = $unresolvedTurns
+        totalChunks = $totalChunks
+        completedChunks = $completedChunks
+    }
+}
+
 function Invoke-TimelineAudioVerbalizationExecution {
     param(
         [object]$Plan,
         [string]$Directory,
         [object]$InitialStatus,
-        [string]$ResultPath
+        [string]$ResultPath,
+        [scriptblock]$ProgressCallback = $null
     )
 
     $settings = Get-PropertyValue -Object $Plan -Name "settings" -Default @{}
@@ -6453,6 +8975,9 @@ function Invoke-TimelineAudioVerbalizationExecution {
         $status["updatedAt"] = [DateTimeOffset]::Now.ToString("o")
         Update-TimelineAudioVerbalizationTiming -Status $status -StartedAt $startedAt -CompletedChunks $resultChunks.Count -TotalChunks $chunks.Count
         Write-TimelineAudioVerbalizationResultPayload -ResultPath $ResultPath -Status $status -Chunks $resultChunks -Turns $allTurns
+        if ($null -ne $ProgressCallback) {
+            & $ProgressCallback $status $chunk $resultChunks.Count $chunks.Count
+        }
         Write-TimelineOperationEvent `
             -OperationId $operationId `
             -Kind "llm" `
@@ -6494,6 +9019,46 @@ function Invoke-TimelineAudioVerbalizationExecution {
             }
 
             $summary = Convert-TimelineText -Value (Get-PropertyValue -Object $llmPayload -Name "summary" -Default "")
+            if ((Get-TimelineAudioResolvedTurnCount -Turns $verbalizedTurns) -eq 0) {
+                $nearbyUserTextCandidates = @(Get-PropertyValue -Object $contextPayload -Name "nearbyUserTextCandidates" -Default @())
+                if ($nearbyUserTextCandidates.Count -gt 0) {
+                    Write-TimelineOperationEvent `
+                        -OperationId $operationId `
+                        -Kind "llm" `
+                        -ProductName "Timeline" `
+                        -Action "audio_verbalization_chunk_retry" `
+                        -State "running" `
+                        -Message "Audio verbalization chunk is retrying with distilled user-text hints." `
+                        -Details ([ordered]@{
+                            chunkId = $chunkId
+                            userTextCandidateCount = $nearbyUserTextCandidates.Count
+                        })
+
+                    $retryContext = New-TimelineAudioVerbalizationRetryContext -Context $contextPayload
+                    $retryPayload = Invoke-TimelineOllamaChatJson -VerbalizationSettings $settings -Context $retryContext
+                    $retryTurns = @(Get-PropertyValue -Object $retryPayload -Name "turns" -Default @())
+                    $retryVerbalizedTurns = @()
+                    foreach ($sourceTurn in $chunkTurns) {
+                        $retryVerbalizedTurns += Convert-TimelineAudioVerbalizedTurn -SourceTurn $sourceTurn -LlmTurns $retryTurns
+                    }
+                    if ((Get-TimelineAudioResolvedTurnCount -Turns $retryVerbalizedTurns) -gt 0) {
+                        $verbalizedTurns = $retryVerbalizedTurns
+                        $summary = Convert-TimelineText -Value (Get-PropertyValue -Object $retryPayload -Name "summary" -Default $summary)
+                        Write-TimelineOperationEvent `
+                            -OperationId $operationId `
+                            -Kind "llm" `
+                            -ProductName "Timeline" `
+                            -Action "audio_verbalization_chunk_retry" `
+                            -State "completed" `
+                            -Message "Audio verbalization chunk retry produced readable candidates." `
+                            -Details ([ordered]@{
+                                chunkId = $chunkId
+                                resolvedTurns = Get-TimelineAudioResolvedTurnCount -Turns $verbalizedTurns
+                                turnCount = $verbalizedTurns.Count
+                            })
+                    }
+                }
+            }
             Write-TimelineUtf8JsonFile -Path $summaryPath -Payload ([ordered]@{
                 schemaVersion = 1
                 chunkId = $chunkId
@@ -6523,8 +9088,12 @@ function Invoke-TimelineAudioVerbalizationExecution {
             $resultChunks += $resultChunk
             $allTurns += $verbalizedTurns
             $status["completedChunks"] = $resultChunks.Count
-            $status["verbalizedTurns"] = $allTurns.Count
+            $status["verbalizedTurns"] = Get-TimelineAudioResolvedTurnCount -Turns $allTurns
+            $status["unresolvedTurns"] = Get-TimelineAudioUnresolvedTurnCount -Turns $allTurns
             Update-TimelineAudioVerbalizationTiming -Status $status -StartedAt $startedAt -CompletedChunks $resultChunks.Count -TotalChunks $chunks.Count
+            if ($null -ne $ProgressCallback) {
+                & $ProgressCallback $status $chunk $resultChunks.Count $chunks.Count
+            }
             Write-TimelineOperationEvent `
                 -OperationId $operationId `
                 -Kind "llm" `
@@ -6540,6 +9109,68 @@ function Invoke-TimelineAudioVerbalizationExecution {
                 })
         }
         catch {
+            $errorMessage = $_.Exception.Message
+            if (Test-TimelineAudioVerbalizationRecoverableLlmError -Message $errorMessage) {
+                $chunkTurns = @(Get-PropertyValue -Object $chunk -Name "turns" -Default @())
+                $verbalizedTurns = @(New-TimelineAudioUnresolvedTurns -SourceTurns $chunkTurns -Reason "LLM response could not be parsed as strict JSON.")
+                $summary = "Unresolved chunk. LLM response was not valid strict JSON."
+                Write-TimelineUtf8JsonFile -Path $summaryPath -Payload ([ordered]@{
+                    schemaVersion = 1
+                    chunkId = $chunkId
+                    state = "unresolved"
+                    summary = $summary
+                    updatedAt = [DateTimeOffset]::Now.ToString("o")
+                    message = $errorMessage
+                })
+
+                $resultChunk = [ordered]@{
+                    chunkId = $chunkId
+                    sequence = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $chunk -Name "sequence" -Default 0)
+                    state = "unresolved"
+                    startSec = Get-PropertyValue -Object $chunk -Name "startSec" -Default 0
+                    endSec = Get-PropertyValue -Object $chunk -Name "endSec" -Default 0
+                    turnCount = $verbalizedTurns.Count
+                    contextPath = $contextPath
+                    summaryPath = $summaryPath
+                    resultPath = $resultChunkPath
+                    summary = $summary
+                    error = $errorMessage
+                }
+                Write-TimelineUtf8JsonFile -Path $resultChunkPath -Payload ([ordered]@{
+                    schemaVersion = 1
+                    chunk = $resultChunk
+                    turns = @($verbalizedTurns)
+                })
+
+                $resultChunks += $resultChunk
+                $allTurns += $verbalizedTurns
+                $status["completedChunks"] = $resultChunks.Count
+                $status["verbalizedTurns"] = Get-TimelineAudioResolvedTurnCount -Turns $allTurns
+                $status["state"] = "running"
+                $status["updatedAt"] = [DateTimeOffset]::Now.ToString("o")
+                $status["message"] = "Audio verbalization chunk was saved as unresolved."
+                Update-TimelineAudioVerbalizationTiming -Status $status -StartedAt $startedAt -CompletedChunks $resultChunks.Count -TotalChunks $chunks.Count
+                Write-TimelineAudioVerbalizationResultPayload -ResultPath $ResultPath -Status $status -Chunks $resultChunks -Turns $allTurns
+                if ($null -ne $ProgressCallback) {
+                    & $ProgressCallback $status $chunk $resultChunks.Count $chunks.Count
+                }
+                Write-TimelineOperationEvent `
+                    -OperationId $operationId `
+                    -Kind "llm" `
+                    -ProductName "Timeline" `
+                    -Action "audio_verbalization_chunk" `
+                    -State "unresolved" `
+                    -Message "Audio verbalization chunk was saved as unresolved." `
+                    -Details ([ordered]@{
+                        chunkId = $chunkId
+                        completedChunks = $resultChunks.Count
+                        totalChunks = $chunks.Count
+                        turnCount = $verbalizedTurns.Count
+                        error = $errorMessage
+                    })
+                continue
+            }
+
             $failedChunk = [ordered]@{
                 chunkId = $chunkId
                 sequence = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $chunk -Name "sequence" -Default 0)
@@ -6551,7 +9182,7 @@ function Invoke-TimelineAudioVerbalizationExecution {
                 summaryPath = $summaryPath
                 resultPath = $resultChunkPath
                 retryCount = 0
-                error = $_.Exception.Message
+                error = $errorMessage
             }
             Write-TimelineUtf8JsonFile -Path $resultChunkPath -Payload ([ordered]@{
                 schemaVersion = 1
@@ -6561,16 +9192,19 @@ function Invoke-TimelineAudioVerbalizationExecution {
             $resultChunks += $failedChunk
             $status["state"] = "failed"
             $status["updatedAt"] = [DateTimeOffset]::Now.ToString("o")
-            $status["message"] = $_.Exception.Message
+            $status["message"] = $errorMessage
             Update-TimelineAudioVerbalizationTiming -Status $status -StartedAt $startedAt -CompletedChunks $resultChunks.Count -TotalChunks $chunks.Count
             Write-TimelineAudioVerbalizationResultPayload -ResultPath $ResultPath -Status $status -Chunks $resultChunks -Turns $allTurns
+            if ($null -ne $ProgressCallback) {
+                & $ProgressCallback $status $chunk $resultChunks.Count $chunks.Count
+            }
             Write-TimelineOperationEvent `
                 -OperationId $operationId `
                 -Kind "llm" `
                 -ProductName "Timeline" `
                 -Action "audio_verbalization_chunk" `
                 -State "failed" `
-                -Message $_.Exception.Message `
+                -Message $errorMessage `
                 -Details ([ordered]@{
                     chunkId = $chunkId
                     completedChunks = $resultChunks.Count
@@ -6580,10 +9214,13 @@ function Invoke-TimelineAudioVerbalizationExecution {
         }
     }
 
-    $status["state"] = "completed"
+    $unresolvedTurns = Get-TimelineAudioUnresolvedTurnCount -Turns $allTurns
+    $status["state"] = if ($unresolvedTurns -gt 0) { "needs_review" } else { "completed" }
     $status["currentChunkId"] = ""
     $status["updatedAt"] = [DateTimeOffset]::Now.ToString("o")
-    $status["message"] = "Audio verbalization completed."
+    $status["verbalizedTurns"] = Get-TimelineAudioResolvedTurnCount -Turns $allTurns
+    $status["unresolvedTurns"] = $unresolvedTurns
+    $status["message"] = if ($unresolvedTurns -gt 0) { "Audio verbalization completed with unresolved turns." } else { "Audio verbalization completed." }
     $status["estimatedRemainingSec"] = 0
     Update-TimelineAudioVerbalizationTiming -Status $status -StartedAt $startedAt -CompletedChunks $resultChunks.Count -TotalChunks $chunks.Count
     Write-TimelineAudioVerbalizationResultPayload -ResultPath $ResultPath -Status $status -Chunks $resultChunks -Turns $allTurns
@@ -6592,13 +9229,14 @@ function Invoke-TimelineAudioVerbalizationExecution {
         -Kind "llm" `
         -ProductName "Timeline" `
         -Action "audio_verbalization" `
-        -State "completed" `
-        -Message "Audio verbalization completed." `
+        -State $status["state"] `
+        -Message $status["message"] `
         -DurationMs ([int]([DateTimeOffset]::Now - $startedAt).TotalMilliseconds) `
         -Details ([ordered]@{
             completedChunks = $resultChunks.Count
             totalChunks = $chunks.Count
-            verbalizedTurns = $allTurns.Count
+            verbalizedTurns = $status["verbalizedTurns"]
+            unresolvedTurns = $unresolvedTurns
             resultPath = $ResultPath
         })
     return $status
@@ -6608,6 +9246,406 @@ function New-TimelineAudioVerbalizationJobId {
     $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
     $suffix = ([guid]::NewGuid().ToString("N")).Substring(0, 8)
     return "audio-verbalization-$stamp-$suffix"
+}
+
+function New-TimelineAudioVerbalizationBulkJobId {
+    $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
+    $suffix = ([guid]::NewGuid().ToString("N")).Substring(0, 8)
+    return "audio-verbalization-bulk-$stamp-$suffix"
+}
+
+function Get-TimelineAudioVerbalizationBulkDirectory {
+    $path = Join-Path (Get-TimelineAudioVerbalizationRoot) "_bulk"
+    [System.IO.Directory]::CreateDirectory($path) | Out-Null
+    return [System.IO.Path]::GetFullPath($path)
+}
+
+function Get-TimelineAudioVerbalizationBulkStatusPath {
+    param([string]$JobId = "")
+
+    $directory = Get-TimelineAudioVerbalizationBulkDirectory
+    $jobIdText = Convert-TimelineText -Value $JobId
+    if (-not $jobIdText) {
+        return [System.IO.Path]::GetFullPath((Join-Path $directory "latest.json"))
+    }
+    $safeJobId = Get-TimelineZipSafeSegment -Value $jobIdText
+    return [System.IO.Path]::GetFullPath((Join-Path $directory "$safeJobId.json"))
+}
+
+function New-TimelineAudioVerbalizationBulkStatus {
+    param(
+        [string]$JobId = "",
+        [string]$State = "not_started",
+        [string]$Message = ""
+    )
+
+    $now = [DateTimeOffset]::Now.ToString("o")
+    return [ordered]@{
+        available = $true
+        state = $State
+        jobId = $JobId
+        totalItems = 0
+        completedItems = 0
+        reviewItems = 0
+        failedItems = 0
+        skippedItems = 0
+        totalTurns = 0
+        verbalizedTurns = 0
+        unresolvedTurns = 0
+        totalChunks = 0
+        completedChunks = 0
+        currentAudioItemId = ""
+        currentFileName = ""
+        currentRelativePath = ""
+        currentChunkId = ""
+        currentItemCompletedChunks = 0
+        currentItemTotalChunks = 0
+        startedAt = if ($JobId) { $now } else { "" }
+        completedAt = ""
+        elapsedSec = 0
+        estimatedRemainingSec = 0
+        progressPercent = 0
+        updatedAt = $now
+        message = $Message
+    }
+}
+
+function Update-TimelineAudioVerbalizationBulkTiming {
+    param([object]$Status)
+
+    $startedAtText = Convert-TimelineText -Value (Get-PropertyValue -Object $Status -Name "startedAt" -Default "")
+    $startedAt = [DateTimeOffset]::Now
+    if ($startedAtText) {
+        [DateTimeOffset]::TryParse($startedAtText, [ref]$startedAt) | Out-Null
+    }
+    $now = [DateTimeOffset]::Now
+    $elapsedSec = [Math]::Max(0, ($now - $startedAt).TotalSeconds)
+    $totalItems = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $Status -Name "totalItems" -Default 0)
+    $completedItems = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $Status -Name "completedItems" -Default 0)
+    $reviewItems = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $Status -Name "reviewItems" -Default 0)
+    $failedItems = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $Status -Name "failedItems" -Default 0)
+    $skippedItems = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $Status -Name "skippedItems" -Default 0)
+    $finishedItems = $completedItems + $reviewItems + $failedItems + $skippedItems
+    $progressPercent = 0
+    $remainingSec = 0
+    if ($totalItems -gt 0) {
+        $progressPercent = [Math]::Min(100, [Math]::Max(0, ($finishedItems / [double]$totalItems) * 100))
+        if ($finishedItems -gt 0 -and $totalItems -gt $finishedItems) {
+            $remainingSec = ($elapsedSec / $finishedItems) * ($totalItems - $finishedItems)
+        }
+    }
+
+    $Status["elapsedSec"] = [Math]::Round($elapsedSec, 1)
+    $Status["estimatedRemainingSec"] = [Math]::Round($remainingSec, 1)
+    $Status["progressPercent"] = [Math]::Round($progressPercent, 1)
+    $Status["updatedAt"] = $now.ToString("o")
+}
+
+function Normalize-TimelineAudioVerbalizationBulkStatus {
+    param([object]$Status)
+
+    $copy = Copy-TimelineAudioVerbalizationStatus -Status $Status
+    $totalItems = [Math]::Max([long]0, (Convert-TimelineLong -Value (Get-PropertyValue -Object $copy -Name "totalItems" -Default 0)))
+    $completedItems = [Math]::Max([long]0, (Convert-TimelineLong -Value (Get-PropertyValue -Object $copy -Name "completedItems" -Default 0)))
+    $reviewItems = [Math]::Max([long]0, (Convert-TimelineLong -Value (Get-PropertyValue -Object $copy -Name "reviewItems" -Default 0)))
+    $failedItems = [Math]::Max([long]0, (Convert-TimelineLong -Value (Get-PropertyValue -Object $copy -Name "failedItems" -Default 0)))
+    $skippedItems = [Math]::Max([long]0, (Convert-TimelineLong -Value (Get-PropertyValue -Object $copy -Name "skippedItems" -Default 0)))
+    $totalTurns = [Math]::Max([long]0, (Convert-TimelineLong -Value (Get-PropertyValue -Object $copy -Name "totalTurns" -Default 0)))
+    $verbalizedTurns = [Math]::Max([long]0, (Convert-TimelineLong -Value (Get-PropertyValue -Object $copy -Name "verbalizedTurns" -Default 0)))
+    $unresolvedTurns = [Math]::Max([long]0, (Convert-TimelineLong -Value (Get-PropertyValue -Object $copy -Name "unresolvedTurns" -Default 0)))
+    $totalChunks = [Math]::Max([long]0, (Convert-TimelineLong -Value (Get-PropertyValue -Object $copy -Name "totalChunks" -Default 0)))
+    $completedChunks = [Math]::Max([long]0, (Convert-TimelineLong -Value (Get-PropertyValue -Object $copy -Name "completedChunks" -Default 0)))
+
+    if ($totalItems -gt 0) {
+        $completedItems = [Math]::Min($completedItems, $totalItems)
+        $reviewItems = [Math]::Min($reviewItems, $totalItems)
+        $failedItems = [Math]::Min($failedItems, $totalItems)
+        $skippedItems = [Math]::Min($skippedItems, $totalItems)
+    }
+    if ($totalTurns -gt 0) {
+        $verbalizedTurns = [Math]::Min($verbalizedTurns, $totalTurns)
+        $unresolvedTurns = [Math]::Min($unresolvedTurns, $totalTurns)
+        if ($totalChunks -gt $totalTurns) {
+            $totalChunks = $totalTurns
+        }
+    }
+    if ($totalChunks -le 0 -and $completedChunks -gt 0) {
+        $totalChunks = $completedChunks
+    }
+    if ($totalChunks -gt 0) {
+        $completedChunks = [Math]::Min($completedChunks, $totalChunks)
+    }
+
+    $copy["totalItems"] = [int][Math]::Min($totalItems, [int]::MaxValue)
+    $copy["completedItems"] = [int][Math]::Min($completedItems, [int]::MaxValue)
+    $copy["reviewItems"] = [int][Math]::Min($reviewItems, [int]::MaxValue)
+    $copy["failedItems"] = [int][Math]::Min($failedItems, [int]::MaxValue)
+    $copy["skippedItems"] = [int][Math]::Min($skippedItems, [int]::MaxValue)
+    $copy["totalTurns"] = [int][Math]::Min($totalTurns, [int]::MaxValue)
+    $copy["verbalizedTurns"] = [int][Math]::Min($verbalizedTurns, [int]::MaxValue)
+    $copy["unresolvedTurns"] = [int][Math]::Min($unresolvedTurns, [int]::MaxValue)
+    $copy["totalChunks"] = [int][Math]::Min($totalChunks, [int]::MaxValue)
+    $copy["completedChunks"] = [int][Math]::Min($completedChunks, [int]::MaxValue)
+    return $copy
+}
+
+function Write-TimelineAudioVerbalizationBulkStatus {
+    param([object]$Status)
+
+    $Status = Normalize-TimelineAudioVerbalizationBulkStatus -Status $Status
+    Update-TimelineAudioVerbalizationBulkTiming -Status $Status
+    $jobId = Convert-TimelineText -Value (Get-PropertyValue -Object $Status -Name "jobId" -Default "")
+    if ($jobId) {
+        Write-TimelineUtf8JsonFile -Path (Get-TimelineAudioVerbalizationBulkStatusPath -JobId $jobId) -Payload $Status
+    }
+    Write-TimelineUtf8JsonFile -Path (Get-TimelineAudioVerbalizationBulkStatusPath) -Payload $Status
+}
+
+function Get-TimelineAudioVerbalizationBulkStatus {
+    param([string]$JobId = "")
+
+    $path = Get-TimelineAudioVerbalizationBulkStatusPath -JobId $JobId
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+        if ($JobId) {
+            return New-TimelineAudioVerbalizationBulkStatus -JobId $JobId -State "unknown" -Message "Bulk audio verbalization job was not found."
+        }
+        return New-TimelineAudioVerbalizationBulkStatus -State "not_started" -Message ""
+    }
+
+    try {
+        $status = Normalize-TimelineAudioVerbalizationBulkStatus -Status (Get-Content -LiteralPath $path -Raw -Encoding UTF8 | ConvertFrom-Json)
+        if (Test-TimelineAudioVerbalizationBulkActive -Status $status) {
+            $activeJobId = Convert-TimelineText -Value (Get-PropertyValue -Object $status -Name "jobId" -Default "")
+            if ($activeJobId -and -not (Test-TimelineAudioVerbalizationBulkWorkerProcessActive -JobId $activeJobId)) {
+                $staleClosedAt = [DateTimeOffset]::Now.ToString("o")
+                $status["state"] = "failed"
+                $status["completedAt"] = $staleClosedAt
+                $status["estimatedRemainingSec"] = 0
+                $status["updatedAt"] = $staleClosedAt
+                $status["message"] = "Audio verbalization bulk job was marked failed because its worker process was not found."
+                Write-TimelineAudioVerbalizationBulkStatus -Status $status
+                Write-TimelineOperationEvent `
+                    -OperationId $activeJobId `
+                    -Kind "worker" `
+                    -ProductName "Timeline" `
+                    -Action "audio_verbalization_bulk" `
+                    -State "failed" `
+                    -Message $status["message"]
+            }
+        }
+        return Normalize-TimelineAudioVerbalizationBulkStatus -Status $status
+    }
+    catch {
+        return New-TimelineAudioVerbalizationBulkStatus -JobId $JobId -State "unreadable" -Message $_.Exception.Message
+    }
+}
+
+function Test-TimelineAudioVerbalizationBulkActive {
+    param([object]$Status)
+
+    $state = (Convert-TimelineText -Value (Get-PropertyValue -Object $Status -Name "state" -Default "")).ToLowerInvariant()
+    return @("starting", "queued", "running") -contains $state
+}
+
+function Test-TimelineAudioVerbalizationBulkWorkerProcessActive {
+    param([string]$JobId)
+
+    $jobIdText = Convert-TimelineText -Value $JobId
+    if (-not $jobIdText) {
+        return $false
+    }
+
+    try {
+        $processes = @(Get-CimInstance Win32_Process | Where-Object {
+                $_.CommandLine -and
+                $_.CommandLine -like "*audio-verbalization-bulk-worker.ps1*" -and
+                $_.CommandLine -like "*$jobIdText*"
+            })
+        return $processes.Count -gt 0
+    }
+    catch {
+        return $true
+    }
+}
+
+function Test-TimelineAudioVerbalizationWorkerProcessActive {
+    param([string]$JobId)
+
+    $jobIdText = Convert-TimelineText -Value $JobId
+    if (-not $jobIdText) {
+        return $false
+    }
+
+    try {
+        $processes = @(Get-CimInstance Win32_Process | Where-Object {
+                $_.CommandLine -and
+                $_.CommandLine -like "*$jobIdText*" -and
+                ($_.CommandLine -like "*audio-verbalization-worker.ps1*" -or
+                    $_.CommandLine -like "*audio-verbalization-bulk-worker.ps1*")
+            })
+        return $processes.Count -gt 0
+    }
+    catch {
+        return $true
+    }
+}
+
+function Test-TimelineAudioVerbalizationNeedsWork {
+    param([object]$Status)
+
+    if (-not [bool](Get-PropertyValue -Object $Status -Name "available" -Default $false)) {
+        return $false
+    }
+    $state = (Convert-TimelineText -Value (Get-PropertyValue -Object $Status -Name "state" -Default "")).ToLowerInvariant()
+    if ($state -eq "completed" -or $state -eq "needs_review") {
+        return $false
+    }
+    if (@("queued", "running") -contains $state) {
+        $jobId = Convert-TimelineText -Value (Get-PropertyValue -Object $Status -Name "jobId" -Default "")
+        return -not (Test-TimelineAudioVerbalizationWorkerProcessActive -JobId $jobId)
+    }
+    $turns = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $Status -Name "totalTurns" -Default 0)
+    return $turns -gt 0
+}
+
+function Get-TimelineAudioVerbalizationBulkTargets {
+    $targets = @()
+    $page = 1
+    $pageSize = 200
+    while ($true) {
+        $result = Get-TimelineAudioFiles -Page $page -PageSize $pageSize
+        foreach ($file in @(Get-PropertyValue -Object $result -Name "files" -Default @())) {
+            $status = Get-PropertyValue -Object $file -Name "audioVerbalization" -Default $null
+            if (Test-TimelineAudioVerbalizationNeedsWork -Status $status) {
+                $targets += $file
+            }
+        }
+
+        $pagination = Get-PropertyValue -Object $result -Name "pagination" -Default @{}
+        $hasNext = [bool](Get-PropertyValue -Object $pagination -Name "hasNext" -Default $false)
+        if (-not $hasNext) {
+            break
+        }
+        $page++
+        if ($page -gt 10000) {
+            break
+        }
+    }
+
+    return @($targets)
+}
+
+function New-TimelineAudioVerbalizationExecutionContext {
+    param(
+        [string]$SourceId,
+        [string]$RelativePath,
+        [string]$JobId,
+        [string]$InitialState = "queued",
+        [string]$InitialMessage = "Audio verbalization worker has been queued.",
+        [scriptblock]$PreparationProgressCallback = $null,
+        [switch]$Force
+    )
+
+    $detail = Get-TimelineAudioFileDetail -SourceId $SourceId -RelativePath $RelativePath
+    $status = Get-TimelineAudioVerbalizationStatusFromDetail -Detail $detail
+    if (-not [bool](Get-PropertyValue -Object $status -Name "available" -Default $false)) {
+        return [ordered]@{
+            canRun = $false
+            status = $status
+            reason = "unavailable"
+        }
+    }
+
+    $currentState = (Convert-TimelineText -Value (Get-PropertyValue -Object $status -Name "state" -Default "")).ToLowerInvariant()
+    if (-not $Force -and @("queued", "running") -contains $currentState) {
+        $currentJobId = Convert-TimelineText -Value (Get-PropertyValue -Object $status -Name "jobId" -Default "")
+        if (Test-TimelineAudioVerbalizationWorkerProcessActive -JobId $currentJobId) {
+            return [ordered]@{
+                canRun = $false
+                status = $status
+                reason = "already_active"
+            }
+        }
+    }
+
+    $settings = Read-TimelineAppSettings
+    $verbalizationSettings = Get-PropertyValue -Object $settings -Name "audioVerbalization" -Default (New-TimelineDefaultAudioVerbalizationSettings)
+    $audioItemId = Convert-TimelineText -Value (Get-PropertyValue -Object $status -Name "audioItemId" -Default "")
+    $directory = Get-TimelineAudioVerbalizationDirectory -AudioItemId $audioItemId -Create
+    [System.IO.Directory]::CreateDirectory((Join-Path $directory "context")) | Out-Null
+    [System.IO.Directory]::CreateDirectory((Join-Path $directory "results")) | Out-Null
+
+    $plan = New-TimelineAudioVerbalizationPlan -Detail $detail -VerbalizationSettings $verbalizationSettings
+    $planPath = Join-Path $directory "verbalization-plan.json"
+    $resultPath = Join-Path $directory "audio-verbalization.json"
+    Write-TimelineUtf8JsonFile -Path $planPath -Payload $plan
+    $contextDirectory = Join-Path $directory "context"
+
+    $chunks = @(Get-PropertyValue -Object $plan -Name "chunks" -Default @())
+    $now = [DateTimeOffset]::Now.ToString("o")
+    $file = Get-PropertyValue -Object $detail -Name "file" -Default @{}
+    $plannedStatus = [ordered]@{
+        available = $true
+        state = $InitialState
+        audioItemId = $audioItemId
+        sourceFileIdentity = Convert-TimelineText -Value (Get-PropertyValue -Object $status -Name "sourceFileIdentity" -Default "")
+        language = Convert-TimelineText -Value (Get-PropertyValue -Object $verbalizationSettings -Name "language" -Default "ja-JP")
+        model = Convert-TimelineText -Value (Get-PropertyValue -Object $verbalizationSettings -Name "model" -Default "qwen3.5:9b")
+        signature = Convert-TimelineText -Value (Get-PropertyValue -Object $plan -Name "signature" -Default "")
+        expectedSignature = Convert-TimelineText -Value (Get-PropertyValue -Object $plan -Name "signature" -Default "")
+        summarySignature = Convert-TimelineText -Value (Get-PropertyValue -Object $plan -Name "summarySignature" -Default "")
+        expectedSummarySignature = Convert-TimelineText -Value (Get-PropertyValue -Object $plan -Name "summarySignature" -Default "")
+        signatureState = "current"
+        promptVersion = Convert-TimelineText -Value (Get-PropertyValue -Object $plan -Name "promptVersion" -Default "")
+        totalTurns = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $status -Name "totalTurns" -Default 0)
+        verbalizedTurns = 0
+        totalChunks = $chunks.Count
+        completedChunks = 0
+        jobId = $JobId
+        currentChunkId = if ($chunks.Count -gt 0) { Convert-TimelineText -Value (Get-PropertyValue -Object $chunks[0] -Name "chunkId" -Default "") } else { "" }
+        planPath = $planPath
+        resultPath = $resultPath
+        startedAt = ""
+        elapsedSec = 0
+        estimatedRemainingSec = 0
+        updatedAt = $now
+        message = $InitialMessage
+    }
+
+    Write-TimelineUtf8JsonFile -Path $resultPath -Payload ([ordered]@{
+        schemaVersion = 1
+        status = $plannedStatus
+        turns = @()
+        chunks = @($chunks | ForEach-Object {
+            $chunkId = Convert-TimelineText -Value (Get-PropertyValue -Object $_ -Name "chunkId" -Default "")
+            [ordered]@{
+                chunkId = $chunkId
+                sequence = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $_ -Name "sequence" -Default 0)
+                state = Convert-TimelineText -Value (Get-PropertyValue -Object $_ -Name "state" -Default "planned")
+                startSec = Get-PropertyValue -Object $_ -Name "startSec" -Default 0
+                endSec = Get-PropertyValue -Object $_ -Name "endSec" -Default 0
+                turnCount = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $_ -Name "turnCount" -Default 0)
+                contextPath = if ($chunkId) { Join-Path $contextDirectory "$chunkId.context.json" } else { "" }
+                summaryPath = if ($chunkId) { Join-Path $contextDirectory "$chunkId.summary.json" } else { "" }
+            }
+        })
+    })
+    [void](Write-TimelineAudioVerbalizationContextFiles `
+        -Plan $plan `
+        -Directory $directory `
+        -ProgressCallback $PreparationProgressCallback)
+
+    return [ordered]@{
+        canRun = $true
+        status = $plannedStatus
+        plan = $plan
+        directory = $directory
+        resultPath = $resultPath
+        sourceId = $SourceId
+        relativePath = $RelativePath
+        audioItemId = $audioItemId
+        fileName = Convert-TimelineText -Value (Get-PropertyValue -Object $file -Name "fileName" -Default "")
+    }
 }
 
 function Start-TimelineAudioVerbalizationWorker {
@@ -6689,6 +9727,75 @@ function Start-TimelineAudioVerbalizationWorker {
         })
 }
 
+function Start-TimelineAudioVerbalizationBulkWorker {
+    param([string]$JobId)
+
+    if (-not $JobId) {
+        throw "Audio verbalization bulk job id is required."
+    }
+
+    $workerScript = Join-Path $TimelineProductPath "scripts\audio-verbalization-bulk-worker.ps1"
+    if (-not (Test-Path -LiteralPath $workerScript -PathType Leaf)) {
+        throw "Audio verbalization bulk worker script was not found."
+    }
+
+    Write-TimelineOperationEvent `
+        -OperationId $JobId `
+        -Kind "worker" `
+        -ProductName "Timeline" `
+        -Action "audio_verbalization_bulk" `
+        -State "starting" `
+        -Message "Audio verbalization bulk worker process is starting." `
+        -Details ([ordered]@{
+            workerScript = $workerScript
+        })
+
+    $arguments = @(
+        "-NoLogo",
+        "-NoProfile",
+        "-STA",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        $workerScript,
+        "-JobId",
+        $JobId,
+        "-TimelineProductPath",
+        $TimelineProductPath,
+        "-AudioProductPath",
+        $AudioProductPath,
+        "-WindowsCodexProductPath",
+        $WindowsCodexProductPath,
+        "-ChatGptProductPath",
+        $ChatGptProductPath,
+        "-ImageProductPath",
+        $ImageProductPath
+    )
+
+    $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
+    $startInfo.FileName = Get-TimelinePowerShellPath
+    $startInfo.Arguments = ($arguments | ForEach-Object { Format-TimelineProcessArgument -Value ([string]$_) }) -join " "
+    $startInfo.WorkingDirectory = $TimelineProductPath
+    $startInfo.UseShellExecute = $false
+    $startInfo.CreateNoWindow = $true
+    $environment = Get-TimelineChildProcessEnvironment
+    foreach ($key in @($environment.Keys)) {
+        $startInfo.EnvironmentVariables[[string]$key] = [string]$environment[$key]
+    }
+
+    [System.Diagnostics.Process]::Start($startInfo) | Out-Null
+    Write-TimelineOperationEvent `
+        -OperationId $JobId `
+        -Kind "worker" `
+        -ProductName "Timeline" `
+        -Action "audio_verbalization_bulk" `
+        -State "queued" `
+        -Message "Audio verbalization bulk worker process was started." `
+        -Details ([ordered]@{
+            workerScript = $workerScript
+        })
+}
+
 function Get-TimelineAudioVerbalizationStatusFromDetail {
     param([object]$Detail)
 
@@ -6702,6 +9809,7 @@ function Get-TimelineAudioVerbalizationStatusFromDetail {
             model = "qwen3.5:9b"
             totalTurns = 0
             verbalizedTurns = 0
+            unresolvedTurns = 0
             totalChunks = 0
             completedChunks = 0
             jobId = ""
@@ -6732,6 +9840,7 @@ function Get-TimelineAudioVerbalizationStatusFromDetail {
             model = $model
             totalTurns = @($turns).Count
             verbalizedTurns = 0
+            unresolvedTurns = 0
             totalChunks = 0
             completedChunks = 0
             jobId = ""
@@ -6743,17 +9852,20 @@ function Get-TimelineAudioVerbalizationStatusFromDetail {
         }
     }
 
+    $expectedSignatureSet = New-TimelineAudioVerbalizationSignatureSetFromDetail `
+        -Detail $Detail `
+        -VerbalizationSettings $verbalizationSettings
     $directory = Get-TimelineAudioVerbalizationDirectory -AudioItemId $audioItemId
     $planPath = Join-Path $directory "verbalization-plan.json"
     $resultPath = Join-Path $directory "audio-verbalization.json"
+    $planChunkCount = Get-TimelineAudioVerbalizationPlanChunkCount -PlanPath $planPath
     if (-not (Test-Path -LiteralPath $resultPath -PathType Leaf)) {
         $state = "not_started"
-        $totalChunks = 0
+        $totalChunks = $planChunkCount
         $updatedAt = ""
         if (Test-Path -LiteralPath $planPath -PathType Leaf) {
             try {
                 $planPayload = Get-Content -LiteralPath $planPath -Raw -Encoding UTF8 | ConvertFrom-Json
-                $totalChunks = @(Get-PropertyValue -Object $planPayload -Name "chunks" -Default @()).Count
                 $updatedAt = Convert-TimelineText -Value (Get-PropertyValue -Object $planPayload -Name "createdAt" -Default "")
                 $state = "planned"
             }
@@ -6768,8 +9880,15 @@ function Get-TimelineAudioVerbalizationStatusFromDetail {
             sourceFileIdentity = $sourceFileIdentity
             language = $language
             model = $model
+            signature = ""
+            expectedSignature = Convert-TimelineText -Value (Get-PropertyValue -Object $expectedSignatureSet -Name "signature" -Default "")
+            summarySignature = ""
+            expectedSummarySignature = Convert-TimelineText -Value (Get-PropertyValue -Object $expectedSignatureSet -Name "summarySignature" -Default "")
+            signatureState = "not_started"
+            promptVersion = Convert-TimelineText -Value (Get-PropertyValue -Object $expectedSignatureSet -Name "promptVersion" -Default "")
             totalTurns = @($turns).Count
             verbalizedTurns = 0
+            unresolvedTurns = 0
             totalChunks = $totalChunks
             completedChunks = 0
             jobId = ""
@@ -6784,18 +9903,51 @@ function Get-TimelineAudioVerbalizationStatusFromDetail {
     try {
         $payload = Get-Content -LiteralPath $resultPath -Raw -Encoding UTF8 | ConvertFrom-Json
         $status = Get-PropertyValue -Object $payload -Name "status" -Default @{}
-        $verbalizedTurns = @(Get-PropertyValue -Object $payload -Name "turns" -Default @()).Count
+        $resultTurns = @(Get-PropertyValue -Object $payload -Name "turns" -Default @())
+        $resultChunks = @(Get-PropertyValue -Object $payload -Name "chunks" -Default @())
+        $signatureComparison = Compare-TimelineAudioVerbalizationSignature `
+            -Status $status `
+            -Expected $expectedSignatureSet
+        $counts = New-TimelineAudioVerbalizationCountSnapshot `
+            -Status $status `
+            -SourceTurns $turns `
+            -ResultTurns $resultTurns `
+            -ResultChunks $resultChunks `
+            -FallbackTotalTurns (@($turns).Count) `
+            -FallbackTotalChunks $planChunkCount
+        $verbalizedTurns = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $counts -Name "verbalizedTurns" -Default 0)
+        $unresolvedTurns = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $counts -Name "unresolvedTurns" -Default 0)
+        $state = Convert-TimelineText -Value (Get-PropertyValue -Object $status -Name "state" -Default "completed")
+        if ($state.Equals("completed", [System.StringComparison]::OrdinalIgnoreCase) -and $unresolvedTurns -gt 0) {
+            $state = "needs_review"
+        }
+        $message = Convert-TimelineText -Value (Get-PropertyValue -Object $status -Name "message" -Default "")
+        if ($state.Equals("needs_review", [System.StringComparison]::OrdinalIgnoreCase) -and (-not $message -or $message.Equals("Audio verbalization completed.", [System.StringComparison]::OrdinalIgnoreCase))) {
+            $message = "Audio verbalization has unresolved turns."
+        }
+        if (@("completed", "needs_review") -contains $state.ToLowerInvariant() -and
+            (Convert-TimelineText -Value (Get-PropertyValue -Object $signatureComparison -Name "signatureState" -Default "")) -eq "changed") {
+            $state = "stale"
+            $message = "Audio verbalization input signature changed."
+        }
         return [ordered]@{
             available = $true
-            state = Convert-TimelineText -Value (Get-PropertyValue -Object $status -Name "state" -Default "completed")
+            state = $state
             audioItemId = $audioItemId
             sourceFileIdentity = $sourceFileIdentity
             language = Convert-TimelineText -Value (Get-PropertyValue -Object $status -Name "language" -Default $language)
             model = Convert-TimelineText -Value (Get-PropertyValue -Object $status -Name "model" -Default $model)
-            totalTurns = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $status -Name "totalTurns" -Default @($turns).Count)
-            verbalizedTurns = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $status -Name "verbalizedTurns" -Default $verbalizedTurns)
-            totalChunks = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $status -Name "totalChunks" -Default 0)
-            completedChunks = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $status -Name "completedChunks" -Default 0)
+            signature = Convert-TimelineText -Value (Get-PropertyValue -Object $signatureComparison -Name "signature" -Default "")
+            expectedSignature = Convert-TimelineText -Value (Get-PropertyValue -Object $signatureComparison -Name "expectedSignature" -Default "")
+            summarySignature = Convert-TimelineText -Value (Get-PropertyValue -Object $signatureComparison -Name "summarySignature" -Default "")
+            expectedSummarySignature = Convert-TimelineText -Value (Get-PropertyValue -Object $signatureComparison -Name "expectedSummarySignature" -Default "")
+            signatureState = Convert-TimelineText -Value (Get-PropertyValue -Object $signatureComparison -Name "signatureState" -Default "")
+            promptVersion = Convert-TimelineText -Value (Get-PropertyValue -Object $signatureComparison -Name "promptVersion" -Default "")
+            totalTurns = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $counts -Name "totalTurns" -Default 0)
+            verbalizedTurns = $verbalizedTurns
+            unresolvedTurns = $unresolvedTurns
+            totalChunks = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $counts -Name "totalChunks" -Default 0)
+            completedChunks = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $counts -Name "completedChunks" -Default 0)
             jobId = Convert-TimelineText -Value (Get-PropertyValue -Object $status -Name "jobId" -Default "")
             currentChunkId = Convert-TimelineText -Value (Get-PropertyValue -Object $status -Name "currentChunkId" -Default "")
             planPath = $planPath
@@ -6804,7 +9956,7 @@ function Get-TimelineAudioVerbalizationStatusFromDetail {
             elapsedSec = [double](Convert-TimelineAudioNumber -Value (Get-PropertyValue -Object $status -Name "elapsedSec" -Default 0))
             estimatedRemainingSec = [double](Convert-TimelineAudioNumber -Value (Get-PropertyValue -Object $status -Name "estimatedRemainingSec" -Default 0))
             updatedAt = Convert-TimelineText -Value (Get-PropertyValue -Object $status -Name "updatedAt" -Default "")
-            message = Convert-TimelineText -Value (Get-PropertyValue -Object $status -Name "message" -Default "")
+            message = $message
         }
     }
     catch {
@@ -6815,8 +9967,15 @@ function Get-TimelineAudioVerbalizationStatusFromDetail {
             sourceFileIdentity = $sourceFileIdentity
             language = $language
             model = $model
+            signature = ""
+            expectedSignature = Convert-TimelineText -Value (Get-PropertyValue -Object $expectedSignatureSet -Name "signature" -Default "")
+            summarySignature = ""
+            expectedSummarySignature = Convert-TimelineText -Value (Get-PropertyValue -Object $expectedSignatureSet -Name "summarySignature" -Default "")
+            signatureState = "unreadable"
+            promptVersion = Convert-TimelineText -Value (Get-PropertyValue -Object $expectedSignatureSet -Name "promptVersion" -Default "")
             totalTurns = @($turns).Count
             verbalizedTurns = 0
+            unresolvedTurns = 0
             totalChunks = 0
             completedChunks = 0
             jobId = ""
@@ -6845,6 +10004,7 @@ function Get-TimelineAudioVerbalizationStatusFromFileRow {
             model = "qwen3.5:9b"
             totalTurns = 0
             verbalizedTurns = 0
+            unresolvedTurns = 0
             totalChunks = 0
             completedChunks = 0
             jobId = ""
@@ -6866,6 +10026,10 @@ function Get-TimelineAudioVerbalizationStatusFromFileRow {
     $audioItemId = Convert-TimelineText -Value (Get-PropertyValue -Object $FileRow -Name "itemId" -Default "")
     $sourceFileIdentity = Convert-TimelineText -Value (Get-PropertyValue -Object $FileRow -Name "sourceFileIdentity" -Default "")
     $totalTurns = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $FileRow -Name "turnCount" -Default 0)
+    $expectedSignatureSet = New-TimelineAudioVerbalizationSignatureSetFromFileRow `
+        -FileRow $FileRow `
+        -VerbalizationSettings $verbalizationSettings
+    $expectedSignatureSet["signature"] = ""
 
     if (-not [bool](Get-PropertyValue -Object $FileRow -Name "hasTimeline" -Default $false)) {
         return [ordered]@{
@@ -6875,8 +10039,15 @@ function Get-TimelineAudioVerbalizationStatusFromFileRow {
             sourceFileIdentity = $sourceFileIdentity
             language = $language
             model = $model
+            signature = ""
+            expectedSignature = ""
+            summarySignature = ""
+            expectedSummarySignature = Convert-TimelineText -Value (Get-PropertyValue -Object $expectedSignatureSet -Name "summarySignature" -Default "")
+            signatureState = "unavailable"
+            promptVersion = Convert-TimelineText -Value (Get-PropertyValue -Object $expectedSignatureSet -Name "promptVersion" -Default "")
             totalTurns = $totalTurns
             verbalizedTurns = 0
+            unresolvedTurns = 0
             totalChunks = 0
             completedChunks = 0
             jobId = ""
@@ -6896,8 +10067,15 @@ function Get-TimelineAudioVerbalizationStatusFromFileRow {
             sourceFileIdentity = $sourceFileIdentity
             language = $language
             model = $model
+            signature = ""
+            expectedSignature = ""
+            summarySignature = ""
+            expectedSummarySignature = Convert-TimelineText -Value (Get-PropertyValue -Object $expectedSignatureSet -Name "summarySignature" -Default "")
+            signatureState = "unavailable"
+            promptVersion = Convert-TimelineText -Value (Get-PropertyValue -Object $expectedSignatureSet -Name "promptVersion" -Default "")
             totalTurns = $totalTurns
             verbalizedTurns = 0
+            unresolvedTurns = 0
             totalChunks = 0
             completedChunks = 0
             jobId = ""
@@ -6912,15 +10090,15 @@ function Get-TimelineAudioVerbalizationStatusFromFileRow {
     $directory = Get-TimelineAudioVerbalizationDirectory -AudioItemId $audioItemId
     $planPath = Join-Path $directory "verbalization-plan.json"
     $resultPath = Join-Path $directory "audio-verbalization.json"
+    $planChunkCount = Get-TimelineAudioVerbalizationPlanChunkCount -PlanPath $planPath
 
     if (-not (Test-Path -LiteralPath $resultPath -PathType Leaf)) {
         $state = "not_started"
-        $totalChunks = 0
+        $totalChunks = $planChunkCount
         $updatedAt = ""
         if (Test-Path -LiteralPath $planPath -PathType Leaf) {
             try {
                 $planPayload = Get-Content -LiteralPath $planPath -Raw -Encoding UTF8 | ConvertFrom-Json
-                $totalChunks = @(Get-PropertyValue -Object $planPayload -Name "chunks" -Default @()).Count
                 $updatedAt = Convert-TimelineText -Value (Get-PropertyValue -Object $planPayload -Name "createdAt" -Default "")
                 $state = "planned"
             }
@@ -6935,8 +10113,15 @@ function Get-TimelineAudioVerbalizationStatusFromFileRow {
             sourceFileIdentity = $sourceFileIdentity
             language = $language
             model = $model
+            signature = ""
+            expectedSignature = ""
+            summarySignature = ""
+            expectedSummarySignature = Convert-TimelineText -Value (Get-PropertyValue -Object $expectedSignatureSet -Name "summarySignature" -Default "")
+            signatureState = "not_started"
+            promptVersion = Convert-TimelineText -Value (Get-PropertyValue -Object $expectedSignatureSet -Name "promptVersion" -Default "")
             totalTurns = $totalTurns
             verbalizedTurns = 0
+            unresolvedTurns = 0
             totalChunks = $totalChunks
             completedChunks = 0
             jobId = ""
@@ -6951,18 +10136,67 @@ function Get-TimelineAudioVerbalizationStatusFromFileRow {
     try {
         $payload = Get-Content -LiteralPath $resultPath -Raw -Encoding UTF8 | ConvertFrom-Json
         $status = Get-PropertyValue -Object $payload -Name "status" -Default @{}
-        $verbalizedTurns = @(Get-PropertyValue -Object $payload -Name "turns" -Default @()).Count
+        $signatureComparison = Compare-TimelineAudioVerbalizationSignature `
+            -Status $status `
+            -Expected $expectedSignatureSet
+        $statusTotalTurns = Get-PropertyValue -Object $status -Name "totalTurns" -Default $null
+        $statusVerbalizedTurns = Get-PropertyValue -Object $status -Name "verbalizedTurns" -Default $null
+        $statusUnresolvedTurns = Get-PropertyValue -Object $status -Name "unresolvedTurns" -Default $null
+        $statusTotalChunks = Get-PropertyValue -Object $status -Name "totalChunks" -Default $null
+        $statusCompletedChunks = Get-PropertyValue -Object $status -Name "completedChunks" -Default $null
+        if ($null -ne $statusTotalTurns -and $null -ne $statusVerbalizedTurns -and $null -ne $statusUnresolvedTurns -and $null -ne $statusTotalChunks -and $null -ne $statusCompletedChunks) {
+            $counts = [ordered]@{
+                totalTurns = Convert-TimelineAudioInt -Value $statusTotalTurns
+                verbalizedTurns = Convert-TimelineAudioInt -Value $statusVerbalizedTurns
+                unresolvedTurns = Convert-TimelineAudioInt -Value $statusUnresolvedTurns
+                totalChunks = Convert-TimelineAudioInt -Value $statusTotalChunks
+                completedChunks = Convert-TimelineAudioInt -Value $statusCompletedChunks
+            }
+        }
+        else {
+            $resultTurns = @(Get-PropertyValue -Object $payload -Name "turns" -Default @())
+            $resultChunks = @(Get-PropertyValue -Object $payload -Name "chunks" -Default @())
+            $counts = New-TimelineAudioVerbalizationCountSnapshot `
+                -Status $status `
+                -SourceTurns @() `
+                -ResultTurns $resultTurns `
+                -ResultChunks $resultChunks `
+                -FallbackTotalTurns $totalTurns `
+                -FallbackTotalChunks $planChunkCount
+        }
+        $verbalizedTurns = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $counts -Name "verbalizedTurns" -Default 0)
+        $unresolvedTurns = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $counts -Name "unresolvedTurns" -Default 0)
+        $state = Convert-TimelineText -Value (Get-PropertyValue -Object $status -Name "state" -Default "completed")
+        if ($state.Equals("completed", [System.StringComparison]::OrdinalIgnoreCase) -and $unresolvedTurns -gt 0) {
+            $state = "needs_review"
+        }
+        $message = Convert-TimelineText -Value (Get-PropertyValue -Object $status -Name "message" -Default "")
+        if ($state.Equals("needs_review", [System.StringComparison]::OrdinalIgnoreCase) -and (-not $message -or $message.Equals("Audio verbalization completed.", [System.StringComparison]::OrdinalIgnoreCase))) {
+            $message = "Audio verbalization has unresolved turns."
+        }
+        if (@("completed", "needs_review") -contains $state.ToLowerInvariant() -and
+            (Convert-TimelineText -Value (Get-PropertyValue -Object $signatureComparison -Name "signatureState" -Default "")) -eq "changed") {
+            $state = "stale"
+            $message = "Audio verbalization input signature changed."
+        }
         return [ordered]@{
             available = $true
-            state = Convert-TimelineText -Value (Get-PropertyValue -Object $status -Name "state" -Default "completed")
+            state = $state
             audioItemId = $audioItemId
             sourceFileIdentity = $sourceFileIdentity
             language = Convert-TimelineText -Value (Get-PropertyValue -Object $status -Name "language" -Default $language)
             model = Convert-TimelineText -Value (Get-PropertyValue -Object $status -Name "model" -Default $model)
-            totalTurns = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $status -Name "totalTurns" -Default $totalTurns)
-            verbalizedTurns = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $status -Name "verbalizedTurns" -Default $verbalizedTurns)
-            totalChunks = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $status -Name "totalChunks" -Default 0)
-            completedChunks = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $status -Name "completedChunks" -Default 0)
+            signature = Convert-TimelineText -Value (Get-PropertyValue -Object $signatureComparison -Name "signature" -Default "")
+            expectedSignature = ""
+            summarySignature = Convert-TimelineText -Value (Get-PropertyValue -Object $signatureComparison -Name "summarySignature" -Default "")
+            expectedSummarySignature = Convert-TimelineText -Value (Get-PropertyValue -Object $signatureComparison -Name "expectedSummarySignature" -Default "")
+            signatureState = Convert-TimelineText -Value (Get-PropertyValue -Object $signatureComparison -Name "signatureState" -Default "")
+            promptVersion = Convert-TimelineText -Value (Get-PropertyValue -Object $signatureComparison -Name "promptVersion" -Default "")
+            totalTurns = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $counts -Name "totalTurns" -Default 0)
+            verbalizedTurns = $verbalizedTurns
+            unresolvedTurns = $unresolvedTurns
+            totalChunks = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $counts -Name "totalChunks" -Default 0)
+            completedChunks = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $counts -Name "completedChunks" -Default 0)
             jobId = Convert-TimelineText -Value (Get-PropertyValue -Object $status -Name "jobId" -Default "")
             currentChunkId = Convert-TimelineText -Value (Get-PropertyValue -Object $status -Name "currentChunkId" -Default "")
             planPath = $planPath
@@ -6971,7 +10205,7 @@ function Get-TimelineAudioVerbalizationStatusFromFileRow {
             elapsedSec = [double](Convert-TimelineAudioNumber -Value (Get-PropertyValue -Object $status -Name "elapsedSec" -Default 0))
             estimatedRemainingSec = [double](Convert-TimelineAudioNumber -Value (Get-PropertyValue -Object $status -Name "estimatedRemainingSec" -Default 0))
             updatedAt = Convert-TimelineText -Value (Get-PropertyValue -Object $status -Name "updatedAt" -Default "")
-            message = Convert-TimelineText -Value (Get-PropertyValue -Object $status -Name "message" -Default "")
+            message = $message
         }
     }
     catch {
@@ -6982,8 +10216,15 @@ function Get-TimelineAudioVerbalizationStatusFromFileRow {
             sourceFileIdentity = $sourceFileIdentity
             language = $language
             model = $model
+            signature = ""
+            expectedSignature = ""
+            summarySignature = ""
+            expectedSummarySignature = Convert-TimelineText -Value (Get-PropertyValue -Object $expectedSignatureSet -Name "summarySignature" -Default "")
+            signatureState = "unreadable"
+            promptVersion = Convert-TimelineText -Value (Get-PropertyValue -Object $expectedSignatureSet -Name "promptVersion" -Default "")
             totalTurns = $totalTurns
             verbalizedTurns = 0
+            unresolvedTurns = 0
             totalChunks = 0
             completedChunks = 0
             jobId = ""
@@ -7029,7 +10270,7 @@ function Get-TimelineAudioVerbalizationResult {
         $payload = Get-Content -LiteralPath $resultPath -Raw -Encoding UTF8 | ConvertFrom-Json
         return [ordered]@{
             available = $true
-            status = (Get-PropertyValue -Object $payload -Name "status" -Default $status)
+            status = $status
             turns = @(Get-PropertyValue -Object $payload -Name "turns" -Default @())
             chunks = @(Get-PropertyValue -Object $payload -Name "chunks" -Default @())
             message = ""
@@ -7046,6 +10287,263 @@ function Get-TimelineAudioVerbalizationResult {
     }
 }
 
+function Invoke-TimelineAudioVerbalizationBulkExecution {
+    param([string]$JobId)
+
+    if (-not $JobId) {
+        throw "Audio verbalization bulk job id is required."
+    }
+
+    $status = Copy-TimelineAudioVerbalizationStatus -Status (Get-TimelineAudioVerbalizationBulkStatus -JobId $JobId)
+    if (-not $status.Contains("jobId") -or -not (Convert-TimelineText -Value (Get-PropertyValue -Object $status -Name "jobId" -Default ""))) {
+        $status = New-TimelineAudioVerbalizationBulkStatus -JobId $JobId -State "running" -Message "Audio verbalization bulk job is running."
+    }
+    $status["state"] = "running"
+    $status["message"] = "Audio verbalization bulk job is collecting targets."
+    if (-not (Convert-TimelineText -Value (Get-PropertyValue -Object $status -Name "startedAt" -Default ""))) {
+        $status["startedAt"] = [DateTimeOffset]::Now.ToString("o")
+    }
+    Write-TimelineAudioVerbalizationBulkStatus -Status $status
+
+    Write-TimelineOperationEvent `
+        -OperationId $JobId `
+        -Kind "worker" `
+        -ProductName "Timeline" `
+        -Action "audio_verbalization_bulk" `
+        -State "running" `
+        -Message "Audio verbalization bulk execution started."
+
+    $targets = @(Get-TimelineAudioVerbalizationBulkTargets)
+    $totalTurns = 0
+    $totalChunks = 0
+    foreach ($target in $targets) {
+        $targetStatus = Get-PropertyValue -Object $target -Name "audioVerbalization" -Default @{}
+        $totalTurns += Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $targetStatus -Name "totalTurns" -Default 0)
+        $totalChunks += Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $targetStatus -Name "totalChunks" -Default 0)
+    }
+
+    $status["totalItems"] = $targets.Count
+    $status["totalTurns"] = $totalTurns
+    $status["totalChunks"] = $totalChunks
+    $status["message"] = if ($targets.Count -gt 0) { "Audio verbalization bulk job is running." } else { "No audio files need verbalization." }
+    if ($targets.Count -eq 0) {
+        $status["state"] = "completed"
+        $status["completedAt"] = [DateTimeOffset]::Now.ToString("o")
+        Write-TimelineAudioVerbalizationBulkStatus -Status $status
+        Write-TimelineOperationEvent `
+            -OperationId $JobId `
+            -Kind "worker" `
+            -ProductName "Timeline" `
+            -Action "audio_verbalization_bulk" `
+            -State "completed" `
+            -Message "No audio files need verbalization."
+        return $status
+    }
+    Write-TimelineAudioVerbalizationBulkStatus -Status $status
+
+    $completedItems = 0
+    $reviewItems = 0
+    $failedItems = 0
+    $skippedItems = 0
+    $completedChunksBase = 0
+    $verbalizedTurnsBase = 0
+    $unresolvedTurnsBase = 0
+    foreach ($target in $targets) {
+        $sourceId = Convert-TimelineText -Value (Get-PropertyValue -Object $target -Name "sourceId" -Default "")
+        $relativePath = Convert-TimelineText -Value (Get-PropertyValue -Object $target -Name "relativePath" -Default "")
+        $fileName = Convert-TimelineText -Value (Get-PropertyValue -Object $target -Name "fileName" -Default "")
+        if (-not $fileName) {
+            $fileName = $relativePath
+        }
+
+        $status["currentAudioItemId"] = Convert-TimelineText -Value (Get-PropertyValue -Object $target -Name "itemId" -Default "")
+        $status["currentFileName"] = $fileName
+        $status["currentRelativePath"] = $relativePath
+        $status["currentChunkId"] = ""
+        $status["currentItemCompletedChunks"] = 0
+        $status["currentItemTotalChunks"] = 0
+        $status["completedItems"] = $completedItems
+        $status["reviewItems"] = $reviewItems
+        $status["failedItems"] = $failedItems
+        $status["skippedItems"] = $skippedItems
+        $status["message"] = "Audio verbalization bulk job is preparing the current file."
+        Write-TimelineAudioVerbalizationBulkStatus -Status $status
+
+        try {
+            $bulkStatus = $status
+            $preparationCallback = {
+                param($ChunkId, $CompletedChunks, $TotalChunks)
+                $bulkStatus["currentChunkId"] = Convert-TimelineText -Value $ChunkId
+                $bulkStatus["currentItemCompletedChunks"] = Convert-TimelineAudioInt -Value $CompletedChunks
+                $bulkStatus["currentItemTotalChunks"] = Convert-TimelineAudioInt -Value $TotalChunks
+                $bulkStatus["message"] = "Audio verbalization bulk job is preparing context files."
+                Write-TimelineAudioVerbalizationBulkStatus -Status $bulkStatus
+            }.GetNewClosure()
+            $context = New-TimelineAudioVerbalizationExecutionContext `
+                -SourceId $sourceId `
+                -RelativePath $relativePath `
+                -JobId $JobId `
+                -InitialState "queued" `
+                -InitialMessage "Audio verbalization is queued in a bulk job." `
+                -PreparationProgressCallback $preparationCallback
+
+            if (-not [bool](Get-PropertyValue -Object $context -Name "canRun" -Default $false)) {
+                $skippedItems++
+                $status["skippedItems"] = $skippedItems
+                $status["message"] = "Audio verbalization bulk job skipped a file."
+                Write-TimelineAudioVerbalizationBulkStatus -Status $status
+                continue
+            }
+
+            $itemStatus = Get-PropertyValue -Object $context -Name "status" -Default @{}
+            $itemTotalChunks = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $itemStatus -Name "totalChunks" -Default 0)
+            $status["currentAudioItemId"] = Convert-TimelineText -Value (Get-PropertyValue -Object $context -Name "audioItemId" -Default "")
+            $status["currentFileName"] = Convert-TimelineText -Value (Get-PropertyValue -Object $context -Name "fileName" -Default $fileName)
+            $status["currentRelativePath"] = $relativePath
+            $status["currentItemTotalChunks"] = $itemTotalChunks
+            $status["totalChunks"] = $totalChunks
+            $status["message"] = "Audio verbalization bulk job is processing the current file."
+            Write-TimelineAudioVerbalizationBulkStatus -Status $status
+
+            $progressCallback = {
+                param($FileStatus, $Chunk, $CompletedChunks, $TotalChunks)
+                $bulkStatus["currentChunkId"] = Convert-TimelineText -Value (Get-PropertyValue -Object $FileStatus -Name "currentChunkId" -Default "")
+                $bulkStatus["currentItemCompletedChunks"] = Convert-TimelineAudioInt -Value $CompletedChunks
+                $bulkStatus["currentItemTotalChunks"] = Convert-TimelineAudioInt -Value $TotalChunks
+                $bulkStatus["completedChunks"] = $completedChunksBase + (Convert-TimelineAudioInt -Value $CompletedChunks)
+                $bulkStatus["verbalizedTurns"] = $verbalizedTurnsBase + (Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $FileStatus -Name "verbalizedTurns" -Default 0))
+                $bulkStatus["unresolvedTurns"] = $unresolvedTurnsBase + (Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $FileStatus -Name "unresolvedTurns" -Default 0))
+                $bulkStatus["message"] = "Audio verbalization bulk job is processing the current chunk."
+                Write-TimelineAudioVerbalizationBulkStatus -Status $bulkStatus
+            }.GetNewClosure()
+
+            $executionOutput = @(Invoke-TimelineAudioVerbalizationExecution `
+                -Plan (Get-PropertyValue -Object $context -Name "plan" -Default @{}) `
+                -Directory (Convert-TimelineText -Value (Get-PropertyValue -Object $context -Name "directory" -Default "")) `
+                -InitialStatus $itemStatus `
+                -ResultPath (Convert-TimelineText -Value (Get-PropertyValue -Object $context -Name "resultPath" -Default "")) `
+                -ProgressCallback $progressCallback)
+            $finalItemStatus = if ($executionOutput.Count -gt 0) { $executionOutput[-1] } else { @{} }
+
+            $finalState = (Convert-TimelineText -Value (Get-PropertyValue -Object $finalItemStatus -Name "state" -Default "")).ToLowerInvariant()
+            $finalCompletedChunks = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $finalItemStatus -Name "completedChunks" -Default 0)
+            $finalVerbalizedTurns = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $finalItemStatus -Name "verbalizedTurns" -Default 0)
+            $finalUnresolvedTurns = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $finalItemStatus -Name "unresolvedTurns" -Default 0)
+            $completedChunksBase += $finalCompletedChunks
+            $verbalizedTurnsBase += $finalVerbalizedTurns
+            $unresolvedTurnsBase += $finalUnresolvedTurns
+            if ($finalState -eq "completed") {
+                $completedItems++
+            }
+            elseif ($finalState -eq "needs_review") {
+                $reviewItems++
+            }
+            else {
+                $failedItems++
+            }
+        }
+        catch {
+            $failedItems++
+            $status["message"] = $_.Exception.Message
+            Write-TimelineOperationEvent `
+                -OperationId $JobId `
+                -Kind "worker" `
+                -ProductName "Timeline" `
+                -Action "audio_verbalization_bulk_item" `
+                -State "failed" `
+                -Message $_.Exception.Message `
+                -Details ([ordered]@{
+                    sourceId = $sourceId
+                    relativePath = $relativePath
+                })
+        }
+
+        $status["completedItems"] = $completedItems
+        $status["reviewItems"] = $reviewItems
+        $status["failedItems"] = $failedItems
+        $status["skippedItems"] = $skippedItems
+        $status["completedChunks"] = $completedChunksBase
+        $status["verbalizedTurns"] = $verbalizedTurnsBase
+        $status["unresolvedTurns"] = $unresolvedTurnsBase
+        $status["currentChunkId"] = ""
+        $status["message"] = "Audio verbalization bulk job moved to the next file."
+        Write-TimelineAudioVerbalizationBulkStatus -Status $status
+    }
+
+    $status["state"] = "completed"
+    $status["currentAudioItemId"] = ""
+    $status["currentFileName"] = ""
+    $status["currentRelativePath"] = ""
+    $status["currentChunkId"] = ""
+    $status["currentItemCompletedChunks"] = 0
+    $status["currentItemTotalChunks"] = 0
+    $status["completedAt"] = [DateTimeOffset]::Now.ToString("o")
+    $status["estimatedRemainingSec"] = 0
+    $status["message"] = if ($failedItems -gt 0) { "Audio verbalization bulk job completed with failed files." } elseif ($reviewItems -gt 0) { "Audio verbalization bulk job completed with review files." } else { "Audio verbalization bulk job completed." }
+    Write-TimelineAudioVerbalizationBulkStatus -Status $status
+    Write-TimelineOperationEvent `
+        -OperationId $JobId `
+        -Kind "worker" `
+        -ProductName "Timeline" `
+        -Action "audio_verbalization_bulk" `
+        -State "completed" `
+        -Message $status["message"] `
+        -Details ([ordered]@{
+            totalItems = $targets.Count
+            completedItems = $completedItems
+            reviewItems = $reviewItems
+            failedItems = $failedItems
+            skippedItems = $skippedItems
+            verbalizedTurns = $verbalizedTurnsBase
+            unresolvedTurns = $unresolvedTurnsBase
+        })
+    return $status
+}
+
+function Start-TimelineAudioVerbalizationBulk {
+    $latestStatus = Get-TimelineAudioVerbalizationBulkStatus
+    if (Test-TimelineAudioVerbalizationBulkActive -Status $latestStatus) {
+        $latestJobId = Convert-TimelineText -Value (Get-PropertyValue -Object $latestStatus -Name "jobId" -Default "")
+        if (Test-TimelineAudioVerbalizationBulkWorkerProcessActive -JobId $latestJobId) {
+            return $latestStatus
+        }
+
+        $latestStatus["state"] = "failed"
+        $latestStatus["completedAt"] = [DateTimeOffset]::Now.ToString("o")
+        $latestStatus["message"] = "Audio verbalization bulk job was marked failed because its worker process was not found."
+        Write-TimelineAudioVerbalizationBulkStatus -Status $latestStatus
+        Write-TimelineOperationEvent `
+            -OperationId $latestJobId `
+            -Kind "worker" `
+            -ProductName "Timeline" `
+            -Action "audio_verbalization_bulk" `
+            -State "failed" `
+            -Message $latestStatus["message"]
+    }
+
+    $jobId = New-TimelineAudioVerbalizationBulkJobId
+    $status = New-TimelineAudioVerbalizationBulkStatus -JobId $jobId -State "queued" -Message "Audio verbalization bulk worker has been queued."
+    Write-TimelineAudioVerbalizationBulkStatus -Status $status
+    try {
+        Start-TimelineAudioVerbalizationBulkWorker -JobId $jobId
+    }
+    catch {
+        $status["state"] = "failed"
+        $status["message"] = $_.Exception.Message
+        $status["completedAt"] = [DateTimeOffset]::Now.ToString("o")
+        Write-TimelineAudioVerbalizationBulkStatus -Status $status
+        Write-TimelineOperationEvent `
+            -OperationId $jobId `
+            -Kind "worker" `
+            -ProductName "Timeline" `
+            -Action "audio_verbalization_bulk" `
+            -State "failed" `
+            -Message $_.Exception.Message
+    }
+
+    return $status
+}
+
 function Start-TimelineAudioVerbalization {
     param([object]$Request)
 
@@ -7055,55 +10553,23 @@ function Start-TimelineAudioVerbalization {
         $relativePath = Convert-TimelineText -Value (Get-PropertyValue -Object $Request -Name "path" -Default "")
     }
 
-    $detail = Get-TimelineAudioFileDetail -SourceId $sourceId -RelativePath $relativePath
-    $status = Get-TimelineAudioVerbalizationStatusFromDetail -Detail $detail
-    if (-not [bool](Get-PropertyValue -Object $status -Name "available" -Default $false)) {
-        return $status
-    }
     $force = [bool](Get-PropertyValue -Object $Request -Name "force" -Default $false)
-    $currentState = (Convert-TimelineText -Value (Get-PropertyValue -Object $status -Name "state" -Default "")).ToLowerInvariant()
-    if (-not $force -and @("queued", "running") -contains $currentState) {
-        return $status
-    }
-
-    $settings = Read-TimelineAppSettings
-    $verbalizationSettings = Get-PropertyValue -Object $settings -Name "audioVerbalization" -Default (New-TimelineDefaultAudioVerbalizationSettings)
-    $audioItemId = Convert-TimelineText -Value (Get-PropertyValue -Object $status -Name "audioItemId" -Default "")
-    $directory = Get-TimelineAudioVerbalizationDirectory -AudioItemId $audioItemId -Create
-    [System.IO.Directory]::CreateDirectory((Join-Path $directory "context")) | Out-Null
-    [System.IO.Directory]::CreateDirectory((Join-Path $directory "results")) | Out-Null
-
-    $plan = New-TimelineAudioVerbalizationPlan -Detail $detail -VerbalizationSettings $verbalizationSettings
-    $planPath = Join-Path $directory "verbalization-plan.json"
-    $resultPath = Join-Path $directory "audio-verbalization.json"
-    Write-TimelineUtf8JsonFile -Path $planPath -Payload $plan
-    [void](Write-TimelineAudioVerbalizationContextFiles -Plan $plan -Directory $directory)
-    $contextDirectory = Join-Path $directory "context"
-
-    $chunks = @(Get-PropertyValue -Object $plan -Name "chunks" -Default @())
-    $now = [DateTimeOffset]::Now.ToString("o")
     $jobId = New-TimelineAudioVerbalizationJobId
-    $plannedStatus = [ordered]@{
-        available = $true
-        state = "queued"
-        audioItemId = $audioItemId
-        sourceFileIdentity = Convert-TimelineText -Value (Get-PropertyValue -Object $status -Name "sourceFileIdentity" -Default "")
-        language = Convert-TimelineText -Value (Get-PropertyValue -Object $verbalizationSettings -Name "language" -Default "ja-JP")
-        model = Convert-TimelineText -Value (Get-PropertyValue -Object $verbalizationSettings -Name "model" -Default "qwen3.5:9b")
-        totalTurns = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $status -Name "totalTurns" -Default 0)
-        verbalizedTurns = 0
-        totalChunks = $chunks.Count
-        completedChunks = 0
-        jobId = $jobId
-        currentChunkId = if ($chunks.Count -gt 0) { Convert-TimelineText -Value (Get-PropertyValue -Object $chunks[0] -Name "chunkId" -Default "") } else { "" }
-        planPath = $planPath
-        resultPath = $resultPath
-        startedAt = ""
-        elapsedSec = 0
-        estimatedRemainingSec = 0
-        updatedAt = $now
-        message = "Audio verbalization worker has been queued."
+    $context = New-TimelineAudioVerbalizationExecutionContext `
+        -SourceId $sourceId `
+        -RelativePath $relativePath `
+        -JobId $jobId `
+        -InitialState "queued" `
+        -InitialMessage "Audio verbalization worker has been queued." `
+        -Force:$force
+    $plannedStatus = Get-PropertyValue -Object $context -Name "status" -Default @{}
+    if (-not [bool](Get-PropertyValue -Object $context -Name "canRun" -Default $false)) {
+        return $plannedStatus
     }
+    $audioItemId = Convert-TimelineText -Value (Get-PropertyValue -Object $context -Name "audioItemId" -Default "")
+    $resultPath = Convert-TimelineText -Value (Get-PropertyValue -Object $context -Name "resultPath" -Default "")
+    $totalChunks = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $plannedStatus -Name "totalChunks" -Default 0)
+    $totalTurns = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $plannedStatus -Name "totalTurns" -Default 0)
     Write-TimelineOperationEvent `
         -OperationId $jobId `
         -Kind "operation" `
@@ -7115,29 +10581,10 @@ function Start-TimelineAudioVerbalization {
             sourceId = $sourceId
             relativePath = $relativePath
             audioItemId = $audioItemId
-            totalChunks = $chunks.Count
-            totalTurns = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $status -Name "totalTurns" -Default 0)
+            totalChunks = $totalChunks
+            totalTurns = $totalTurns
             resultPath = $resultPath
         })
-
-    Write-TimelineUtf8JsonFile -Path $resultPath -Payload ([ordered]@{
-        schemaVersion = 1
-        status = $plannedStatus
-        turns = @()
-        chunks = @($chunks | ForEach-Object {
-            $chunkId = Convert-TimelineText -Value (Get-PropertyValue -Object $_ -Name "chunkId" -Default "")
-            [ordered]@{
-                chunkId = $chunkId
-                sequence = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $_ -Name "sequence" -Default 0)
-                state = Convert-TimelineText -Value (Get-PropertyValue -Object $_ -Name "state" -Default "planned")
-                startSec = Get-PropertyValue -Object $_ -Name "startSec" -Default 0
-                endSec = Get-PropertyValue -Object $_ -Name "endSec" -Default 0
-                turnCount = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $_ -Name "turnCount" -Default 0)
-                contextPath = if ($chunkId) { Join-Path $contextDirectory "$chunkId.context.json" } else { "" }
-                summaryPath = if ($chunkId) { Join-Path $contextDirectory "$chunkId.summary.json" } else { "" }
-            }
-        })
-    })
 
     try {
         Start-TimelineAudioVerbalizationWorker -AudioItemId $audioItemId -JobId $jobId
@@ -7194,7 +10641,7 @@ function Get-TimelineAudioCatalogByIdentity {
 
     $catalogPath = Join-Path $outputRootPath ".timeline-for-audio\catalog.jsonl"
     if (Test-Path -LiteralPath $catalogPath) {
-        foreach ($line in Get-Content -LiteralPath $catalogPath -ErrorAction SilentlyContinue) {
+        foreach ($line in Get-Content -LiteralPath $catalogPath -Encoding UTF8 -ErrorAction SilentlyContinue) {
             if (-not ([string]$line).Trim()) {
                 continue
             }
@@ -7304,7 +10751,7 @@ function Get-TimelineAudioArtifactSummary {
     $summary.hasTimeline = $true
     $raw = ""
     try {
-        $raw = Get-Content -LiteralPath $timelinePath -Raw
+        $raw = Get-Content -LiteralPath $timelinePath -Raw -Encoding UTF8
         $payload = $raw | ConvertFrom-Json
         $turnCount = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $payload -Name "turn_count" -Default $null)
         $turns = @(Get-PropertyValue -Object $payload -Name "turns" -Default @())
@@ -7535,6 +10982,35 @@ function Get-TimelineAudioFilesFromSettings {
     }
 }
 
+function Get-TimelineAudioSourceFileCount {
+    param([object]$Settings)
+
+    $extensions = @($Settings.audioExtensions | ForEach-Object {
+        $text = ([string]$_).Trim().ToLowerInvariant()
+        if ($text.StartsWith(".")) { $text } else { ".$text" }
+    })
+    if ($extensions.Count -eq 0) {
+        $extensions = @(".mp3", ".wav", ".m4a", ".aac", ".flac")
+    }
+
+    $count = 0
+    foreach ($root in @($Settings.inputRoots)) {
+        if (-not [bool]$root.enabled -or -not [string]$root.path) {
+            continue
+        }
+        if (-not (Test-Path -LiteralPath ([string]$root.path))) {
+            continue
+        }
+        foreach ($file in Get-ChildItem -LiteralPath ([string]$root.path) -Recurse -File -ErrorAction SilentlyContinue) {
+            if ($extensions -contains $file.Extension.ToLowerInvariant()) {
+                $count += 1
+            }
+        }
+    }
+
+    return $count
+}
+
 function Get-TimelineAudioFiles {
     param(
         [int]$Page = 1,
@@ -7551,8 +11027,7 @@ function Get-TimelineAudioOverview {
     $activeRun = Get-TimelineActiveAudioRun -Settings $settings
     $audioFileCount = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $activeRun -Name "itemsTotal" -Default 0)
     if ($audioFileCount -le 0) {
-        $files = Get-TimelineAudioFilesFromSettings -Page 1 -PageSize 1
-        $audioFileCount = [int]$files.total
+        $audioFileCount = Get-TimelineAudioSourceFileCount -Settings $settings
     }
     return [ordered]@{
         productFound = (Test-Path -LiteralPath $AudioProductPath)
@@ -7861,6 +11336,7 @@ function Send-TimelineResponse {
     if ($bodyBytes.Length -gt 0) {
         $stream.Write($bodyBytes, 0, $bodyBytes.Length)
     }
+    $stream.Flush()
 }
 
 function Send-TimelineFileResponse {
@@ -7960,9 +11436,38 @@ function Send-TimelineFileResponse {
             $stream.Write($buffer, 0, $read)
             $remaining -= $read
         }
+        $stream.Flush()
     }
     finally {
         $fileStream.Dispose()
+    }
+}
+
+function Close-TimelineTcpClient {
+    param([System.Net.Sockets.TcpClient]$Client)
+
+    if ($null -eq $Client) {
+        return
+    }
+
+    try {
+        if ($Client.Connected) {
+            $Client.Client.Shutdown([System.Net.Sockets.SocketShutdown]::Both)
+        }
+    }
+    catch {
+    }
+
+    try {
+        $Client.Close()
+    }
+    catch {
+    }
+
+    try {
+        $Client.Dispose()
+    }
+    catch {
     }
 }
 
@@ -7983,7 +11488,7 @@ catch {
 try {
     while ($true) {
         $client = $listener.AcceptTcpClient()
-        $client.ReceiveTimeout = 10000
+        $client.ReceiveTimeout = 1000
         $client.SendTimeout = 10000
         $client.NoDelay = $true
         try {
@@ -8018,7 +11523,7 @@ try {
 
             if ($method -eq "POST" -and $uri.AbsolutePath -eq "/timeline/settings") {
                 $payload = if ([string]$request.Body) { $request.Body | ConvertFrom-Json } else { @{} }
-                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Write-TimelineAppSettings -Request $payload))
+                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Invoke-TimelineWebOperation -ProductName "Timeline" -Action "timeline_settings_save" -ScriptBlock { Write-TimelineAppSettings -Request $payload }))
                 continue
             }
 
@@ -8029,6 +11534,20 @@ try {
                 $limit = 120
                 [void][int]::TryParse(([string]$query["limit"]), [ref]$limit)
                 Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Get-TimelineConsoleLogs -AfterId $afterId -Limit $limit))
+                continue
+            }
+
+            if ($method -eq "GET" -and $uri.AbsolutePath -eq "/timeline/operations") {
+                $query = [System.Web.HttpUtility]::ParseQueryString($uri.Query)
+                $limit = 100
+                [void][int]::TryParse(([string]$query["limit"]), [ref]$limit)
+                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Get-TimelineOperationLogs -Limit $limit))
+                continue
+            }
+
+            if ($method -eq "GET" -and $uri.AbsolutePath -eq "/timeline/operations/detail") {
+                $query = [System.Web.HttpUtility]::ParseQueryString($uri.Query)
+                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Get-TimelineOperationLogDetail -OperationId ([string]$query["operationId"])))
                 continue
             }
 
@@ -8066,6 +11585,23 @@ try {
                 continue
             }
 
+            if ($method -eq "GET" -and $uri.AbsolutePath -eq "/timeline/llm-input/preview") {
+                $query = [System.Web.HttpUtility]::ParseQueryString($uri.Query)
+                $maxChars = 4000
+                $scanLimit = 5000
+                $maxCharsText = Convert-TimelineText -Value ([string]$query["maxChars"])
+                if ($maxCharsText) {
+                    [void][int]::TryParse($maxCharsText, [ref]$maxChars)
+                }
+                $scanLimitText = Convert-TimelineText -Value ([string]$query["scanLimit"])
+                if ($scanLimitText) {
+                    [void][int]::TryParse($scanLimitText, [ref]$scanLimit)
+                }
+                $countTotal = (Convert-TimelineText -Value ([string]$query["countTotal"])) -eq "true"
+                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Get-TimelineLlmInputPreview -Purpose ([string]$query["purpose"]) -Product ([string]$query["product"]) -From ([string]$query["from"]) -To ([string]$query["to"]) -Page (Get-TimelineRequestPage -Query $query) -PageSize (Get-TimelineRequestPageSize -Query $query) -MaxChars $maxChars -ScanLimit $scanLimit -CountTotal $countTotal))
+                continue
+            }
+
             if ($method -eq "GET" -and $uri.AbsolutePath -eq "/timeline/audio-verbalization/status") {
                 $query = [System.Web.HttpUtility]::ParseQueryString($uri.Query)
                 Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Get-TimelineAudioVerbalizationStatus -SourceId ([string]$query["sourceId"]) -RelativePath ([string]$query["path"])))
@@ -8084,9 +11620,20 @@ try {
                 continue
             }
 
+            if ($method -eq "GET" -and $uri.AbsolutePath -eq "/timeline/audio-verbalization/bulk/status") {
+                $query = [System.Web.HttpUtility]::ParseQueryString($uri.Query)
+                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Get-TimelineAudioVerbalizationBulkStatus -JobId ([string]$query["jobId"])))
+                continue
+            }
+
             if ($method -eq "POST" -and $uri.AbsolutePath -eq "/timeline/audio-verbalization/start") {
                 $payload = if ([string]$request.Body) { $request.Body | ConvertFrom-Json } else { @{} }
                 Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Invoke-TimelineWebOperation -ProductName "Timeline" -Action "audio_verbalization_start" -Kind "worker" -ScriptBlock { Start-TimelineAudioVerbalization -Request $payload }))
+                continue
+            }
+
+            if ($method -eq "POST" -and $uri.AbsolutePath -eq "/timeline/audio-verbalization/bulk/start") {
+                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Invoke-TimelineWebOperation -ProductName "Timeline" -Action "audio_verbalization_bulk_start" -Kind "worker" -ScriptBlock { Start-TimelineAudioVerbalizationBulk }))
                 continue
             }
 
@@ -8103,13 +11650,56 @@ try {
                     continue
                 }
                 $rangeHeader = Get-TimelineHeader -Lines $lines -Name "Range"
-                Send-TimelineFileResponse `
-                    -Client $client `
-                    -Path $path `
-                    -ContentType "application/zip" `
-                    -Origin $origin `
-                    -RangeHeader $rangeHeader `
-                    -DownloadFileName ([System.IO.Path]::GetFileName($path))
+                $file = Get-Item -LiteralPath $path
+                $downloadOperationId = New-TimelineOperationId -Prefix "download"
+                $downloadStartedAt = [DateTimeOffset]::Now
+                $downloadDetails = [ordered]@{
+                    path = [string]$file.FullName
+                    fileName = [string]$file.Name
+                    sizeBytes = [int64]$file.Length
+                    range = [string]$rangeHeader
+                }
+                Write-TimelineOperationEvent `
+                    -OperationId $downloadOperationId `
+                    -Kind "download" `
+                    -ProductName "Timeline" `
+                    -Action "download_file_stream" `
+                    -State "started" `
+                    -Message "Download file stream started." `
+                    -Details $downloadDetails
+                try {
+                    Send-TimelineFileResponse `
+                        -Client $client `
+                        -Path $path `
+                        -ContentType "application/zip" `
+                        -Origin $origin `
+                        -RangeHeader $rangeHeader `
+                        -DownloadFileName ([System.IO.Path]::GetFileName($path))
+                    $downloadDurationMs = [int]([DateTimeOffset]::Now - $downloadStartedAt).TotalMilliseconds
+                    Write-TimelineOperationEvent `
+                        -OperationId $downloadOperationId `
+                        -Kind "download" `
+                        -ProductName "Timeline" `
+                        -Action "download_file_stream" `
+                        -State "completed" `
+                        -Message "Download file stream completed." `
+                        -DurationMs $downloadDurationMs `
+                        -Details $downloadDetails
+                }
+                catch {
+                    $downloadDurationMs = [int]([DateTimeOffset]::Now - $downloadStartedAt).TotalMilliseconds
+                    Write-TimelineOperationEvent `
+                        -OperationId $downloadOperationId `
+                        -Kind "download" `
+                        -ProductName "Timeline" `
+                        -Action "download_file_stream" `
+                        -State "failed" `
+                        -Message $_.Exception.Message `
+                        -DurationMs $downloadDurationMs `
+                        -Stderr $_.Exception.Message `
+                        -Details $downloadDetails
+                    throw
+                }
                 continue
             }
 
@@ -8256,6 +11846,25 @@ try {
                 continue
             }
 
+            if ($method -eq "GET" -and $uri.AbsolutePath -eq "/products/image/files/detail") {
+                $query = [System.Web.HttpUtility]::ParseQueryString($uri.Query)
+                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Invoke-TimelineWebOperation -ProductName "TimelineForImage" -Action "image_file_detail" -ScriptBlock { Get-TimelineImageFileDetail -SourcePath ([string]$query["path"]) }))
+                continue
+            }
+
+            if ($method -eq "GET" -and $uri.AbsolutePath -eq "/products/image/files/source") {
+                $query = [System.Web.HttpUtility]::ParseQueryString($uri.Query)
+                $settingsPayload = Read-TimelineImageSettingsPayload
+                $source = Resolve-TimelineImageSourceFile -Settings $settingsPayload -SourcePath ([string]$query["path"])
+                if ($null -eq $source) {
+                    Send-TimelineResponse -Client $client -StatusCode 404 -StatusText "Not Found" -Origin $origin -Body (ConvertTo-TimelineJson @{ ok = $false; message = "Image source was not found." })
+                    continue
+                }
+                $rangeHeader = Get-TimelineHeader -Lines $lines -Name "Range"
+                Send-TimelineFileResponse -Client $client -Path ([string]$source.sourcePath) -ContentType (Get-TimelineImageMimeType -Path ([string]$source.sourcePath)) -Origin $origin -RangeHeader $rangeHeader
+                continue
+            }
+
             if ($method -eq "POST" -and $uri.AbsolutePath -eq "/products/image/refresh") {
                 $payload = if ([string]$request.Body) { $request.Body | ConvertFrom-Json } else { @{} }
                 Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Invoke-TimelineWebOperation -ProductName "TimelineForImage" -Action "image_refresh" -ScriptBlock { Start-TimelineImageRefresh -Request $payload }))
@@ -8344,7 +11953,7 @@ try {
             }
         }
         finally {
-            $client.Close()
+            Close-TimelineTcpClient -Client $client
         }
     }
 }

@@ -1,3 +1,7 @@
+@inject NavigationManager Navigation
+@implements IDisposable
+@using Microsoft.AspNetCore.Components.Routing
+
 <aside id="timeline-sidebar" class="tfa-sidebar">
     <div class="flex h-full flex-col">
         <div class="border-b border-white/10 p-5">
@@ -9,27 +13,30 @@
 
         <nav class="flex flex-col gap-4 p-3 text-sm">
             <div class="grid gap-1">
-                <NavLink class="flex items-center gap-2 rounded-md px-3 py-2 text-slate-200 hover:bg-white/10 hover:text-white"
-                         ActiveClass="bg-white/15 text-white"
-                         href=""
-                         @onclick="NotifyNavigateAsync">
+                <a class="@LinkClass("")"
+                   href=""
+                   @onclick="NotifyNavigateAsync">
                     <FaIcon Name="gauge" Class="tfa-icon" />
                     <span>ダッシュボード</span>
-                </NavLink>
-                <NavLink class="flex items-center gap-2 rounded-md px-3 py-2 text-slate-200 hover:bg-white/10 hover:text-white"
-                         ActiveClass="bg-white/15 text-white"
-                         href="timeline"
-                         @onclick="NotifyNavigateAsync">
+                </a>
+                <a class="@LinkClass("timeline")"
+                   href="timeline"
+                   @onclick="NotifyNavigateAsync">
                     <FaIcon Name="timeline" Class="tfa-icon" />
                     <span>時間軸</span>
-                </NavLink>
-                <NavLink class="flex items-center gap-2 rounded-md px-3 py-2 text-slate-200 hover:bg-white/10 hover:text-white"
-                         ActiveClass="bg-white/15 text-white"
-                         href="timeline/settings"
-                         @onclick="NotifyNavigateAsync">
+                </a>
+                <a class="@LinkClass("timeline/settings")"
+                   href="timeline/settings"
+                   @onclick="NotifyNavigateAsync">
                     <FaIcon Name="sliders" Class="tfa-icon" />
-                    <span>基本設定</span>
-                </NavLink>
+                    <span>設定</span>
+                </a>
+                <a class="@LinkClass("timeline/operations")"
+                   href="timeline/operations"
+                   @onclick="NotifyNavigateAsync">
+                    <FaIcon Name="clipboard-list" Class="tfa-icon" />
+                    <span>操作ログ</span>
+                </a>
             </div>
 
             <section>
@@ -38,20 +45,12 @@
                     <span>TimelineForAudio</span>
                 </div>
                 <div class="ml-3 border-l border-white/10 pl-3">
-                    <NavLink class="flex items-center gap-2 rounded-md px-3 py-2 text-slate-200 hover:bg-white/10 hover:text-white"
-                             ActiveClass="bg-white/15 text-white"
-                             href="audio/files"
-                             @onclick="NotifyNavigateAsync">
+                    <a class="@LinkClass("audio/files", "audio/file-detail")"
+                       href="audio/files"
+                       @onclick="NotifyNavigateAsync">
                         <FaIcon Name="list-ul" Class="tfa-icon" />
                         <span>ファイル一覧</span>
-                    </NavLink>
-                    <NavLink class="flex items-center gap-2 rounded-md px-3 py-2 text-slate-200 hover:bg-white/10 hover:text-white"
-                             ActiveClass="bg-white/15 text-white"
-                             href="audio/settings"
-                             @onclick="NotifyNavigateAsync">
-                        <FaIcon Name="gear" Class="tfa-icon" />
-                        <span>設定</span>
-                    </NavLink>
+                    </a>
                 </div>
             </section>
 
@@ -61,20 +60,12 @@
                     <span>TimelineForWindowsCodex</span>
                 </div>
                 <div class="ml-3 border-l border-white/10 pl-3">
-                    <NavLink class="flex items-center gap-2 rounded-md px-3 py-2 text-slate-200 hover:bg-white/10 hover:text-white"
-                             ActiveClass="bg-white/15 text-white"
-                             href="windows-codex"
-                             @onclick="NotifyNavigateAsync">
+                    <a class="@LinkClass("windows-codex", "windows-codex/thread/*")"
+                       href="windows-codex"
+                       @onclick="NotifyNavigateAsync">
                         <FaIcon Name="clock-rotate-left" Class="tfa-icon" />
                         <span>スレッド一覧</span>
-                    </NavLink>
-                    <NavLink class="flex items-center gap-2 rounded-md px-3 py-2 text-slate-200 hover:bg-white/10 hover:text-white"
-                             ActiveClass="bg-white/15 text-white"
-                             href="windows-codex/settings"
-                             @onclick="NotifyNavigateAsync">
-                        <FaIcon Name="gear" Class="tfa-icon" />
-                        <span>設定</span>
-                    </NavLink>
+                    </a>
                 </div>
             </section>
 
@@ -84,20 +75,12 @@
                     <span>TimelineForChatGPT</span>
                 </div>
                 <div class="ml-3 border-l border-white/10 pl-3">
-                    <NavLink class="flex items-center gap-2 rounded-md px-3 py-2 text-slate-200 hover:bg-white/10 hover:text-white"
-                             ActiveClass="bg-white/15 text-white"
-                             href="chatgpt"
-                             @onclick="NotifyNavigateAsync">
+                    <a class="@LinkClass("chatgpt", "chatgpt/thread/*")"
+                       href="chatgpt"
+                       @onclick="NotifyNavigateAsync">
                         <FaIcon Name="file-zipper" Class="tfa-icon" />
                         <span>スレッド一覧</span>
-                    </NavLink>
-                    <NavLink class="flex items-center gap-2 rounded-md px-3 py-2 text-slate-200 hover:bg-white/10 hover:text-white"
-                             ActiveClass="bg-white/15 text-white"
-                             href="chatgpt/settings"
-                             @onclick="NotifyNavigateAsync">
-                        <FaIcon Name="gear" Class="tfa-icon" />
-                        <span>設定</span>
-                    </NavLink>
+                    </a>
                 </div>
             </section>
 
@@ -107,20 +90,12 @@
                     <span>TimelineForImage</span>
                 </div>
                 <div class="ml-3 border-l border-white/10 pl-3">
-                    <NavLink class="flex items-center gap-2 rounded-md px-3 py-2 text-slate-200 hover:bg-white/10 hover:text-white"
-                             ActiveClass="bg-white/15 text-white"
-                             href="image"
-                             @onclick="NotifyNavigateAsync">
+                    <a class="@LinkClass("image", "image/file-detail")"
+                       href="image"
+                       @onclick="NotifyNavigateAsync">
                         <FaIcon Name="images" Class="tfa-icon" />
                         <span>ファイル一覧</span>
-                    </NavLink>
-                    <NavLink class="flex items-center gap-2 rounded-md px-3 py-2 text-slate-200 hover:bg-white/10 hover:text-white"
-                             ActiveClass="bg-white/15 text-white"
-                             href="image/settings"
-                             @onclick="NotifyNavigateAsync">
-                        <FaIcon Name="gear" Class="tfa-icon" />
-                        <span>設定</span>
-                    </NavLink>
+                    </a>
                 </div>
             </section>
 
@@ -148,5 +123,63 @@
     [Parameter]
     public EventCallback OnNavigate { get; set; }
 
+    private const string NavItemClass = "flex items-center gap-2 rounded-md px-3 py-2 hover:bg-white/10 hover:text-white";
+
+    private string CurrentPath
+    {
+        get
+        {
+            var path = Navigation.ToBaseRelativePath(Navigation.Uri);
+            var markerIndex = path.IndexOfAny(new[] { '?', '#' });
+            if (markerIndex >= 0) {
+                path = path[..markerIndex];
+            }
+
+            return path.Trim('/');
+        }
+    }
+
+    private string LinkClass(params string[] activePaths)
+        => IsActive(activePaths)
+            ? $"{NavItemClass} bg-white/15 text-white"
+            : $"{NavItemClass} text-slate-200";
+
+    protected override void OnInitialized()
+    {
+        Navigation.LocationChanged += HandleLocationChanged;
+    }
+
+    private bool IsActive(params string[] activePaths)
+    {
+        var currentPath = CurrentPath;
+        foreach (var activePath in activePaths) {
+            var normalizedPath = activePath.Trim('/');
+            if (normalizedPath.EndsWith("/*", StringComparison.Ordinal)) {
+                var prefix = normalizedPath[..^2];
+                if (string.Equals(currentPath, prefix, StringComparison.OrdinalIgnoreCase)
+                    || currentPath.StartsWith($"{prefix}/", StringComparison.OrdinalIgnoreCase)) {
+                    return true;
+                }
+                continue;
+            }
+
+            if (string.Equals(currentPath, normalizedPath, StringComparison.OrdinalIgnoreCase)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private Task NotifyNavigateAsync() => OnNavigate.InvokeAsync();
+
+    private void HandleLocationChanged(object? sender, LocationChangedEventArgs args)
+    {
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        Navigation.LocationChanged -= HandleLocationChanged;
+    }
 }

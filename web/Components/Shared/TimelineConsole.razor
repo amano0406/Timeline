@@ -4,14 +4,18 @@
 <div class="timeline-console">
     @if (_open)
     {
-        <section class="timeline-console-panel" aria-label="CLIコンソールログ">
+        <section class="timeline-console-panel" aria-label="操作ログ">
             <header class="timeline-console-header">
                 <div class="timeline-console-title">
                     <FaIcon Name="terminal" Class="tfa-icon" />
-                    <span>CLIログ</span>
+                    <span>操作ログ</span>
                 </div>
                 <div class="timeline-console-actions">
                     <span class="timeline-console-status">@StatusLabel</span>
+                    <a class="timeline-console-action" href="timeline/operations">
+                        <FaIcon Name="clipboard-list" Class="tfa-icon" />
+                        <span>履歴</span>
+                    </a>
                     <button type="button" class="timeline-console-action" @onclick="ClearAsync" disabled="@_clearing">
                         <FaIcon Name="@(_clearing ? "spinner" : "trash")" Class="@($"tfa-icon {(_clearing ? "fa-spin" : "")}")" />
                         <span>クリア</span>
@@ -25,7 +29,7 @@
             <div class="timeline-console-body">
                 @if (_entries.Count == 0)
                 {
-                    <div class="timeline-console-empty">まだCLIログはありません。</div>
+                    <div class="timeline-console-empty">まだ操作ログはありません。</div>
                 }
                 else
                 {
@@ -37,6 +41,10 @@
                                 @if (!string.IsNullOrWhiteSpace(entry.ProductName))
                                 {
                                     <span>@entry.ProductName</span>
+                                }
+                                @if (!string.IsNullOrWhiteSpace(entry.Action))
+                                {
+                                    <span>@entry.Action</span>
                                 }
                                 @if (entry.ExitCode is not null)
                                 {
@@ -90,7 +98,7 @@
             class="timeline-console-fab"
             @onclick="ToggleOpen"
             aria-expanded="@_open"
-            aria-label="CLIログを開く">
+            aria-label="操作ログを開く">
         <FaIcon Name="terminal" Class="tfa-icon" />
         <span>コンソール</span>
         @if (_unread > 0)

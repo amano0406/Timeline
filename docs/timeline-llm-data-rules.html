@@ -1,0 +1,432 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Timeline LLM Data Rules</title>
+  <style>
+    body {
+      margin: 0;
+      background: #f3f6f8;
+      color: #111827;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.7;
+    }
+    main {
+      max-width: 1080px;
+      margin: 0 auto;
+      padding: 40px 24px 72px;
+    }
+    h1, h2, h3 {
+      line-height: 1.3;
+    }
+    h1 {
+      margin: 0 0 12px;
+      font-size: 2rem;
+    }
+    h2 {
+      margin-top: 40px;
+      padding-top: 24px;
+      border-top: 1px solid #d8e0e7;
+      font-size: 1.35rem;
+    }
+    h3 {
+      margin-top: 28px;
+      font-size: 1.05rem;
+    }
+    p, li {
+      font-size: 0.98rem;
+    }
+    code, pre {
+      font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+    }
+    pre {
+      overflow: auto;
+      border: 1px solid #d8e0e7;
+      border-radius: 8px;
+      background: #0f172a;
+      color: #e5e7eb;
+      padding: 16px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: white;
+      border: 1px solid #d8e0e7;
+    }
+    th, td {
+      border-bottom: 1px solid #e5ebf0;
+      padding: 10px 12px;
+      text-align: left;
+      vertical-align: top;
+    }
+    th {
+      background: #edf3f7;
+      font-weight: 700;
+    }
+    .meta {
+      color: #64748b;
+      margin: 0 0 24px;
+    }
+    .note {
+      border-left: 4px solid #2f7d76;
+      background: #eef8f6;
+      padding: 12px 16px;
+      border-radius: 6px;
+    }
+    .warn {
+      border-left: 4px solid #b45309;
+      background: #fff7ed;
+      padding: 12px 16px;
+      border-radius: 6px;
+    }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Timeline LLM データルール</h1>
+  <p class="meta">作成日: 2026-05-07 / 対象: Timeline 本体 / 版: v1 draft</p>
+
+  <section>
+    <h2>目的</h2>
+    <p>
+      Timeline は、各サブ製品が作った時間軸データを保存し、あとから LLM で分析、検索、記事化、
+      レポート化できるようにする親製品である。この文書では、Timeline のマスターデータ、
+      LLM に渡す入力データ、LLM が生成した結果を混同しないためのルールを定義する。
+    </p>
+    <div class="note">
+      基本方針は、マスターには正本と再検証に必要な情報を残し、LLM には読めるテキストを中心に渡すこと。
+      正しさは Timeline 側で保持し、LLM 入力では使えることを優先する。
+    </div>
+  </section>
+
+  <section>
+    <h2>3層モデル</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>層</th>
+          <th>目的</th>
+          <th>優先すること</th>
+          <th>例</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Timeline マスター</td>
+          <td>あとから検証、再生成、再解釈できる正本を保存する。</td>
+          <td>正しさ、出所、再現性。</td>
+          <td>元ファイル参照、phone token、OCR結果、生成経路、イベント時刻。</td>
+        </tr>
+        <tr>
+          <td>LLM 入力データ</td>
+          <td>分析やレポート生成のため、LLM が直接読める材料を作る。</td>
+          <td>読みやすさ、目的適合性、情報欠損を避けること。</td>
+          <td>言語化済み発話、会話本文、OCR済みテキスト、画像説明、スレッド要約。</td>
+        </tr>
+        <tr>
+          <td>LLM 生成結果</td>
+          <td>LLM が作った記事、分析、仮説、次アクションを保存する。</td>
+          <td>入力参照、生成日時、生成モデル、再生成可能性。</td>
+          <td>活動復元レポート、プロダクト棚卸し、感情ホットスポット分析。</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>Timeline における真実</h2>
+    <p>
+      Timeline の一次的な真実は、LLM がどう解釈したかではなく、いつ、どの出所から、
+      何が記録されたかである。
+    </p>
+    <ul>
+      <li>いつ発生したか。</li>
+      <li>何を発したか。</li>
+      <li>何を聞いたか。</li>
+      <li>何の情報を受け取ったか。</li>
+      <li>何をしたか。</li>
+      <li>何に返信したか。</li>
+      <li>どのサブ製品、ファイル、成果物に由来するか。</li>
+    </ul>
+    <p>
+      LLM が生成した文章は、「LLM がその時その入力から生成した派生データ」という事実として保存する。
+      生成内容そのものを一次事実として扱わない。
+    </p>
+  </section>
+
+  <section>
+    <h2>直接読みにくいデータの扱い</h2>
+    <p>
+      レポート生成、記事生成、検索回答、自己分析などの通常の LLM 入力には、
+      直接読みにくいデータを渡さない。
+    </p>
+    <table>
+      <thead>
+        <tr>
+          <th>データ</th>
+          <th>Timeline マスター</th>
+          <th>通常の LLM 入力</th>
+          <th>理由</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>phone token</td>
+          <td>保存する</td>
+          <td>渡さない</td>
+          <td>人間にも LLM にも直接解釈しづらく、分析入力として無駄が大きい。</td>
+        </tr>
+        <tr>
+          <td>OCR 前の画像</td>
+          <td>参照を保存する</td>
+          <td>渡さない</td>
+          <td>画像解析を LLM 入力側に押し込むと重い。OCRや画像説明後のテキストを渡す。</td>
+        </tr>
+        <tr>
+          <td>動画フレーム</td>
+          <td>参照を保存する</td>
+          <td>渡さない</td>
+          <td>動画理解は前処理側で行い、シーン説明、OCR、音声言語化結果を渡す。</td>
+        </tr>
+        <tr>
+          <td>バイナリファイル</td>
+          <td>参照を保存する</td>
+          <td>渡さない</td>
+          <td>LLM が一次情報として読めるテキストへ加工してから渡す。</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="warn">
+      例外として、音声言語化ジョブのような「読みにくい中間データを読めるテキストへ変換する専用処理」では、
+      phone token を内部入力として使うことがある。これは通常のレポート生成用 LLM 入力とは別の処理である。
+    </div>
+  </section>
+
+  <section>
+    <h2>サブ製品ごとの代表表現</h2>
+    <p>
+      各サブ製品の出力は、Timeline マスターでは詳細に保存し、LLM 入力では代表表現を優先する。
+      代表表現は「そのデータ種別を LLM が読むなら、まずこれを見る」という主テキストである。
+    </p>
+    <table>
+      <thead>
+        <tr>
+          <th>製品/データ種別</th>
+          <th>LLM に渡す代表表現</th>
+          <th>補足として入れる情報</th>
+          <th>通常は入れない情報</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>TimelineForAudio</td>
+          <td>言語化済み発話、話者、発話時刻。</td>
+          <td>言語化経路、録音ファイル名、録音日時、前後文脈。</td>
+          <td>phone token 全文。</td>
+        </tr>
+        <tr>
+          <td>TimelineForChatGPT</td>
+          <td>スレッドタイトル、user/assistant の会話本文、日時。</td>
+          <td>メッセージ数、更新日時、元スレッドID。</td>
+          <td>UI表示用だけの重複テキスト。</td>
+        </tr>
+        <tr>
+          <td>TimelineForWindowsCodex</td>
+          <td>スレッドタイトル、依頼内容、応答内容、作業結果、変更概要。</td>
+          <td>作成日時、更新日時、変更ファイル、実行ログの要点。</td>
+          <td>大量の未加工ログ、重複した標準出力全文。</td>
+        </tr>
+        <tr>
+          <td>TimelineForImage</td>
+          <td>OCR済みテキスト、画像説明、検出された対象、撮影/作成日時。</td>
+          <td>ファイル名、パス、画像サイズ、生成物の有無。</td>
+          <td>画像バイナリ、OCR前画像そのもの。</td>
+        </tr>
+        <tr>
+          <td>将来の TimelineForVideo</td>
+          <td>音声言語化、シーン説明、OCR済み画面テキスト、区間要約。</td>
+          <td>開始/終了時刻、動画ファイル名、シーン境界。</td>
+          <td>動画フレーム列、音声の中間トークン。</td>
+        </tr>
+        <tr>
+          <td>将来の文書/PDF/CSV</td>
+          <td>抽出テキスト、見出し、表の説明、重要列、集計。</td>
+          <td>ページ番号、シート名、行数、ファイル名。</td>
+          <td>未解析バイナリ、巨大な全行データ。</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>LLM 入力データ束</h2>
+    <p>
+      レポートや記事を作るときは、Timeline マスターをそのまま全件投入しない。
+      目的、期間、対象製品に応じて LLM 入力データ束を作る。
+      英語名としては Evidence Pack と呼べるが、UI 上では「分析用データ」や「レポート材料」と表示する。
+    </p>
+    <pre><code>{
+  "packId": "llm-input-pack-20260507-001",
+  "purpose": "activity_report",
+  "targetPeriod": {
+    "from": "2026-05-01T00:00:00+09:00",
+    "to": "2026-05-07T23:59:59+09:00"
+  },
+  "inputPolicy": {
+    "textOnly": true,
+    "excludeHardToReadIntermediateData": true,
+    "securityRedaction": "minimal"
+  },
+  "items": [
+    {
+      "itemId": "audio-001-turns",
+      "sourceProduct": "TimelineForAudio",
+      "kind": "speech",
+      "timeRange": {
+        "from": "2026-05-04T10:21:00+09:00",
+        "to": "2026-05-04T10:23:00+09:00"
+      },
+      "text": "Timelineのレポート生成について話している可能性が高い。",
+      "note": "この文章は、TimelineForAudioのphone tokenをTimeline側で前後情報を使って言語化した候補です。",
+      "sourceEventIds": ["audio-event-001"],
+      "rawRefs": ["store/items.jsonl#audio-item-001"]
+    }
+  ]
+}</code></pre>
+  </section>
+
+  <section>
+    <h2>生成経路の明示</h2>
+    <p>
+      言語化済み音声、OCR結果、画像説明、要約などは、どのような経路で作られたかを LLM に伝える。
+      個々の入力に長い注意書きを毎回重ねるのではなく、入力データ束の共通前提として宣言する。
+    </p>
+    <pre><code>{
+  "assumptions": [
+    "TimelineForAudioの音声テキストは、元音声から直接の文字起こしではなく、phone tokenをTimeline側で前後情報を使って言語化した候補です。",
+    "LLM生成結果は一次事実ではなく、Timelineマスターに基づく派生解釈です。",
+    "直接読みにくい中間データは通常の分析入力から除外しています。必要な場合はrawRefsを参照してください。"
+  ]
+}</code></pre>
+  </section>
+
+  <section>
+    <h2>時間的ヒント</h2>
+    <p>
+      近い時間の別製品データは重要なヒントになる。ただし、何分、何時間、何日までを使うかは固定しない。
+      会議分析、日報、案件分析、感情分析、製品棚卸しで必要な範囲が異なるため、目的ごとに決める。
+    </p>
+    <table>
+      <thead>
+        <tr>
+          <th>目的</th>
+          <th>初期候補</th>
+          <th>考え方</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>音声発話の言語化</td>
+          <td>前後 30 分から数時間</td>
+          <td>同じ作業中のチャット、Codex、ファイル名を弱いヒントにする。</td>
+        </tr>
+        <tr>
+          <td>日次活動復元</td>
+          <td>対象日全体</td>
+          <td>同じ日の作業、会話、音声、画像をまとめる。</td>
+        </tr>
+        <tr>
+          <td>プロダクト棚卸し</td>
+          <td>数週間から数か月</td>
+          <td>製品名やトピックで絞り、時間範囲は広めに取る。</td>
+        </tr>
+        <tr>
+          <td>案件/金銭判断</td>
+          <td>対象スレッドと関連資料中心</td>
+          <td>使えることより正確性を優先し、推測を分ける。</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>再生成ルール</h2>
+    <ul>
+      <li>LLM 入力データ束や LLM 生成結果は自動で無制限に再生成しない。</li>
+      <li>モデル変更、プロンプト変更、元データ変更があっても、原則はユーザー操作で再生成する。</li>
+      <li>古い生成結果は消さず、生成日時、入力データ束ID、モデル名を残す。</li>
+      <li>演算量が大きいため、バックグラウンドで勝手に再生成し続けない。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>セキュリティと情報欠損</h2>
+    <p>
+      v1 では、外部 LLM とローカル LLM の厳密な分離や強い自動マスキングを主軸にしない。
+      過剰な削除により文脈が欠損するリスクが高いためである。
+    </p>
+    <p>
+      ただし将来のために、入力データには出所、製品、種類、raw 参照を残し、
+      後から情報分類やマスキングを追加できる形にする。
+    </p>
+  </section>
+
+  <section>
+    <h2>v1 共通フィールド</h2>
+    <p>
+      将来サブ製品が増えても、最低限このフィールドを持てば Timeline で扱える。
+      永遠に壊れない形式は狙わず、今のベストとして v1 を定義する。
+    </p>
+    <pre><code>{
+  "id": "string",
+  "sourceProduct": "string",
+  "kind": "string",
+  "occurredAt": "ISO-8601 datetime",
+  "timeRange": {
+    "from": "ISO-8601 datetime",
+    "to": "ISO-8601 datetime"
+  },
+  "title": "string",
+  "text": "string",
+  "notes": ["string"],
+  "sourceEventIds": ["string"],
+  "rawRefs": ["string"],
+  "createdBy": {
+    "type": "source_product | timeline | llm",
+    "name": "string",
+    "version": "string"
+  }
+}</code></pre>
+  </section>
+
+  <section>
+    <h2>プレビュー取得の扱い</h2>
+    <p>
+      画面で LLM 入力データ束を確認するときは、全件集計を前提にしない。
+      まずはページ表示に必要な件数だけを取得し、読みにくい中間データが続く場合は走査上限で止める。
+      これにより、Audio の phone token のような大量の中間データがあっても、画面操作を長時間ブロックしない。
+    </p>
+    <p>
+      Audio については、Timeline 側の言語化結果が存在する区間だけを LLM 入力候補にする。
+      言語化できていない phone token は、Timeline マスターには残すが、通常の分析用 LLM 入力からは除外する。
+    </p>
+    <p>
+      正確な総件数が必要な処理では、プレビューではなく専用の作成ジョブとして実行し、進捗とログを残す。
+    </p>
+  </section>
+
+  <section>
+    <h2>今後の実装順</h2>
+    <ol>
+      <li>Timeline Store の items/events から LLM 入力データ束を作る内部モデルを追加する。</li>
+      <li>Audio、ChatGPT、Windows Codex、Image の代表表現をマッピングする。</li>
+      <li>Timeline 画面または Reports 画面で、対象期間と目的を選んで入力データ束を作れるようにする。</li>
+      <li>最初のレポートテンプレートとして、活動復元、プロダクト棚卸し、案件レーン分析を実装する。</li>
+      <li>LLM 生成結果を Timeline Store の派生データとして保存する。</li>
+    </ol>
+  </section>
+</main>
+</body>
+</html>

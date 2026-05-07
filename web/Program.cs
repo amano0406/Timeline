@@ -89,6 +89,60 @@ app.MapGet("/api/audio/source", async Task (
     await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
     await stream.CopyToAsync(context.Response.Body, cancellationToken);
 });
+app.MapGet("/api/image/source", async Task (
+    HttpContext context,
+    IHttpClientFactory httpClientFactory,
+    CancellationToken cancellationToken) =>
+{
+    var path = context.Request.Query["path"].ToString();
+    if (string.IsNullOrWhiteSpace(path))
+    {
+        context.Response.StatusCode = StatusCodes.Status400BadRequest;
+        await context.Response.WriteAsJsonAsync(new { message = "path is required." }, cancellationToken);
+        return;
+    }
+
+    using var request = new HttpRequestMessage(
+        HttpMethod.Get,
+        $"products/image/files/source?path={Uri.EscapeDataString(path)}");
+    if (context.Request.Headers.TryGetValue("Range", out var rangeHeader))
+    {
+        request.Headers.TryAddWithoutValidation("Range", rangeHeader.ToArray());
+    }
+
+    var client = httpClientFactory.CreateClient("TimelineHelperProxy");
+    using var response = await client.SendAsync(
+        request,
+        HttpCompletionOption.ResponseHeadersRead,
+        cancellationToken);
+    if (!response.IsSuccessStatusCode)
+    {
+        context.Response.StatusCode = (int)response.StatusCode;
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        await context.Response.WriteAsJsonAsync(
+            new { message = string.IsNullOrWhiteSpace(body) ? "Image source was not found." : body },
+            cancellationToken);
+        return;
+    }
+
+    context.Response.StatusCode = (int)response.StatusCode;
+    context.Response.ContentType = response.Content.Headers.ContentType?.ToString() ?? "application/octet-stream";
+    if (response.Content.Headers.ContentLength is long contentLength)
+    {
+        context.Response.ContentLength = contentLength;
+    }
+    if (response.Content.Headers.ContentRange is { } contentRange)
+    {
+        context.Response.Headers["Content-Range"] = contentRange.ToString();
+    }
+    if (response.Headers.AcceptRanges.Count > 0)
+    {
+        context.Response.Headers["Accept-Ranges"] = string.Join(", ", response.Headers.AcceptRanges);
+    }
+
+    await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+    await stream.CopyToAsync(context.Response.Body, cancellationToken);
+});
 app.MapGet("/api/download/file", async Task (
     HttpContext context,
     IHttpClientFactory httpClientFactory,

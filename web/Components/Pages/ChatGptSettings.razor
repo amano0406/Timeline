@@ -1,19 +1,21 @@
-@page "/chatgpt/settings"
 @inject TimelineHelperClient Timeline
 @inject IJSRuntime Js
 
-<PageTitle>TimelineForChatGPT 設定 - Timeline</PageTitle>
+@if (!Embedded)
+{
+    <PageTitle>TimelineForChatGPT 設定 - Timeline</PageTitle>
 
-<div class="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-    <h1 class="tfa-title flex items-center gap-2">
-        <FaIcon Name="gear" Class="tfa-icon text-accent" />
-        <span>TimelineForChatGPT 設定</span>
-    </h1>
-    <a class="tfa-button-secondary gap-2" href="chatgpt">
-        <FaIcon Name="arrow-left" Class="tfa-icon" />
-        <span>一覧に戻る</span>
-    </a>
-</div>
+    <div class="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <h1 class="tfa-title flex items-center gap-2">
+            <FaIcon Name="gear" Class="tfa-icon text-accent" />
+            <span>TimelineForChatGPT 設定</span>
+        </h1>
+        <a class="tfa-button-secondary gap-2" href="chatgpt">
+            <FaIcon Name="arrow-left" Class="tfa-icon" />
+            <span>一覧に戻る</span>
+        </a>
+    </div>
+}
 
 @if (_error is not null)
 {
@@ -74,6 +76,8 @@ else
 }
 
 @code {
+    [Parameter] public bool Embedded { get; set; }
+
     private ChatGptOverview? _overview;
     private ChatGptDirectoryRoot _outputRoot = new() { Id = "output", DisplayName = "Output", Path = @"C:\TimelineData\chatgpt" };
     private bool _loading = true;

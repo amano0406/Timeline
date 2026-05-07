@@ -1,0 +1,369 @@
+@page "/image/file-detail"
+@inject TimelineHelperClient Timeline
+
+<PageTitle>画像詳細 - Timeline</PageTitle>
+
+<div class="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+    <div>
+        <h1 class="tfa-title flex items-center gap-2">
+            <FaIcon Name="image" Class="tfa-icon text-accent" />
+            <span>@(_detail?.File is { } titleFile ? DisplayName(titleFile) : "画像詳細")</span>
+        </h1>
+        @if (_detail?.File is { } loadedFile)
+        {
+            <p class="mt-2 break-all font-mono text-sm text-slate-600">@loadedFile.SourcePath</p>
+        }
+    </div>
+    <a class="tfa-button-secondary gap-2" href="image">
+        <FaIcon Name="arrow-left" Class="tfa-icon" />
+        <span>一覧に戻る</span>
+    </a>
+</div>
+
+@if (_error is not null)
+{
+    <div class="tfa-alert-danger mb-5 flex items-start gap-2">
+        <FaIcon Name="triangle-exclamation" Class="tfa-icon mt-0.5" />
+        <span>@_error</span>
+    </div>
+}
+
+@if (_loading)
+{
+    <section class="tfa-card tfa-card-pad flex items-center gap-3">
+        <FaIcon Name="spinner" Class="tfa-icon fa-spin text-accent" />
+        <span class="text-sm text-slate-600">画像ファイルを読み込んでいます。</span>
+    </section>
+}
+else if (_detail?.Available != true || _detail.File is null)
+{
+    <section class="tfa-card tfa-card-pad">
+        <div class="flex items-start gap-3 text-sm text-slate-600">
+            <FaIcon Name="circle-minus" Class="tfa-icon mt-0.5 text-slate-400" />
+            <div>
+                <div class="font-medium text-slate-900">画像ファイルを表示できません。</div>
+                <div class="mt-1">@EmptyText(_detail?.Message)</div>
+            </div>
+        </div>
+    </section>
+}
+else
+{
+    var file = _detail.File!;
+    var record = _detail.Record;
+
+    <div class="grid gap-5 xl:grid-cols-[360px_1fr]">
+        <aside class="grid gap-5">
+            <section class="tfa-card tfa-card-pad">
+                <h2 class="flex items-center gap-2 text-lg font-semibold">
+                    <FaIcon Name="circle-info" Class="tfa-icon text-accent" />
+                    <span>ファイル情報</span>
+                </h2>
+                <dl class="mt-4 grid grid-cols-2 gap-2 text-sm">
+                    <dt class="text-slate-500">状態</dt>
+                    <dd>
+                        <span class="@ArtifactPillClass(file)">
+                            <FaIcon Name="@ArtifactIcon(file)" Class="tfa-icon !h-3 !w-3" />
+                            <span>@ArtifactLabel(file)</span>
+                        </span>
+                    </dd>
+                    <dt class="text-slate-500">日時</dt>
+                    <dd class="inline-flex items-center gap-1.5">
+                        <FaIcon Name="clock" Class="tfa-icon !h-3 !w-3 text-slate-400" />
+                        @UiFormat.ShortDate(file.ModifiedAt)
+                    </dd>
+                    <dt class="text-slate-500">サイズ</dt>
+                    <dd class="inline-flex items-center gap-1.5">
+                        <FaIcon Name="hard-drive" Class="tfa-icon !h-3 !w-3 text-slate-400" />
+                        @UiFormat.Bytes(file.SizeBytes)
+                    </dd>
+                    <dt class="text-slate-500">形式</dt>
+                    <dd>@EmptyText(record.FormatName)</dd>
+                    <dt class="text-slate-500">寸法</dt>
+                    <dd>@DimensionLabel(record)</dd>
+                    <dt class="text-slate-500">種類</dt>
+                    <dd>@ImageKindLabel(record.ImageKind)</dd>
+                    <dt class="text-slate-500">文字</dt>
+                    <dd>@TextSummary(record)</dd>
+                </dl>
+            </section>
+
+            <section class="tfa-card tfa-card-pad">
+                <h2 class="flex items-center gap-2 text-lg font-semibold">
+                    <FaIcon Name="calendar-days" Class="tfa-icon text-accent" />
+                    <span>時間情報</span>
+                </h2>
+                <dl class="mt-4 grid grid-cols-2 gap-2 text-sm">
+                    <dt class="text-slate-500">時間軸</dt>
+                    <dd>@UiFormat.ShortDate(record.TimelineAt)</dd>
+                    <dt class="text-slate-500">撮影日時</dt>
+                    <dd>@UiFormat.ShortDate(record.CapturedAt)</dd>
+                    <dt class="text-slate-500">更新日時</dt>
+                    <dd>@UiFormat.ShortDate(record.ModifiedAt)</dd>
+                </dl>
+            </section>
+
+            @if (record.Warnings.Count > 0 || record.NeedsReview)
+            {
+                <section class="tfa-card tfa-card-pad">
+                    <h2 class="flex items-center gap-2 text-lg font-semibold">
+                        <FaIcon Name="triangle-exclamation" Class="tfa-icon text-amber-700" />
+                        <span>確認ポイント</span>
+                    </h2>
+                    <div class="mt-4 grid gap-2 text-sm text-slate-700">
+                        @if (record.NeedsReview)
+                        {
+                            <span class="tfa-status-pill border-amber-200 bg-amber-50 text-amber-900">要確認</span>
+                        }
+                        @foreach (var warning in record.Warnings)
+                        {
+                            <div class="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900">@warning</div>
+                        }
+                    </div>
+                </section>
+            }
+        </aside>
+
+        <section class="grid gap-5">
+            <section class="tfa-card overflow-hidden">
+                <div class="tfa-card-pad border-b border-line">
+                    <h2 class="flex items-center gap-2 text-lg font-semibold">
+                        <FaIcon Name="image" Class="tfa-icon text-accent" />
+                        <span>画像プレビュー</span>
+                    </h2>
+                </div>
+                <div class="bg-slate-50 p-4">
+                    <img src="@ImageSourceUrl(file)"
+                         alt="@DisplayName(file)"
+                         class="mx-auto rounded-md border border-line bg-white"
+                         style="max-height: 680px; max-width: 100%; object-fit: contain;" />
+                </div>
+            </section>
+
+            <section class="tfa-card overflow-hidden">
+                <div class="tfa-card-pad flex flex-col gap-2 border-b border-line sm:flex-row sm:items-center sm:justify-between">
+                    <h2 class="flex items-center gap-2 text-lg font-semibold">
+                        <FaIcon Name="file-lines" Class="tfa-icon text-accent" />
+                        <span>分析結果</span>
+                    </h2>
+                    <div class="flex flex-wrap gap-2 text-xs text-slate-500">
+                        <span class="@ArtifactPillClass(file)">@ArtifactLabel(file)</span>
+                        @if (record.ContentTypes.Count > 0)
+                        {
+                            <span class="tfa-status-pill border-slate-200 bg-slate-50 text-slate-700">@string.Join(" / ", record.ContentTypes)</span>
+                        }
+                    </div>
+                </div>
+
+                @if (!_detail.ImageRecordAvailable)
+                {
+                    <div class="p-5 text-sm text-slate-600">
+                        この画像の分析結果はまだ作成されていません。
+                    </div>
+                }
+                else
+                {
+                    <div class="grid gap-4 p-5 lg:grid-cols-3">
+                        <div class="rounded-md border border-line bg-slate-50 p-4">
+                            <div class="tfa-kicker">画像種別</div>
+                            <div class="mt-2 text-lg font-semibold">@ImageKindLabel(record.ImageKind)</div>
+                        </div>
+                        <div class="rounded-md border border-line bg-slate-50 p-4">
+                            <div class="tfa-kicker">OCRブロック</div>
+                            <div class="mt-2 text-lg font-semibold">@record.OcrBlockCount 件</div>
+                        </div>
+                        <div class="rounded-md border border-line bg-slate-50 p-4">
+                            <div class="tfa-kicker">明るさ / コントラスト</div>
+                            <div class="mt-2 text-lg font-semibold">@QualityLabel(record)</div>
+                        </div>
+                    </div>
+                }
+            </section>
+
+            @if (_detail.ImageRecordAvailable)
+            {
+                <section class="tfa-card overflow-hidden">
+                    <div class="tfa-card-pad border-b border-line">
+                        <h2 class="flex items-center gap-2 text-lg font-semibold">
+                            <FaIcon Name="align-left" Class="tfa-icon text-accent" />
+                            <span>読み取った文字</span>
+                        </h2>
+                    </div>
+                    @if (string.IsNullOrWhiteSpace(record.FullText))
+                    {
+                        <div class="p-5 text-sm text-slate-600">読み取った文字はありません。</div>
+                    }
+                    else
+                    {
+                        <div class="p-5">
+                            <div class="rounded-md border border-line bg-slate-50 p-4 font-mono text-sm leading-6 text-slate-900"
+                                 style="white-space: pre-wrap; overflow-wrap: anywhere;">@record.FullText</div>
+                        </div>
+                    }
+                </section>
+
+                @if (_detail.TextBlocks.Count > 0)
+                {
+                    <details class="tfa-card overflow-hidden">
+                        <summary class="cursor-pointer list-none border-b border-line">
+                            <div class="tfa-card-pad flex items-center justify-between gap-3">
+                                <h2 class="flex items-center gap-2 text-lg font-semibold">
+                                    <FaIcon Name="table-list" Class="tfa-icon text-accent" />
+                                    <span>文字ブロック</span>
+                                </h2>
+                                <span class="text-sm text-slate-500">@_detail.TextBlocks.Count 件</span>
+                            </div>
+                        </summary>
+                        <div class="max-h-[680px] overflow-auto">
+                            <table class="tfa-table">
+                                <thead class="sticky top-0">
+                                    <tr>
+                                        <th>番号</th>
+                                        <th>文字</th>
+                                        <th>信頼度</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var block in _detail.TextBlocks)
+                                    {
+                                        <tr>
+                                            <td class="whitespace-nowrap font-mono text-xs text-slate-500">@block.Index</td>
+                                            <td class="max-w-[980px] break-words text-sm leading-6 text-slate-900">@BlockText(block)</td>
+                                            <td class="whitespace-nowrap">
+                                                <span class="@ConfidencePill(block.ConfidenceLevel)">@ConfidenceLabel(block)</span>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </details>
+                }
+            }
+        </section>
+    </div>
+}
+
+@code {
+    [SupplyParameterFromQuery(Name = "path")]
+    public string SourcePath { get; set; } = "";
+
+    private ImageFileDetailResult? _detail;
+    private bool _loading = true;
+    private string? _error;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _error = null;
+        try
+        {
+            if (string.IsNullOrWhiteSpace(SourcePath))
+            {
+                _detail = new ImageFileDetailResult { Message = "画像ファイルが指定されていません。" };
+                return;
+            }
+
+            _detail = await Timeline.GetImageFileDetailAsync(SourcePath);
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private static string DisplayName(ImageItemRow item) =>
+        !string.IsNullOrWhiteSpace(item.SourceDisplayName) ? item.SourceDisplayName : EmptyText(item.RelativePath);
+
+    private static string ImageSourceUrl(ImageItemRow item) =>
+        $"api/image/source?path={Uri.EscapeDataString(item.SourcePath)}";
+
+    private static string ArtifactLabel(ImageItemRow item) =>
+        item.HasTimeline && item.HasImageRecord ? "作成済み" : "未作成";
+
+    private static string ArtifactIcon(ImageItemRow item) =>
+        item.HasTimeline && item.HasImageRecord ? "circle-check" : "circle-minus";
+
+    private static string ArtifactPillClass(ImageItemRow item) =>
+        item.HasTimeline && item.HasImageRecord
+            ? "tfa-status-pill border-teal-200 bg-teal-50 text-teal-800"
+            : "tfa-status-pill border-amber-200 bg-amber-50 text-amber-800";
+
+    private static string DimensionLabel(ImageRecordSummary record) =>
+        record.Width > 0 && record.Height > 0 ? $"{record.Width} x {record.Height}" : "-";
+
+    private static string TextSummary(ImageRecordSummary record)
+    {
+        if (!record.HasText)
+        {
+            return "なし";
+        }
+
+        return record.OcrBlockCount > 0 ? $"{record.OcrBlockCount} ブロック" : "あり";
+    }
+
+    private static string QualityLabel(ImageRecordSummary record)
+    {
+        var brightness = EmptyText(LevelLabel(record.BrightnessLevel));
+        var contrast = EmptyText(LevelLabel(record.ContrastLevel));
+        return $"{brightness} / {contrast}";
+    }
+
+    private static string ImageKindLabel(string value) =>
+        (value ?? "").ToLowerInvariant() switch
+        {
+            "photo_with_text" => "画像と文字",
+            "photo" => "写真",
+            "screenshot" => "スクリーンショット",
+            "document" => "文書",
+            "diagram" => "図表",
+            _ => EmptyText(value),
+        };
+
+    private static string LevelLabel(string? value) =>
+        (value ?? "").ToLowerInvariant() switch
+        {
+            "dark" => "暗い",
+            "bright" => "明るい",
+            "normal" => "標準",
+            "low" => "低い",
+            "medium" => "中",
+            "high" => "高い",
+            _ => value ?? "",
+        };
+
+    private static string BlockText(ImageTextBlock block) =>
+        !string.IsNullOrWhiteSpace(block.NormalizedText) ? block.NormalizedText : EmptyText(block.Text);
+
+    private static string ConfidenceLabel(ImageTextBlock block)
+    {
+        var level = EmptyText(LevelLabel(block.ConfidenceLevel));
+        if (block.ConfidenceScore is double score)
+        {
+            return $"{level} {score:P0}";
+        }
+
+        return level;
+    }
+
+    private static string ConfidencePill(string level) =>
+        (level ?? "").ToLowerInvariant() switch
+        {
+            "high" => "tfa-status-pill border-teal-200 bg-teal-50 text-teal-800",
+            "medium" => "tfa-status-pill border-sky-200 bg-sky-50 text-sky-800",
+            "low" => "tfa-status-pill border-amber-200 bg-amber-50 text-amber-900",
+            _ => "tfa-status-pill border-slate-200 bg-slate-50 text-slate-700",
+        };
+
+    private static string EmptyText(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? "-" : value;
+}

@@ -250,7 +250,7 @@ else
             </div>
         </div>
 
-        <div class="overflow-x-auto">
+        <div class="overflow-x-auto tfa-long-list-scroll">
             <div class="tfa-file-tree" role="treegrid" aria-label="ファイル一覧">
                 <div class="tfa-file-tree-header" role="row">
                     <div class="tfa-file-tree-select" role="columnheader">
@@ -513,7 +513,6 @@ else
         "starting" => "text-sky-800",
         _ => "text-slate-500",
     };
-
     protected override void OnInitialized()
     {
         _pollingCts = new CancellationTokenSource();
@@ -537,7 +536,7 @@ else
     private async Task LoadAsync()
     {
         _loading = true;
-            _error = null;
+        _error = null;
         try
         {
             _overview = await Timeline.GetAudioOverviewAsync();
@@ -696,6 +695,8 @@ else
             "completed" => "言語化済み",
             "running" => "言語化中",
             "planned" => "言語化待ち",
+            "needs_review" => "一部未解決",
+            "stale" => "再言語化必要",
             "failed" => "言語化失敗",
             "unreadable" => "読取不可",
             _ => "未言語化",
@@ -717,6 +718,8 @@ else
             "completed" => "language",
             "running" => "spinner",
             "planned" => "clock",
+            "needs_review" => "triangle-exclamation",
+            "stale" => "arrows-rotate",
             "failed" => "triangle-exclamation",
             "unreadable" => "circle-xmark",
             _ => "circle-minus",
@@ -730,7 +733,7 @@ else
         {
             "completed" => "tfa-status-pill border-teal-200 bg-teal-50 text-teal-800",
             "running" => "tfa-status-pill border-sky-200 bg-sky-50 text-sky-800",
-            "planned" => "tfa-status-pill border-amber-200 bg-amber-50 text-amber-900",
+            "planned" or "needs_review" or "stale" => "tfa-status-pill border-amber-200 bg-amber-50 text-amber-900",
             "failed" or "unreadable" => "tfa-status-pill border-red-200 bg-red-50 text-red-800",
             _ => "tfa-status-pill border-slate-200 bg-slate-50 text-slate-700",
         };

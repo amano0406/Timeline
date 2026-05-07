@@ -199,6 +199,14 @@ function Get-ContractPowerShellPath {
     return "powershell.exe"
 }
 
+function Get-ContractUtf8CliInvokerPath {
+    $candidate = Join-Path $PSScriptRoot "invoke-product-cli-utf8.ps1"
+    if (Test-Path -LiteralPath $candidate -PathType Leaf) {
+        return $candidate
+    }
+    throw "Product CLI UTF-8 invoker was not found: $candidate"
+}
+
 function Invoke-ContractCliJson {
     param(
         [string]$Product,
@@ -211,9 +219,10 @@ function Invoke-ContractCliJson {
         throw "cli.ps1 was not found: $cliPath"
     }
 
+    $utf8Invoker = Get-ContractUtf8CliInvokerPath
     $result = Invoke-ContractProcess `
         -FileName (Get-ContractPowerShellPath) `
-        -Arguments (@("-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $cliPath) + @($CliArgs)) `
+        -Arguments (@("-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $utf8Invoker, "-ScriptPath", $cliPath) + @($CliArgs)) `
         -WorkingDirectory $ProductPath `
         -TimeoutSeconds 300
     $text = ([string]$result.stdout).Trim()
@@ -237,9 +246,10 @@ function Invoke-ContractCliText {
         throw "cli.ps1 was not found: $cliPath"
     }
 
+    $utf8Invoker = Get-ContractUtf8CliInvokerPath
     $result = Invoke-ContractProcess `
         -FileName (Get-ContractPowerShellPath) `
-        -Arguments (@("-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $cliPath) + @($CliArgs)) `
+        -Arguments (@("-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $utf8Invoker, "-ScriptPath", $cliPath) + @($CliArgs)) `
         -WorkingDirectory $ProductPath `
         -TimeoutSeconds 300
     $text = ([string]$result.stdout).Trim()

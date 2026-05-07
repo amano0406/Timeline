@@ -30,14 +30,6 @@
     </div>
 }
 
-@if (_operationMessage is not null)
-{
-    <div class="tfa-alert-info mb-5 flex items-start gap-2">
-        <FaIcon Name="circle-info" Class="tfa-icon mt-0.5" />
-        <span>@_operationMessage</span>
-    </div>
-}
-
 @if (_loading && _overview is null)
 {
     <section class="tfa-card tfa-card-pad flex items-center gap-3">
@@ -63,9 +55,9 @@ else
 
                 <div class="mt-4 rounded-md border border-line bg-slate-50 p-3">
                     <div class="flex items-center justify-between gap-3">
-                        <div class="font-medium text-slate-700">起動状態</div>
+                        <div class="font-medium text-slate-700">利用状態</div>
                         <span class="@RuntimePillClass(product)">
-                            <FaIcon Name="@RuntimeIcon(product)" Class="@($"tfa-icon !h-3 !w-3 {(IsBusy(product) ? "fa-spin" : "")}")" />
+                            <FaIcon Name="@RuntimeIcon(product)" Class="@($"tfa-icon !h-3 !w-3 {(product.State.Equals("restarting", StringComparison.OrdinalIgnoreCase) ? "fa-spin" : "")}")" />
                             <span>@RuntimeLabel(product)</span>
                         </span>
                     </div>
@@ -81,20 +73,10 @@ else
                         <FaIcon Name="arrow-up-right-from-square" Class="tfa-icon" />
                         <span>開く</span>
                     </a>
-                    <a class="tfa-button-secondary gap-2" href="@product.SettingsPath">
+                    <a class="tfa-button-secondary gap-2" href="@SettingsPath(product)">
                         <FaIcon Name="gear" Class="tfa-icon" />
                         <span>設定</span>
                     </a>
-                    <button class="tfa-button-secondary gap-2" @onclick="() => StartAsync(product)" disabled="@(!CanStart(product))">
-                        <FaIcon Name="@(_actingProductId == product.Id && _actingAction == "start" ? "spinner" : "power-off")"
-                                Class="@($"tfa-icon {(_actingProductId == product.Id && _actingAction == "start" ? "fa-spin" : "")}")" />
-                        <span>起動</span>
-                    </button>
-                    <button class="tfa-button-primary gap-2" @onclick="() => RestartAsync(product)" disabled="@(!CanRestart(product))">
-                        <FaIcon Name="@(_actingProductId == product.Id && _actingAction == "restart" ? "spinner" : "rotate")"
-                                Class="@($"tfa-icon {(_actingProductId == product.Id && _actingAction == "restart" ? "fa-spin" : "")}")" />
-                        <span>再起動</span>
-                    </button>
                 </div>
             </section>
         }
@@ -104,10 +86,7 @@ else
 @code {
     private ProductRuntimeOverview? _overview;
     private bool _loading = true;
-    private string? _actingProductId;
-    private string? _actingAction;
     private string? _error;
-    private string? _operationMessage;
 
     private IReadOnlyList<ProductRuntimeRow> Products => _overview?.Products ?? [];
 
@@ -130,74 +109,6 @@ else
             _loading = false;
         }
     }
-
-    private async Task StartAsync(ProductRuntimeRow product)
-    {
-        await InvokeRuntimeActionAsync(product, "start");
-    }
-
-    private async Task RestartAsync(ProductRuntimeRow product)
-    {
-        await InvokeRuntimeActionAsync(product, "restart");
-    }
-
-    private async Task InvokeRuntimeActionAsync(ProductRuntimeRow product, string action)
-    {
-        _actingProductId = product.Id;
-        _actingAction = action;
-        _error = null;
-        _operationMessage = null;
-        try
-        {
-            var result = action == "restart"
-                ? await Timeline.RestartProductAsync(product.Id)
-                : await Timeline.StartProductAsync(product.Id);
-            ReplaceProduct(result);
-            _operationMessage = $"{product.DisplayName} を{(action == "restart" ? "再起動" : "起動")}しました。";
-        }
-        catch (Exception ex)
-        {
-            _error = ex.Message;
-        }
-        finally
-        {
-            _actingProductId = null;
-            _actingAction = null;
-        }
-    }
-
-    private void ReplaceProduct(ProductRuntimeRow product)
-    {
-        if (_overview is null)
-        {
-            _overview = new ProductRuntimeOverview();
-        }
-
-        var index = _overview.Products.FindIndex(row => row.Id.Equals(product.Id, StringComparison.OrdinalIgnoreCase));
-        if (index >= 0)
-        {
-            _overview.Products[index] = product;
-        }
-        else
-        {
-            _overview.Products.Add(product);
-        }
-    }
-
-    private bool CanStart(ProductRuntimeRow product) =>
-        _actingProductId is null
-        && product.ProductFound
-        && product.ComposeFound
-        && !product.Running;
-
-    private bool CanRestart(ProductRuntimeRow product) =>
-        _actingProductId is null
-        && product.ProductFound
-        && product.ComposeFound;
-
-    private bool IsBusy(ProductRuntimeRow product) =>
-        _actingProductId == product.Id
-        || product.State.Equals("restarting", StringComparison.OrdinalIgnoreCase);
 
     private static string RuntimeLabel(ProductRuntimeRow product)
     {
@@ -259,6 +170,9 @@ else
     {
         return string.IsNullOrWhiteSpace(product.ContainerName) ? "cli.ps1" : product.ContainerName;
     }
+
+    private static string SettingsPath(ProductRuntimeRow product) =>
+        string.IsNullOrWhiteSpace(product.SettingsPath) ? "timeline/settings" : product.SettingsPath;
 
     private static string ProductIcon(string productId) => productId switch
     {
