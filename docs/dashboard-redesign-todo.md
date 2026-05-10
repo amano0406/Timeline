@@ -26,6 +26,8 @@
 - [x] `scripts/smoke-web.ps1` を通す。
 - [x] Playwright で PC 幅とスマホ幅のスクリーンショットを確認する。
 - [x] ダッシュボード初期表示を、重い言語化ステータス取得で待たないようにする。
+- [x] ダッシュボード初期表示を、サブ製品別の重い概要取得で待たないようにし、先に時間軸ストアと全体状態を表示する。
+- [x] 詳細取得前の素材別カードが `未検出` や `未設定` に見えないよう、確認中の表示へ寄せる。
 
 ## 判断待ち・保留
 
@@ -42,3 +44,6 @@
 - スマホ幅スクリーンショット: `output/playwright/dashboard-mobile.png`
 - 2026-05-10 に `/timeline/audio-verbalization/bulk/status` をダッシュボード初期表示から分離し、温まった状態では 5 秒時点でダッシュボード本体が表示されることを確認。
 - 初期表示改善後のスクリーンショット: `output/playwright/verify-dashboard-rerun-5s.png`
+- 2026-05-10 にダッシュボードの段階表示を再調整。2 秒時点で本体が表示され、詳細未取得の補助値は `確認中` として表示されることを確認。
+- スクリーンショット: `output/playwright/dashboard-progressive-confirming-2s.png`
+- スクリーンショット: `output/playwright/dashboard-progressive-after-fallback-8s.png`

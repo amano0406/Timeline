@@ -119,9 +119,9 @@ else if (_overview is not null)
                                 <td class="whitespace-nowrap">@UiFormat.ShortDate(item.CreatedAt)</td>
                                 <td class="whitespace-nowrap">@UiFormat.ShortDate(item.UpdatedAt)</td>
                                 <td class="whitespace-nowrap">
-                                    <span class="tfa-status-pill border-slate-200 bg-slate-50 text-slate-700">
-                                        <FaIcon Name="circle-info" Class="tfa-icon !h-3 !w-3" />
-                                        <span>@EmptyText(item.LatestUpdateStatus)</span>
+                                    <span class="@PcUpdateStatusPillClass(item.LatestUpdateStatus)">
+                                        <FaIcon Name="@PcUpdateStatusIcon(item.LatestUpdateStatus)" Class="tfa-icon !h-3 !w-3" />
+                                        <span>@PcUpdateStatusLabel(item.LatestUpdateStatus)</span>
                                     </span>
                                 </td>
                             </tr>
@@ -241,4 +241,30 @@ else if (_overview is not null)
 
     private static string EmptyText(string? value) =>
         string.IsNullOrWhiteSpace(value) ? "-" : value;
+
+    private static string PcUpdateStatusLabel(string? value) =>
+        (value ?? "").Trim().ToLowerInvariant() switch
+        {
+            "first_seen" => "初回取得",
+            "changed" => "更新あり",
+            "unchanged" => "変化なし",
+            _ => EmptyText(value),
+        };
+
+    private static string PcUpdateStatusIcon(string? value) =>
+        (value ?? "").Trim().ToLowerInvariant() switch
+        {
+            "changed" => "circle-check",
+            "unchanged" => "circle-minus",
+            _ => "circle-info",
+        };
+
+    private static string PcUpdateStatusPillClass(string? value) =>
+        (value ?? "").Trim().ToLowerInvariant() switch
+        {
+            "first_seen" => "tfa-status-pill border-sky-200 bg-sky-50 text-sky-800",
+            "changed" => "tfa-status-pill border-teal-200 bg-teal-50 text-teal-800",
+            "unchanged" => "tfa-status-pill border-slate-200 bg-slate-50 text-slate-700",
+            _ => "tfa-status-pill border-slate-200 bg-slate-50 text-slate-700",
+        };
 }

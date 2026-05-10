@@ -48,10 +48,8 @@
          aria-label="設定"
          data-timeline-modal-root
          @onkeydown="HandleSettingsModalKeyDown">
-        <button type="button"
-                class="tfa-twe-modal-backdrop"
-                aria-label="設定を閉じる"
-                @onclick="CloseSettings"></button>
+        <div class="tfa-twe-modal-backdrop"
+             aria-hidden="true"></div>
         <div class="tfa-twe-modal-dialog"
              data-twe-modal-dialog-ref
              data-timeline-modal-dialog
@@ -112,10 +110,8 @@
          aria-label="製品管理"
          data-timeline-modal-root
          @onkeydown="HandleProductsModalKeyDown">
-        <button type="button"
-                class="tfa-twe-modal-backdrop"
-                aria-label="製品管理を閉じる"
-                @onclick="CloseProducts"></button>
+        <div class="tfa-twe-modal-backdrop"
+             aria-hidden="true"></div>
         <div class="tfa-twe-modal-dialog"
              data-twe-modal-dialog-ref
              data-timeline-modal-dialog

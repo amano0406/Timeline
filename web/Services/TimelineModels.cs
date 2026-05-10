@@ -464,6 +464,44 @@ public sealed class ProductRuntimeRow
     public string Message { get; set; } = "";
 }
 
+public sealed class ProductUninstallRequest
+{
+    public bool KeepSettings { get; set; } = true;
+    public bool RemoveGeneratedData { get; set; }
+}
+
+public sealed class ProductUninstallPlan
+{
+    public string ProductId { get; set; } = "";
+    public string DisplayName { get; set; } = "";
+    public string ProductPath { get; set; } = "";
+    public bool KeepSettings { get; set; } = true;
+    public bool RemoveGeneratedData { get; set; }
+    public long TotalDeleteBytes { get; set; }
+    public ProductUninstallPathPlan AppDirectory { get; set; } = new();
+    public ProductUninstallSettingsPlan Settings { get; set; } = new();
+    public List<ProductUninstallPathPlan> GeneratedData { get; set; } = [];
+    public List<string> Warnings { get; set; } = [];
+}
+
+public sealed class ProductUninstallPathPlan
+{
+    public string Path { get; set; } = "";
+    public bool Exists { get; set; }
+    public long SizeBytes { get; set; }
+    public bool WillDelete { get; set; }
+}
+
+public sealed class ProductUninstallSettingsPlan
+{
+    public string Path { get; set; } = "";
+    public bool Exists { get; set; }
+    public long SizeBytes { get; set; }
+    public bool WillBackup { get; set; }
+    public string BackupPath { get; set; } = "";
+    public bool WillDeleteBackup { get; set; }
+}
+
 public sealed class TimelineExportDownloadResult
 {
     public string ArchivePath { get; set; } = "";

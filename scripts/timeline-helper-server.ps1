@@ -3744,6 +3744,410 @@ function Test-TimelineGitWorktreeClean {
     }
 }
 
+function Get-TimelineDirectorySizeBytes {
+    param([string]$Path)
+
+    if (-not $Path -or -not (Test-Path -LiteralPath $Path -PathType Container)) {
+        return [int64]0
+    }
+
+    $total = [int64]0
+    try {
+        foreach ($file in @(Get-ChildItem -LiteralPath $Path -Recurse -Force -File -ErrorAction SilentlyContinue)) {
+            try {
+                $total += [int64]$file.Length
+            }
+            catch {
+            }
+        }
+    }
+    catch {
+    }
+    return $total
+}
+
+function Get-TimelineFileSizeBytes {
+    param([string]$Path)
+
+    if (-not $Path -or -not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+        return [int64]0
+    }
+    try {
+        return [int64]((Get-Item -LiteralPath $Path -Force).Length)
+    }
+    catch {
+        return [int64]0
+    }
+}
+
+function Get-TimelineProductBackupRoot {
+    param([string]$ProductId)
+
+    $storeDirectory = Get-TimelineAppStoreDirectory
+    $baseDirectory = Split-Path -Parent $storeDirectory
+    if (-not $baseDirectory) {
+        $baseDirectory = $storeDirectory
+    }
+    $safeProductId = Get-TimelineZipSafeSegment -Value $ProductId
+    if (-not $safeProductId) {
+        $safeProductId = "product"
+    }
+    return Join-Path (Join-Path (Join-Path $baseDirectory "backups") "products") $safeProductId
+}
+
+function Get-TimelineProductSettingsFilePath {
+    param(
+        [string]$ProductId,
+        [object]$Definition
+    )
+
+    $productPath = [string]$Definition.productPath
+    if (-not $productPath) {
+        return ""
+    }
+    $settingsPath = Join-Path $productPath "settings.json"
+    if (Test-Path -LiteralPath $settingsPath -PathType Leaf) {
+        return [System.IO.Path]::GetFullPath($settingsPath)
+    }
+    return ""
+}
+
+function Get-TimelineObjectPathValue {
+    param([object]$Value)
+
+    if ($Value -is [string]) {
+        return Convert-TimelineText -Value $Value
+    }
+    if ($null -eq $Value) {
+        return ""
+    }
+    return Convert-TimelineText -Value (Get-PropertyValue -Object $Value -Name "path" -Default "")
+}
+
+function Get-TimelineProductGeneratedDataPaths {
+    param(
+        [string]$ProductId,
+        [object]$Definition
+    )
+
+    $paths = @()
+    try {
+        switch ($ProductId.ToLowerInvariant()) {
+            "audio" {
+                $settings = Read-TimelineAudioSettings
+                $path = Get-TimelineAudioOutputRootPath -Settings $settings
+                if ($path) { $paths += $path }
+            }
+            "windows-codex" {
+                $settings = Read-TimelineWindowsCodexSettingsFile
+                $path = Get-TimelineObjectPathValue -Value (Get-PropertyValueAny -Object $settings -Names @("outputRoot", "outputs_root") -Default "")
+                if ($path) { $paths += $path }
+            }
+            "chatgpt" {
+                $settings = Read-TimelineChatGptSettings
+                $path = Get-TimelineObjectPathValue -Value (Get-PropertyValueAny -Object $settings -Names @("masterRoot", "outputRoot") -Default "")
+                if ($path) { $paths += $path }
+            }
+            "image" {
+                $settings = Read-TimelineImageSettingsPayload
+                $path = Get-TimelineObjectPathValue -Value (Get-PropertyValueAny -Object $settings -Names @("outputRoot", "output_root") -Default "")
+                if ($path) { $paths += $path }
+            }
+            "video" {
+                $settings = Read-TimelineVideoSettingsPayload
+                $path = Get-TimelineObjectPathValue -Value (Get-PropertyValueAny -Object $settings -Names @("outputRoot", "output_root") -Default "")
+                if ($path) { $paths += $path }
+            }
+            "pc" {
+                $settings = Get-TimelinePcSettingsPayload
+                $path = Get-TimelineObjectPathValue -Value (Get-PropertyValueAny -Object $settings -Names @("outputRoot", "output_root", "masterRoot") -Default "")
+                if ($path) { $paths += $path }
+            }
+        }
+    }
+    catch {
+    }
+
+    $normalized = @()
+    foreach ($path in @($paths)) {
+        $text = Convert-TimelineText -Value $path
+        if (-not $text) {
+            continue
+        }
+        $localPath = Convert-TimelineWindowsPath -Path $text
+        if (-not $localPath) {
+            $localPath = $text
+        }
+        try {
+            $fullPath = [System.IO.Path]::GetFullPath($localPath)
+            if (-not ($normalized -contains $fullPath)) {
+                $normalized += $fullPath
+            }
+        }
+        catch {
+        }
+    }
+    return @($normalized)
+}
+
+function Get-TimelineProductSourceDataPaths {
+    param(
+        [string]$ProductId,
+        [object]$Definition
+    )
+
+    $paths = @()
+    try {
+        switch ($ProductId.ToLowerInvariant()) {
+            "audio" {
+                $settings = Read-TimelineAudioSettings
+                foreach ($root in @(Get-PropertyValue -Object $settings -Name "inputRoots" -Default @())) {
+                    $path = Convert-TimelineRootPath -Root $root
+                    if ($path) { $paths += $path }
+                }
+            }
+            "chatgpt" {
+                $settings = Read-TimelineChatGptSettings
+                foreach ($root in @(Get-PropertyValue -Object $settings -Name "inputRoots" -Default @())) {
+                    $path = Convert-TimelineRootPath -Root $root
+                    if ($path) { $paths += $path }
+                }
+            }
+            "image" {
+                $settings = Read-TimelineImageSettingsPayload
+                foreach ($root in @(Get-PropertyValue -Object $settings -Name "inputRoots" -Default @())) {
+                    $path = Convert-TimelineRootPath -Root $root
+                    if ($path) { $paths += $path }
+                }
+            }
+            "video" {
+                $settings = Read-TimelineVideoSettingsPayload
+                foreach ($root in @(Get-PropertyValue -Object $settings -Name "inputRoots" -Default @())) {
+                    $path = Convert-TimelineRootPath -Root $root
+                    if ($path) { $paths += $path }
+                }
+            }
+            "pc" {
+                $settings = Get-TimelinePcSettingsPayload
+                foreach ($root in @(Get-PropertyValueAny -Object $settings -Names @("inputRoots", "sourceRoots") -Default @())) {
+                    $path = Convert-TimelineRootPath -Root $root
+                    if ($path) { $paths += $path }
+                }
+            }
+        }
+    }
+    catch {
+    }
+
+    $normalized = @()
+    foreach ($path in @($paths)) {
+        $text = Convert-TimelineText -Value $path
+        if (-not $text) {
+            continue
+        }
+        $localPath = Convert-TimelineWindowsPath -Path $text
+        if (-not $localPath) {
+            $localPath = $text
+        }
+        try {
+            $fullPath = [System.IO.Path]::GetFullPath($localPath)
+            if (-not ($normalized -contains $fullPath)) {
+                $normalized += $fullPath
+            }
+        }
+        catch {
+        }
+    }
+    return @($normalized)
+}
+
+function Test-TimelineProductGeneratedPathNotSource {
+    param(
+        [string]$GeneratedPath,
+        [string[]]$SourcePaths
+    )
+
+    if (-not $GeneratedPath) {
+        return $true
+    }
+    $generatedFullPath = [System.IO.Path]::GetFullPath($GeneratedPath)
+    foreach ($sourcePath in @($SourcePaths)) {
+        if (-not $sourcePath) {
+            continue
+        }
+        $sourceFullPath = [System.IO.Path]::GetFullPath($sourcePath)
+        if ($generatedFullPath.Equals($sourceFullPath, [System.StringComparison]::OrdinalIgnoreCase) -or
+            (Test-TimelinePathUnderRoot -Path $generatedFullPath -Root $sourceFullPath)) {
+            throw "Generated data path overlaps a source path and cannot be removed: $generatedFullPath"
+        }
+    }
+    return $true
+}
+
+function Test-TimelineProductManagedDeletePathSafe {
+    param(
+        [string]$Path,
+        [string]$ProductPath
+    )
+
+    $pathText = Convert-TimelineText -Value $Path
+    if (-not $pathText) {
+        throw "Delete path is empty."
+    }
+    $fullPath = [System.IO.Path]::GetFullPath($pathText)
+    $root = [System.IO.Path]::GetPathRoot($fullPath)
+    if ($fullPath.Equals($root, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Drive root cannot be removed."
+    }
+    $timelinePath = [System.IO.Path]::GetFullPath($TimelineProductPath)
+    if ($fullPath.Equals($timelinePath, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Timeline itself cannot be removed."
+    }
+    if ($ProductPath) {
+        $productFullPath = [System.IO.Path]::GetFullPath($ProductPath)
+        if ($fullPath.Equals($productFullPath, [System.StringComparison]::OrdinalIgnoreCase)) {
+            return $true
+        }
+        if (Test-TimelinePathUnderRoot -Path $fullPath -Root $productFullPath) {
+            return $true
+        }
+    }
+    if (-not (Test-Path -LiteralPath $fullPath -PathType Container)) {
+        throw "Delete path was not found: $fullPath"
+    }
+    return $true
+}
+
+function Get-TimelineProductUninstallRequestOptions {
+    param([object]$Request)
+
+    $keepSettings = Get-PropertyValue -Object $Request -Name "keepSettings" -Default $true
+    $removeGeneratedData = Get-PropertyValue -Object $Request -Name "removeGeneratedData" -Default $false
+    return [ordered]@{
+        keepSettings = [bool]$keepSettings
+        removeGeneratedData = [bool]$removeGeneratedData
+    }
+}
+
+function Get-TimelineProductUninstallPlan {
+    param(
+        [string]$ProductId,
+        [object]$Request = $null
+    )
+
+    $definition = Get-TimelineRuntimeProductDefinition -ProductId $ProductId
+    $options = Get-TimelineProductUninstallRequestOptions -Request $Request
+    $productPath = [System.IO.Path]::GetFullPath([string]$definition.productPath)
+    $settingsPath = Get-TimelineProductSettingsFilePath -ProductId $ProductId -Definition $definition
+    $backupRoot = Get-TimelineProductBackupRoot -ProductId $ProductId
+    $settingsBackupPath = if ($settingsPath) { Join-Path (Join-Path $backupRoot "settings") "settings.json" } else { "" }
+    $generatedPaths = @(Get-TimelineProductGeneratedDataPaths -ProductId $ProductId -Definition $definition)
+
+    $generatedRows = @()
+    $generatedTotalBytes = [int64]0
+    foreach ($path in @($generatedPaths)) {
+        $exists = Test-Path -LiteralPath $path -PathType Container
+        $sizeBytes = if ($exists) { Get-TimelineDirectorySizeBytes -Path $path } else { [int64]0 }
+        if ([bool]$options.removeGeneratedData) {
+            $generatedTotalBytes += $sizeBytes
+        }
+        $generatedRows += [ordered]@{
+            path = $path
+            exists = [bool]$exists
+            sizeBytes = [int64]$sizeBytes
+            willDelete = [bool]$options.removeGeneratedData
+        }
+    }
+
+    $appExists = Test-Path -LiteralPath $productPath -PathType Container
+    $appSizeBytes = if ($appExists) { Get-TimelineDirectorySizeBytes -Path $productPath } else { [int64]0 }
+    $settingsExists = if ($settingsPath) { Test-Path -LiteralPath $settingsPath -PathType Leaf } else { $false }
+    $settingsSizeBytes = if ($settingsExists) { Get-TimelineFileSizeBytes -Path $settingsPath } else { [int64]0 }
+    $totalDeleteBytes = [int64]$appSizeBytes + [int64]$generatedTotalBytes
+
+    return [ordered]@{
+        productId = $ProductId
+        displayName = [string]$definition.displayName
+        productPath = $productPath
+        keepSettings = [bool]$options.keepSettings
+        removeGeneratedData = [bool]$options.removeGeneratedData
+        totalDeleteBytes = [int64]$totalDeleteBytes
+        appDirectory = [ordered]@{
+            path = $productPath
+            exists = [bool]$appExists
+            sizeBytes = [int64]$appSizeBytes
+            willDelete = $true
+        }
+        settings = [ordered]@{
+            path = $settingsPath
+            exists = [bool]$settingsExists
+            sizeBytes = [int64]$settingsSizeBytes
+            willBackup = ([bool]$options.keepSettings -and [bool]$settingsExists)
+            backupPath = $settingsBackupPath
+            willDeleteBackup = (-not [bool]$options.keepSettings)
+        }
+        generatedData = @($generatedRows)
+        warnings = @()
+    }
+}
+
+function Backup-TimelineProductSettingsForUninstall {
+    param(
+        [object]$Plan
+    )
+
+    $settings = Get-PropertyValue -Object $Plan -Name "settings" -Default @{}
+    $sourcePath = Convert-TimelineText -Value (Get-PropertyValue -Object $settings -Name "path" -Default "")
+    $backupPath = Convert-TimelineText -Value (Get-PropertyValue -Object $settings -Name "backupPath" -Default "")
+    $willBackup = [bool](Get-PropertyValue -Object $settings -Name "willBackup" -Default $false)
+    if (-not $willBackup -or -not $sourcePath -or -not $backupPath) {
+        return ""
+    }
+
+    $backupDirectory = [System.IO.Path]::GetDirectoryName($backupPath)
+    [System.IO.Directory]::CreateDirectory($backupDirectory) | Out-Null
+    Copy-Item -LiteralPath $sourcePath -Destination $backupPath -Force
+
+    $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
+    $historyPath = Join-Path $backupDirectory "settings-$stamp.json"
+    Copy-Item -LiteralPath $sourcePath -Destination $historyPath -Force
+
+    $metadataPath = Join-Path ([System.IO.Path]::GetDirectoryName($backupDirectory)) "metadata.json"
+    Write-TimelineUtf8JsonFile -Path $metadataPath -Payload ([ordered]@{
+        schemaVersion = 1
+        productId = Convert-TimelineText -Value (Get-PropertyValue -Object $Plan -Name "productId" -Default "")
+        displayName = Convert-TimelineText -Value (Get-PropertyValue -Object $Plan -Name "displayName" -Default "")
+        productPath = Convert-TimelineText -Value (Get-PropertyValue -Object $Plan -Name "productPath" -Default "")
+        settingsPath = $sourcePath
+        backupPath = $backupPath
+        latestHistoryPath = $historyPath
+        backedUpAt = [DateTimeOffset]::Now.ToString("o")
+    })
+    return $backupPath
+}
+
+function Restore-TimelineProductSettingsBackup {
+    param(
+        [string]$ProductId,
+        [object]$Definition
+    )
+
+    $productPath = [string]$Definition.productPath
+    if (-not $productPath -or -not (Test-Path -LiteralPath $productPath -PathType Container)) {
+        return ""
+    }
+    $backupPath = Join-Path (Join-Path (Get-TimelineProductBackupRoot -ProductId $ProductId) "settings") "settings.json"
+    if (-not (Test-Path -LiteralPath $backupPath -PathType Leaf)) {
+        return ""
+    }
+    $targetPath = Join-Path $productPath "settings.json"
+    if (Test-Path -LiteralPath $targetPath -PathType Leaf) {
+        return ""
+    }
+    Copy-Item -LiteralPath $backupPath -Destination $targetPath -Force
+    return $targetPath
+}
+
 function Invoke-TimelineProductInstall {
     param([string]$ProductId)
 
@@ -3797,23 +4201,39 @@ function Invoke-TimelineProductInstall {
 
     Initialize-TimelineProductPathsFromRegistry
     $definition = Get-TimelineRuntimeProductDefinition -ProductId $ProductId
+    [void](Restore-TimelineProductSettingsBackup -ProductId $ProductId -Definition $definition)
     Write-TimelineProductRuntimeState -ProductId $ProductId -State "stopped" -Message "Product installed."
     return Convert-TimelineRuntimeStatus -Definition $definition
 }
 
 function Invoke-TimelineProductUninstall {
-    param([string]$ProductId)
+    param(
+        [string]$ProductId,
+        [object]$Request = $null
+    )
 
     $definition = Get-TimelineRuntimeProductDefinition -ProductId $ProductId
     $status = Convert-TimelineRuntimeStatus -Definition $definition
     if ([bool](Get-PropertyValue -Object $status -Name "running" -Default $false)) {
-        throw "Stop the product before uninstalling it."
+        [void](Invoke-TimelineProductStop -ProductId $ProductId)
+        $definition = Get-TimelineRuntimeProductDefinition -ProductId $ProductId
     }
 
     $productPath = [System.IO.Path]::GetFullPath([string]$definition.productPath)
     [void](Test-TimelineProductPathDeleteSafe -ProductId $ProductId -ProductPath $productPath)
     if (-not (Test-TimelineGitWorktreeClean -ProductPath $productPath)) {
         throw "Product has local Git changes. Commit or discard them before uninstalling."
+    }
+
+    $plan = Get-TimelineProductUninstallPlan -ProductId $ProductId -Request $Request
+    [void](Test-TimelineProductManagedDeletePathSafe -Path $productPath -ProductPath $productPath)
+    $sourcePaths = @(Get-TimelineProductSourceDataPaths -ProductId $ProductId -Definition $definition)
+    foreach ($row in @(Get-PropertyValue -Object $plan -Name "generatedData" -Default @())) {
+        if ([bool](Get-PropertyValue -Object $row -Name "willDelete" -Default $false)) {
+            $generatedPath = [string](Get-PropertyValue -Object $row -Name "path" -Default "")
+            [void](Test-TimelineProductGeneratedPathNotSource -GeneratedPath $generatedPath -SourcePaths $sourcePaths)
+            [void](Test-TimelineProductManagedDeletePathSafe -Path $generatedPath -ProductPath $productPath)
+        }
     }
 
     $operationId = New-TimelineOperationId -Prefix "product-uninstall"
@@ -3826,10 +4246,28 @@ function Invoke-TimelineProductUninstall {
         -CommandLine $commandLine `
         -OperationId $operationId `
         -Message "Product uninstall start."
+    Write-TimelineOperationEvent `
+        -OperationId $operationId `
+        -Kind "plan" `
+        -ProductName ([string]$definition.displayName) `
+        -Action "product_uninstall_plan" `
+        -State "ready" `
+        -Message "Product uninstall plan created." `
+        -Details $plan
 
     $startedAt = [DateTimeOffset]::Now
     try {
         Write-TimelineProductRuntimeState -ProductId $ProductId -State "uninstalling" -Message "Uninstalling product."
+        [void](Backup-TimelineProductSettingsForUninstall -Plan $plan)
+        foreach ($row in @(Get-PropertyValue -Object $plan -Name "generatedData" -Default @())) {
+            if (-not [bool](Get-PropertyValue -Object $row -Name "willDelete" -Default $false)) {
+                continue
+            }
+            $generatedPath = [string](Get-PropertyValue -Object $row -Name "path" -Default "")
+            if ($generatedPath -and (Test-Path -LiteralPath $generatedPath -PathType Container)) {
+                Remove-Item -LiteralPath $generatedPath -Recurse -Force
+            }
+        }
         Remove-Item -LiteralPath $productPath -Recurse -Force
         $durationMs = [int]([DateTimeOffset]::Now - $startedAt).TotalMilliseconds
         Write-TimelineProductRuntimeState -ProductId $ProductId -State "not-created" -Message "Product uninstalled."
@@ -3842,6 +4280,7 @@ function Invoke-TimelineProductUninstall {
             -OperationId $operationId `
             -ExitCode 0 `
             -DurationMs $durationMs `
+            -Stdout (ConvertTo-TimelineJson $plan) `
             -Message "Product uninstalled."
     }
     catch {
@@ -14988,10 +15427,19 @@ try {
                 continue
             }
 
+            if ($method -eq "POST" -and $uri.AbsolutePath -like "/products/runtime/*/uninstall-plan") {
+                $segments = @($uri.AbsolutePath.Trim("/") -split "/")
+                $productId = [System.Uri]::UnescapeDataString([string]$segments[2])
+                $payload = if ([string]$request.Body) { $request.Body | ConvertFrom-Json } else { @{} }
+                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Invoke-TimelineWebOperation -ProductName "Timeline" -Action "product_uninstall_plan" -ScriptBlock { Get-TimelineProductUninstallPlan -ProductId $productId -Request $payload }))
+                continue
+            }
+
             if ($method -eq "POST" -and $uri.AbsolutePath -like "/products/runtime/*/uninstall") {
                 $segments = @($uri.AbsolutePath.Trim("/") -split "/")
                 $productId = [System.Uri]::UnescapeDataString([string]$segments[2])
-                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Invoke-TimelineWebOperation -ProductName "Timeline" -Action "product_uninstall" -ScriptBlock { Invoke-TimelineProductUninstall -ProductId $productId }))
+                $payload = if ([string]$request.Body) { $request.Body | ConvertFrom-Json } else { @{} }
+                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Invoke-TimelineWebOperation -ProductName "Timeline" -Action "product_uninstall" -ScriptBlock { Invoke-TimelineProductUninstall -ProductId $productId -Request $payload }))
                 continue
             }
 

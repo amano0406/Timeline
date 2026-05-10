@@ -15,8 +15,8 @@
         </h1>
     </div>
     <div class="flex flex-wrap gap-2">
-        <button class="tfa-button-secondary gap-2" @onclick="LoadAsync" disabled="@_loading">
-            <FaIcon Name="rotate" Class="@($"tfa-icon {(_loading ? "fa-spin" : "")}")" />
+        <button class="tfa-button-secondary gap-2" @onclick="LoadAsync" disabled="@(_loading || _loadingDetails)">
+            <FaIcon Name="rotate" Class="@($"tfa-icon {((_loading || _loadingDetails) ? "fa-spin" : "")}")" />
             <span>状態更新</span>
         </button>
         <a class="tfa-button-primary gap-2" href="scan">
@@ -43,7 +43,7 @@
 }
 else
 {
-    <section class="@($"tfa-card tfa-card-pad mb-4 border-l-4 {DashboardToneClass}")">
+    <section class="@($"tfa-card tfa-card-pad mb-5 border-l-4 {DashboardToneClass}")">
         <div class="grid gap-5 xl:grid-cols-[minmax(0,1.5fr)_minmax(280px,.8fr)] xl:items-center">
             <div class="min-w-0">
                 <div class="flex flex-wrap items-center gap-3">
@@ -89,7 +89,7 @@ else
         </div>
     </section>
 
-    <section class="mb-4 grid gap-4 xl:grid-cols-3">
+    <section class="mb-5 grid gap-5 xl:grid-cols-3">
         <div class="tfa-card tfa-card-pad">
             <div class="flex items-start justify-between gap-3">
                 <div>
@@ -120,7 +120,7 @@ else
             <div class="flex items-start justify-between gap-3">
                 <div>
                     <div class="text-sm font-semibold text-slate-500">言語化待ち</div>
-                    <div class="mt-2 text-3xl font-bold text-slate-950">@FormatNumber(_verbalizationTargets?.TargetCount ?? 0)</div>
+                    <div class="mt-2 text-3xl font-bold text-slate-950">@VerbalizationTargetDisplay</div>
                     <div class="mt-1 text-sm text-slate-500">@VerbalizationStateLabel</div>
                 </div>
                 <span class="tfa-icon-box text-amber-700">
@@ -130,15 +130,15 @@ else
         </div>
     </section>
 
-    <div class="grid gap-4 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,.95fr)]">
+    <div class="grid gap-5 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,.95fr)]">
         <section class="tfa-card">
-            <div class="border-b border-line px-5 py-4">
+            <div class="tfa-card-pad border-b border-line">
                 <h2 class="flex items-center gap-2 text-xl font-bold text-slate-950">
                     <FaIcon Name="list-check" Class="tfa-icon text-accent" />
                     <span>確認が必要なこと</span>
                 </h2>
             </div>
-            <div class="p-5">
+            <div class="tfa-card-pad">
                 @if (_alerts.Count == 0)
                 {
                     <div class="rounded-md border border-teal-200 bg-teal-50 p-4 text-sm text-teal-900">
@@ -166,13 +166,13 @@ else
         </section>
 
         <section class="tfa-card">
-            <div class="border-b border-line px-5 py-4">
+            <div class="tfa-card-pad border-b border-line">
                 <h2 class="flex items-center gap-2 text-xl font-bold text-slate-950">
                     <FaIcon Name="chart-line" Class="tfa-icon text-accent" />
                     <span>Timeline の成長</span>
                 </h2>
             </div>
-            <div class="p-5">
+            <div class="tfa-card-pad">
                 @if (ProductContributions.Count == 0)
                 {
                     <div class="rounded-md border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
@@ -203,8 +203,8 @@ else
         </section>
     </div>
 
-    <section class="tfa-card mt-4">
-        <div class="border-b border-line px-5 py-4">
+    <section class="tfa-card mt-5">
+        <div class="tfa-card-pad border-b border-line">
             <h2 class="flex items-center gap-2 text-xl font-bold text-slate-950">
                 <FaIcon Name="layer-group" Class="tfa-icon text-accent" />
                 <span>素材別の状況</span>
@@ -213,7 +213,7 @@ else
         <div class="grid gap-0 divide-y divide-line lg:grid-cols-2 lg:divide-x lg:divide-y-0">
             @foreach (var source in DataSources)
             {
-                <div class="p-5">
+                <div class="tfa-card-pad">
                     <div class="flex items-start justify-between gap-3">
                         <div class="min-w-0">
                             <div class="flex items-center gap-2 font-bold text-slate-950">
@@ -254,6 +254,7 @@ else
     private AudioVerbalizationBulkStatus? _verbalizationBulk;
     private AudioVerbalizationBulkTargetSummary? _verbalizationTargets;
     private bool _loading = true;
+    private bool _loadingDetails;
     private bool _loadingVerbalizationStatus;
     private bool _disposed;
     private string? _error;
@@ -330,6 +331,11 @@ else
     {
         get
         {
+            if (_loadingDetails && _verbalizationTargets is null)
+            {
+                return "確認中";
+            }
+
             var state = (_verbalizationBulk?.State ?? "").Trim().ToLowerInvariant();
             if (state is "running" or "queued" or "starting")
             {
@@ -343,11 +349,17 @@ else
         }
     }
 
+    private string VerbalizationTargetDisplay =>
+        _loadingDetails && _verbalizationTargets is null
+            ? "確認中"
+            : FormatNumber(_verbalizationTargets?.TargetCount ?? 0);
+
     protected override async Task OnInitializedAsync() => await LoadAsync();
 
     private async Task LoadAsync()
     {
         _loading = true;
+        _loadingDetails = false;
         _error = null;
         try
         {
@@ -355,6 +367,41 @@ else
             var storeTask = Timeline.GetTimelineStoreOverviewAsync();
             var workerTask = Timeline.GetTimelineWorkerStatusAsync();
             var runtimeTask = Timeline.GetProductRuntimeOverviewAsync();
+
+            await Task.WhenAll(
+                settingsTask,
+                storeTask,
+                workerTask,
+                runtimeTask);
+
+            _settings = await settingsTask;
+            _store = await storeTask;
+            _worker = await workerTask;
+            _runtime = await runtimeTask;
+            _loadingDetails = true;
+
+            BuildDashboard();
+            _loading = false;
+            await InvokeAsync(StateHasChanged);
+
+            await LoadDetailSummariesAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _loading = false;
+            _loadingDetails = false;
+        }
+    }
+
+    private async Task LoadDetailSummariesAsync()
+    {
+        _loadingDetails = true;
+        try
+        {
             var audioTask = Timeline.GetAudioOverviewAsync();
             var windowsTask = Timeline.GetWindowsCodexOverviewAsync();
             var chatGptTask = Timeline.GetChatGptOverviewAsync();
@@ -364,10 +411,6 @@ else
             var bulkTargetsTask = Timeline.GetAudioVerbalizationBulkTargetSummaryAsync();
 
             await Task.WhenAll(
-                settingsTask,
-                storeTask,
-                workerTask,
-                runtimeTask,
                 audioTask,
                 windowsTask,
                 chatGptTask,
@@ -376,10 +419,6 @@ else
                 pcTask,
                 bulkTargetsTask);
 
-            _settings = await settingsTask;
-            _store = await storeTask;
-            _worker = await workerTask;
-            _runtime = await runtimeTask;
             _audio = await audioTask;
             _windowsCodex = await windowsTask;
             _chatGpt = await chatGptTask;
@@ -397,7 +436,11 @@ else
         }
         finally
         {
-            _loading = false;
+            _loadingDetails = false;
+            if (!_disposed)
+            {
+                await InvokeAsync(StateHasChanged);
+            }
         }
     }
 
@@ -534,13 +577,28 @@ else
         var windowsStoreCount = StoreItemCount("windows-codex", _windowsCodex?.Current.ThreadCount ?? 0);
         var pcStoreCount = StoreItemCount("pc", _pc?.ItemCount ?? 0);
 
-        _dataSources.Add(new("音声ファイル", "file-audio", "音声の取り込みと言語化候補", audioStoreCount, "取り込み済み", $"{_audio?.AudioVerbalizedFileCount ?? 0} / {_audio?.AudioVerbalizationTargetFileCount ?? 0}", "言語化済み", SourceState(_audio?.ProductFound ?? false, audioStoreCount)));
-        _dataSources.Add(new("動画ファイル", "video", "動画の取り込みと言語化候補", videoStoreCount, "取り込み済み", $"{_video?.AudioVerbalizedFileCount ?? 0} / {_video?.AudioVerbalizationTargetFileCount ?? 0}", "言語化済み", SourceState(_video?.ProductFound ?? false, videoStoreCount)));
-        _dataSources.Add(new("画像ファイル", "image", "画像の取り込みとOCR候補", imageStoreCount, "取り込み済み", FormatNumber(_image?.SourceFileCount ?? 0), "対象ファイル", SourceState(_image?.ProductFound ?? false, imageStoreCount)));
-        _dataSources.Add(new("ChatGPT", "comments", "会話スレッドの取り込み", chatGptStoreCount, "取り込み済み", FormatNumber(_chatGpt?.ProcessableInputCount ?? 0), "入力候補", SourceState(_chatGpt?.ProductFound ?? false, chatGptStoreCount)));
-        _dataSources.Add(new("Windows Codex", "terminal", "Codex スレッドの取り込み", windowsStoreCount, "取り込み済み", FormatNumber(StoreEventCount("windows-codex")), "イベント", SourceState(_windowsCodex?.ProductFound ?? false, windowsStoreCount)));
-        _dataSources.Add(new("PC状態", "desktop", "PC状態ログの取り込み", pcStoreCount, "取り込み済み", _pc?.Settings.OutputRootReady == true ? "利用可" : "未設定", "保存先", SourceState(_pc?.ProductFound ?? false, pcStoreCount)));
+        _dataSources.Add(new("音声ファイル", "file-audio", "音声の取り込みと言語化候補", audioStoreCount, "取り込み済み", AudioVerbalizationSummaryText, "言語化済み", SourceState(_audio?.ProductFound ?? RuntimeProductFound("audio"), audioStoreCount)));
+        _dataSources.Add(new("動画ファイル", "video", "動画の取り込みと言語化候補", videoStoreCount, "取り込み済み", VideoVerbalizationSummaryText, "言語化済み", SourceState(_video?.ProductFound ?? RuntimeProductFound("video"), videoStoreCount)));
+        _dataSources.Add(new("画像ファイル", "image", "画像の取り込みとOCR候補", imageStoreCount, "取り込み済み", DetailSummaryText(_image is null, FormatNumber(_image?.SourceFileCount ?? 0)), "対象ファイル", SourceState(_image?.ProductFound ?? RuntimeProductFound("image"), imageStoreCount)));
+        _dataSources.Add(new("ChatGPT", "comments", "会話スレッドの取り込み", chatGptStoreCount, "取り込み済み", DetailSummaryText(_chatGpt is null, FormatNumber(_chatGpt?.ProcessableInputCount ?? 0)), "入力候補", SourceState(_chatGpt?.ProductFound ?? RuntimeProductFound("chatgpt"), chatGptStoreCount)));
+        _dataSources.Add(new("Windows Codex", "terminal", "Codex スレッドの取り込み", windowsStoreCount, "取り込み済み", FormatNumber(StoreEventCount("windows-codex")), "イベント", SourceState(_windowsCodex?.ProductFound ?? RuntimeProductFound("windows-codex"), windowsStoreCount)));
+        _dataSources.Add(new("PC状態", "desktop", "PC状態ログの取り込み", pcStoreCount, "取り込み済み", DetailSummaryText(_pc is null, _pc?.Settings.OutputRootReady == true ? "利用可" : "未設定"), "保存先", SourceState(_pc?.ProductFound ?? RuntimeProductFound("pc"), pcStoreCount)));
     }
+
+    private string AudioVerbalizationSummaryText =>
+        DetailSummaryText(_audio is null, $"{_audio?.AudioVerbalizedFileCount ?? 0} / {_audio?.AudioVerbalizationTargetFileCount ?? 0}");
+
+    private string VideoVerbalizationSummaryText =>
+        DetailSummaryText(_video is null, $"{_video?.AudioVerbalizedFileCount ?? 0} / {_video?.AudioVerbalizationTargetFileCount ?? 0}");
+
+    private string DetailSummaryText(bool detailMissing, string value) =>
+        _loadingDetails && detailMissing ? "確認中" : value;
+
+    private bool RuntimeProductFound(string productId) =>
+        _runtime?.Products.Any(product =>
+            string.Equals(product.Id, productId, StringComparison.OrdinalIgnoreCase)
+            && product.ProductFound
+            && product.ComposeFound) == true;
 
     private static string SourceState(bool productFound, int itemCount)
     {

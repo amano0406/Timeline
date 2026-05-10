@@ -139,6 +139,21 @@
     一般ユーザー環境でも選択した製品配置から CLI を呼び出せる。
   </p>
 
+  <h2>サブ製品マニフェスト</h2>
+  <p>
+    製品をインストールした後は、サブ製品ルート直下の
+    <code>timeline-product.json</code> を読んで、起動、停止、CLI、設定ファイル、生成データ、アンインストール時の扱いを解決する。
+    Timeline 側は、製品ごとの Docker 名や生成データの場所を推測しない。
+  </p>
+  <p>
+    インストール前はサブ製品のファイルを読めないため、入手元と配置先は引き続き
+    <code>productRegistry</code> で管理する。
+    インストール後の製品固有情報は <code>timeline-product.json</code> を正とする。
+  </p>
+  <p>
+    詳細仕様は <code>docs/timeline-product-manifest.md</code> にまとめる。
+  </p>
+
   <h2>入手方式の比較</h2>
   <table>
     <thead>

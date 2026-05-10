@@ -542,20 +542,55 @@ public sealed class TimelineHelperClient
         CancellationToken cancellationToken = default)
         => await PostProductRuntimeActionAsync(productId, "install", cancellationToken);
 
+    public async Task<ProductUninstallPlan> GetProductUninstallPlanAsync(
+        string productId,
+        ProductUninstallRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var response = await _http.PostAsJsonAsync(
+            $"products/runtime/{Uri.EscapeDataString(productId)}/uninstall-plan",
+            request,
+            JsonOptions,
+            cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            throw new InvalidOperationException(ErrorMessageFromBody(body)
+                ?? $"アンインストール内容を確認できませんでした。HTTP {(int)response.StatusCode}");
+        }
+
+        return await response.Content.ReadFromJsonAsync<ProductUninstallPlan>(JsonOptions, cancellationToken)
+            ?? new ProductUninstallPlan { ProductId = productId };
+    }
+
     public async Task<ProductRuntimeRow> UninstallProductAsync(
         string productId,
+        ProductUninstallRequest request,
         CancellationToken cancellationToken = default)
-        => await PostProductRuntimeActionAsync(productId, "uninstall", cancellationToken);
+        => await PostProductRuntimeActionAsync(productId, "uninstall", request, cancellationToken);
 
     private async Task<ProductRuntimeRow> PostProductRuntimeActionAsync(
         string productId,
         string action,
         CancellationToken cancellationToken)
+        => await PostProductRuntimeActionAsync(productId, action, content: null, cancellationToken);
+
+    private async Task<ProductRuntimeRow> PostProductRuntimeActionAsync(
+        string productId,
+        string action,
+        object? content,
+        CancellationToken cancellationToken)
     {
-        var response = await _http.PostAsync(
-            $"products/runtime/{Uri.EscapeDataString(productId)}/{Uri.EscapeDataString(action)}",
-            content: null,
-            cancellationToken);
+        var path = $"products/runtime/{Uri.EscapeDataString(productId)}/{Uri.EscapeDataString(action)}";
+        HttpResponseMessage response;
+        if (content is null)
+        {
+            response = await _http.PostAsync(path, content: null, cancellationToken);
+        }
+        else
+        {
+            response = await _http.PostAsJsonAsync(path, content, JsonOptions, cancellationToken);
+        }
         if (!response.IsSuccessStatusCode)
         {
             var body = await response.Content.ReadAsStringAsync(cancellationToken);
