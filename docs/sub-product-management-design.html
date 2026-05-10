@@ -91,8 +91,8 @@
   </p>
 
   <div class="note">
-    現段階の実装では、インストールや更新を自動実行しない。
-    まずは製品レジストリを導入し、固定パス依存を減らす。
+    現段階の実装では、インストール方式を GitHub のタグ付き source archive ZIP に寄せる。
+    製品レジストリを起点に、固定パス依存と独自配布 ZIP 依存を減らす。
   </div>
 
   <h2>目的</h2>
@@ -101,7 +101,7 @@
     <li>CLI 呼び出し先を固定パスではなく設定から解決する。</li>
     <li>開発環境の <code>C:\apps</code> 配置は維持する。</li>
     <li>一般ユーザー向けにも、製品ごとの管理配置を設定できるようにする。</li>
-    <li>将来的に Release ZIP、Git clone、配信サーバー方式へ拡張できる形にする。</li>
+    <li>GitHub source archive ZIP、Git clone、配信サーバー方式へ拡張できる形にする。</li>
   </ul>
 
   <h2>製品レジストリ</h2>
@@ -178,10 +178,10 @@
         <td>Git 導入やアカウント前提になりやすい</td>
       </tr>
       <tr>
-        <td>release</td>
+        <td>github-source-archive</td>
         <td>一般ユーザー初期配布</td>
-        <td>Git 不要で ZIP 展開だけで済む</td>
-        <td>リリース作成と互換性管理が必要</td>
+        <td>Git 不要でタグの source ZIP を展開するだけで済む</td>
+        <td>公開リポジトリとタグ管理が必要</td>
       </tr>
       <tr>
         <td>managed-server</td>
@@ -192,23 +192,19 @@
     </tbody>
   </table>
 
-  <h2>Release ZIP の統一ルール</h2>
+  <h2>GitHub source archive の統一ルール</h2>
   <p>
-    一般ユーザー向けのインストールは Git clone ではなく、GitHub Release の ZIP asset を優先する。
-    そのため、Timeline 本体と各サブ製品は同じ名前・同じ生成方法の配布 ZIP を持つ。
+    一般ユーザー向けのインストールは Git clone ではなく、GitHub がタグから自動生成する
+    source archive ZIP を優先する。公開リポジトリであれば、通常 GitHub アカウントも Git も不要。
   </p>
-  <pre><code>scripts\build-release-bundle.ps1 -Version v0.2.0</code></pre>
-  <p>生成物は次の形式に統一する。</p>
-  <pre><code>release\v0.2.0\&lt;RepositoryName&gt;-windows-local.zip
-release\v0.2.0\SHA256SUMS.txt</code></pre>
+  <pre><code>https://github.com/amano0406/&lt;RepositoryName&gt;/archive/refs/tags/&lt;tag&gt;.zip</code></pre>
   <p>
-    ZIP は Git タグから作成する。これにより、リリースされた ZIP の中身と GitHub 上のタグが一致し、
-    ローカルの <code>settings.json</code>、生成物、Docker 作業データが混ざらない。
+    ZIP は GitHub が Git タグから作成する。これにより、ZIP の中身と GitHub 上のタグが一致し、
+    リポジトリに含めていないローカルの <code>settings.json</code>、生成物、Docker 作業データは混ざらない。
   </p>
   <p>
-    Timeline 側の <code>productRegistry</code> は、将来的に
-    <code>https://github.com/amano0406/&lt;RepositoryName&gt;/releases/latest/download/&lt;RepositoryName&gt;-windows-local.zip</code>
-    を基本 URL として扱う。
+    独自配布 ZIP は標準配布から外す。チェックサム、署名、ビルド済みバイナリ、
+    ライセンス別配布が必要になった場合だけ、Release asset として再検討する。
   </p>
 
   <h2>段階的な実装方針</h2>
@@ -218,7 +214,7 @@ release\v0.2.0\SHA256SUMS.txt</code></pre>
     <li>設定ハブで製品が見つからない状態と管理配置を表示する。</li>
     <li>独立した製品管理ページではなく、設定ハブへ統合する。</li>
     <li>ローカルパス登録を実装する。</li>
-    <li>Release ZIP のインストールを実装する。</li>
+    <li>GitHub source archive ZIP のインストールを実装する。</li>
     <li>更新、アンインストール、整合性チェックを実装する。</li>
     <li>配信サーバー方式を検討する。</li>
   </ol>
@@ -237,7 +233,7 @@ release\v0.2.0\SHA256SUMS.txt</code></pre>
     削除や上書きを伴うため、確認ダイアログ、操作ログ、失敗時の復旧方針を決めてから実装する。
   </p>
   <ul>
-    <li>Release ZIP の自動ダウンロード。</li>
+    <li>GitHub source archive ZIP の自動ダウンロード。</li>
     <li>Git clone による導入。</li>
     <li>アンインストール。</li>
     <li>バージョン更新。</li>

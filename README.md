@@ -1,23 +1,44 @@
 # Timeline
 
-Timeline is the local parent UI and cross-product timeline store for Timeline
-products.
+Timeline is the local parent UI, product manager, and cross-product timeline
+store for Timeline products.
 
-This repository does not contain the sub-product engines. Timeline resolves
-sub-product locations through its product registry. By default it uses the
-local products under `C:\apps`:
+Timeline does not contain the sub-product engines. Each sub-product remains a
+separate local product with its own `cli.ps1`, settings, workers, and generated
+data. Timeline coordinates those products through their public Windows-side
+entry points and then builds Timeline-owned data that can be scanned, reviewed,
+downloaded, and prepared for later LLM analysis.
+
+Timeline may read generated files that a sub-product has already produced, but
+it must not enter or operate a sub-product Docker container directly.
+
+## Supported Products
+
+The default product registry points to the local products under `C:\apps`:
 
 - `C:\apps\TimelineForAudio`
+- `C:\apps\TimelineForVideo`
+- `C:\apps\TimelineForImage`
 - `C:\apps\TimelineForWindowsCodex`
 - `C:\apps\TimelineForChatGPT`
-- `C:\apps\TimelineForImage`
+- `C:\apps\TimelineForPC`
 
-Timeline operates sub-products through each product's `cli.ps1`. It may read generated output files, but it must not enter or operate sub-product Docker containers directly.
+Each product is expected to expose a `cli.ps1`. Newer products should also ship
+a `timeline-product.json` manifest so Timeline can understand product identity,
+repository location, release asset naming, runtime behavior, and uninstall
+policy without hard-coded assumptions.
+
+Manifest design:
+
+```text
+docs\timeline-product-manifest.md
+```
 
 Sub-product management design:
 
 ```text
 docs\sub-product-management-design.html
+docs\product-uninstall-design.md
 ```
 
 Strategy notes:
@@ -30,20 +51,26 @@ docs\timeline-llm-data-rules.html
 
 ## Current Scope
 
-Timeline has two roles:
+Timeline currently has four practical roles:
 
-1. Provide a local UI for checking whether each sub-product is configured,
-   running, importing, and generating expected data.
-2. Build Timeline's own cross-product timeline store from sub-product exports.
+1. Show whether required settings, products, and background services are ready.
+2. Let the user scan available source products and confirm what has been
+   imported.
+3. Rebuild Timeline's own cross-product store from sub-product exports.
+4. Manage local sub-products: install, uninstall, start, stop, restart, and
+   inspect runtime status.
 
-Sub-product list pages are intentionally confirmation-oriented. They use normal
-page-based paging rather than auto-loading all records or infinite scroll.
+Sub-product list pages are intentionally confirmation-oriented. They are not the
+main analysis surface. Their job is to make it easy to confirm that source files,
+threads, images, videos, and PC-state records are being detected and converted.
 
-The main Timeline page currently also uses normal page-based paging. Timeline
-search, date-range filtering, and richer timeline exploration should be added
-before considering infinite scroll or virtual scrolling.
+List pages use normal page-based paging rather than infinite scroll. Timeline
+can revisit infinite or virtual scrolling later after search, date filtering,
+and timeline analysis workflows become mature enough to justify it.
 
 ## Start
+
+Use PowerShell from the repository directory:
 
 ```powershell
 cd C:\apps\Timeline
@@ -73,28 +100,46 @@ entry points.
 
 ## Screens
 
-- Dashboard: product runtime status, product open/settings links, and
-  start/restart actions.
-- Timeline: rebuilds and displays the cross-product Timeline store.
-- Timeline settings: display language, time zone, work directory, and store
-  directory.
-- Product management: product registry paths, resolved product locations, and
-  runtime visibility.
-- Operation logs: persistent Web/CLI operation history for incident review.
-- TimelineForAudio:
-  - file list, analysis status, generated-data deletion/download, audio detail
-    view, and settings.
-- TimelineForWindowsCodex:
-  - thread list, thread detail view, generated-data deletion/download, and
-    settings.
-- TimelineForChatGPT:
-  - ZIP upload, thread list, thread detail view, generated-data
-    deletion/download, and settings.
-- TimelineForImage:
-  - image file list, generated-data deletion/download, rescan/analyze, and
-    settings.
+- Dashboard
+  - Shows important warnings, suggested next actions, Timeline growth, and
+    source-status summaries.
+  - It should help the user decide what to check next, not expose low-level
+    product controls.
+- Scan
+  - The main operational page for keeping Timeline data current.
+  - The single "scan" action refreshes product data through product CLIs,
+    rebuilds the Timeline store, and runs Timeline-owned preparation steps such
+    as speech verbalization when eligible.
+  - Source cards open the confirmation lists for audio, video, image,
+    Windows Codex, ChatGPT, and PC state.
+- Settings modal
+  - Basic mode: display language, time zone, Timeline data directory, shared AI
+    settings, Hugging Face token, and input directories.
+  - Advanced mode: Timeline and product-specific settings that map more closely
+    to each product's `settings.json`.
+- Product management modal
+  - Shows installed/missing products, configured locations, runtime state, and
+    available actions.
+  - Supports install, uninstall, start, stop, restart, and status refresh.
+- Audio files
+  - File tree, paging, generated-data delete/download, audio detail view,
+    playback, and speech verbalization state.
+- Video files
+  - File list/detail, generated-data download/delete where supported, and
+    speech verbalization state.
+- Image files
+  - File list/detail, generated-data download/delete where supported.
+- Windows Codex
+  - Thread list, thread detail view, Markdown-rendered chat display, generated
+    data download/delete where supported.
+- ChatGPT
+  - ZIP upload when needed, thread list, thread detail view, Markdown-rendered
+    chat display, generated-data download/delete where supported.
+- PC state
+  - Item list for TimelineForPC records. Detail view is intentionally deferred
+    until the product data needs a richer UI.
 
-List pages use the shared paging UI:
+Shared list paging looks like this:
 
 ```text
 1 - 100 / 41,596 items
@@ -105,99 +150,25 @@ First / Previous / 1 2 3 4 5 / Next / Last
 Selection operations apply to the currently displayed page unless a button says
 otherwise, such as "download all".
 
-## Smoke checks
-
-After starting Timeline, verify the web routes and sub-product `cli.ps1` contracts:
-
-```powershell
-.\scripts\check-powershell-ascii.ps1
-.\scripts\smoke-web.ps1
-.\scripts\check-product-cli-contracts.ps1
-```
-
-To include ZIP download creation checks, run:
-
-```powershell
-.\scripts\check-product-cli-contracts.ps1 -IncludeDownloads
-```
-
-If this check fails, fix the target product's `cli.ps1` contract or output path handling. Timeline should not silently fall back to reading product output directories.
-
-For the focused TimelineForAudio download path check, run:
-
-```powershell
-.\scripts\smoke-audio-ps1-download.ps1
-```
-
-## Operation Logs
-
-Timeline keeps two levels of local logs:
-
-- The bottom-right operation console is a short in-memory UI log for live
-  feedback.
-- The Operation Logs page reads persistent operation logs for incident review.
-- Persistent operation logs are written for incident review under:
-
-```text
-C:\TimelineData\Timeline\logs\operations\<operation-id>\
-```
-
-Each operation directory contains:
-
-```text
-events.jsonl
-summary.json
-```
-
-Web actions create parent operation records. CLI calls launched while handling
-that Web action create child records with `parentOperationId`, so an incident
-can be traced from the button/API operation to the product `cli.ps1` command,
-exit code, stdout/stderr tail, and worker state changes. LLM chunk processing
-also writes operation events. These logs are internal diagnostic data. They are
-not a substitute for the user-facing UI, but they should make it possible to
-inspect why an operation started, stalled, timed out, failed, or completed.
-
-The Web operation checklist is kept in:
-
-```text
-docs\operation-log-web-test-checklist.md
-```
-
-## Sub-product Operation Rules
-
-Timeline must operate sub-products through their public `cli.ps1` entry points.
-
-Allowed:
-
-- Run a sub-product `cli.ps1` from Windows-side helper/worker code.
-- Run PowerShell sub-product CLI scripts through
-  `scripts\invoke-product-cli-utf8.ps1` so redirected JSON keeps UTF-8 text and
-  remains parseable.
-- Read files generated by sub-products when Timeline needs to display or package
-  already-created results.
-- Use Timeline's own Docker services defined in this repository.
-
-Not allowed:
-
-- Enter a sub-product Docker container.
-- Run commands, Python, or shell processes inside a sub-product Docker
-  container.
-- Silently fall back to product output directories when a required `cli.ps1`
-  download operation fails.
-- Write downloaded data into another product's application directory.
-
 ## Timeline Store
 
 Timeline has its own cross-product store for normalized timeline data.
 
-Default locations:
+Default root:
 
 ```text
-C:\TimelineData\Timeline\store
-C:\TimelineData\Timeline\work
+C:\TimelineData\Timeline
 ```
 
-Main files:
+Timeline manages these subdirectories under the root:
+
+```text
+C:\TimelineData\Timeline\work
+C:\TimelineData\Timeline\store
+C:\TimelineData\Timeline\logs
+```
+
+Main store files:
 
 ```text
 store\manifest.json
@@ -206,12 +177,12 @@ store\events.jsonl
 store\rebuilds\<rebuild-id>\
 ```
 
-The Timeline page rebuilds this store by downloading from each sub-product
-through that product's `cli.ps1` into the Timeline work directory, then
-normalizing the results into `items.jsonl` and `events.jsonl`.
+The scan page rebuilds this store by downloading from each sub-product through
+that product's `cli.ps1` into Timeline's work directory, then normalizing the
+results into `items.jsonl` and `events.jsonl`.
 
-The store ZIP download packages the already rebuilt Timeline store. It does not
-silently recollect sub-product data at download time.
+The Timeline ZIP download packages the already rebuilt Timeline store. It does
+not silently recollect sub-product data at download time.
 
 Timeline separates three data layers:
 
@@ -222,9 +193,9 @@ Timeline separates three data layers:
 3. LLM generated results: derived reports, analysis text, hypotheses, and next
    actions.
 
-Directly hard-to-read intermediate data such as audio phone tokens, pre-OCR
-images, video frames, and binary files belongs in the Timeline master or raw
-references. Normal report/analysis LLM inputs should use readable text
+Directly hard-to-read intermediate data such as audio/video phone tokens,
+pre-OCR images, video frames, and binary files belongs in Timeline master data
+or raw references. Normal report/analysis LLM inputs should use readable text
 representations such as verbalized speech, OCR text, image descriptions, thread
 messages, and operation summaries.
 
@@ -234,46 +205,28 @@ Rules for this split are kept in:
 docs\timeline-llm-data-rules.html
 ```
 
-Timeline settings control:
+## Speech Verbalization
 
-- display language
-- time zone
-- Timeline work directory
-- Timeline store directory
+Timeline can verbalize phone-token timelines from TimelineForAudio and
+TimelineForVideo into readable candidate text. This belongs to Timeline rather
+than the source products because nearby Timeline context and previous chunk
+results can be used as weak hints.
 
-Audio verbalization runtime settings are managed internally by Timeline. The UI
-does not expose the Ollama URL, model, chunk size, or concurrency because those
-are product responsibilities rather than user choices.
-
-If the work/store directories need to be accessible from Timeline's Docker
-worker, keep `docker-compose.yml` bind mounts aligned with the selected local
-directories.
-
-## Audio verbalization
-
-Timeline can verbalize TimelineForAudio phone-token timelines into readable
-candidate text. This belongs to Timeline, not TimelineForAudio, because nearby
-Timeline events and previous chunk results are used as weak context.
+The feature is still quality-gated. The implementation supports queued chunk
+processing, but product-level behavior may intentionally limit the amount of
+work until output quality is acceptable.
 
 Current implementation:
 
-- Creates 5-10 minute chunk plans from audio timeline turns.
+- Creates 5-10 minute chunk plans from speech timeline turns.
 - Writes per-chunk `context/*.context.json` and `summary.json` files under the
   Timeline store.
-- Queues the long-running LLM work in `scripts\audio-verbalization-worker.ps1`
-  so the start request can return quickly.
-- Calls the Timeline-owned Ollama Docker service `/api/generate` with JSON
-  output.
-- Adds nearby Timeline user-text candidates as high-priority weak hints. If the
-  full context produces no readable candidates, Timeline retries once with a
-  distilled user-text-hint context.
-- Stores completed or failed results in
-  `store\audio-verbalizations\<audio-item-id>\audio-verbalization.json`.
-- Surfaces partially resolved files as `needs_review` instead of treating them
-  as hard failures.
-- Supports bulk processing of all audio files that have not been verbalized yet
-  through `scripts\audio-verbalization-bulk-worker.ps1`. `needs_review` files
-  are treated as processed and are not retried by the normal bulk action.
+- Queues long-running LLM work in PowerShell workers so the Web request can
+  return quickly.
+- Calls the Timeline-owned Ollama Docker service with JSON output.
+- Uses nearby Timeline text candidates and previous verbalization results as
+  weak hints.
+- Stores completed or failed results under Timeline's store.
 - Manages the Ollama URL, model, chunk size, and concurrency internally.
 
 Default model:
@@ -290,15 +243,139 @@ Timeline exposes Ollama only on localhost:
 http://127.0.0.1:11434
 ```
 
+## Operation Logs
+
+Timeline writes persistent operation logs for incident review under:
+
+```text
+C:\TimelineData\Timeline\logs\operations\<operation-id>\
+```
+
+Each operation directory contains:
+
+```text
+events.jsonl
+summary.json
+```
+
+Web actions create parent operation records. CLI calls launched while handling
+that Web action create child records with `parentOperationId`, so an incident
+can be traced from the button/API operation to the product `cli.ps1` command,
+exit code, stdout/stderr tail, and worker state changes.
+
+These logs are internal diagnostic data. The user-facing UI should not rely on a
+visible console panel.
+
+The Web operation checklist is kept in:
+
+```text
+docs\operation-log-web-test-checklist.md
+```
+
+## Sub-product Operation Rules
+
+Timeline must operate sub-products through their public Windows-side entry
+points.
+
+Allowed:
+
+- Run a sub-product `cli.ps1` from Windows-side helper/worker code.
+- Run PowerShell sub-product CLI scripts through
+  `scripts\invoke-product-cli-utf8.ps1` so redirected JSON keeps UTF-8 text and
+  remains parseable.
+- Read files generated by sub-products when Timeline needs to display or package
+  already-created results.
+- Use Timeline's own Docker services defined in this repository.
+- Use a product's `start.ps1` and `stop.ps1` for product runtime control when
+  the product supports them.
+
+Not allowed:
+
+- Enter a sub-product Docker container.
+- Run commands, Python, or shell processes inside a sub-product Docker
+  container.
+- Silently fall back to product output directories when a required `cli.ps1`
+  download operation fails.
+- Write downloaded data into another product's application directory.
+
+Timeline-managed uninstall uses Timeline's product registry and uninstall plan.
+It does not call a sub-product `uninstall.ps1`; that script remains a standalone
+product concern. The default uninstall target is the configured product
+application directory. Master data and generated data are handled by explicit
+user choices in the uninstall flow.
+
+## Product Source Archives
+
+Timeline and the sub-products are distributed from public GitHub tags by using
+GitHub's automatically generated source archives. This keeps installation simple
+for normal users: Git and a GitHub account are not required for public
+repositories.
+
+Example:
+
+```text
+https://github.com/amano0406/TimelineForAudio/archive/refs/tags/v0.4.7.zip
+```
+
+The source archive should contain the product files needed for local execution.
+Local settings, generated data, Docker volumes, caches, and build output should
+not be committed to the repository, so they are not included in the GitHub source
+archive.
+
+Distribution rules are documented in:
+
+```text
+docs\timeline-product-manifest.md
+```
+
+## Smoke Checks
+
+After starting Timeline, verify the web routes and sub-product `cli.ps1`
+contracts:
+
+```powershell
+.\scripts\check-powershell-ascii.ps1
+.\scripts\smoke-web.ps1
+.\scripts\check-product-cli-contracts.ps1
+```
+
+To include ZIP download creation checks, run:
+
+```powershell
+.\scripts\check-product-cli-contracts.ps1 -IncludeDownloads
+```
+
+If this check fails, fix the target product's `cli.ps1` contract or output path
+handling. Timeline should not silently fall back to reading product output
+directories.
+
+For the focused TimelineForAudio download path check, run:
+
+```powershell
+.\scripts\smoke-audio-ps1-download.ps1
+```
+
+For uninstall behavior, use a test fixture or backed-up product directory before
+running:
+
+```powershell
+.\scripts\test-product-uninstall.ps1
+```
+
 ## Structure
 
 - `web/`: Blazor Web App
-- `scripts/timeline-helper-server.ps1`: Windows-side local helper server
-- `scripts/timeline-store-worker.ps1`: Windows-side Timeline store rebuild worker
-- `worker/`: Timeline-owned Docker worker. It currently monitors the store and writes heartbeat status
-- `docker-compose.yml`: Docker startup for the web UI, Timeline worker, and Ollama
+- `scripts\timeline-helper-server.ps1`: Windows-side local helper server
+- `scripts\timeline-store-worker.ps1`: Windows-side Timeline store rebuild worker
+- `scripts\audio-verbalization-worker.ps1`: speech verbalization worker
+- `scripts\audio-verbalization-bulk-worker.ps1`: queued verbalization worker
+- `worker/`: Timeline-owned Docker worker. It monitors the store and writes
+  heartbeat status.
+- `docker-compose.yml`: Docker startup for the web UI, Timeline worker, and
+  Ollama
 
-The Docker worker belongs to Timeline. It is not a layer for directly operating sub-product Docker containers.
+The Docker worker belongs to Timeline. It is not a layer for directly operating
+sub-product Docker containers.
 
 ## Responsive UI
 
@@ -310,7 +387,7 @@ The UI supports desktop and smartphone widths.
   the list card.
 - Table headers stay visible inside scrollable list containers.
 
-## PowerShell encoding guard
+## PowerShell Encoding Guard
 
 Timeline still supports Windows PowerShell 5.1 entry points. Keep all `.ps1`
 files ASCII-only, except for an optional UTF-8 BOM at the start of the file.
