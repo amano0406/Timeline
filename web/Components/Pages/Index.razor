@@ -3,6 +3,7 @@
 @inject TimelineHelperClient Timeline
 @inject TimelineSettingsDialogService SettingsDialog
 @inject TimelineProductsDialogService ProductsDialog
+@implements IDisposable
 
 <PageTitle>Timeline</PageTitle>
 
@@ -253,6 +254,8 @@ else
     private AudioVerbalizationBulkStatus? _verbalizationBulk;
     private AudioVerbalizationBulkTargetSummary? _verbalizationTargets;
     private bool _loading = true;
+    private bool _loadingVerbalizationStatus;
+    private bool _disposed;
     private string? _error;
     private readonly List<DashboardAlert> _alerts = [];
     private readonly List<DataSourceSummary> _dataSources = [];
@@ -358,7 +361,6 @@ else
             var imageTask = Timeline.GetImageOverviewAsync();
             var videoTask = Timeline.GetVideoOverviewAsync();
             var pcTask = Timeline.GetPcOverviewAsync();
-            var bulkTask = Timeline.GetAudioVerbalizationBulkStatusAsync();
             var bulkTargetsTask = Timeline.GetAudioVerbalizationBulkTargetSummaryAsync();
 
             await Task.WhenAll(
@@ -372,7 +374,6 @@ else
                 imageTask,
                 videoTask,
                 pcTask,
-                bulkTask,
                 bulkTargetsTask);
 
             _settings = await settingsTask;
@@ -385,10 +386,10 @@ else
             _image = await imageTask;
             _video = await videoTask;
             _pc = await pcTask;
-            _verbalizationBulk = await bulkTask;
             _verbalizationTargets = await bulkTargetsTask;
 
             BuildDashboard();
+            QueueVerbalizationStatusLoad();
         }
         catch (Exception ex)
         {
@@ -397,6 +398,41 @@ else
         finally
         {
             _loading = false;
+        }
+    }
+
+    private void QueueVerbalizationStatusLoad()
+    {
+        if (_disposed || _loadingVerbalizationStatus)
+        {
+            return;
+        }
+
+        _ = LoadVerbalizationStatusAsync();
+    }
+
+    private async Task LoadVerbalizationStatusAsync()
+    {
+        _loadingVerbalizationStatus = true;
+        try
+        {
+            var status = await Timeline.GetAudioVerbalizationBulkStatusAsync();
+            if (_disposed)
+            {
+                return;
+            }
+
+            _verbalizationBulk = status;
+            BuildDashboard();
+            await InvokeAsync(StateHasChanged);
+        }
+        finally
+        {
+            _loadingVerbalizationStatus = false;
+            if (!_disposed)
+            {
+                await InvokeAsync(StateHasChanged);
+            }
         }
     }
 
@@ -628,5 +664,10 @@ else
             "empty" => "未取得",
             _ => "取得済み",
         };
+    }
+
+    public void Dispose()
+    {
+        _disposed = true;
     }
 }

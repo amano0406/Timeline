@@ -25,6 +25,7 @@
 - [x] `scripts/check-powershell-ascii.ps1` を通す。
 - [x] `scripts/smoke-web.ps1` を通す。
 - [x] Playwright で PC 幅とスマホ幅のスクリーンショットを確認する。
+- [x] ダッシュボード初期表示を、重い言語化ステータス取得で待たないようにする。
 
 ## 判断待ち・保留
 
@@ -39,3 +40,5 @@
 - 2026-05-10 に smoke が通ることを確認。
 - PC 幅スクリーンショット: `output/playwright/dashboard-desktop.png`
 - スマホ幅スクリーンショット: `output/playwright/dashboard-mobile.png`
+- 2026-05-10 に `/timeline/audio-verbalization/bulk/status` をダッシュボード初期表示から分離し、温まった状態では 5 秒時点でダッシュボード本体が表示されることを確認。
+- 初期表示改善後のスクリーンショット: `output/playwright/verify-dashboard-rerun-5s.png`
