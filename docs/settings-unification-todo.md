@@ -35,7 +35,7 @@ Notes:
 - Old URLs such as `/timeline/products` and `/audio/settings` are no longer normal UI routes.
 - Normal mode hides product installation paths. Product placement is only exposed in pro mode.
 - Changing the Timeline save location in normal mode also moves managed Audio/Image generated-data destinations under the new Timeline save location before saving.
-- Product package operations now cover install/uninstall. Update remains a separate future feature because branch, version, and local-change policy need separate design.
+- Product package operations now cover install, update, and uninstall through GitHub source archives. Git clone, private repositories, and a dedicated distribution server remain separate future options.
 - Product management currently shows product existence, placement, runtime state, install/uninstall, and start/stop/restart controls.
 - Uninstall is intentionally limited to the product application directory. Timeline master data, product master data, generated data, and work/store/log directories are not deleted by this operation.
 - Screenshot: `output/playwright/product-management-modal-check.png`
