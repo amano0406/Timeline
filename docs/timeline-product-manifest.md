@@ -74,7 +74,7 @@ Timeline 側は、インストール前に必要な最低限の製品カタロ�
         "displayName": "TimelineForAudio",
         "path": "C:\\apps\\TimelineForAudio",
         "sourceType": "github-source-archive",
-        "sourceUrl": "https://github.com/amano0406/TimelineForAudio/archive/refs/tags/v0.4.7.zip",
+        "sourceUrl": "https://github.com/amano0406/TimelineForAudio",
         "version": "",
         "enabled": true,
         "required": false
@@ -188,6 +188,7 @@ https://github.com/amano0406/Timeline/archive/refs/tags/v0.2.2.zip
 
 - 一般ユーザーに Git や GitHub アカウントを要求しない
 - 独自 ZIP 生成スクリプトを各リポジトリで保守しなくてよい
+- Timeline 側は `sourceUrl` に GitHub リポジトリ URL を持ち、最新タグから source archive ZIP URL を解決する
 - Git タグを正本にすることで、ZIP の中身とリリースしたコミットの対応が明確になる
 - `settings.json`、生成データ、Docker 作業データなど、Git 管理されていないローカル情報を混ぜない
 - GitHub Release の source code ZIP/TAR が自動で用意される

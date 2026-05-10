@@ -43,6 +43,9 @@ $script:TimelineVideoOverviewCacheAt = $null
 $script:TimelineVideoFilesCacheTtlSeconds = 60
 $script:TimelineVideoOverviewCacheTtlSeconds = 45
 $script:TimelineVideoPersistentCacheTtlSeconds = 3600
+$script:TimelineProductLatestVersionCache = @{}
+$script:TimelineProductLatestVersionCacheAt = @{}
+$script:TimelineProductLatestVersionCacheTtlSeconds = 300
 
 function ConvertTo-TimelineJson {
     param([Parameter(Mandatory = $true)][object]$Payload)
@@ -165,8 +168,8 @@ function New-TimelineProductRegistryDefaults {
                 id = "audio"
                 displayName = "TimelineForAudio"
                 path = "C:\apps\TimelineForAudio"
-                sourceType = "git"
-                sourceUrl = "https://github.com/amano0406/TimelineForAudio.git"
+                sourceType = "github-source-archive"
+                sourceUrl = "https://github.com/amano0406/TimelineForAudio"
                 version = ""
                 enabled = $true
                 required = $false
@@ -175,8 +178,8 @@ function New-TimelineProductRegistryDefaults {
                 id = "windows-codex"
                 displayName = "TimelineForWindowsCodex"
                 path = "C:\apps\TimelineForWindowsCodex"
-                sourceType = "git"
-                sourceUrl = "https://github.com/amano0406/TimelineForWindowsCodex.git"
+                sourceType = "github-source-archive"
+                sourceUrl = "https://github.com/amano0406/TimelineForWindowsCodex"
                 version = ""
                 enabled = $true
                 required = $false
@@ -185,8 +188,8 @@ function New-TimelineProductRegistryDefaults {
                 id = "chatgpt"
                 displayName = "TimelineForChatGPT"
                 path = "C:\apps\TimelineForChatGPT"
-                sourceType = "git"
-                sourceUrl = "https://github.com/amano0406/TimelineForChatGPT.git"
+                sourceType = "github-source-archive"
+                sourceUrl = "https://github.com/amano0406/TimelineForChatGPT"
                 version = ""
                 enabled = $true
                 required = $false
@@ -195,8 +198,8 @@ function New-TimelineProductRegistryDefaults {
                 id = "image"
                 displayName = "TimelineForImage"
                 path = "C:\apps\TimelineForImage"
-                sourceType = "git"
-                sourceUrl = "https://github.com/amano0406/TimelineForImage.git"
+                sourceType = "github-source-archive"
+                sourceUrl = "https://github.com/amano0406/TimelineForImage"
                 version = ""
                 enabled = $true
                 required = $false
@@ -205,8 +208,8 @@ function New-TimelineProductRegistryDefaults {
                 id = "video"
                 displayName = "TimelineForVideo"
                 path = "C:\apps\TimelineForVideo"
-                sourceType = "git"
-                sourceUrl = "https://github.com/amano0406/TimelineForVideo.git"
+                sourceType = "github-source-archive"
+                sourceUrl = "https://github.com/amano0406/TimelineForVideo"
                 version = ""
                 enabled = $true
                 required = $false
@@ -215,8 +218,8 @@ function New-TimelineProductRegistryDefaults {
                 id = "pc"
                 displayName = "TimelineForPC"
                 path = "C:\apps\TimelineForPC"
-                sourceType = "git"
-                sourceUrl = "https://github.com/amano0406/TimelineForPC.git"
+                sourceType = "github-source-archive"
+                sourceUrl = "https://github.com/amano0406/TimelineForPC"
                 version = ""
                 enabled = $true
                 required = $false
@@ -272,7 +275,7 @@ function Convert-TimelineProductDefinition {
     if (-not $path) {
         $path = Convert-TimelineText -Value (Get-PropertyValue -Object $Default -Name "path" -Default "")
     }
-    $defaultSourceType = Convert-TimelineText -Value (Get-PropertyValue -Object $Default -Name "sourceType" -Default "git")
+    $defaultSourceType = Convert-TimelineText -Value (Get-PropertyValue -Object $Default -Name "sourceType" -Default "github-source-archive")
     $defaultSourceUrl = Convert-TimelineText -Value (Get-PropertyValue -Object $Default -Name "sourceUrl" -Default "")
     $sourceType = Convert-TimelineText -Value (Get-PropertyValue -Object $Source -Name "sourceType" -Default $defaultSourceType)
     $sourceUrl = Convert-TimelineText -Value (Get-PropertyValue -Object $Source -Name "sourceUrl" -Default $defaultSourceUrl)
@@ -288,7 +291,7 @@ function Convert-TimelineProductDefinition {
         id = $ProductId
         displayName = $displayName
         path = $path
-        sourceType = if ($sourceType) { $sourceType } else { "release" }
+        sourceType = if ($sourceType) { $sourceType } else { "github-source-archive" }
         sourceUrl = $sourceUrl
         version = $version
         enabled = [bool]$enabled
@@ -3508,6 +3511,7 @@ function Convert-TimelineRuntimeStatus {
     else {
         $message = "CLI launcher was not found."
     }
+    $versionInfo = Get-TimelineProductVersionInfo -ProductId ([string]$Definition.id) -Definition $Definition -ProductFound ([bool]$productFound)
 
     return [ordered]@{
         id = [string]$Definition.id
@@ -3520,6 +3524,11 @@ function Convert-TimelineRuntimeStatus {
         sourceType = Convert-TimelineText -Value (Get-PropertyValue -Object $Definition -Name "sourceType" -Default "")
         sourceUrl = Convert-TimelineText -Value (Get-PropertyValue -Object $Definition -Name "sourceUrl" -Default "")
         version = Convert-TimelineText -Value (Get-PropertyValue -Object $Definition -Name "version" -Default "")
+        installedVersion = [string]$versionInfo.installedVersion
+        latestVersion = [string]$versionInfo.latestVersion
+        latestVersionStatus = [string]$versionInfo.latestVersionStatus
+        updateAvailable = [bool]$versionInfo.updateAvailable
+        releaseArchiveUrl = [string]$versionInfo.releaseArchiveUrl
         enabled = [bool](Get-PropertyValue -Object $Definition -Name "enabled" -Default $true)
         productFound = $productFound
         composeFound = $cliFound
@@ -3741,6 +3750,373 @@ function Test-TimelineGitWorktreeClean {
     }
     catch {
         throw "Could not verify product Git state: $($_.Exception.Message)"
+    }
+}
+
+function Resolve-TimelineGitHubRepository {
+    param([string]$SourceUrl)
+
+    $text = (Convert-TimelineText -Value $SourceUrl).Trim()
+    if (-not $text) {
+        return $null
+    }
+
+    $owner = ""
+    $repo = ""
+    if ($text -match '^https?://github\.com/([^/]+)/([^/.]+)(?:\.git)?(?:/.*)?$') {
+        $owner = $matches[1]
+        $repo = $matches[2]
+    }
+    elseif ($text -match '^git@github\.com:([^/]+)/([^/.]+)(?:\.git)?$') {
+        $owner = $matches[1]
+        $repo = $matches[2]
+    }
+    else {
+        return $null
+    }
+
+    return [ordered]@{
+        owner = $owner
+        repo = $repo
+        repositoryUrl = "https://github.com/$owner/$repo"
+    }
+}
+
+function New-TimelineWebClient {
+    $client = [System.Net.WebClient]::new()
+    $client.Headers.Set("User-Agent", "Timeline-local-product-manager")
+    return $client
+}
+
+function Convert-TimelineVersionParts {
+    param([string]$Version)
+
+    $text = (Convert-TimelineText -Value $Version).Trim()
+    if ($text.StartsWith("v", [System.StringComparison]::OrdinalIgnoreCase)) {
+        $text = $text.Substring(1)
+    }
+    $text = ($text -split '[-+]')[0]
+    $parts = @()
+    foreach ($part in @($text -split '\.')) {
+        $number = 0
+        if ([int]::TryParse($part, [ref]$number)) {
+            $parts += $number
+        }
+        else {
+            $parts += 0
+        }
+    }
+    while ($parts.Count -lt 4) {
+        $parts += 0
+    }
+    return @($parts | Select-Object -First 4)
+}
+
+function Compare-TimelineVersionText {
+    param(
+        [string]$Left,
+        [string]$Right
+    )
+
+    $leftText = Convert-TimelineText -Value $Left
+    $rightText = Convert-TimelineText -Value $Right
+    if (-not $leftText -and -not $rightText) { return 0 }
+    if (-not $leftText) { return -1 }
+    if (-not $rightText) { return 1 }
+
+    $leftParts = @(Convert-TimelineVersionParts -Version $leftText)
+    $rightParts = @(Convert-TimelineVersionParts -Version $rightText)
+    for ($index = 0; $index -lt 4; $index += 1) {
+        if ([int]$leftParts[$index] -lt [int]$rightParts[$index]) { return -1 }
+        if ([int]$leftParts[$index] -gt [int]$rightParts[$index]) { return 1 }
+    }
+    return [string]::Compare($leftText, $rightText, [System.StringComparison]::OrdinalIgnoreCase)
+}
+
+function Get-TimelineLatestGitHubTag {
+    param(
+        [string]$Owner,
+        [string]$Repo
+    )
+
+    $key = "$Owner/$Repo".ToLowerInvariant()
+    if ($script:TimelineProductLatestVersionCache.ContainsKey($key) -and
+        $script:TimelineProductLatestVersionCacheAt.ContainsKey($key)) {
+        $age = ([DateTimeOffset]::Now - [DateTimeOffset]$script:TimelineProductLatestVersionCacheAt[$key]).TotalSeconds
+        if ($age -lt $script:TimelineProductLatestVersionCacheTtlSeconds) {
+            return [string]$script:TimelineProductLatestVersionCache[$key]
+        }
+    }
+
+    $client = New-TimelineWebClient
+    try {
+        $url = "https://api.github.com/repos/$Owner/$Repo/tags?per_page=100"
+        $json = $client.DownloadString($url)
+        $tags = ConvertFrom-Json -InputObject $json
+        $best = ""
+        foreach ($tag in @($tags)) {
+            $name = Convert-TimelineText -Value (Get-PropertyValue -Object $tag -Name "name" -Default "")
+            if (-not $name) {
+                continue
+            }
+            if (-not $best -or (Compare-TimelineVersionText -Left $best -Right $name) -lt 0) {
+                $best = $name
+            }
+        }
+        if (-not $best) {
+            throw "No GitHub tags were found for $Owner/$Repo."
+        }
+        $script:TimelineProductLatestVersionCache[$key] = $best
+        $script:TimelineProductLatestVersionCacheAt[$key] = [DateTimeOffset]::Now
+        return $best
+    }
+    finally {
+        $client.Dispose()
+    }
+}
+
+function Get-TimelineProductInstallStatePath {
+    param([string]$ProductId)
+
+    return Join-Path (Get-TimelineProductBackupRoot -ProductId $ProductId) "install-state.json"
+}
+
+function Read-TimelineProductInstallState {
+    param([string]$ProductId)
+
+    $path = Get-TimelineProductInstallStatePath -ProductId $ProductId
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+        return $null
+    }
+    try {
+        return Get-Content -LiteralPath $path -Raw -Encoding UTF8 | ConvertFrom-Json
+    }
+    catch {
+        return $null
+    }
+}
+
+function Write-TimelineProductInstallState {
+    param(
+        [string]$ProductId,
+        [string]$Version,
+        [string]$SourceUrl,
+        [string]$ArchiveUrl
+    )
+
+    $path = Get-TimelineProductInstallStatePath -ProductId $ProductId
+    $parent = [System.IO.Path]::GetDirectoryName($path)
+    if ($parent) {
+        [System.IO.Directory]::CreateDirectory($parent) | Out-Null
+    }
+    Write-TimelineUtf8JsonFile -Path $path -Payload ([ordered]@{
+        schemaVersion = 1
+        productId = $ProductId
+        version = $Version
+        sourceUrl = $SourceUrl
+        archiveUrl = $ArchiveUrl
+        installedAt = [DateTimeOffset]::Now.ToString("o")
+    })
+}
+
+function Get-TimelineProductGitVersion {
+    param([string]$ProductPath)
+
+    if (-not (Test-Path -LiteralPath (Join-Path $ProductPath ".git") -PathType Container)) {
+        return ""
+    }
+    try {
+        $result = Invoke-TimelineProcess `
+            -FileName "git" `
+            -Arguments @("describe", "--tags", "--abbrev=0") `
+            -WorkingDirectory $ProductPath `
+            -TimeoutSeconds 30 `
+            -Environment (Get-TimelineChildProcessEnvironment)
+        if ([int]$result.exitCode -eq 0) {
+            return ([string]$result.stdout).Trim()
+        }
+    }
+    catch {
+    }
+    return ""
+}
+
+function Get-TimelineProductManifestVersion {
+    param([string]$ProductPath)
+
+    $manifestPath = Join-Path $ProductPath "timeline-product.json"
+    if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
+        return ""
+    }
+    try {
+        $manifest = Get-Content -LiteralPath $manifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
+        return Convert-TimelineText -Value (Get-PropertyValue -Object $manifest -Name "version" -Default "")
+    }
+    catch {
+        return ""
+    }
+}
+
+function Get-TimelineProductInstalledVersion {
+    param(
+        [string]$ProductId,
+        [object]$Definition
+    )
+
+    $productPath = [string]$Definition.productPath
+    if (-not $productPath -or -not (Test-Path -LiteralPath $productPath -PathType Container)) {
+        return ""
+    }
+
+    $gitVersion = Get-TimelineProductGitVersion -ProductPath $productPath
+    if ($gitVersion) {
+        return $gitVersion
+    }
+
+    $state = Read-TimelineProductInstallState -ProductId $ProductId
+    $stateVersion = Convert-TimelineText -Value (Get-PropertyValue -Object $state -Name "version" -Default "")
+    if ($stateVersion) {
+        return $stateVersion
+    }
+
+    $manifestVersion = Get-TimelineProductManifestVersion -ProductPath $productPath
+    if ($manifestVersion) {
+        return $manifestVersion
+    }
+
+    return Convert-TimelineText -Value (Get-PropertyValue -Object $Definition -Name "version" -Default "")
+}
+
+function Get-TimelineProductSourceInfo {
+    param([object]$Definition)
+
+    $sourceUrl = Convert-TimelineText -Value (Get-PropertyValue -Object $Definition -Name "sourceUrl" -Default "")
+    if (-not $sourceUrl) {
+        throw "Product install source was not configured."
+    }
+
+    $repository = Resolve-TimelineGitHubRepository -SourceUrl $sourceUrl
+    if ($null -eq $repository) {
+        throw "Only GitHub source archive installation is supported: $sourceUrl"
+    }
+
+    $latestVersion = Get-TimelineLatestGitHubTag -Owner ([string]$repository.owner) -Repo ([string]$repository.repo)
+    $archiveVersion = [System.Uri]::EscapeDataString($latestVersion)
+    $archiveUrl = "https://github.com/$($repository.owner)/$($repository.repo)/archive/refs/tags/$archiveVersion.zip"
+    return [ordered]@{
+        owner = [string]$repository.owner
+        repo = [string]$repository.repo
+        repositoryUrl = [string]$repository.repositoryUrl
+        sourceUrl = $sourceUrl
+        latestVersion = $latestVersion
+        archiveUrl = $archiveUrl
+    }
+}
+
+function Get-TimelineProductVersionInfo {
+    param(
+        [string]$ProductId,
+        [object]$Definition,
+        [bool]$ProductFound
+    )
+
+    $installedVersion = if ($ProductFound) { Get-TimelineProductInstalledVersion -ProductId $ProductId -Definition $Definition } else { "" }
+    $latestVersion = ""
+    $archiveUrl = ""
+    $latestStatus = ""
+    try {
+        $source = Get-TimelineProductSourceInfo -Definition $Definition
+        $latestVersion = [string]$source.latestVersion
+        $archiveUrl = [string]$source.archiveUrl
+        $latestStatus = "ok"
+    }
+    catch {
+        $latestStatus = $_.Exception.Message
+    }
+
+    $updateAvailable = $false
+    if ($ProductFound -and $latestVersion) {
+        $updateAvailable = (-not $installedVersion) -or ((Compare-TimelineVersionText -Left $installedVersion -Right $latestVersion) -lt 0)
+    }
+
+    return [ordered]@{
+        installedVersion = $installedVersion
+        latestVersion = $latestVersion
+        latestVersionStatus = $latestStatus
+        updateAvailable = [bool]$updateAvailable
+        releaseArchiveUrl = $archiveUrl
+    }
+}
+
+function New-TimelineProductSourceArchiveStage {
+    param(
+        [string]$ProductId,
+        [object]$Definition
+    )
+
+    $source = Get-TimelineProductSourceInfo -Definition $Definition
+    $operationId = New-TimelineOperationId -Prefix "product-install"
+    $stageRoot = Join-Path (Join-Path (Get-TimelineAppWorkDirectory) "product-installs") $operationId
+    $extractRoot = Join-Path $stageRoot "extract"
+    [System.IO.Directory]::CreateDirectory($extractRoot) | Out-Null
+    $archivePath = Join-Path $stageRoot "source.zip"
+
+    $commandLine = "Download " + (Format-TimelineProcessArgument -Value ([string]$source.archiveUrl))
+    Add-TimelineConsoleLog `
+        -Level "info" `
+        -Kind "command" `
+        -ProductName ([string]$Definition.displayName) `
+        -Action "product_source_download" `
+        -CommandLine $commandLine `
+        -OperationId $operationId `
+        -Message "Product source download start."
+
+    $startedAt = [DateTimeOffset]::Now
+    $client = New-TimelineWebClient
+    try {
+        $client.DownloadFile([string]$source.archiveUrl, $archivePath)
+        [System.IO.Compression.ZipFile]::ExtractToDirectory($archivePath, $extractRoot)
+        $sourceRoots = @(Get-ChildItem -LiteralPath $extractRoot -Directory -Force | Where-Object { $_.Name -ne "__MACOSX" })
+        if ($sourceRoots.Count -ne 1) {
+            throw "Source archive did not contain one product root directory."
+        }
+        $durationMs = [int]([DateTimeOffset]::Now - $startedAt).TotalMilliseconds
+        Add-TimelineConsoleLog `
+            -Level "success" `
+            -Kind "result" `
+            -ProductName ([string]$Definition.displayName) `
+            -Action "product_source_download" `
+            -CommandLine $commandLine `
+            -OperationId $operationId `
+            -ExitCode 0 `
+            -DurationMs $durationMs `
+            -Message "Product source downloaded."
+        return [ordered]@{
+            operationId = $operationId
+            stageRoot = $stageRoot
+            sourceRoot = [string]$sourceRoots[0].FullName
+            archivePath = $archivePath
+            sourceUrl = [string]$source.sourceUrl
+            archiveUrl = [string]$source.archiveUrl
+            latestVersion = [string]$source.latestVersion
+        }
+    }
+    catch {
+        $durationMs = [int]([DateTimeOffset]::Now - $startedAt).TotalMilliseconds
+        Add-TimelineConsoleLog `
+            -Level "error" `
+            -Kind "result" `
+            -ProductName ([string]$Definition.displayName) `
+            -Action "product_source_download" `
+            -CommandLine $commandLine `
+            -OperationId $operationId `
+            -DurationMs $durationMs `
+            -Stderr $_.Exception.Message `
+            -Message "Product source download failed."
+        throw
+    }
+    finally {
+        $client.Dispose()
     }
 }
 
@@ -4160,18 +4536,6 @@ function Invoke-TimelineProductInstall {
         }
     }
 
-    $sourceUrl = Convert-TimelineText -Value (Get-PropertyValue -Object $definition -Name "sourceUrl" -Default "")
-    $sourceType = Convert-TimelineText -Value (Get-PropertyValue -Object $definition -Name "sourceType" -Default "git")
-    if (-not $sourceUrl) {
-        throw "Product install source was not configured."
-    }
-
-    $isGitSource = $sourceType.Equals("git", [System.StringComparison]::OrdinalIgnoreCase) -or
-        $sourceUrl.EndsWith(".git", [System.StringComparison]::OrdinalIgnoreCase)
-    if (-not $isGitSource) {
-        throw "Only Git based product installation is supported now."
-    }
-
     $parent = [System.IO.Path]::GetDirectoryName($productPath)
     if (-not $parent) {
         throw "Product parent directory could not be resolved."
@@ -4185,24 +4549,124 @@ function Invoke-TimelineProductInstall {
     }
 
     Write-TimelineProductRuntimeState -ProductId $ProductId -State "installing" -Message "Installing product."
-    $result = Invoke-TimelineLoggedProcess `
-        -FileName "git" `
-        -Arguments @("clone", "--depth", "1", $sourceUrl, $productPath) `
-        -WorkingDirectory $parent `
-        -TimeoutSeconds 900 `
-        -Environment (Get-TimelineChildProcessEnvironment) `
-        -ProductName ([string]$definition.displayName)
-
-    if ([int]$result.exitCode -ne 0) {
-        $message = if (([string]$result.stderr).Trim()) { ([string]$result.stderr).Trim() } elseif (([string]$result.stdout).Trim()) { ([string]$result.stdout).Trim() } else { "exit code $([int]$result.exitCode)" }
-        Write-TimelineProductRuntimeState -ProductId $ProductId -State "failed" -Message $message
-        throw "$($definition.displayName) install failed: $message"
+    $stage = $null
+    try {
+        $stage = New-TimelineProductSourceArchiveStage -ProductId $ProductId -Definition $definition
+        if (Test-Path -LiteralPath $productPath -PathType Container) {
+            Remove-Item -LiteralPath $productPath -Recurse -Force
+        }
+        Move-Item -LiteralPath ([string]$stage.sourceRoot) -Destination $productPath
+        [void](Test-TimelineProductPathDeleteSafe -ProductId $ProductId -ProductPath $productPath)
+        Write-TimelineProductInstallState `
+            -ProductId $ProductId `
+            -Version ([string]$stage.latestVersion) `
+            -SourceUrl ([string]$stage.sourceUrl) `
+            -ArchiveUrl ([string]$stage.archiveUrl)
+    }
+    catch {
+        Write-TimelineProductRuntimeState -ProductId $ProductId -State "failed" -Message $_.Exception.Message
+        throw "$($definition.displayName) install failed: $($_.Exception.Message)"
+    }
+    finally {
+        if ($stage -and [string]$stage.stageRoot -and (Test-Path -LiteralPath ([string]$stage.stageRoot) -PathType Container)) {
+            Remove-Item -LiteralPath ([string]$stage.stageRoot) -Recurse -Force -ErrorAction SilentlyContinue
+        }
     }
 
     Initialize-TimelineProductPathsFromRegistry
     $definition = Get-TimelineRuntimeProductDefinition -ProductId $ProductId
     [void](Restore-TimelineProductSettingsBackup -ProductId $ProductId -Definition $definition)
     Write-TimelineProductRuntimeState -ProductId $ProductId -State "stopped" -Message "Product installed."
+    return Convert-TimelineRuntimeStatus -Definition $definition
+}
+
+function Invoke-TimelineProductUpdate {
+    param([string]$ProductId)
+
+    $definition = Get-TimelineRuntimeProductDefinition -ProductId $ProductId
+    $status = Convert-TimelineRuntimeStatus -Definition $definition
+    if (-not [bool](Get-PropertyValue -Object $status -Name "productFound" -Default $false)) {
+        throw "Product is not installed."
+    }
+    if (-not [bool](Get-PropertyValue -Object $status -Name "composeFound" -Default $false)) {
+        throw "Product is incomplete and cannot be updated safely."
+    }
+
+    $productPath = [System.IO.Path]::GetFullPath([string]$definition.productPath)
+    [void](Test-TimelineProductPathDeleteSafe -ProductId $ProductId -ProductPath $productPath)
+    if (-not (Test-TimelineGitWorktreeClean -ProductPath $productPath)) {
+        throw "Product has local Git changes. Commit or discard them before updating."
+    }
+
+    $source = Get-TimelineProductSourceInfo -Definition $definition
+    $installedVersion = Get-TimelineProductInstalledVersion -ProductId $ProductId -Definition $definition
+    if ($installedVersion -and ((Compare-TimelineVersionText -Left $installedVersion -Right ([string]$source.latestVersion)) -ge 0)) {
+        return Convert-TimelineRuntimeStatus -Definition $definition
+    }
+
+    $wasRunning = [bool](Get-PropertyValue -Object $status -Name "running" -Default $false)
+    if ($wasRunning) {
+        [void](Invoke-TimelineProductStop -ProductId $ProductId)
+        $definition = Get-TimelineRuntimeProductDefinition -ProductId $ProductId
+    }
+
+    $plan = Get-TimelineProductUninstallPlan -ProductId $ProductId -Request ([ordered]@{
+        keepSettings = $true
+        removeGeneratedData = $false
+    })
+    [void](Backup-TimelineProductSettingsForUninstall -Plan $plan)
+
+    Write-TimelineProductRuntimeState -ProductId $ProductId -State "updating" -Message "Updating product."
+    $stage = $null
+    $oldPath = ""
+    $newInstalled = $false
+    try {
+        $stage = New-TimelineProductSourceArchiveStage -ProductId $ProductId -Definition $definition
+        $parent = [System.IO.Path]::GetDirectoryName($productPath)
+        if (-not $parent) {
+            throw "Product parent directory could not be resolved."
+        }
+        $oldPath = Join-Path $parent ("." + (Split-Path -Leaf $productPath) + ".timeline-old-" + (Get-Date -Format "yyyyMMddHHmmss"))
+        Move-Item -LiteralPath $productPath -Destination $oldPath
+        Move-Item -LiteralPath ([string]$stage.sourceRoot) -Destination $productPath
+        $newInstalled = $true
+        [void](Test-TimelineProductPathDeleteSafe -ProductId $ProductId -ProductPath $productPath)
+        Initialize-TimelineProductPathsFromRegistry
+        $definition = Get-TimelineRuntimeProductDefinition -ProductId $ProductId
+        [void](Restore-TimelineProductSettingsBackup -ProductId $ProductId -Definition $definition)
+        Write-TimelineProductInstallState `
+            -ProductId $ProductId `
+            -Version ([string]$stage.latestVersion) `
+            -SourceUrl ([string]$stage.sourceUrl) `
+            -ArchiveUrl ([string]$stage.archiveUrl)
+        Write-TimelineProductRuntimeState -ProductId $ProductId -State "stopped" -Message "Product updated."
+
+        if ($wasRunning) {
+            [void](Invoke-TimelineProductStart -ProductId $ProductId)
+        }
+
+        if ($oldPath -and (Test-Path -LiteralPath $oldPath -PathType Container)) {
+            Remove-Item -LiteralPath $oldPath -Recurse -Force
+        }
+    }
+    catch {
+        if ($newInstalled -and (Test-Path -LiteralPath $productPath -PathType Container)) {
+            Remove-Item -LiteralPath $productPath -Recurse -Force -ErrorAction SilentlyContinue
+        }
+        if ($oldPath -and (Test-Path -LiteralPath $oldPath -PathType Container) -and -not (Test-Path -LiteralPath $productPath)) {
+            Move-Item -LiteralPath $oldPath -Destination $productPath -ErrorAction SilentlyContinue
+        }
+        Write-TimelineProductRuntimeState -ProductId $ProductId -State "failed" -Message $_.Exception.Message
+        throw "$($definition.displayName) update failed: $($_.Exception.Message)"
+    }
+    finally {
+        if ($stage -and [string]$stage.stageRoot -and (Test-Path -LiteralPath ([string]$stage.stageRoot) -PathType Container)) {
+            Remove-Item -LiteralPath ([string]$stage.stageRoot) -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+
+    Initialize-TimelineProductPathsFromRegistry
+    $definition = Get-TimelineRuntimeProductDefinition -ProductId $ProductId
     return Convert-TimelineRuntimeStatus -Definition $definition
 }
 
@@ -15424,6 +15888,13 @@ try {
                 $segments = @($uri.AbsolutePath.Trim("/") -split "/")
                 $productId = [System.Uri]::UnescapeDataString([string]$segments[2])
                 Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Invoke-TimelineWebOperation -ProductName "Timeline" -Action "product_install" -ScriptBlock { Invoke-TimelineProductInstall -ProductId $productId }))
+                continue
+            }
+
+            if ($method -eq "POST" -and $uri.AbsolutePath -like "/products/runtime/*/update") {
+                $segments = @($uri.AbsolutePath.Trim("/") -split "/")
+                $productId = [System.Uri]::UnescapeDataString([string]$segments[2])
+                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Invoke-TimelineWebOperation -ProductName "Timeline" -Action "product_update" -ScriptBlock { Invoke-TimelineProductUpdate -ProductId $productId }))
                 continue
             }
 

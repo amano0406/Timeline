@@ -249,6 +249,8 @@ Timeline とサブ製品は、公開 GitHub タグから自動生成される so
 https://github.com/amano0406/TimelineForAudio/archive/refs/tags/v0.4.7.zip
 ```
 
+Timeline の製品設定には GitHub リポジトリ URL を保存し、インストールまたは更新時に最新タグを確認して対応する source archive ZIP を取得します。
+
 source archive には、ローカル実行に必要な製品ファイルを含めます。ローカル設定、生成データ、Docker volume、キャッシュ、ビルド出力はリポジトリにコミットしないため、GitHub の source archive にも含まれません。
 
 配布ルールは次にまとめています。

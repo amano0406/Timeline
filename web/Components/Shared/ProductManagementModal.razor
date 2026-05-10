@@ -77,6 +77,14 @@
                                         <dt>管理状態</dt>
                                         <dd>@RuntimeDetailLabel(product)</dd>
                                     </div>
+                                    <div>
+                                        <dt>現在</dt>
+                                        <dd>@VersionText(product.InstalledVersion)</dd>
+                                    </div>
+                                    <div>
+                                        <dt>最新</dt>
+                                        <dd>@LatestVersionText(product)</dd>
+                                    </div>
                                 </dl>
 
                                 @if (ShowProductMessage(product))
@@ -122,6 +130,23 @@
                                         <FaIcon Name="rotate" Class="@($"tfa-icon {(IsBusy(product) ? "fa-spin" : "")}")" />
                                         <span>再起動</span>
                                     </button>
+                                }
+                                @if (product.UpdateAvailable)
+                                {
+                                    <button type="button"
+                                            class="tfa-button-primary gap-2"
+                                            @onclick="@(() => UpdateProductAsync(product))"
+                                            disabled="@(!CanUpdate(product))">
+                                        <FaIcon Name="cloud-arrow-down" Class="@($"tfa-icon {(IsBusy(product) ? "fa-spin" : "")}")" />
+                                        <span>更新</span>
+                                    </button>
+                                }
+                                else if (!string.IsNullOrWhiteSpace(product.LatestVersion))
+                                {
+                                    <span class="tfa-status-pill border-slate-200 bg-slate-50 text-slate-700">
+                                        <FaIcon Name="circle-check" Class="tfa-icon !h-3 !w-3" />
+                                        <span>最新</span>
+                                    </span>
                                 }
                                 <button type="button"
                                         class="tfa-button-secondary gap-2"
@@ -320,6 +345,11 @@
         await RunProductActionAsync(product, "インストール", () => Timeline.InstallProductAsync(product.Id));
     }
 
+    private async Task UpdateProductAsync(ProductRuntimeRow product)
+    {
+        await RunProductActionAsync(product, "更新", () => Timeline.UpdateProductAsync(product.Id));
+    }
+
     private async Task RequestUninstallAsync(ProductRuntimeRow product)
     {
         _pendingUninstallProductId = product.Id;
@@ -447,6 +477,13 @@
         && _actionProductId is null
         && !string.IsNullOrWhiteSpace(product.SourceUrl);
 
+    private bool CanUpdate(ProductRuntimeRow product) =>
+        IsInstalled(product)
+        && product.UpdateAvailable
+        && _actionProductId is null
+        && !IsBusy(product)
+        && !string.IsNullOrWhiteSpace(product.SourceUrl);
+
     private bool CanRequestUninstall(ProductRuntimeRow product) =>
         IsInstalled(product)
         && _actionProductId is null
@@ -463,7 +500,7 @@
 
     private bool IsBusy(ProductRuntimeRow product) =>
         string.Equals(_actionProductId, product.Id, StringComparison.OrdinalIgnoreCase) ||
-        RuntimeState(product) is "starting" or "stopping" or "restarting" or "installing" or "uninstalling";
+        RuntimeState(product) is "starting" or "stopping" or "restarting" or "installing" or "updating" or "uninstalling";
 
     private static bool IsRuntimeStarted(ProductRuntimeRow product) =>
         product.Running || RuntimeState(product) is "running";
@@ -510,6 +547,7 @@
         return product.State.Trim().ToLowerInvariant() switch
         {
             "installing" => "インストール中",
+            "updating" => "更新中",
             "starting" => "起動中",
             "running" => "稼働中",
             "stopping" => "停止中",
@@ -531,6 +569,7 @@
         return product.State.Trim().ToLowerInvariant() switch
         {
             "installing" => "tfa-status-pill border-sky-200 bg-sky-50 text-sky-800",
+            "updating" => "tfa-status-pill border-sky-200 bg-sky-50 text-sky-800",
             "starting" => "tfa-status-pill border-sky-200 bg-sky-50 text-sky-800",
             "running" => "tfa-status-pill border-teal-200 bg-teal-50 text-teal-800",
             "stopping" => "tfa-status-pill border-sky-200 bg-sky-50 text-sky-800",
@@ -552,6 +591,7 @@
         return product.State.Trim().ToLowerInvariant() switch
         {
             "installing" => "spinner",
+            "updating" => "spinner",
             "starting" => "spinner",
             "running" => "circle-check",
             "stopping" => "spinner",
@@ -581,6 +621,7 @@
         return product.State.Trim().ToLowerInvariant() switch
         {
             "ready" => "CLI 接続済み",
+            "updating" => "更新しています",
             "stopped" => "停止しています",
             "failed" => "前回操作でエラー",
             "" => "状態未取得",
@@ -621,6 +662,23 @@
 
     private static string EmptyText(string? value) =>
         string.IsNullOrWhiteSpace(value) ? "-" : value;
+
+    private static string VersionText(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? "未確認" : value;
+
+    private static string LatestVersionText(ProductRuntimeRow product)
+    {
+        if (!string.IsNullOrWhiteSpace(product.LatestVersion))
+        {
+            return product.LatestVersion;
+        }
+        if (!string.IsNullOrWhiteSpace(product.LatestVersionStatus) &&
+            !product.LatestVersionStatus.Equals("ok", StringComparison.OrdinalIgnoreCase))
+        {
+            return "確認できません";
+        }
+        return "未確認";
+    }
 
     private string ConfirmUninstallLabel =>
         _uninstallRemoveGeneratedData

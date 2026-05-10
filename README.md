@@ -317,6 +317,10 @@ Example:
 https://github.com/amano0406/TimelineForAudio/archive/refs/tags/v0.4.7.zip
 ```
 
+Timeline stores the GitHub repository URL in product settings and resolves the
+latest tag to the matching source archive when installing or updating a
+sub-product.
+
 The source archive should contain the product files needed for local execution.
 Local settings, generated data, Docker volumes, caches, and build output should
 not be committed to the repository, so they are not included in the GitHub source

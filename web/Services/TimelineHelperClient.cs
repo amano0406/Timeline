@@ -542,6 +542,11 @@ public sealed class TimelineHelperClient
         CancellationToken cancellationToken = default)
         => await PostProductRuntimeActionAsync(productId, "install", cancellationToken);
 
+    public async Task<ProductRuntimeRow> UpdateProductAsync(
+        string productId,
+        CancellationToken cancellationToken = default)
+        => await PostProductRuntimeActionAsync(productId, "update", cancellationToken);
+
     public async Task<ProductUninstallPlan> GetProductUninstallPlanAsync(
         string productId,
         ProductUninstallRequest request,

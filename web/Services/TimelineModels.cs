@@ -450,6 +450,11 @@ public sealed class ProductRuntimeRow
     public string SourceType { get; set; } = "";
     public string SourceUrl { get; set; } = "";
     public string Version { get; set; } = "";
+    public string InstalledVersion { get; set; } = "";
+    public string LatestVersion { get; set; } = "";
+    public string LatestVersionStatus { get; set; } = "";
+    public bool UpdateAvailable { get; set; }
+    public string ReleaseArchiveUrl { get; set; } = "";
     public bool Enabled { get; set; } = true;
     public bool ProductFound { get; set; }
     public bool ComposeFound { get; set; }
