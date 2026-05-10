@@ -87,6 +87,10 @@
 - [x] 一括言語化の実行中は `/timeline/audio-verbalization/bulk/targets` で全件再集計せず、実行中ステータスから軽量な対象サマリーを返す。
 - [x] Video / Image / PC 一覧は、初期描画前に一覧取得を待たず、先に読み込み状態を表示してから一覧取得する。
 - [x] PC 状態一覧で、読み込み中に `PC状態はありません。` と誤表示されないようにする。
+- [x] 非実行中の `/timeline/audio-verbalization/bulk/targets` に短期キャッシュを追加し、ページ遷移や状態更新のたびに Audio / Video の対象件数を全再集計しないようにする。
+- [x] Audio overview に短期キャッシュを追加し、ダッシュボード、スキャン、音声一覧、設定モーダルで同じ概要情報を毎回再集計しないようにする。
+- [x] ダッシュボードの `取り込み済み素材` と `素材別の状況` を Timeline store の反映済み件数へ寄せ、スキャン画面の `素材取り込み` と件数定義を揃える。
+- [x] 画像ファイル一覧の日本語ファイル名表示を実画面で確認し、smoke の文字化け検査が日本語ファイル名まで届くようにする。
 
 ## 判断待ち・保留
 
@@ -94,7 +98,8 @@
 - Video の永続キャッシュは 1 時間 TTL。`一覧更新` やスキャン実行では明示的に CLI 読み直しを行う。TTL 切れ後の初回取得は引き続き TimelineForVideo CLI の速度に依存する。
 - 製品管理モーダルは、`/scan` 初期ロード中に開くと helper の単一処理待ちで数秒以上 `読み込み中` になることがある。UI上は待機表示できているが、根本改善するなら helper の並列処理または起動状態キャッシュが必要。
 - 2026-05-10 の言語化 v5 検証では、音声1件・動画1件とも読める候補を作れなかった。誤候補を出さない安全弁は入ったが、品質改善までは全件処理へ戻さない。
-- 非実行中の `/timeline/audio-verbalization/bulk/targets` は、2026-05-10 の smoke で 14.779 秒かかった。画面初期表示からは分離済みだが、状態更新やスキャン直後の体感改善には対象件数サマリーのキャッシュ化が必要。
+- `/timeline/audio-verbalization/bulk/targets` の短期キャッシュは 15 分 TTL。スキャン直後や状態変化後は無効化されるが、TTL の長さは言語化の全件処理を再開する段階で再調整する余地がある。
+- TimelineForImage は製品側生成済み 705 件、Timeline store 反映済み 704 件という差がある。差分は `image-023099e810527f0c` で、成果物側には `timeline.json` と `image_record.json` が両方存在する。成果物更新は 2026-05-09 23:46:54、Timeline store 更新は 2026-05-09 14:16:07 なので、現時点では store 再構築後に生成された未反映データとして扱う。ダッシュボードでは Timeline として使えるデータを示すため、store 反映済み件数を表示する。
 
 ## 現在確認した状態
 
@@ -167,6 +172,12 @@
 - 2026-05-10 に Video の `files list` / overview へ短期キャッシュを追加。再起動直後の実測では初回 `files list` が約 13.6 秒、2回目が約 0.18 秒。overview は初回約 10.7 秒、2回目が約 0.11 秒。キャッシュが効いている状態では `files list` 約 0.16〜0.30 秒、overview 約 0.13〜0.15 秒。
 - 2026-05-10 に Video の `files list` / overview へ永続キャッシュを追加。別 PowerShell プロセスで実測し、`files list` は CLI 読み直し 14.357 秒、永続キャッシュ読み 0.147 秒。overview は CLI 読み直し 10.277 秒、永続キャッシュ読み 0.089 秒。`start.ps1 -NoOpen` 後の smoke では `/products/video/overview` が 0.129 秒で通過。
 - 2026-05-10 に `/timeline/audio-verbalization/bulk/targets` を実行中だけ軽量化。実行中は全件再集計せず、`latest.json` の状態から残り件数を返す。smoke では 19.363 秒から 0.235 秒へ短縮。
+- 2026-05-10 に非実行中の `/timeline/audio-verbalization/bulk/targets` へ短期キャッシュを追加。強制再計算は 15.814 秒、通常呼び出しは 0.039〜0.224 秒になった。初回は 120 秒 TTL で短すぎたため、15 分 TTL へ伸ばした。`scripts/smoke-web.ps1` では同 API が 0.109 秒で通過。
+- 2026-05-10 に Audio overview へ短期キャッシュを追加。処理中はキャッシュせず通常時だけ使う。強制再計算は 3.486 秒、通常呼び出しは 0.067〜0.090 秒になった。`scripts/smoke-web.ps1` では同 API が 0.09 秒で通過。
+- 2026-05-10 にダッシュボード件数の定義を確認。Image overview は製品側生成済み 705 件、Image files は現在入力 24 件、Timeline store は Image 704 件を返していたため、ダッシュボードは store の `itemCount` / product `itemCount` を使うように統一した。
+- 2026-05-10 にダッシュボードとスキャンの件数表示を実画面確認。どちらも `取り込み済み素材` / `素材取り込み` が 4,419 件、Image が 704 件で揃うことを確認した。
+- 2026-05-10 に画像ファイル名の文字化けを切り分け。PowerShell ターミナル表示では崩れることがあるが、API内部の文字列は正しい日本語コードポイントで、画面でも `スクリーンショット ...` と表示されることを確認した。smoke は先頭3件だけだと ASCII 名しか検査しないため、画像ファイル検査を 8 件へ広げた。
+- 2026-05-10 に Image の 705 / 704 件差分を追加調査。成果物 `image-023099e810527f0c` は `timeline.json` と `image_record.json` が両方あり、生成時刻が Timeline store 更新後だったため、次回スキャンで反映される未反映データと判断した。コード修正は不要。
 - 2026-05-10 に Video / Image / PC の初期表示を OnAfterRender 後の読み込みへ移し、初期DOM表示をブロックしないようにした。Playwright 実測では Video / Image / PC の初期DOM表示は 0.2 秒未満。
 - 2026-05-10 に PC 状態一覧の読み込み中表示を修正。読み込み中の空表示をやめ、一覧取得後に最終更新表示へ切り替わることを確認。スクリーンショット: `output/playwright/verify-pc-loading-cleared-5s.png`
 - スクリーンショット: `output/playwright/verify-video-progressive-after-onafterrender-1s.png`
@@ -181,3 +192,12 @@
 - スクリーンショット: `output/playwright/pc-list-15s.png`
 - スクリーンショット: `output/playwright/verify-scan-after-verbalization-v5-wording.png`
 - スクリーンショット: `output/playwright/verify-audio-list-after-verbalization-v5.png`
+- スクリーンショット: `output/playwright/verify-scan-after-bulk-target-summary-cache.png`
+- スクリーンショット: `output/playwright/verify-scan-after-audio-overview-cache.png`
+- スクリーンショット: `output/playwright/verify-dashboard-after-audio-overview-cache.png`
+- スクリーンショット: `output/playwright/verify-dashboard-store-count-unified.png`
+- スクリーンショット: `output/playwright/verify-scan-store-count-reference.png`
+- スクリーンショット: `output/playwright/verify-image-encoding-current.png`
+- スクリーンショット: `output/playwright/verify-dashboard-after-image-diff-investigation.png`
+- スクリーンショット: `output/playwright/verify-scan-after-image-diff-investigation.png`
+- スクリーンショット: `output/playwright/verify-image-after-image-diff-investigation.png`

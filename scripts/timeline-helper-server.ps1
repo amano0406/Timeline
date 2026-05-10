@@ -744,7 +744,7 @@ function Write-TimelineAudioSettings {
 
     $script:TimelineModelInventoryCache = $null
     $script:TimelineModelInventoryCacheAt = $null
-    return Get-TimelineAudioOverview
+    return Get-TimelineAudioOverview -ForceRefresh
 }
 
 function Convert-TimelineAudioRunProgressPayload {
@@ -9428,6 +9428,118 @@ function Get-TimelineAudioVerbalizationDirectory {
     return [System.IO.Path]::GetFullPath($path)
 }
 
+function Get-TimelineAudioVerbalizationBulkTargetSummaryCachePath {
+    return Join-Path (Get-TimelineAudioVerbalizationRoot) "_bulk-target-summary-cache.json"
+}
+
+function Get-TimelineAudioVerbalizationBulkTargetSummaryCacheKey {
+    param([object]$Status)
+
+    $eventsPath = Get-TimelineStoreEventsPath
+    $manifestPath = Get-TimelineStoreManifestPath
+    $eventsTicks = 0
+    $manifestTicks = 0
+    if (Test-Path -LiteralPath $eventsPath -PathType Leaf) {
+        $eventsTicks = (Get-Item -LiteralPath $eventsPath).LastWriteTimeUtc.Ticks
+    }
+    if (Test-Path -LiteralPath $manifestPath -PathType Leaf) {
+        $manifestTicks = (Get-Item -LiteralPath $manifestPath).LastWriteTimeUtc.Ticks
+    }
+
+    return [ordered]@{
+        eventsLastWriteUtcTicks = $eventsTicks
+        manifestLastWriteUtcTicks = $manifestTicks
+        bulkStatusJobId = Convert-TimelineText -Value (Get-PropertyValue -Object $Status -Name "jobId" -Default "")
+        bulkStatusState = Convert-TimelineText -Value (Get-PropertyValue -Object $Status -Name "state" -Default "")
+        bulkStatusUpdatedAt = Convert-TimelineText -Value (Get-PropertyValue -Object $Status -Name "updatedAt" -Default "")
+        bulkStatusCompletedAt = Convert-TimelineText -Value (Get-PropertyValue -Object $Status -Name "completedAt" -Default "")
+    }
+}
+
+function Test-TimelineAudioVerbalizationBulkTargetSummaryCacheKey {
+    param(
+        [object]$Cached,
+        [object]$Key
+    )
+
+    return (
+        (Convert-TimelineLong -Value (Get-PropertyValue -Object $Cached -Name "eventsLastWriteUtcTicks" -Default -1)) -eq (Convert-TimelineLong -Value (Get-PropertyValue -Object $Key -Name "eventsLastWriteUtcTicks" -Default -2)) -and
+        (Convert-TimelineLong -Value (Get-PropertyValue -Object $Cached -Name "manifestLastWriteUtcTicks" -Default -1)) -eq (Convert-TimelineLong -Value (Get-PropertyValue -Object $Key -Name "manifestLastWriteUtcTicks" -Default -2)) -and
+        (Convert-TimelineText -Value (Get-PropertyValue -Object $Cached -Name "bulkStatusJobId" -Default "")) -eq (Convert-TimelineText -Value (Get-PropertyValue -Object $Key -Name "bulkStatusJobId" -Default "")) -and
+        (Convert-TimelineText -Value (Get-PropertyValue -Object $Cached -Name "bulkStatusState" -Default "")) -eq (Convert-TimelineText -Value (Get-PropertyValue -Object $Key -Name "bulkStatusState" -Default "")) -and
+        (Convert-TimelineText -Value (Get-PropertyValue -Object $Cached -Name "bulkStatusUpdatedAt" -Default "")) -eq (Convert-TimelineText -Value (Get-PropertyValue -Object $Key -Name "bulkStatusUpdatedAt" -Default "")) -and
+        (Convert-TimelineText -Value (Get-PropertyValue -Object $Cached -Name "bulkStatusCompletedAt" -Default "")) -eq (Convert-TimelineText -Value (Get-PropertyValue -Object $Key -Name "bulkStatusCompletedAt" -Default ""))
+    )
+}
+
+function Read-TimelineAudioVerbalizationBulkTargetSummaryCache {
+    param(
+        [object]$Status,
+        [int]$MaxAgeSec = 900
+    )
+
+    $path = Get-TimelineAudioVerbalizationBulkTargetSummaryCachePath
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+        return $null
+    }
+
+    try {
+        $cached = Get-Content -LiteralPath $path -Raw -Encoding UTF8 | ConvertFrom-Json
+        $key = Get-TimelineAudioVerbalizationBulkTargetSummaryCacheKey -Status $Status
+        if (-not (Test-TimelineAudioVerbalizationBulkTargetSummaryCacheKey -Cached $cached -Key $key)) {
+            return $null
+        }
+
+        $cachedAtText = Convert-TimelineText -Value (Get-PropertyValue -Object $cached -Name "cachedAt" -Default "")
+        if (-not $cachedAtText) {
+            return $null
+        }
+        $cachedAt = [DateTimeOffset]::Parse($cachedAtText)
+        $ageSec = ([DateTimeOffset]::Now - $cachedAt).TotalSeconds
+        if ($ageSec -lt 0 -or $ageSec -gt $MaxAgeSec) {
+            return $null
+        }
+
+        $summary = Get-PropertyValue -Object $cached -Name "summary" -Default $null
+        if ($null -eq $summary) {
+            return $null
+        }
+        if ($summary.PSObject.Properties.Name -contains "cached") {
+            $summary.cached = $true
+        }
+        return $summary
+    }
+    catch {
+        return $null
+    }
+}
+
+function Write-TimelineAudioVerbalizationBulkTargetSummaryCache {
+    param(
+        [object]$Status,
+        [object]$Summary
+    )
+
+    try {
+        $key = Get-TimelineAudioVerbalizationBulkTargetSummaryCacheKey -Status $Status
+        $payload = [ordered]@{
+            schemaVersion = 1
+            cachedAt = [DateTimeOffset]::Now.ToString("o")
+            maxAgeSec = 900
+            eventsLastWriteUtcTicks = Get-PropertyValue -Object $key -Name "eventsLastWriteUtcTicks" -Default 0
+            manifestLastWriteUtcTicks = Get-PropertyValue -Object $key -Name "manifestLastWriteUtcTicks" -Default 0
+            bulkStatusJobId = Get-PropertyValue -Object $key -Name "bulkStatusJobId" -Default ""
+            bulkStatusState = Get-PropertyValue -Object $key -Name "bulkStatusState" -Default ""
+            bulkStatusUpdatedAt = Get-PropertyValue -Object $key -Name "bulkStatusUpdatedAt" -Default ""
+            bulkStatusCompletedAt = Get-PropertyValue -Object $key -Name "bulkStatusCompletedAt" -Default ""
+            summary = $Summary
+        }
+        Write-TimelineUtf8JsonFile -Path (Get-TimelineAudioVerbalizationBulkTargetSummaryCachePath) -Payload $payload
+    }
+    catch {
+    }
+}
+
 function Get-TimelineAudioVerbalizationChunkPlan {
     param(
         [object[]]$Turns,
@@ -12030,6 +12142,8 @@ function Get-TimelineAudioVerbalizationBulkTargets {
 }
 
 function Get-TimelineAudioVerbalizationBulkTargetSummary {
+    param([switch]$ForceRefresh)
+
     $activeStatus = Get-TimelineAudioVerbalizationBulkStatus
     if (Test-TimelineAudioVerbalizationBulkActive -Status $activeStatus) {
         $totalItems = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $activeStatus -Name "totalItems" -Default 0)
@@ -12051,6 +12165,14 @@ function Get-TimelineAudioVerbalizationBulkTargetSummary {
             }
             updatedAt = Convert-TimelineText -Value (Get-PropertyValue -Object $activeStatus -Name "updatedAt" -Default ([DateTimeOffset]::Now.ToString("o")))
             message = "Bulk audio verbalization is running."
+            cached = $false
+        }
+    }
+
+    if (-not $ForceRefresh) {
+        $cachedSummary = Read-TimelineAudioVerbalizationBulkTargetSummaryCache -Status $activeStatus
+        if ($null -ne $cachedSummary) {
+            return $cachedSummary
         }
     }
 
@@ -12091,7 +12213,7 @@ function Get-TimelineAudioVerbalizationBulkTargetSummary {
         }
     }
 
-    return [ordered]@{
+    $summary = [ordered]@{
         available = $true
         targetCount = $targets.Count
         failedItems = $failedItems
@@ -12102,7 +12224,10 @@ function Get-TimelineAudioVerbalizationBulkTargetSummary {
         byState = $byState
         updatedAt = [DateTimeOffset]::Now.ToString("o")
         message = if ($targets.Count -gt 0) { "Bulk audio verbalization has target files." } else { "No audio files need verbalization." }
+        cached = $false
     }
+    Write-TimelineAudioVerbalizationBulkTargetSummaryCache -Status $activeStatus -Summary $summary
+    return $summary
 }
 
 function New-TimelineAudioVerbalizationExecutionContextFromDetail {
@@ -13687,18 +13812,160 @@ function Get-TimelineAudioFiles {
     return Get-TimelineAudioFilesFromSettings -Page $Page -PageSize $PageSize
 }
 
+function Get-TimelineAudioOverviewCachePath {
+    $root = Join-Path (Get-TimelineAppWorkDirectory) "cache"
+    [System.IO.Directory]::CreateDirectory($root) | Out-Null
+    return Join-Path $root "audio-overview-cache.json"
+}
+
+function Get-TimelineAudioOverviewCacheKey {
+    param(
+        [object]$Settings,
+        [object]$ActiveRun
+    )
+
+    $settingsPath = Get-TimelineSettingsPath
+    $settingsTicks = 0
+    if (Test-Path -LiteralPath $settingsPath -PathType Leaf) {
+        $settingsTicks = (Get-Item -LiteralPath $settingsPath).LastWriteTimeUtc.Ticks
+    }
+
+    $outputRootPath = Get-TimelineAudioOutputRootPath -Settings $Settings
+    $catalogPath = if ($outputRootPath) { Join-Path $outputRootPath ".timeline-for-audio\catalog.jsonl" } else { "" }
+    $catalogTicks = 0
+    if ($catalogPath -and (Test-Path -LiteralPath $catalogPath -PathType Leaf)) {
+        $catalogTicks = (Get-Item -LiteralPath $catalogPath).LastWriteTimeUtc.Ticks
+    }
+
+    $runId = Convert-TimelineText -Value (Get-PropertyValue -Object $ActiveRun -Name "runId" -Default "")
+    $runState = Convert-TimelineText -Value (Get-PropertyValue -Object $ActiveRun -Name "state" -Default "")
+    $runUpdatedAt = Convert-TimelineText -Value (Get-PropertyValue -Object $ActiveRun -Name "updatedAt" -Default "")
+
+    return [ordered]@{
+        settingsLastWriteUtcTicks = $settingsTicks
+        outputRootPath = $outputRootPath
+        catalogLastWriteUtcTicks = $catalogTicks
+        activeRunId = $runId
+        activeRunState = $runState
+        activeRunUpdatedAt = $runUpdatedAt
+    }
+}
+
+function Test-TimelineAudioOverviewCacheKey {
+    param(
+        [object]$Cached,
+        [object]$Key
+    )
+
+    return (
+        (Convert-TimelineLong -Value (Get-PropertyValue -Object $Cached -Name "settingsLastWriteUtcTicks" -Default -1)) -eq (Convert-TimelineLong -Value (Get-PropertyValue -Object $Key -Name "settingsLastWriteUtcTicks" -Default -2)) -and
+        (Convert-TimelineText -Value (Get-PropertyValue -Object $Cached -Name "outputRootPath" -Default "")) -eq (Convert-TimelineText -Value (Get-PropertyValue -Object $Key -Name "outputRootPath" -Default "")) -and
+        (Convert-TimelineLong -Value (Get-PropertyValue -Object $Cached -Name "catalogLastWriteUtcTicks" -Default -1)) -eq (Convert-TimelineLong -Value (Get-PropertyValue -Object $Key -Name "catalogLastWriteUtcTicks" -Default -2)) -and
+        (Convert-TimelineText -Value (Get-PropertyValue -Object $Cached -Name "activeRunId" -Default "")) -eq (Convert-TimelineText -Value (Get-PropertyValue -Object $Key -Name "activeRunId" -Default "")) -and
+        (Convert-TimelineText -Value (Get-PropertyValue -Object $Cached -Name "activeRunState" -Default "")) -eq (Convert-TimelineText -Value (Get-PropertyValue -Object $Key -Name "activeRunState" -Default "")) -and
+        (Convert-TimelineText -Value (Get-PropertyValue -Object $Cached -Name "activeRunUpdatedAt" -Default "")) -eq (Convert-TimelineText -Value (Get-PropertyValue -Object $Key -Name "activeRunUpdatedAt" -Default ""))
+    )
+}
+
+function Test-TimelineAudioRunOverviewActive {
+    param([object]$ActiveRun)
+
+    $state = (Convert-TimelineText -Value (Get-PropertyValue -Object $ActiveRun -Name "state" -Default "")).ToLowerInvariant()
+    return @("running", "processing", "pending", "queued") -contains $state
+}
+
+function Read-TimelineAudioOverviewCache {
+    param(
+        [object]$Settings,
+        [object]$ActiveRun,
+        [int]$MaxAgeSec = 300
+    )
+
+    if (Test-TimelineAudioRunOverviewActive -ActiveRun $ActiveRun) {
+        return $null
+    }
+
+    $path = Get-TimelineAudioOverviewCachePath
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+        return $null
+    }
+
+    try {
+        $cached = Get-Content -LiteralPath $path -Raw -Encoding UTF8 | ConvertFrom-Json
+        $key = Get-TimelineAudioOverviewCacheKey -Settings $Settings -ActiveRun $ActiveRun
+        if (-not (Test-TimelineAudioOverviewCacheKey -Cached $cached -Key $key)) {
+            return $null
+        }
+
+        $cachedAtText = Convert-TimelineText -Value (Get-PropertyValue -Object $cached -Name "cachedAt" -Default "")
+        if (-not $cachedAtText) {
+            return $null
+        }
+        $cachedAt = [DateTimeOffset]::Parse($cachedAtText)
+        $ageSec = ([DateTimeOffset]::Now - $cachedAt).TotalSeconds
+        if ($ageSec -lt 0 -or $ageSec -gt $MaxAgeSec) {
+            return $null
+        }
+
+        return Get-PropertyValue -Object $cached -Name "overview" -Default $null
+    }
+    catch {
+        return $null
+    }
+}
+
+function Write-TimelineAudioOverviewCache {
+    param(
+        [object]$Settings,
+        [object]$ActiveRun,
+        [object]$Overview
+    )
+
+    if (Test-TimelineAudioRunOverviewActive -ActiveRun $ActiveRun) {
+        return
+    }
+
+    try {
+        $key = Get-TimelineAudioOverviewCacheKey -Settings $Settings -ActiveRun $ActiveRun
+        $payload = [ordered]@{
+            schemaVersion = 1
+            cachedAt = [DateTimeOffset]::Now.ToString("o")
+            maxAgeSec = 300
+            settingsLastWriteUtcTicks = Get-PropertyValue -Object $key -Name "settingsLastWriteUtcTicks" -Default 0
+            outputRootPath = Get-PropertyValue -Object $key -Name "outputRootPath" -Default ""
+            catalogLastWriteUtcTicks = Get-PropertyValue -Object $key -Name "catalogLastWriteUtcTicks" -Default 0
+            activeRunId = Get-PropertyValue -Object $key -Name "activeRunId" -Default ""
+            activeRunState = Get-PropertyValue -Object $key -Name "activeRunState" -Default ""
+            activeRunUpdatedAt = Get-PropertyValue -Object $key -Name "activeRunUpdatedAt" -Default ""
+            overview = $Overview
+        }
+        Write-TimelineUtf8JsonFile -Path (Get-TimelineAudioOverviewCachePath) -Payload $payload
+    }
+    catch {
+    }
+}
+
 function Get-TimelineAudioOverview {
+    param([switch]$ForceRefresh)
+
     $settings = Read-TimelineAudioSettings
     $outputRoot = Get-TimelineAudioOutputRoot -Settings $settings
     $hardware = Get-TimelineHardwareDevices
     $activeRun = Get-TimelineActiveAudioRun -Settings $settings
+    if (-not $ForceRefresh) {
+        $cachedOverview = Read-TimelineAudioOverviewCache -Settings $settings -ActiveRun $activeRun
+        if ($null -ne $cachedOverview) {
+            return $cachedOverview
+        }
+    }
+
     $catalogByIdentity = Get-TimelineAudioCatalogByIdentity -Settings $settings
     $audioFileCount = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $activeRun -Name "itemsTotal" -Default 0)
     if ($audioFileCount -le 0) {
         $audioFileCount = Get-TimelineAudioSourceFileCount -Settings $settings
     }
     $verbalizationSummary = Get-TimelineAudioVerbalizationFileSummary -Settings $settings -CatalogByIdentity $catalogByIdentity
-    return [ordered]@{
+    $overview = [ordered]@{
         productFound = (Test-Path -LiteralPath $AudioProductPath)
         productPath = $AudioProductPath
         hasToken = [bool](([string]$settings.huggingfaceToken).Trim())
@@ -13717,6 +13984,8 @@ function Get-TimelineAudioOverview {
         restartRequired = $false
         message = "TimelineForAudio is linked as a local product."
     }
+    Write-TimelineAudioOverviewCache -Settings $settings -ActiveRun $activeRun -Overview $overview
+    return $overview
 }
 
 function Show-TimelineDirectoryPicker {
@@ -14299,7 +14568,9 @@ try {
             }
 
             if ($method -eq "GET" -and $uri.AbsolutePath -eq "/timeline/audio-verbalization/bulk/targets") {
-                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Get-TimelineAudioVerbalizationBulkTargetSummary))
+                $query = [System.Web.HttpUtility]::ParseQueryString($uri.Query)
+                $forceRefresh = (Convert-TimelineText -Value ([string]$query["refresh"])) -eq "true"
+                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Get-TimelineAudioVerbalizationBulkTargetSummary -ForceRefresh:$forceRefresh))
                 continue
             }
 
@@ -14400,7 +14671,9 @@ try {
             }
 
             if ($method -eq "GET" -and $uri.AbsolutePath -eq "/products/audio/overview") {
-                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Invoke-TimelineWebOperation -ProductName "TimelineForAudio" -Action "audio_overview" -ScriptBlock { Get-TimelineAudioOverview }))
+                $query = [System.Web.HttpUtility]::ParseQueryString($uri.Query)
+                $forceRefresh = (Convert-TimelineText -Value ([string]$query["refresh"])) -eq "true"
+                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Invoke-TimelineWebOperation -ProductName "TimelineForAudio" -Action "audio_overview" -ScriptBlock { Get-TimelineAudioOverview -ForceRefresh:$forceRefresh }))
                 continue
             }
 

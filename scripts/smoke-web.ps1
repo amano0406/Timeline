@@ -134,7 +134,7 @@ else {
     Write-Host "SKIP helper /products/audio/files audio verbalization status no files"
 }
 
-$imageFilesUrl = "$HelperBaseUrl/products/image/files?page=1&pageSize=3"
+$imageFilesUrl = "$HelperBaseUrl/products/image/files?page=1&pageSize=8"
 $imageFilesTimeoutSeconds = [Math]::Max($TimeoutSeconds, 120)
 $imageFilesPayload = Invoke-RestMethod -Uri $imageFilesUrl -TimeoutSec $imageFilesTimeoutSeconds
 Assert-NoUnicodeReplacementCharacter -Payload $imageFilesPayload -Label "Image files response"

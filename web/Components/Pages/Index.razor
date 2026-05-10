@@ -264,13 +264,14 @@ else
             .OrderByDescending(product => product.EventCount)
             .ToList();
 
-    private int TotalImportedItems =>
-        (_audio?.AudioItemCount ?? 0)
-        + (_video?.ItemCount ?? 0)
-        + (_image?.ItemCount ?? 0)
-        + (_windowsCodex?.Current.ThreadCount ?? 0)
-        + (_chatGpt?.ItemCount ?? 0)
-        + (_pc?.ItemCount ?? 0);
+    private int TotalImportedItems => _store?.Available == true
+        ? _store.ItemCount
+        : (_audio?.AudioItemCount ?? 0)
+            + (_video?.ItemCount ?? 0)
+            + (_image?.ItemCount ?? 0)
+            + (_windowsCodex?.Current.ThreadCount ?? 0)
+            + (_chatGpt?.ItemCount ?? 0)
+            + (_pc?.ItemCount ?? 0);
 
     private int TotalProductCount => _runtime?.Products.Count ?? 0;
     private int AvailableProductCount => _runtime?.Products.Count(product => product.ProductFound && product.ComposeFound) ?? 0;
@@ -490,12 +491,19 @@ else
 
     private void AddDataSources()
     {
-        _dataSources.Add(new("音声ファイル", "file-audio", "音声の取り込みと言語化候補", _audio?.AudioItemCount ?? 0, "取り込み済み", $"{_audio?.AudioVerbalizedFileCount ?? 0} / {_audio?.AudioVerbalizationTargetFileCount ?? 0}", "言語化済み", SourceState(_audio?.ProductFound ?? false, _audio?.AudioItemCount ?? 0)));
-        _dataSources.Add(new("動画ファイル", "video", "動画の取り込みと言語化候補", _video?.ItemCount ?? 0, "取り込み済み", $"{_video?.AudioVerbalizedFileCount ?? 0} / {_video?.AudioVerbalizationTargetFileCount ?? 0}", "言語化済み", SourceState(_video?.ProductFound ?? false, _video?.ItemCount ?? 0)));
-        _dataSources.Add(new("画像ファイル", "image", "画像の取り込みとOCR候補", _image?.ItemCount ?? 0, "取り込み済み", FormatNumber(_image?.SourceFileCount ?? 0), "対象ファイル", SourceState(_image?.ProductFound ?? false, _image?.ItemCount ?? 0)));
-        _dataSources.Add(new("ChatGPT", "comments", "会話スレッドの取り込み", _chatGpt?.ItemCount ?? 0, "取り込み済み", FormatNumber(_chatGpt?.ProcessableInputCount ?? 0), "入力候補", SourceState(_chatGpt?.ProductFound ?? false, _chatGpt?.ItemCount ?? 0)));
-        _dataSources.Add(new("Windows Codex", "terminal", "Codex スレッドの取り込み", _windowsCodex?.Current.ThreadCount ?? 0, "取り込み済み", FormatNumber(StoreEventCount("windows-codex")), "イベント", SourceState(_windowsCodex?.ProductFound ?? false, _windowsCodex?.Current.ThreadCount ?? 0)));
-        _dataSources.Add(new("PC状態", "desktop", "PC状態ログの取り込み", _pc?.ItemCount ?? 0, "取り込み済み", _pc?.Settings.OutputRootReady == true ? "利用可" : "未設定", "保存先", SourceState(_pc?.ProductFound ?? false, _pc?.ItemCount ?? 0)));
+        var audioStoreCount = StoreItemCount("audio", _audio?.AudioItemCount ?? 0);
+        var videoStoreCount = StoreItemCount("video", _video?.ItemCount ?? 0);
+        var imageStoreCount = StoreItemCount("image", _image?.ItemCount ?? 0);
+        var chatGptStoreCount = StoreItemCount("chatgpt", _chatGpt?.ItemCount ?? 0);
+        var windowsStoreCount = StoreItemCount("windows-codex", _windowsCodex?.Current.ThreadCount ?? 0);
+        var pcStoreCount = StoreItemCount("pc", _pc?.ItemCount ?? 0);
+
+        _dataSources.Add(new("音声ファイル", "file-audio", "音声の取り込みと言語化候補", audioStoreCount, "取り込み済み", $"{_audio?.AudioVerbalizedFileCount ?? 0} / {_audio?.AudioVerbalizationTargetFileCount ?? 0}", "言語化済み", SourceState(_audio?.ProductFound ?? false, audioStoreCount)));
+        _dataSources.Add(new("動画ファイル", "video", "動画の取り込みと言語化候補", videoStoreCount, "取り込み済み", $"{_video?.AudioVerbalizedFileCount ?? 0} / {_video?.AudioVerbalizationTargetFileCount ?? 0}", "言語化済み", SourceState(_video?.ProductFound ?? false, videoStoreCount)));
+        _dataSources.Add(new("画像ファイル", "image", "画像の取り込みとOCR候補", imageStoreCount, "取り込み済み", FormatNumber(_image?.SourceFileCount ?? 0), "対象ファイル", SourceState(_image?.ProductFound ?? false, imageStoreCount)));
+        _dataSources.Add(new("ChatGPT", "comments", "会話スレッドの取り込み", chatGptStoreCount, "取り込み済み", FormatNumber(_chatGpt?.ProcessableInputCount ?? 0), "入力候補", SourceState(_chatGpt?.ProductFound ?? false, chatGptStoreCount)));
+        _dataSources.Add(new("Windows Codex", "terminal", "Codex スレッドの取り込み", windowsStoreCount, "取り込み済み", FormatNumber(StoreEventCount("windows-codex")), "イベント", SourceState(_windowsCodex?.ProductFound ?? false, windowsStoreCount)));
+        _dataSources.Add(new("PC状態", "desktop", "PC状態ログの取り込み", pcStoreCount, "取り込み済み", _pc?.Settings.OutputRootReady == true ? "利用可" : "未設定", "保存先", SourceState(_pc?.ProductFound ?? false, pcStoreCount)));
     }
 
     private static string SourceState(bool productFound, int itemCount)
@@ -533,6 +541,15 @@ else
     private int StoreEventCount(string productId)
     {
         return _store?.Products.FirstOrDefault(product => string.Equals(product.ProductId, productId, StringComparison.OrdinalIgnoreCase))?.EventCount ?? 0;
+    }
+
+    private int StoreItemCount(string productId, int fallback)
+    {
+        if (_store?.Available == true)
+        {
+            return _store.Products.FirstOrDefault(product => string.Equals(product.ProductId, productId, StringComparison.OrdinalIgnoreCase))?.ItemCount ?? 0;
+        }
+        return fallback;
     }
 
     private static string FormatDateTime(string? value)
