@@ -3833,20 +3833,42 @@ function Compare-TimelineVersionText {
     return [string]::Compare($leftText, $rightText, [System.StringComparison]::OrdinalIgnoreCase)
 }
 
-function Get-TimelineLatestGitHubTag {
+function Get-TimelineLatestGitHubTagFromAtom {
     param(
         [string]$Owner,
         [string]$Repo
     )
 
-    $key = "$Owner/$Repo".ToLowerInvariant()
-    if ($script:TimelineProductLatestVersionCache.ContainsKey($key) -and
-        $script:TimelineProductLatestVersionCacheAt.ContainsKey($key)) {
-        $age = ([DateTimeOffset]::Now - [DateTimeOffset]$script:TimelineProductLatestVersionCacheAt[$key]).TotalSeconds
-        if ($age -lt $script:TimelineProductLatestVersionCacheTtlSeconds) {
-            return [string]$script:TimelineProductLatestVersionCache[$key]
+    $client = New-TimelineWebClient
+    try {
+        $url = "https://github.com/$Owner/$Repo/tags.atom"
+        $xml = $client.DownloadString($url)
+        $best = ""
+        $matches = [System.Text.RegularExpressions.Regex]::Matches($xml, '/releases/tag/([^"<]+)')
+        foreach ($match in @($matches)) {
+            $name = [System.Uri]::UnescapeDataString([string]$match.Groups[1].Value)
+            if (-not $name) {
+                continue
+            }
+            if (-not $best -or (Compare-TimelineVersionText -Left $best -Right $name) -lt 0) {
+                $best = $name
+            }
         }
+        if (-not $best) {
+            throw "No GitHub tags were found in Atom feed for $Owner/$Repo."
+        }
+        return $best
     }
+    finally {
+        $client.Dispose()
+    }
+}
+
+function Get-TimelineLatestGitHubTagFromApi {
+    param(
+        [string]$Owner,
+        [string]$Repo
+    )
 
     $client = New-TimelineWebClient
     try {
@@ -3866,13 +3888,53 @@ function Get-TimelineLatestGitHubTag {
         if (-not $best) {
             throw "No GitHub tags were found for $Owner/$Repo."
         }
-        $script:TimelineProductLatestVersionCache[$key] = $best
-        $script:TimelineProductLatestVersionCacheAt[$key] = [DateTimeOffset]::Now
         return $best
     }
     finally {
         $client.Dispose()
     }
+}
+
+function Get-TimelineLatestGitHubTag {
+    param(
+        [string]$Owner,
+        [string]$Repo
+    )
+
+    $key = "$Owner/$Repo".ToLowerInvariant()
+    if ($script:TimelineProductLatestVersionCache.ContainsKey($key) -and
+        $script:TimelineProductLatestVersionCacheAt.ContainsKey($key)) {
+        $age = ([DateTimeOffset]::Now - [DateTimeOffset]$script:TimelineProductLatestVersionCacheAt[$key]).TotalSeconds
+        if ($age -lt $script:TimelineProductLatestVersionCacheTtlSeconds) {
+            return [string]$script:TimelineProductLatestVersionCache[$key]
+        }
+    }
+
+    $best = ""
+    $errors = @()
+    try {
+        $best = Get-TimelineLatestGitHubTagFromAtom -Owner $Owner -Repo $Repo
+    }
+    catch {
+        $errors += $_.Exception.Message
+    }
+
+    if (-not $best) {
+        try {
+            $best = Get-TimelineLatestGitHubTagFromApi -Owner $Owner -Repo $Repo
+        }
+        catch {
+            $errors += $_.Exception.Message
+        }
+    }
+
+    if (-not $best) {
+        throw ("GitHub tags could not be resolved for " + $Owner + "/" + $Repo + ": " + ($errors -join " / "))
+    }
+
+    $script:TimelineProductLatestVersionCache[$key] = $best
+    $script:TimelineProductLatestVersionCacheAt[$key] = [DateTimeOffset]::Now
+    return $best
 }
 
 function Get-TimelineProductInstallStatePath {

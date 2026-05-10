@@ -49,7 +49,7 @@ public sealed class TimelineProductRegistryProduct
     public string Id { get; set; } = "";
     public string DisplayName { get; set; } = "";
     public string Path { get; set; } = "";
-    public string SourceType { get; set; } = "release";
+    public string SourceType { get; set; } = "github-source-archive";
     public string SourceUrl { get; set; } = "";
     public string Version { get; set; } = "";
     public bool Enabled { get; set; } = true;

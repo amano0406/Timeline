@@ -225,11 +225,15 @@
 .tfa-product-meta {
   display: grid;
   gap: 0.5rem;
-  grid-template-columns: minmax(0, 1fr) 11rem;
+  grid-template-columns: minmax(0, 1fr) 7.5rem 7.5rem;
 }
 
 .tfa-product-meta div {
   min-width: 0;
+}
+
+.tfa-product-meta div:first-child {
+  grid-column: 1 / -1;
 }
 
 .tfa-product-meta dt {

@@ -319,7 +319,9 @@ https://github.com/amano0406/TimelineForAudio/archive/refs/tags/v0.4.7.zip
 
 Timeline stores the GitHub repository URL in product settings and resolves the
 latest tag to the matching source archive when installing or updating a
-sub-product.
+sub-product. The local helper reads the public tags feed first and only falls
+back to the GitHub API when needed, so normal use does not require a GitHub
+account or Git.
 
 The source archive should contain the product files needed for local execution.
 Local settings, generated data, Docker volumes, caches, and build output should

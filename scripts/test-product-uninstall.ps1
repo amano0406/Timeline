@@ -124,8 +124,8 @@ try {
             id = "audio"
             displayName = "TimelineForAudio"
             path = $productDir
-            sourceType = "release"
-            sourceUrl = ""
+            sourceType = "github-source-archive"
+            sourceUrl = "https://github.com/amano0406/TimelineForAudio"
             version = ""
             enabled = $true
             required = $false
@@ -134,8 +134,8 @@ try {
     }
     else {
         $audio.path = $productDir
-        $audio.sourceType = "release"
-        $audio.sourceUrl = ""
+        $audio.sourceType = "github-source-archive"
+        $audio.sourceUrl = "https://github.com/amano0406/TimelineForAudio"
     }
     Write-Utf8Json -Path $settingsPath -Payload $settings
 
