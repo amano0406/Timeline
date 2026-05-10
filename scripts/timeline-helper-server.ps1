@@ -28,6 +28,8 @@ $allowedOrigins = @(
 $script:TimelineHardwareDevicesCache = $null
 $script:TimelineModelInventoryCache = $null
 $script:TimelineModelInventoryCacheAt = $null
+$script:TimelineImageModelInventoryCache = $null
+$script:TimelineImageModelInventoryCacheAt = $null
 $script:TimelineConsoleLogEntries = [System.Collections.Generic.List[object]]::new()
 $script:TimelineConsoleLogNextId = [long]0
 $script:TimelineConsoleLogLimit = 300
@@ -4335,6 +4337,93 @@ function Get-TimelineImageItems {
         total = Convert-TimelineAudioInt -Value (Get-PropertyValue -Object $payload -Name "count" -Default 0)
         pagination = Convert-TimelineImagePagination -Payload $payload
         items = @($items)
+    }
+}
+
+function Convert-TimelineImageModelInventory {
+    param([object]$Payload)
+
+    $models = @()
+    foreach ($row in @(Get-PropertyValue -Object $Payload -Name "models" -Default @())) {
+        $notes = @()
+        foreach ($note in @(Get-PropertyValue -Object $row -Name "notes" -Default @())) {
+            $text = Convert-TimelineText -Value $note
+            if ($text) {
+                $notes += $text
+            }
+        }
+
+        $modelId = Convert-TimelineText -Value (Get-PropertyValueAny -Object $row -Names @("model_id", "modelId", "id") -Default "")
+        $role = Convert-TimelineText -Value (Get-PropertyValue -Object $row -Name "role" -Default "")
+        $local = [bool](Get-PropertyValue -Object $row -Name "local" -Default $false)
+        $externalApi = [bool](Get-PropertyValueAny -Object $row -Names @("external_api", "externalApi") -Default $false)
+        $source = if ($local) { "local" } elseif ($externalApi) { "external" } else { "" }
+
+        $models += [ordered]@{
+            role = $role
+            displayName = $modelId
+            source = $source
+            modelId = $modelId
+            backend = $role
+            required = $true
+            configured = $true
+            requiresHuggingFaceToken = $false
+            requiresAccessApproval = $false
+            unitType = $role
+            url = ""
+            license = ""
+            gated = ""
+            remoteStatus = if ($local) { "local" } elseif ($externalApi) { "external" } else { "" }
+            remoteMessage = ""
+            notes = @($notes)
+        }
+    }
+
+    return [ordered]@{
+        available = $true
+        message = ""
+        generatedAt = (Get-Date).ToString("s")
+        pipelineName = "TimelineForImage"
+        pipelineVersion = ""
+        models = @($models)
+    }
+}
+
+function Get-TimelineImageModels {
+    $now = Get-Date
+    if ($null -ne $script:TimelineImageModelInventoryCache -and $null -ne $script:TimelineImageModelInventoryCacheAt) {
+        if (($now - $script:TimelineImageModelInventoryCacheAt).TotalMinutes -lt 15) {
+            return $script:TimelineImageModelInventoryCache
+        }
+    }
+
+    if (-not (Test-Path -LiteralPath $ImageProductPath)) {
+        return [ordered]@{
+            available = $false
+            message = "TimelineForImage was not found."
+            generatedAt = $now.ToString("s")
+            pipelineName = "TimelineForImage"
+            pipelineVersion = ""
+            models = @()
+        }
+    }
+
+    try {
+        $payload = Invoke-TimelineImageCliJson -CliArgs @("models", "list") -TimeoutSeconds 120
+        $result = Convert-TimelineImageModelInventory -Payload $payload
+        $script:TimelineImageModelInventoryCache = $result
+        $script:TimelineImageModelInventoryCacheAt = $now
+        return $result
+    }
+    catch {
+        return [ordered]@{
+            available = $false
+            message = $_.Exception.Message
+            generatedAt = $now.ToString("s")
+            pipelineName = "TimelineForImage"
+            pipelineVersion = ""
+            models = @()
+        }
     }
 }
 
@@ -14794,6 +14883,11 @@ try {
             if ($method -eq "GET" -and $uri.AbsolutePath -eq "/products/image/items") {
                 $query = [System.Web.HttpUtility]::ParseQueryString($uri.Query)
                 Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Invoke-TimelineWebOperation -ProductName "TimelineForImage" -Action "image_items_list" -ScriptBlock { Get-TimelineImageItems -Page (Get-TimelineRequestPage -Query $query) -PageSize (Get-TimelineRequestPageSize -Query $query) }))
+                continue
+            }
+
+            if ($method -eq "GET" -and $uri.AbsolutePath -eq "/products/image/models") {
+                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Invoke-TimelineWebOperation -ProductName "TimelineForImage" -Action "image_models" -ScriptBlock { Get-TimelineImageModels }))
                 continue
             }
 

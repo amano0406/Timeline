@@ -24,7 +24,7 @@ Status: settings modal and normal/pro mode integration implemented. Remaining op
 - [x] Add a product-management modal from the sidebar utility area.
 - [x] Add product start/stop/restart controls through existing product launchers.
 - [x] Expand common Hugging Face token propagation beyond TimelineForAudio when additional AI products expose a compatible CLI contract.
-- [ ] Expand model-usage-condition display beyond TimelineForAudio when additional products expose model inventory through CLI.
+- [x] Expand model-usage-condition display beyond TimelineForAudio when additional products expose model inventory through CLI.
 - [x] Build and run the PowerShell ASCII check.
 
 Notes:
@@ -43,6 +43,6 @@ Notes:
 - Common Hugging Face token registration now propagates to TimelineForAudio and TimelineForVideo when each product is installed. TimelineForImage, TimelineForWindowsCodex, TimelineForChatGPT, and TimelineForPC do not currently require the shared Hugging Face token path.
 - 2026-05-10 CLI model-inventory check:
   - TimelineForAudio: `models list --json` works and remains the source for Hugging Face model usage-condition display.
-  - TimelineForImage: `--json models list` works, but the reported models are local components (`pillow`, `tesseract:jpn+eng`) and do not require Hugging Face token guidance.
+  - TimelineForImage: `--json models list` works. The reported local components (`pillow`, `tesseract:jpn+eng`) are now displayed in the same model-usage section as local processing models.
   - TimelineForVideo: README documents `models list`, but the current local `cli.ps1 models list` and `cli.ps1 models list --json` exit with code 1 and no usable model inventory output in this environment. Do not expand model-usage-condition UI to Video until the product-side CLI contract is confirmed.
   - TimelineForWindowsCodex, TimelineForChatGPT, and TimelineForPC currently do not expose a Hugging Face model-usage-condition contract that needs this UI.

@@ -263,24 +263,38 @@ else
                 {
                     <div class="mt-3 text-sm text-slate-600">モデル情報を確認しています。</div>
                 }
-                else if (_audioModels is { Available: false })
+                else if (ModelDisplayRows.Count == 0 && ModelInventoryMessages.Count > 0)
                 {
-                    <div class="mt-3 text-sm text-slate-600">@_audioModels.Message</div>
+                    <div class="mt-3 grid gap-1 text-sm text-slate-600">
+                        @foreach (var message in ModelInventoryMessages)
+                        {
+                            <div>@message</div>
+                        }
+                    </div>
                 }
-                else if (HuggingFaceModels.Count == 0)
+                else if (ModelDisplayRows.Count == 0)
                 {
-                    <div class="mt-3 text-sm text-slate-600">Hugging Face モデルは見つかりませんでした。</div>
+                    <div class="mt-3 text-sm text-slate-600">モデル情報は見つかりませんでした。</div>
                 }
                 else
                 {
                     <div class="mt-3 grid gap-2">
-                        @foreach (var model in HuggingFaceModels)
+                        @foreach (var row in ModelDisplayRows)
                         {
+                            var model = row.Model;
                             <div class="grid gap-3 rounded-md border border-line bg-white p-3 lg:grid-cols-[1fr_auto] lg:items-center">
                                 <div class="min-w-0">
-                                    <div class="font-medium text-slate-900">TimelineForAudio / @ModelRoleLabel(model)</div>
+                                    <div class="font-medium text-slate-900">@row.ProductName / @ModelRoleLabel(model)</div>
                                     <div class="mt-1 break-all font-mono text-xs text-slate-600">@model.ModelId</div>
                                     <div class="mt-2 flex flex-wrap gap-2">
+                                        @if (model.Source.Equals("local", StringComparison.OrdinalIgnoreCase))
+                                        {
+                                            <span class="tfa-status-pill border-teal-200 bg-teal-50 text-teal-800">ローカル処理</span>
+                                        }
+                                        else if (!string.IsNullOrWhiteSpace(model.Source))
+                                        {
+                                            <span class="tfa-status-pill border-slate-200 bg-slate-50 text-slate-700">@ModelSourceLabel(model.Source)</span>
+                                        }
                                         @if (model.RequiresHuggingFaceToken)
                                         {
                                             <span class="tfa-status-pill border-sky-200 bg-sky-50 text-sky-800">トークン</span>
@@ -499,6 +513,8 @@ else
     [Parameter]
     public string? ProductId { get; set; }
 
+    private sealed record SettingsModelDisplayRow(string ProductName, AudioModelRow Model);
+
     private TimelineAppSettings? _settings;
     private ProductRuntimeOverview _runtime = new();
     private TimelineProductRegistry _registry = new();
@@ -506,6 +522,7 @@ else
     private ImageOverview? _imageOverview;
     private VideoOverview? _videoOverview;
     private AudioModelInventoryResult? _audioModels;
+    private AudioModelInventoryResult? _imageModels;
     private readonly List<RootRow> _audioInputRoots = [];
     private readonly List<ImageInputRoot> _imageInputRoots = [];
     private readonly List<VideoInputRoot> _videoInputRoots = [];
@@ -551,11 +568,41 @@ else
     private string ProModeAriaSelected => _proMode ? "true" : "false";
     private IReadOnlyList<string> CpuDevices => _audioOverview?.CpuDevices ?? [];
     private IReadOnlyList<string> GpuDevices => _audioOverview?.GpuDevices ?? [];
-    private IReadOnlyList<AudioModelRow> HuggingFaceModels =>
-        _audioModels?.Models
-            .Where(model => model.Source.Equals("huggingface", StringComparison.OrdinalIgnoreCase))
-            .ToList()
-        ?? [];
+    private IReadOnlyList<SettingsModelDisplayRow> ModelDisplayRows
+    {
+        get
+        {
+            var rows = new List<SettingsModelDisplayRow>();
+            if (_audioModels?.Available == true)
+            {
+                rows.AddRange(_audioModels.Models.Select(model => new SettingsModelDisplayRow("TimelineForAudio", model)));
+            }
+            if (_imageModels?.Available == true)
+            {
+                rows.AddRange(_imageModels.Models.Select(model => new SettingsModelDisplayRow("TimelineForImage", model)));
+            }
+            return rows;
+        }
+    }
+
+    private IReadOnlyList<string> ModelInventoryMessages
+    {
+        get
+        {
+            var messages = new List<string>();
+            AddModelInventoryMessage(_audioModels);
+            AddModelInventoryMessage(_imageModels);
+            return messages;
+
+            void AddModelInventoryMessage(AudioModelInventoryResult? inventory)
+            {
+                if (inventory is { Available: false } && !string.IsNullOrWhiteSpace(inventory.Message))
+                {
+                    messages.Add(inventory.Message);
+                }
+            }
+        }
+    }
 
     public bool IsSaving => _saving;
 
@@ -651,7 +698,7 @@ else
             _ = LoadAudioOverviewLaterAsync();
             _ = LoadImageOverviewLaterAsync();
             _ = LoadVideoOverviewLaterAsync();
-            _ = LoadAudioModelsLaterAsync();
+            _ = LoadModelInventoriesLaterAsync();
         }
     }
 
@@ -712,11 +759,12 @@ else
         }
     }
 
-    private async Task LoadAudioModelsLaterAsync()
+    private async Task LoadModelInventoriesLaterAsync()
     {
         try
         {
             _audioModels = await Timeline.GetAudioModelsAsync();
+            _imageModels = await Timeline.GetImageModelsAsync();
         }
         catch (Exception ex)
         {
@@ -1627,7 +1675,17 @@ else
         "speaker_diarization" => "話者分離",
         "acoustic_unit_extraction" => "音響単位抽出",
         "speech_candidate_detection" => "発話候補検出",
+        "metadata_and_color_layout" => "画像メタデータ・色配置",
+        "ocr" => "OCR",
         _ => string.IsNullOrWhiteSpace(model.DisplayName) ? model.ModelId : model.DisplayName,
+    };
+
+    private static string ModelSourceLabel(string source) => source.ToLowerInvariant() switch
+    {
+        "huggingface" => "Hugging Face",
+        "external" => "外部API",
+        "local" => "ローカル処理",
+        _ => source,
     };
 
     private static bool ValidateTokenFormat(string token, out string message)

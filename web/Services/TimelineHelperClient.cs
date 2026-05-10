@@ -424,6 +424,23 @@ public sealed class TimelineHelperClient
         }
     }
 
+    public async Task<AudioModelInventoryResult> GetImageModelsAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            return await _http.GetFromJsonAsync<AudioModelInventoryResult>(
+                    "products/image/models",
+                    JsonOptions,
+                    cancellationToken)
+                ?? OfflineModels("画像モデル一覧を取得できませんでした。");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to load TimelineForImage model inventory.");
+            return OfflineModels("TimelineForImage CLI からモデル一覧を取得できませんでした。");
+        }
+    }
+
     public async Task<AudioDeleteGeneratedResult> DeleteAudioGeneratedAsync(
         AudioDeleteGeneratedRequest request,
         CancellationToken cancellationToken = default)
