@@ -271,6 +271,34 @@
   padding: 0.4375rem 0.75rem;
 }
 
+.tfa-product-confirm {
+  align-items: center;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: 0.5rem;
+  color: #78350f;
+  display: flex;
+  gap: 1rem;
+  grid-column: 1 / -1;
+  justify-content: space-between;
+  padding: 0.75rem;
+}
+
+.tfa-product-confirm-text {
+  align-items: flex-start;
+  display: flex;
+  font-size: 0.875rem;
+  gap: 0.5rem;
+  line-height: 1.25rem;
+}
+
+.tfa-product-confirm-actions {
+  align-items: center;
+  display: flex;
+  flex: 0 0 auto;
+  gap: 0.5rem;
+}
+
 @media (max-width: 640px) {
   .tfa-twe-modal {
     padding: 0;
@@ -349,5 +377,15 @@
 
   .tfa-product-actions .tfa-product-action-wide {
     grid-column: 1 / -1;
+  }
+
+  .tfa-product-confirm {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .tfa-product-confirm-actions {
+    display: grid;
+    grid-template-columns: 1fr;
   }
 }

@@ -89,9 +89,9 @@
                             </div>
                         </div>
 
-                        @if (IsInstalled(product))
-                        {
-                            <div class="tfa-product-actions">
+                        <div class="tfa-product-actions">
+                            @if (IsInstalled(product))
+                            {
                                 @if (IsWindowsHostProduct(product))
                                 {
                                     <span class="tfa-status-pill border-slate-200 bg-slate-50 text-slate-700">
@@ -123,6 +123,49 @@
                                         <span>再起動</span>
                                     </button>
                                 }
+                                <button type="button"
+                                        class="tfa-button-secondary gap-2"
+                                        @onclick="@(() => RequestUninstall(product))"
+                                        disabled="@(!CanRequestUninstall(product))">
+                                    <FaIcon Name="trash" Class="tfa-icon" />
+                                    <span>アンインストール</span>
+                                </button>
+                            }
+                            else
+                            {
+                                <button type="button"
+                                        class="tfa-button-primary gap-2"
+                                        @onclick="@(() => InstallProductAsync(product))"
+                                        disabled="@(!CanInstall(product))">
+                                    <FaIcon Name="download" Class="tfa-icon" />
+                                    <span>インストール</span>
+                                </button>
+                            }
+                        </div>
+
+                        @if (IsUninstallPending(product))
+                        {
+                            <div class="tfa-product-confirm">
+                                <div class="tfa-product-confirm-text">
+                                    <FaIcon Name="triangle-exclamation" Class="tfa-icon !h-4 !w-4" />
+                                    <span>製品アプリの配置だけを削除します。マスター、生成データ、作業データは削除しません。</span>
+                                </div>
+                                <div class="tfa-product-confirm-actions">
+                                    <button type="button"
+                                            class="tfa-button-secondary gap-2"
+                                            @onclick="@(() => ConfirmUninstallAsync(product))"
+                                            disabled="@(!CanRequestUninstall(product))">
+                                        <FaIcon Name="trash" Class="tfa-icon" />
+                                        <span>削除する</span>
+                                    </button>
+                                    <button type="button"
+                                            class="tfa-button-secondary gap-2"
+                                            @onclick="CancelUninstall"
+                                            disabled="@(_actionProductId is not null)">
+                                        <FaIcon Name="xmark" Class="tfa-icon" />
+                                        <span>キャンセル</span>
+                                    </button>
+                                </div>
                             </div>
                         }
                     </article>
@@ -141,6 +184,7 @@
     private string? _error;
     private string? _message;
     private string? _actionProductId;
+    private string? _pendingUninstallProductId;
 
     private IReadOnlyList<ProductRuntimeRow> Products => _overview?.Products ?? [];
 
@@ -188,6 +232,30 @@
     private async Task StopProductAsync(ProductRuntimeRow product)
     {
         await RunProductActionAsync(product, "停止", () => Timeline.StopProductAsync(product.Id));
+    }
+
+    private async Task InstallProductAsync(ProductRuntimeRow product)
+    {
+        await RunProductActionAsync(product, "インストール", () => Timeline.InstallProductAsync(product.Id));
+    }
+
+    private void RequestUninstall(ProductRuntimeRow product)
+    {
+        _pendingUninstallProductId = product.Id;
+        _message = $"{DisplayName(product)} をアンインストールする前に内容を確認してください。";
+        _error = null;
+    }
+
+    private void CancelUninstall()
+    {
+        _pendingUninstallProductId = null;
+        _message = null;
+    }
+
+    private async Task ConfirmUninstallAsync(ProductRuntimeRow product)
+    {
+        await RunProductActionAsync(product, "アンインストール", () => Timeline.UninstallProductAsync(product.Id));
+        _pendingUninstallProductId = null;
     }
 
     private async Task RunProductActionAsync(ProductRuntimeRow product, string label, Func<Task<ProductRuntimeRow>> action)
@@ -239,9 +307,23 @@
     private bool IsActionTarget(ProductRuntimeRow product) =>
         IsInstalled(product) && !IsWindowsHostProduct(product) && _actionProductId is null;
 
+    private bool CanInstall(ProductRuntimeRow product) =>
+        !IsInstalled(product)
+        && _actionProductId is null
+        && !string.IsNullOrWhiteSpace(product.SourceUrl);
+
+    private bool CanRequestUninstall(ProductRuntimeRow product) =>
+        IsInstalled(product)
+        && _actionProductId is null
+        && !IsBusy(product)
+        && !IsRuntimeStarted(product);
+
+    private bool IsUninstallPending(ProductRuntimeRow product) =>
+        string.Equals(_pendingUninstallProductId, product.Id, StringComparison.OrdinalIgnoreCase);
+
     private bool IsBusy(ProductRuntimeRow product) =>
         string.Equals(_actionProductId, product.Id, StringComparison.OrdinalIgnoreCase) ||
-        RuntimeState(product) is "starting" or "stopping" or "restarting";
+        RuntimeState(product) is "starting" or "stopping" or "restarting" or "installing" or "uninstalling";
 
     private static bool IsRuntimeStarted(ProductRuntimeRow product) =>
         product.Running || RuntimeState(product) is "running";
@@ -256,7 +338,9 @@
     {
         if (!product.ProductFound)
         {
-            return "製品が見つかりません。インストールが必要です。";
+            return string.IsNullOrWhiteSpace(product.SourceUrl)
+                ? "製品が見つかりません。導入元の設定が必要です。"
+                : "製品が見つかりません。インストールできます。";
         }
         if (!product.ComposeFound)
         {
@@ -285,11 +369,13 @@
         }
         return product.State.Trim().ToLowerInvariant() switch
         {
+            "installing" => "インストール中",
             "starting" => "起動中",
             "running" => "稼働中",
             "stopping" => "停止中",
             "stopped" => "停止",
             "restarting" => "再起動中",
+            "uninstalling" => "削除中",
             "failed" => "異常",
             "ready" => "接続済み",
             _ => "導入済み",
@@ -304,11 +390,13 @@
         }
         return product.State.Trim().ToLowerInvariant() switch
         {
+            "installing" => "tfa-status-pill border-sky-200 bg-sky-50 text-sky-800",
             "starting" => "tfa-status-pill border-sky-200 bg-sky-50 text-sky-800",
             "running" => "tfa-status-pill border-teal-200 bg-teal-50 text-teal-800",
             "stopping" => "tfa-status-pill border-sky-200 bg-sky-50 text-sky-800",
             "stopped" => "tfa-status-pill border-slate-200 bg-slate-50 text-slate-700",
             "restarting" => "tfa-status-pill border-sky-200 bg-sky-50 text-sky-800",
+            "uninstalling" => "tfa-status-pill border-sky-200 bg-sky-50 text-sky-800",
             "failed" => "tfa-status-pill border-red-200 bg-red-50 text-red-800",
             "ready" => "tfa-status-pill border-teal-200 bg-teal-50 text-teal-800",
             _ => "tfa-status-pill border-line bg-slate-50 text-slate-700",
@@ -323,11 +411,13 @@
         }
         return product.State.Trim().ToLowerInvariant() switch
         {
+            "installing" => "spinner",
             "starting" => "spinner",
             "running" => "circle-check",
             "stopping" => "spinner",
             "stopped" => "circle-minus",
             "restarting" => "spinner",
+            "uninstalling" => "spinner",
             "failed" => "triangle-exclamation",
             "ready" => "circle-check",
             _ => "circle-info",

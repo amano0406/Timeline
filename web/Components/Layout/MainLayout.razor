@@ -1,4 +1,5 @@
 @inherits LayoutComponentBase
+@rendermode InteractiveServer
 @inject TimelineSettingsDialogService SettingsDialog
 @inject TimelineProductsDialogService ProductsDialog
 @inject IJSRuntime Js
@@ -10,7 +11,11 @@
             aria-label="メニューを閉じる"
             @onclick="CloseSidebar"></button>
 
-    <NavMenu OnNavigate="CloseSidebar" SettingsOpen="_settingsOpen" ProductsOpen="_productsOpen" />
+    <NavMenu OnNavigate="CloseSidebar"
+             SettingsOpen="_settingsOpen"
+             ProductsOpen="_productsOpen"
+             SettingsRequested="OpenSettingsFromNavigation"
+             ProductsRequested="OpenProductsFromNavigation" />
 
     <header class="tfa-mobile-topbar">
         <button type="button"
@@ -295,16 +300,23 @@
         await _productsComponent.RefreshAsync();
     }
 
+    private Task OpenSettingsFromNavigation()
+    {
+        OpenSettingsCore(null);
+        return Task.CompletedTask;
+    }
+
+    private Task OpenProductsFromNavigation()
+    {
+        OpenProductsCore();
+        return Task.CompletedTask;
+    }
+
     private void HandleSettingsOpenRequested(string? productId)
     {
         _ = InvokeAsync(() =>
         {
-            _settingsProductId = productId;
-            _settingsOpen = true;
-            _productsOpen = false;
-            _settingsCloseConfirmOpen = false;
-            _sidebarOpen = false;
-            StateHasChanged();
+            OpenSettingsCore(productId);
         });
     }
 
@@ -312,12 +324,27 @@
     {
         _ = InvokeAsync(() =>
         {
-            _productsOpen = true;
-            _settingsOpen = false;
-            _settingsCloseConfirmOpen = false;
-            _sidebarOpen = false;
-            StateHasChanged();
+            OpenProductsCore();
         });
+    }
+
+    private void OpenSettingsCore(string? productId)
+    {
+        _settingsProductId = productId;
+        _settingsOpen = true;
+        _productsOpen = false;
+        _settingsCloseConfirmOpen = false;
+        _sidebarOpen = false;
+        StateHasChanged();
+    }
+
+    private void OpenProductsCore()
+    {
+        _productsOpen = true;
+        _settingsOpen = false;
+        _settingsCloseConfirmOpen = false;
+        _sidebarOpen = false;
+        StateHasChanged();
     }
 
     public void Dispose()

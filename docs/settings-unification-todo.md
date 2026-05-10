@@ -7,7 +7,7 @@ Status: settings modal and normal/pro mode integration implemented. Remaining op
 - [x] Replace separate basic settings and product management screens with one settings hub.
 - [x] Remove the old standalone product-management page from the navigation and smoke list.
 - [x] Remove product start/restart controls from the dashboard.
-- [x] Product install/update/uninstall is intentionally deferred. Do not show it as a normal settings task until the operation design is settled.
+- [x] Add product install/uninstall controls to product management. Installation uses the configured Git source. Uninstall removes only the product application directory, not master/generated data.
 - [x] Render existing sub-product settings inside the settings hub with a product selector.
 - [x] Remove standalone sub-product settings routes from the Blazor router.
 - [x] Place the Timeline settings save button before sub-product settings so the save scope is clear.
@@ -35,8 +35,9 @@ Notes:
 - Old URLs such as `/timeline/products` and `/audio/settings` are no longer normal UI routes.
 - Normal mode hides product installation paths. Product placement is only exposed in pro mode.
 - Changing the Timeline save location in normal mode also moves managed Audio/Image generated-data destinations under the new Timeline save location before saving.
-- Product package operations are intentionally tracked as a separate future feature, not as remaining work in this settings-unification pass.
-- Product management currently shows product existence, placement, runtime state, and start/stop/restart controls. Install/update/uninstall remains deferred and is not shown as a disabled normal-user action.
+- Product package operations now cover install/uninstall. Update remains a separate future feature because branch, version, and local-change policy need separate design.
+- Product management currently shows product existence, placement, runtime state, install/uninstall, and start/stop/restart controls.
+- Uninstall is intentionally limited to the product application directory. Timeline master data, product master data, generated data, and work/store/log directories are not deleted by this operation.
 - Screenshot: `output/playwright/product-management-modal-check.png`
 - Screenshot: `output/playwright/verify-product-management-no-install-buttons-8s.png`
 - The common AI compute mode is Timeline-level state. Current supported propagation is TimelineForAudio and TimelineForVideo.

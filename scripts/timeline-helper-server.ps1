@@ -165,8 +165,8 @@ function New-TimelineProductRegistryDefaults {
                 id = "audio"
                 displayName = "TimelineForAudio"
                 path = "C:\apps\TimelineForAudio"
-                sourceType = "release"
-                sourceUrl = ""
+                sourceType = "git"
+                sourceUrl = "https://github.com/amano0406/TimelineForAudio.git"
                 version = ""
                 enabled = $true
                 required = $false
@@ -175,8 +175,8 @@ function New-TimelineProductRegistryDefaults {
                 id = "windows-codex"
                 displayName = "TimelineForWindowsCodex"
                 path = "C:\apps\TimelineForWindowsCodex"
-                sourceType = "release"
-                sourceUrl = ""
+                sourceType = "git"
+                sourceUrl = "https://github.com/amano0406/TimelineForWindowsCodex.git"
                 version = ""
                 enabled = $true
                 required = $false
@@ -185,8 +185,8 @@ function New-TimelineProductRegistryDefaults {
                 id = "chatgpt"
                 displayName = "TimelineForChatGPT"
                 path = "C:\apps\TimelineForChatGPT"
-                sourceType = "release"
-                sourceUrl = ""
+                sourceType = "git"
+                sourceUrl = "https://github.com/amano0406/TimelineForChatGPT.git"
                 version = ""
                 enabled = $true
                 required = $false
@@ -195,8 +195,8 @@ function New-TimelineProductRegistryDefaults {
                 id = "image"
                 displayName = "TimelineForImage"
                 path = "C:\apps\TimelineForImage"
-                sourceType = "release"
-                sourceUrl = ""
+                sourceType = "git"
+                sourceUrl = "https://github.com/amano0406/TimelineForImage.git"
                 version = ""
                 enabled = $true
                 required = $false
@@ -205,8 +205,8 @@ function New-TimelineProductRegistryDefaults {
                 id = "video"
                 displayName = "TimelineForVideo"
                 path = "C:\apps\TimelineForVideo"
-                sourceType = "release"
-                sourceUrl = ""
+                sourceType = "git"
+                sourceUrl = "https://github.com/amano0406/TimelineForVideo.git"
                 version = ""
                 enabled = $true
                 required = $false
@@ -215,8 +215,8 @@ function New-TimelineProductRegistryDefaults {
                 id = "pc"
                 displayName = "TimelineForPC"
                 path = "C:\apps\TimelineForPC"
-                sourceType = "release"
-                sourceUrl = ""
+                sourceType = "git"
+                sourceUrl = "https://github.com/amano0406/TimelineForPC.git"
                 version = ""
                 enabled = $true
                 required = $false
@@ -272,8 +272,14 @@ function Convert-TimelineProductDefinition {
     if (-not $path) {
         $path = Convert-TimelineText -Value (Get-PropertyValue -Object $Default -Name "path" -Default "")
     }
-    $sourceType = Convert-TimelineText -Value (Get-PropertyValue -Object $Source -Name "sourceType" -Default (Get-PropertyValue -Object $Default -Name "sourceType" -Default "release"))
-    $sourceUrl = Convert-TimelineText -Value (Get-PropertyValue -Object $Source -Name "sourceUrl" -Default (Get-PropertyValue -Object $Default -Name "sourceUrl" -Default ""))
+    $defaultSourceType = Convert-TimelineText -Value (Get-PropertyValue -Object $Default -Name "sourceType" -Default "git")
+    $defaultSourceUrl = Convert-TimelineText -Value (Get-PropertyValue -Object $Default -Name "sourceUrl" -Default "")
+    $sourceType = Convert-TimelineText -Value (Get-PropertyValue -Object $Source -Name "sourceType" -Default $defaultSourceType)
+    $sourceUrl = Convert-TimelineText -Value (Get-PropertyValue -Object $Source -Name "sourceUrl" -Default $defaultSourceUrl)
+    if (-not $sourceUrl -and $defaultSourceUrl) {
+        $sourceUrl = $defaultSourceUrl
+        $sourceType = $defaultSourceType
+    }
     $version = Convert-TimelineText -Value (Get-PropertyValue -Object $Source -Name "version" -Default (Get-PropertyValue -Object $Default -Name "version" -Default ""))
     $enabled = Get-PropertyValue -Object $Source -Name "enabled" -Default (Get-PropertyValue -Object $Default -Name "enabled" -Default $true)
     $required = Get-PropertyValue -Object $Source -Name "required" -Default (Get-PropertyValue -Object $Default -Name "required" -Default $false)
@@ -3673,6 +3679,189 @@ function Invoke-TimelineProductStop {
     }
 
     Write-TimelineProductRuntimeState -ProductId $ProductId -State "stopped" -Message "Product stopped."
+    return Convert-TimelineRuntimeStatus -Definition $definition
+}
+
+function Test-TimelineProductPathDeleteSafe {
+    param(
+        [string]$ProductId,
+        [string]$ProductPath
+    )
+
+    $path = Convert-TimelineText -Value $ProductPath
+    if (-not $path) {
+        throw "Product path is empty."
+    }
+
+    $fullPath = [System.IO.Path]::GetFullPath($path)
+    $timelinePath = [System.IO.Path]::GetFullPath($TimelineProductPath)
+    if ($fullPath.Equals($timelinePath, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Timeline itself cannot be uninstalled from product management."
+    }
+
+    $root = [System.IO.Path]::GetPathRoot($fullPath)
+    if ($fullPath.Equals($root, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Drive root cannot be removed."
+    }
+
+    if (-not (Test-Path -LiteralPath $fullPath -PathType Container)) {
+        throw "Product directory was not found: $fullPath"
+    }
+
+    $hasKnownLauncher = (Test-Path -LiteralPath (Join-Path $fullPath "cli.ps1") -PathType Leaf) -or
+        (Test-Path -LiteralPath (Join-Path $fullPath "timeline-for-pc.ps1") -PathType Leaf) -or
+        (Test-Path -LiteralPath (Join-Path $fullPath "start.ps1") -PathType Leaf)
+    $hasGit = Test-Path -LiteralPath (Join-Path $fullPath ".git") -PathType Container
+    if (-not $hasKnownLauncher -and -not $hasGit) {
+        throw "The target directory does not look like a Timeline sub-product: $fullPath"
+    }
+
+    return $true
+}
+
+function Test-TimelineGitWorktreeClean {
+    param([string]$ProductPath)
+
+    $gitDir = Join-Path $ProductPath ".git"
+    if (-not (Test-Path -LiteralPath $gitDir -PathType Container)) {
+        return $true
+    }
+
+    try {
+        $result = Invoke-TimelineProcess `
+            -FileName "git" `
+            -Arguments @("status", "--porcelain") `
+            -WorkingDirectory $ProductPath `
+            -TimeoutSeconds 30 `
+            -Environment (Get-TimelineChildProcessEnvironment)
+        if ([int]$result.exitCode -ne 0) {
+            throw "git status failed."
+        }
+        return -not ([string]$result.stdout).Trim()
+    }
+    catch {
+        throw "Could not verify product Git state: $($_.Exception.Message)"
+    }
+}
+
+function Invoke-TimelineProductInstall {
+    param([string]$ProductId)
+
+    $definition = Get-TimelineRuntimeProductDefinition -ProductId $ProductId
+    $productPath = [System.IO.Path]::GetFullPath([string]$definition.productPath)
+    if (Test-Path -LiteralPath $productPath -PathType Container) {
+        $existingChildren = @(Get-ChildItem -LiteralPath $productPath -Force -ErrorAction SilentlyContinue | Select-Object -First 1)
+        if ($existingChildren.Count -gt 0) {
+            return Convert-TimelineRuntimeStatus -Definition $definition
+        }
+    }
+
+    $sourceUrl = Convert-TimelineText -Value (Get-PropertyValue -Object $definition -Name "sourceUrl" -Default "")
+    $sourceType = Convert-TimelineText -Value (Get-PropertyValue -Object $definition -Name "sourceType" -Default "git")
+    if (-not $sourceUrl) {
+        throw "Product install source was not configured."
+    }
+
+    $isGitSource = $sourceType.Equals("git", [System.StringComparison]::OrdinalIgnoreCase) -or
+        $sourceUrl.EndsWith(".git", [System.StringComparison]::OrdinalIgnoreCase)
+    if (-not $isGitSource) {
+        throw "Only Git based product installation is supported now."
+    }
+
+    $parent = [System.IO.Path]::GetDirectoryName($productPath)
+    if (-not $parent) {
+        throw "Product parent directory could not be resolved."
+    }
+    [System.IO.Directory]::CreateDirectory($parent) | Out-Null
+    if (Test-Path -LiteralPath $productPath -PathType Container) {
+        $children = @(Get-ChildItem -LiteralPath $productPath -Force -ErrorAction SilentlyContinue | Select-Object -First 1)
+        if ($children.Count -gt 0) {
+            throw "Product directory is not empty: $productPath"
+        }
+    }
+
+    Write-TimelineProductRuntimeState -ProductId $ProductId -State "installing" -Message "Installing product."
+    $result = Invoke-TimelineLoggedProcess `
+        -FileName "git" `
+        -Arguments @("clone", "--depth", "1", $sourceUrl, $productPath) `
+        -WorkingDirectory $parent `
+        -TimeoutSeconds 900 `
+        -Environment (Get-TimelineChildProcessEnvironment) `
+        -ProductName ([string]$definition.displayName)
+
+    if ([int]$result.exitCode -ne 0) {
+        $message = if (([string]$result.stderr).Trim()) { ([string]$result.stderr).Trim() } elseif (([string]$result.stdout).Trim()) { ([string]$result.stdout).Trim() } else { "exit code $([int]$result.exitCode)" }
+        Write-TimelineProductRuntimeState -ProductId $ProductId -State "failed" -Message $message
+        throw "$($definition.displayName) install failed: $message"
+    }
+
+    Initialize-TimelineProductPathsFromRegistry
+    $definition = Get-TimelineRuntimeProductDefinition -ProductId $ProductId
+    Write-TimelineProductRuntimeState -ProductId $ProductId -State "stopped" -Message "Product installed."
+    return Convert-TimelineRuntimeStatus -Definition $definition
+}
+
+function Invoke-TimelineProductUninstall {
+    param([string]$ProductId)
+
+    $definition = Get-TimelineRuntimeProductDefinition -ProductId $ProductId
+    $status = Convert-TimelineRuntimeStatus -Definition $definition
+    if ([bool](Get-PropertyValue -Object $status -Name "running" -Default $false)) {
+        throw "Stop the product before uninstalling it."
+    }
+
+    $productPath = [System.IO.Path]::GetFullPath([string]$definition.productPath)
+    [void](Test-TimelineProductPathDeleteSafe -ProductId $ProductId -ProductPath $productPath)
+    if (-not (Test-TimelineGitWorktreeClean -ProductPath $productPath)) {
+        throw "Product has local Git changes. Commit or discard them before uninstalling."
+    }
+
+    $operationId = New-TimelineOperationId -Prefix "product-uninstall"
+    $commandLine = "Remove-Item " + (Format-TimelineProcessArgument -Value $productPath) + " -Recurse -Force"
+    Add-TimelineConsoleLog `
+        -Level "info" `
+        -Kind "command" `
+        -ProductName ([string]$definition.displayName) `
+        -Action "product_uninstall" `
+        -CommandLine $commandLine `
+        -OperationId $operationId `
+        -Message "Product uninstall start."
+
+    $startedAt = [DateTimeOffset]::Now
+    try {
+        Write-TimelineProductRuntimeState -ProductId $ProductId -State "uninstalling" -Message "Uninstalling product."
+        Remove-Item -LiteralPath $productPath -Recurse -Force
+        $durationMs = [int]([DateTimeOffset]::Now - $startedAt).TotalMilliseconds
+        Write-TimelineProductRuntimeState -ProductId $ProductId -State "not-created" -Message "Product uninstalled."
+        Add-TimelineConsoleLog `
+            -Level "success" `
+            -Kind "result" `
+            -ProductName ([string]$definition.displayName) `
+            -Action "product_uninstall" `
+            -CommandLine $commandLine `
+            -OperationId $operationId `
+            -ExitCode 0 `
+            -DurationMs $durationMs `
+            -Message "Product uninstalled."
+    }
+    catch {
+        $durationMs = [int]([DateTimeOffset]::Now - $startedAt).TotalMilliseconds
+        Write-TimelineProductRuntimeState -ProductId $ProductId -State "failed" -Message $_.Exception.Message
+        Add-TimelineConsoleLog `
+            -Level "error" `
+            -Kind "result" `
+            -ProductName ([string]$definition.displayName) `
+            -Action "product_uninstall" `
+            -CommandLine $commandLine `
+            -OperationId $operationId `
+            -DurationMs $durationMs `
+            -Stderr $_.Exception.Message `
+            -Message "Product uninstall failed."
+        throw
+    }
+
+    Initialize-TimelineProductPathsFromRegistry
+    $definition = Get-TimelineRuntimeProductDefinition -ProductId $ProductId
     return Convert-TimelineRuntimeStatus -Definition $definition
 }
 
@@ -14789,6 +14978,20 @@ try {
                 $segments = @($uri.AbsolutePath.Trim("/") -split "/")
                 $productId = [System.Uri]::UnescapeDataString([string]$segments[2])
                 Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Invoke-TimelineWebOperation -ProductName "Timeline" -Action "product_restart" -ScriptBlock { Invoke-TimelineProductStart -ProductId $productId -Restart }))
+                continue
+            }
+
+            if ($method -eq "POST" -and $uri.AbsolutePath -like "/products/runtime/*/install") {
+                $segments = @($uri.AbsolutePath.Trim("/") -split "/")
+                $productId = [System.Uri]::UnescapeDataString([string]$segments[2])
+                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Invoke-TimelineWebOperation -ProductName "Timeline" -Action "product_install" -ScriptBlock { Invoke-TimelineProductInstall -ProductId $productId }))
+                continue
+            }
+
+            if ($method -eq "POST" -and $uri.AbsolutePath -like "/products/runtime/*/uninstall") {
+                $segments = @($uri.AbsolutePath.Trim("/") -split "/")
+                $productId = [System.Uri]::UnescapeDataString([string]$segments[2])
+                Send-TimelineResponse -Client $client -StatusCode 200 -StatusText "OK" -Origin $origin -Body (ConvertTo-TimelineJson (Invoke-TimelineWebOperation -ProductName "Timeline" -Action "product_uninstall" -ScriptBlock { Invoke-TimelineProductUninstall -ProductId $productId }))
                 continue
             }
 

@@ -57,6 +57,12 @@
     [Parameter]
     public bool ProductsOpen { get; set; }
 
+    [Parameter]
+    public EventCallback SettingsRequested { get; set; }
+
+    [Parameter]
+    public EventCallback ProductsRequested { get; set; }
+
     private const string NavItemClass = "flex w-full items-center gap-2 rounded-md px-3 py-2 text-left hover:bg-white/10 hover:text-white";
 
     private string CurrentPath
@@ -136,13 +142,23 @@
 
     private async Task OpenSettingsAsync()
     {
-        SettingsDialog.Open();
+        if (SettingsRequested.HasDelegate) {
+            await SettingsRequested.InvokeAsync();
+        }
+        else {
+            SettingsDialog.Open();
+        }
         await OnNavigate.InvokeAsync();
     }
 
     private async Task OpenProductsAsync()
     {
-        ProductsDialog.Open();
+        if (ProductsRequested.HasDelegate) {
+            await ProductsRequested.InvokeAsync();
+        }
+        else {
+            ProductsDialog.Open();
+        }
         await OnNavigate.InvokeAsync();
     }
 

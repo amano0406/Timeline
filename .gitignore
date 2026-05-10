@@ -8,6 +8,7 @@ obj/
 release/
 output/
 downloads/
+test-results/
 web/bin/
 web/obj/
 web/node_modules/
