@@ -192,6 +192,25 @@
     </tbody>
   </table>
 
+  <h2>Release ZIP の統一ルール</h2>
+  <p>
+    一般ユーザー向けのインストールは Git clone ではなく、GitHub Release の ZIP asset を優先する。
+    そのため、Timeline 本体と各サブ製品は同じ名前・同じ生成方法の配布 ZIP を持つ。
+  </p>
+  <pre><code>scripts\build-release-bundle.ps1 -Version v0.2.0</code></pre>
+  <p>生成物は次の形式に統一する。</p>
+  <pre><code>release\v0.2.0\&lt;RepositoryName&gt;-windows-local.zip
+release\v0.2.0\SHA256SUMS.txt</code></pre>
+  <p>
+    ZIP は Git タグから作成する。これにより、リリースされた ZIP の中身と GitHub 上のタグが一致し、
+    ローカルの <code>settings.json</code>、生成物、Docker 作業データが混ざらない。
+  </p>
+  <p>
+    Timeline 側の <code>productRegistry</code> は、将来的に
+    <code>https://github.com/amano0406/&lt;RepositoryName&gt;/releases/latest/download/&lt;RepositoryName&gt;-windows-local.zip</code>
+    を基本 URL として扱う。
+  </p>
+
   <h2>段階的な実装方針</h2>
   <ol>
     <li>製品レジストリを追加する。</li>

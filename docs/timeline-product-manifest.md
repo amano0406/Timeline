@@ -74,7 +74,7 @@ Timeline 側は、インストール前に必要な最低限の製品カタロ�
         "displayName": "TimelineForAudio",
         "path": "C:\\apps\\TimelineForAudio",
         "sourceType": "release",
-        "sourceUrl": "https://github.com/amano0406/TimelineForAudio/releases/latest/download/TimelineForAudio.zip",
+        "sourceUrl": "https://github.com/amano0406/TimelineForAudio/releases/latest/download/TimelineForAudio-windows-local.zip",
         "version": "",
         "enabled": true,
         "required": false
@@ -171,6 +171,42 @@ Timeline はこのファイルを読み、製品ごとの推測コードを減�
 
 一般ユーザー向けの正式インストール方式は、Release ZIP を優先します。
 Git clone は、開発者向けまたは検証向けとして扱います。
+
+## 配布 ZIP の生成ルール
+
+Timeline 本体とサブ製品は、同じ考え方で GitHub Release 用の配布 ZIP を作ります。
+
+```text
+scripts\build-release-bundle.ps1 -Version v0.2.0
+```
+
+生成物:
+
+```text
+release\v0.2.0\<RepositoryName>-windows-local.zip
+release\v0.2.0\SHA256SUMS.txt
+```
+
+例:
+
+```text
+TimelineForAudio-windows-local.zip
+TimelineForImage-windows-local.zip
+Timeline-windows-local.zip
+```
+
+採用理由:
+
+- 一般ユーザーに Git や GitHub アカウントを要求しない
+- Timeline のインストール処理が Release asset URL を固定的に扱える
+- Git タグを正本にすることで、ZIP の中身とリリースしたコミットの対応が明確になる
+- `settings.json`、生成データ、Docker 作業データなど、Git 管理されていないローカル情報を混ぜない
+- 製品ごとのファイル一覧を手でメンテナンスせずに済む
+
+このスクリプトは利用者向けではなく、リリース作成者向けです。
+利用者は GitHub Release から ZIP を取得するだけでよく、Git は不要です。
+
+`SHA256SUMS.txt` は、ダウンロード後に ZIP の破損確認や将来の整合性チェックで使います。
 
 ## 現時点の Git 依存箇所
 
@@ -543,4 +579,3 @@ productId の候補:
 3. 起動 / 停止 / CLI / 設定 / 生成データ候補をマニフェストから解決する
 4. マニフェストがない製品は、既存の互換処理で扱うが警告を出す
 5. 各サブ製品に `timeline-product.json` が揃ったら、推測コードを減らす
-
