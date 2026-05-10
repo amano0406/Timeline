@@ -3,7 +3,15 @@
 
 <PageTitle>画像詳細 - Timeline</PageTitle>
 
-<div class="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+<TimelineBreadcrumbs>
+    <a href="scan">スキャン</a>
+    <span class="tfa-breadcrumb-separator">/</span>
+    <a href="image">画像ファイル一覧</a>
+    <span class="tfa-breadcrumb-separator">/</span>
+    <span aria-current="page">画像詳細</span>
+</TimelineBreadcrumbs>
+
+<div class="mb-6">
     <div>
         <h1 class="tfa-title flex items-center gap-2">
             <FaIcon Name="image" Class="tfa-icon text-accent" />
@@ -14,10 +22,6 @@
             <p class="mt-2 break-all font-mono text-sm text-slate-600">@loadedFile.SourcePath</p>
         }
     </div>
-    <a class="tfa-button-secondary gap-2" href="image">
-        <FaIcon Name="arrow-left" Class="tfa-icon" />
-        <span>一覧に戻る</span>
-    </a>
 </div>
 
 @if (_error is not null)

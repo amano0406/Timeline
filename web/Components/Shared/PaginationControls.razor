@@ -3,7 +3,7 @@
     <div class="tfa-pagination" aria-label="@Label">
         <div class="tfa-pagination-summary">
             <span>@RangeLabel</span>
-            <span>@CurrentPage / @PageCount ページ</span>
+            <span>@PageLabel</span>
         </div>
         <div class="tfa-pagination-actions">
             <button type="button"
@@ -40,13 +40,16 @@
                 <span>次へ</span>
                 <FaIcon Name="angle-right" Class="tfa-icon !h-3 !w-3" />
             </button>
-            <button type="button"
-                    class="tfa-pagination-button"
-                    @onclick="() => ChangePageAsync(PageCount)"
-                    disabled="@(Disabled || CurrentPage >= PageCount)">
-                <span>最後</span>
-                <FaIcon Name="angles-right" Class="tfa-icon !h-3 !w-3" />
-            </button>
+            @if (ShowLastPageButton && HasKnownTotal)
+            {
+                <button type="button"
+                        class="tfa-pagination-button"
+                        @onclick="() => ChangePageAsync(PageCount)"
+                        disabled="@(Disabled || CurrentPage >= PageCount)">
+                    <span>最後</span>
+                    <FaIcon Name="angles-right" Class="tfa-icon !h-3 !w-3" />
+                </button>
+            }
         </div>
     </div>
 }
@@ -68,11 +71,21 @@
     public string Label { get; set; } = "ページ移動";
 
     [Parameter]
+    public bool ShowLastPageButton { get; set; } = true;
+
+    [Parameter]
+    public bool HasKnownTotal { get; set; } = true;
+
+    [Parameter]
     public EventCallback<int> PageChanged { get; set; }
 
     private int SafeCurrentPage => Math.Clamp(CurrentPage, 1, PageCount);
 
     private int PageCount => Math.Max(1, (int)Math.Ceiling(TotalItems / (double)Math.Max(1, PageSize)));
+
+    private string PageLabel => HasKnownTotal
+        ? $"{CurrentPage} / {PageCount} ページ"
+        : $"{CurrentPage} ページ目";
 
     private string RangeLabel
     {
@@ -85,6 +98,11 @@
 
             var start = ((SafeCurrentPage - 1) * PageSize) + 1;
             var end = Math.Min(TotalItems, start + PageSize - 1);
+            if (!HasKnownTotal)
+            {
+                return $"{start:N0} - {end:N0} 件表示";
+            }
+
             return $"{start:N0} - {end:N0} / {TotalItems:N0} 件";
         }
     }

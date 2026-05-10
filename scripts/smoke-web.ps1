@@ -8,6 +8,8 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
+Add-Type -AssemblyName System.Net.Http
+
 function Resolve-TimelineSmokeHelperBaseUrl {
     param([string]$PreferredBaseUrl)
 
@@ -51,9 +53,10 @@ function Assert-NoUnicodeReplacementCharacter {
 $paths = @(
     "/",
     "/timeline",
-    "/timeline/settings",
-    "/timeline/operations",
+    "/scan",
     "/audio/files",
+    "/video",
+    "/pc",
     "/windows-codex",
     "/chatgpt",
     "/image",
@@ -76,16 +79,24 @@ $helperPaths = @(
     "/products/windows-codex/overview",
     "/products/chatgpt/overview",
     "/products/image/overview",
+    "/products/video/overview",
+    "/products/pc/overview",
     "/timeline/settings",
     "/timeline/operations?limit=3",
     "/timeline/store/overview",
-    "/timeline/worker/status"
+    "/timeline/worker/status",
+    "/timeline/audio-verbalization/bulk/status",
+    "/timeline/audio-verbalization/bulk/targets"
 )
 
 foreach ($path in $helperPaths) {
     $url = "$HelperBaseUrl$path"
+    $requestTimeoutSeconds = $TimeoutSeconds
+    if ($path -eq "/timeline/audio-verbalization/bulk/targets") {
+        $requestTimeoutSeconds = [Math]::Max($TimeoutSeconds, 90)
+    }
     $watch = [System.Diagnostics.Stopwatch]::StartNew()
-    $response = Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec $TimeoutSeconds
+    $response = Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec $requestTimeoutSeconds
     $watch.Stop()
     if ($response.StatusCode -lt 200 -or $response.StatusCode -ge 300) {
         throw "Unexpected status for ${url}: $($response.StatusCode)"
@@ -132,5 +143,72 @@ if ($null -eq $imageFilesProperty) {
     throw "Image files response did not include files."
 }
 Write-Host "PASS helper /products/image/files text encoding"
+
+$videoFilesUrl = "$HelperBaseUrl/products/video/files?page=1&pageSize=3"
+$videoFilesTimeoutSeconds = [Math]::Max($TimeoutSeconds, 120)
+$videoFilesPayload = Invoke-RestMethod -Uri $videoFilesUrl -TimeoutSec $videoFilesTimeoutSeconds
+Assert-NoUnicodeReplacementCharacter -Payload $videoFilesPayload -Label "Video files response"
+$videoFilesProperty = $videoFilesPayload.PSObject.Properties["files"]
+if ($null -eq $videoFilesProperty) {
+    throw "Video files response did not include files."
+}
+
+$videoFiles = @($videoFilesProperty.Value)
+if ($videoFiles.Count -gt 0) {
+    $firstVideoFile = $videoFiles[0]
+    $pathProperty = $firstVideoFile.PSObject.Properties["sourcePath"]
+    if ($null -eq $pathProperty -or -not [string]$pathProperty.Value) {
+        throw "Video file row did not include sourcePath."
+    }
+
+    $encodedVideoPath = [System.Uri]::EscapeDataString([string]$pathProperty.Value)
+    $videoDetailUrl = "$HelperBaseUrl/products/video/files/detail?path=$encodedVideoPath"
+    $videoDetailPayload = Invoke-RestMethod -Uri $videoDetailUrl -TimeoutSec $videoFilesTimeoutSeconds
+    Assert-NoUnicodeReplacementCharacter -Payload $videoDetailPayload -Label "Video detail response"
+    $availableProperty = $videoDetailPayload.PSObject.Properties["available"]
+    if ($null -eq $availableProperty -or -not [bool]$availableProperty.Value) {
+        throw "Video detail response did not report an available file."
+    }
+
+    $videoSourceUrl = "$BaseUrl/api/video/source?path=$encodedVideoPath"
+    $client = [System.Net.Http.HttpClient]::new()
+    try {
+        $request = [System.Net.Http.HttpRequestMessage]::new([System.Net.Http.HttpMethod]::Get, $videoSourceUrl)
+        $request.Headers.Range = [System.Net.Http.Headers.RangeHeaderValue]::new(0, 0)
+        $sourceResponse = $client.SendAsync($request, [System.Net.Http.HttpCompletionOption]::ResponseHeadersRead).GetAwaiter().GetResult()
+        try {
+            if (-not $sourceResponse.IsSuccessStatusCode) {
+                throw "Unexpected status for ${videoSourceUrl}: $([int]$sourceResponse.StatusCode)"
+            }
+
+            $sourceStatusCode = [int]$sourceResponse.StatusCode
+            if ($sourceStatusCode -ne 200 -and $sourceStatusCode -ne 206) {
+                throw "Unexpected range status for ${videoSourceUrl}: $sourceStatusCode"
+            }
+        }
+        finally {
+            $sourceResponse.Dispose()
+            $request.Dispose()
+        }
+    }
+    finally {
+        $client.Dispose()
+    }
+
+    Write-Host "PASS helper /products/video/files detail and source"
+}
+else {
+    Write-Host "SKIP helper /products/video/files detail and source no files"
+}
+
+$pcItemsUrl = "$HelperBaseUrl/products/pc/items?page=1&pageSize=3"
+$pcItemsTimeoutSeconds = [Math]::Max($TimeoutSeconds, 120)
+$pcItemsPayload = Invoke-RestMethod -Uri $pcItemsUrl -TimeoutSec $pcItemsTimeoutSeconds
+Assert-NoUnicodeReplacementCharacter -Payload $pcItemsPayload -Label "PC items response"
+$pcItemsProperty = $pcItemsPayload.PSObject.Properties["items"]
+if ($null -eq $pcItemsProperty) {
+    throw "PC items response did not include items."
+}
+Write-Host "PASS helper /products/pc/items"
 
 Write-Host "Timeline Web smoke check passed."

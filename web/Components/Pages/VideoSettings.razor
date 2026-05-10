@@ -1,0 +1,488 @@
+@inject TimelineHelperClient Timeline
+@inject IJSRuntime Js
+
+@if (!Embedded)
+{
+    <PageTitle>TimelineForVideo 設定 - Timeline</PageTitle>
+
+    <div class="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <h1 class="tfa-title flex items-center gap-2">
+            <FaIcon Name="gear" Class="tfa-icon text-accent" />
+            <span>TimelineForVideo 設定</span>
+        </h1>
+        <a class="tfa-button-secondary gap-2" href="scan">
+            <FaIcon Name="arrow-left" Class="tfa-icon" />
+            <span>スキャンに戻る</span>
+        </a>
+    </div>
+}
+
+@if (_error is not null)
+{
+    <div class="tfa-alert-danger mb-5 flex items-start gap-2">
+        <FaIcon Name="triangle-exclamation" Class="tfa-icon mt-0.5" />
+        <span>@_error</span>
+    </div>
+}
+
+@if (_saved)
+{
+    <div class="tfa-alert-info mb-5 flex items-start gap-2">
+        <FaIcon Name="circle-check" Class="tfa-icon mt-0.5" />
+        <span>設定を保存しました。</span>
+    </div>
+    <div class="tfa-alert-warn mb-5 flex items-start gap-2">
+        <FaIcon Name="rotate" Class="tfa-icon mt-0.5" />
+        <span>AI処理方法とディレクトリの反映には再起動が必要な場合があります。</span>
+    </div>
+}
+
+@if (_loading)
+{
+    <section class="tfa-card tfa-card-pad flex items-center gap-3">
+        <FaIcon Name="spinner" Class="tfa-icon fa-spin text-accent" />
+        <span class="text-sm text-slate-600">読み込み中</span>
+    </section>
+}
+else
+{
+    @if (_overview is not null && !_overview.ProductFound)
+    {
+        <div class="tfa-alert-danger mb-5 flex items-start gap-2">
+            <FaIcon Name="folder-open" Class="tfa-icon mt-0.5" />
+            <span>TimelineForVideo が見つかりません。</span>
+        </div>
+    }
+
+    @if (_overview is not null && !_overview.SettingsValid && !string.IsNullOrWhiteSpace(_overview.Message))
+    {
+        <div class="tfa-alert-warn mb-5 flex items-start gap-2">
+            <FaIcon Name="triangle-exclamation" Class="tfa-icon mt-0.5" />
+            <span>@_overview.Message</span>
+        </div>
+    }
+
+    <section class="tfa-card tfa-card-pad">
+        <h2 class="flex items-center gap-2 text-lg font-semibold">
+            <FaIcon Name="key" Class="tfa-icon text-accent" />
+            <span>Hugging Face トークン</span>
+        </h2>
+
+        @if (!_hasToken && string.IsNullOrWhiteSpace(_tokenToSave))
+        {
+            <div class="tfa-alert-danger mt-4 flex items-start gap-2">
+                <FaIcon Name="triangle-exclamation" Class="tfa-icon mt-0.5" />
+                <span>音声モデルを使うには Hugging Face トークンが必要です。</span>
+            </div>
+        }
+
+        <div class="mt-4 rounded-md border border-line bg-slate-50 p-4">
+            <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                    <div class="flex items-center gap-2 text-sm font-medium text-slate-700">
+                        <FaIcon Name="@((_hasToken || !string.IsNullOrWhiteSpace(_tokenToSave)) ? "circle-check" : "circle-minus")"
+                                Class="@($"tfa-icon {((_hasToken || !string.IsNullOrWhiteSpace(_tokenToSave)) ? "text-teal-700" : "text-slate-400")}")" />
+                        <span>@((_hasToken || !string.IsNullOrWhiteSpace(_tokenToSave)) ? "設定済み" : "未設定")</span>
+                    </div>
+                    <div class="mt-1 pl-7 font-mono text-sm text-slate-900">@TokenDisplay</div>
+                </div>
+                <button class="tfa-button-secondary gap-2" @onclick="OpenTokenModal">
+                    <FaIcon Name="key" Class="tfa-icon" />
+                    <span>登録</span>
+                </button>
+            </div>
+        </div>
+    </section>
+
+    <section class="tfa-card tfa-card-pad mt-5">
+        <h2 class="flex items-center gap-2 text-lg font-semibold">
+            <FaIcon Name="microchip" Class="tfa-icon text-accent" />
+            <span>AI処理方法</span>
+        </h2>
+
+        <div class="mt-4 max-w-xl">
+            <select class="tfa-input" @bind="_computeMode" aria-label="AI処理方法">
+                <option value="gpu">GPU</option>
+                <option value="cpu">CPU</option>
+            </select>
+
+            <div class="mt-3 grid gap-2 text-sm">
+                @DevicePreview("CPU", "microchip", _cpuDevices)
+                @DevicePreview("GPU", "display", _gpuDevices)
+            </div>
+        </div>
+    </section>
+
+    <section class="tfa-card tfa-card-pad mt-5">
+        <h2 class="flex items-center gap-2 text-lg font-semibold">
+            <FaIcon Name="folder" Class="tfa-icon text-accent" />
+            <span>入力ディレクトリ</span>
+        </h2>
+
+        <div class="mt-4 grid gap-3">
+            @foreach (var root in _inputRoots)
+            {
+                <div class="rounded-md border border-line p-3">
+                    <div class="grid gap-3 lg:grid-cols-[1fr_auto] lg:items-center">
+                        <div class="flex min-h-10 min-w-0 items-center">
+                            <div class="break-all font-mono text-sm text-slate-900">@DirectoryDisplay(root)</div>
+                        </div>
+                        <button class="tfa-button-secondary gap-2" @onclick="() => RemoveInputRoot(root)" disabled="@(_inputRoots.Count <= 1)">
+                            <FaIcon Name="xmark" Class="tfa-icon" />
+                            <span>外す</span>
+                        </button>
+                    </div>
+                </div>
+            }
+        </div>
+
+        <div class="mt-3 flex justify-end">
+            <button class="tfa-button-secondary gap-2" @onclick="AddInputRootAsync">
+                <FaIcon Name="plus" Class="tfa-icon" />
+                <span>追加</span>
+            </button>
+        </div>
+    </section>
+
+    <section class="tfa-card tfa-card-pad mt-5">
+        <h2 class="flex items-center gap-2 text-lg font-semibold">
+            <FaIcon Name="database" Class="tfa-icon text-accent" />
+            <span>出力ディレクトリ</span>
+        </h2>
+
+        <div class="mt-4 rounded-md border border-line bg-slate-50 p-4">
+            <div class="grid gap-3 lg:grid-cols-[1fr_auto] lg:items-center">
+                <div class="min-w-0 break-all font-mono text-sm text-slate-900">@DirectoryDisplay(_outputRoot)</div>
+                <button class="tfa-button-secondary gap-2" @onclick="PickOutputRootAsync">
+                    <FaIcon Name="folder-open" Class="tfa-icon" />
+                    <span>変更</span>
+                </button>
+            </div>
+        </div>
+    </section>
+
+    <div class="mt-5 flex flex-wrap gap-3">
+        <button class="tfa-button-primary gap-2" @onclick="SaveAsync" disabled="@_saving">
+            <FaIcon Name="@(_saving ? "spinner" : "floppy-disk")" Class="@($"tfa-icon {(_saving ? "fa-spin" : "")}")" />
+            <span>保存</span>
+        </button>
+    </div>
+}
+
+@if (_tokenModalOpen)
+{
+    <div class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4">
+        <section class="w-full max-w-xl rounded-md bg-white shadow-xl"
+                 role="dialog"
+                 aria-modal="true"
+                 aria-labelledby="video-token-title">
+            <div class="flex items-center justify-between gap-3 border-b border-line p-5">
+                <h2 id="video-token-title" class="flex items-center gap-2 text-lg font-semibold">
+                    <FaIcon Name="key" Class="tfa-icon text-accent" />
+                    <span>Hugging Face トークン</span>
+                </h2>
+                <button class="tfa-button-secondary !min-h-9 !px-2" aria-label="閉じる" @onclick="CloseTokenModal">
+                    <FaIcon Name="xmark" Class="tfa-icon" />
+                </button>
+            </div>
+            <div class="p-5">
+                <input class="tfa-input" type="password" value="@_tokenDraft" @oninput="OnTokenDraftChanged" autocomplete="off" />
+                @if (!string.IsNullOrWhiteSpace(_tokenValidationError))
+                {
+                    <div class="mt-3 text-sm text-rose-700">@_tokenValidationError</div>
+                }
+            </div>
+            <div class="flex justify-end gap-3 border-t border-line p-5">
+                <button class="tfa-button-secondary" @onclick="CloseTokenModal">キャンセル</button>
+                <button class="tfa-button-primary" @onclick="SaveTokenDraft">登録</button>
+            </div>
+        </section>
+    </div>
+}
+
+@code {
+    [Parameter] public bool Embedded { get; set; }
+
+    private VideoOverview? _overview;
+    private readonly List<VideoInputRoot> _inputRoots = [];
+    private VideoDirectoryRoot _outputRoot = new() { Id = "output", DisplayName = "Output", Path = @"C:\TimelineData\video" };
+    private readonly List<string> _cpuDevices = [];
+    private readonly List<string> _gpuDevices = [];
+    private string _computeMode = "gpu";
+    private bool _hasToken;
+    private string _tokenPreview = "";
+    private string? _tokenToSave;
+    private bool _tokenModalOpen;
+    private string? _tokenDraft;
+    private string? _tokenValidationError;
+    private bool _loading = true;
+    private bool _saving;
+    private bool _saved;
+    private string? _error;
+
+    private string TokenDisplay => !string.IsNullOrWhiteSpace(_tokenToSave) ? MaskToken(_tokenToSave) : EmptyText(_tokenPreview);
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _error = null;
+        try
+        {
+            _overview = await Timeline.GetVideoOverviewAsync();
+            _inputRoots.Clear();
+            foreach (var root in _overview.Settings.InputRoots)
+            {
+                _inputRoots.Add(CloneRoot(root));
+            }
+            if (_inputRoots.Count == 0)
+            {
+                _inputRoots.Add(new VideoInputRoot
+                {
+                    Id = "input-1",
+                    DisplayName = "Input",
+                    Path = @"C:\TimelineData\input-video",
+                    DisplayPath = @"C:\TimelineData\input-video",
+                    Enabled = true,
+                });
+            }
+
+            _outputRoot = CloneRoot(_overview.Settings.OutputRoot);
+            if (string.IsNullOrWhiteSpace(_outputRoot.Path))
+            {
+                _outputRoot.Path = @"C:\TimelineData\video";
+                _outputRoot.DisplayPath = _outputRoot.Path;
+            }
+            _computeMode = NormalizeComputeMode(_overview.Settings.ComputeMode);
+            _hasToken = _overview.Settings.HasToken;
+            _tokenPreview = _overview.Settings.TokenPreview;
+            _cpuDevices.Clear();
+            _cpuDevices.AddRange(_overview.CpuDevices);
+            _gpuDevices.Clear();
+            _gpuDevices.AddRange(_overview.GpuDevices);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task AddInputRootAsync()
+    {
+        var path = await PickDirectoryAsync("入力ディレクトリを選択", LastInputPath());
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return;
+        }
+        if (_inputRoots.Any(root => root.Path.Equals(path, StringComparison.OrdinalIgnoreCase)))
+        {
+            _error = "同じ入力ディレクトリが既にあります。";
+            return;
+        }
+
+        _inputRoots.Add(new VideoInputRoot
+        {
+            Id = $"input-{_inputRoots.Count + 1}",
+            DisplayName = "Input",
+            Path = path,
+            DisplayPath = path,
+            Enabled = true,
+        });
+        _saved = false;
+    }
+
+    private void RemoveInputRoot(VideoInputRoot root)
+    {
+        if (_inputRoots.Count <= 1)
+        {
+            return;
+        }
+        _inputRoots.Remove(root);
+        _saved = false;
+    }
+
+    private async Task PickOutputRootAsync()
+    {
+        var path = await PickDirectoryAsync("出力ディレクトリを選択", DirectoryDisplay(_outputRoot));
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return;
+        }
+        _outputRoot.Path = path;
+        _outputRoot.DisplayPath = path;
+        _saved = false;
+    }
+
+    private async Task<string?> PickDirectoryAsync(string title, string initialPath)
+    {
+        _error = null;
+        try
+        {
+            return await Js.InvokeAsync<string?>("timelineDirectoryPicker.pick", title, initialPath);
+        }
+        catch (JSException ex)
+        {
+            _error = ex.Message;
+            return null;
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        _saving = true;
+        _saved = false;
+        _error = null;
+        try
+        {
+            if (_inputRoots.Count == 0 || _inputRoots.Any(root => string.IsNullOrWhiteSpace(root.Path)))
+            {
+                throw new InvalidOperationException("入力ディレクトリを設定してください。");
+            }
+            if (string.IsNullOrWhiteSpace(_outputRoot.Path))
+            {
+                throw new InvalidOperationException("出力ディレクトリを設定してください。");
+            }
+            if (_tokenToSave is { Length: > 0 } && !ValidateTokenFormat(_tokenToSave, out var tokenMessage))
+            {
+                throw new InvalidOperationException(tokenMessage);
+            }
+
+            _overview = await Timeline.SaveVideoSettingsAsync(new VideoSettingsSaveRequest
+            {
+                InputRoots = _inputRoots.Select(CloneRoot).ToList(),
+                OutputRoot = CloneRoot(_outputRoot),
+                OutputRootPath = _outputRoot.Path,
+                Token = _tokenToSave ?? "",
+                ComputeMode = NormalizeComputeMode(_computeMode),
+            });
+            _tokenToSave = null;
+            _saved = true;
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private void OpenTokenModal()
+    {
+        _tokenDraft = "";
+        _tokenValidationError = null;
+        _tokenModalOpen = true;
+    }
+
+    private void CloseTokenModal()
+    {
+        _tokenModalOpen = false;
+        _tokenDraft = null;
+        _tokenValidationError = null;
+    }
+
+    private void OnTokenDraftChanged(ChangeEventArgs args)
+    {
+        _tokenDraft = args.Value?.ToString();
+        _tokenValidationError = null;
+    }
+
+    private void SaveTokenDraft()
+    {
+        var token = _tokenDraft?.Trim() ?? "";
+        if (!ValidateTokenFormat(token, out var message))
+        {
+            _tokenValidationError = message;
+            return;
+        }
+        _tokenToSave = token;
+        _saved = false;
+        CloseTokenModal();
+    }
+
+    private RenderFragment DevicePreview(string label, string icon, IReadOnlyList<string> devices) => @<div class="grid gap-1 rounded-md border border-line bg-slate-50 p-3">
+        <div class="inline-flex items-center gap-2 font-medium text-slate-700">
+            <FaIcon Name="@icon" Class="tfa-icon !h-4 !w-4 text-slate-500" />
+            <span>@label</span>
+        </div>
+        @if (devices.Count == 0)
+        {
+            <span class="text-slate-500">取得できませんでした</span>
+        }
+        else
+        {
+            @foreach (var device in devices)
+            {
+                <span class="text-slate-900">@device</span>
+            }
+        }
+    </div>;
+
+    private string LastInputPath() =>
+        _inputRoots.LastOrDefault(root => !string.IsNullOrWhiteSpace(root.Path))?.Path
+        ?? @"C:\TimelineData\input-video";
+
+    private static VideoInputRoot CloneRoot(VideoInputRoot root) => new()
+    {
+        Id = root.Id,
+        DisplayName = root.DisplayName,
+        Path = root.Path,
+        DisplayPath = root.DisplayPath,
+        Enabled = root.Enabled,
+        Exists = root.Exists,
+    };
+
+    private static VideoDirectoryRoot CloneRoot(VideoDirectoryRoot root) => new()
+    {
+        Id = root.Id,
+        DisplayName = root.DisplayName,
+        Path = root.Path,
+        DisplayPath = root.DisplayPath,
+        Exists = root.Exists,
+    };
+
+    private static string DirectoryDisplay(VideoInputRoot root) =>
+        !string.IsNullOrWhiteSpace(root.DisplayPath) ? root.DisplayPath : EmptyText(root.Path);
+
+    private static string DirectoryDisplay(VideoDirectoryRoot root) =>
+        !string.IsNullOrWhiteSpace(root.DisplayPath) ? root.DisplayPath : EmptyText(root.Path);
+
+    private static string NormalizeComputeMode(string? value)
+    {
+        var mode = value?.Trim().ToLowerInvariant() ?? "";
+        return mode == "cpu" ? "cpu" : "gpu";
+    }
+
+    private static bool ValidateTokenFormat(string token, out string message)
+    {
+        if (string.IsNullOrWhiteSpace(token))
+        {
+            message = "トークンを入力してください。";
+            return false;
+        }
+        if (!token.StartsWith("hf_", StringComparison.Ordinal) || token.Length < 12)
+        {
+            message = "Hugging Face token の形式を確認してください。";
+            return false;
+        }
+
+        message = "";
+        return true;
+    }
+
+    private static string MaskToken(string token)
+    {
+        var value = token.Trim();
+        if (value.Length <= 8)
+        {
+            return new string('•', value.Length);
+        }
+        return $"{value[..4]}{new string('•', Math.Max(4, value.Length - 8))}{value[^4..]}";
+    }
+
+    private static string EmptyText(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? "-" : value;
+}

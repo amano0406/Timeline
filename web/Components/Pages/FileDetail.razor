@@ -5,6 +5,14 @@
 
 <PageTitle>音声詳細 - Timeline</PageTitle>
 
+<TimelineBreadcrumbs>
+    <a href="scan">スキャン</a>
+    <span class="tfa-breadcrumb-separator">/</span>
+    <a href="audio/files">音声ファイル一覧</a>
+    <span class="tfa-breadcrumb-separator">/</span>
+    <span aria-current="page">音声詳細</span>
+</TimelineBreadcrumbs>
+
 <div class="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
     <div>
         <h1 class="tfa-title flex items-center gap-2">
@@ -16,10 +24,6 @@
             <p class="mt-2 break-all font-mono text-sm text-slate-600">@_file.DisplayPath</p>
         }
     </div>
-    <a class="tfa-button-secondary gap-2" href="audio/files">
-        <FaIcon Name="arrow-left" Class="tfa-icon" />
-        <span>一覧に戻る</span>
-    </a>
 </div>
 
 @if (_error is not null)
@@ -220,7 +224,7 @@ else if (_file is not null)
                             <tbody>
                                 @foreach (var turn in _verbalizationResult!.Turns)
                                 {
-                                    <tr>
+                                    <tr class="@ActiveTurnRowClass(turn.StartSec)">
                                         <td>
                                             <button class="tfa-icon-box text-accent" type="button" title="この位置から再生" @onclick="() => SeekAsync(turn.StartSec)">
                                                 <FaIcon Name="play" Class="tfa-icon !h-3.5 !w-3.5" />
@@ -234,12 +238,6 @@ else if (_file is not null)
                                         </td>
                                         <td class="max-w-[980px] whitespace-pre-wrap break-words text-sm leading-6 text-slate-900">
                                             @VerbalizedText(turn)
-                                            @if (HasUncertainTerms(turn))
-                                            {
-                                                <div class="mt-2 text-xs text-amber-800">
-                                                    要確認: @UncertainTermsText(turn)
-                                                </div>
-                                            }
                                         </td>
                                         <td class="whitespace-nowrap font-mono text-xs text-slate-500">
                                             @ConfidenceLabel(turn.Confidence)
@@ -254,80 +252,18 @@ else if (_file is not null)
                     </div>
                 </div>
             }
-
-            <details class="tfa-card overflow-hidden" open="@(!HasVerbalizedTurns)">
-                <summary class="cursor-pointer list-none border-b border-line">
-                    <div class="tfa-card-pad">
-                    <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                        <h2 class="flex items-center gap-2 text-lg font-semibold">
-                            <FaIcon Name="bars-staggered" Class="tfa-icon text-accent" />
-                            <span>@(HasVerbalizedTurns ? "解析元データ" : "時間軸データ")</span>
-                        </h2>
-                        @if (_detail?.TimelineAvailable == true)
-                        {
-                            <div class="flex flex-wrap gap-2 text-xs text-slate-500">
-                                @if (!string.IsNullOrWhiteSpace(_detail.UnitType))
-                                {
-                                    <span class="tfa-status-pill border-slate-200 bg-slate-50">@_detail.UnitType</span>
-                                }
-                                <span class="tfa-status-pill border-slate-200 bg-slate-50">@_detail.Turns.Count 区間</span>
-                            </div>
-                        }
-                    </div>
-                    </div>
-                </summary>
-                <div class="max-h-[680px] overflow-auto">
-                    <table class="tfa-table">
-                        <thead class="sticky top-0">
-                            <tr>
-                                <th>再生</th>
-                                <th>時間</th>
-                                <th>話者</th>
-                                <th>音響単位</th>
-                                <th>信頼度</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @if (_detail?.Turns.Count > 0)
-                            {
-                                @foreach (var turn in _detail.Turns)
-                                {
-                                    <tr>
-                                        <td>
-                                            <button class="tfa-icon-box text-accent" type="button" title="この位置から再生" @onclick="() => SeekAsync(turn.StartSec)">
-                                                <FaIcon Name="play" Class="tfa-icon !h-3.5 !w-3.5" />
-                                            </button>
-                                        </td>
-                                        <td class="whitespace-nowrap font-mono text-xs">
-                                            @DurationLabel(turn.StartSec) - @DurationLabel(turn.EndSec)
-                                        </td>
-                                        <td>
-                                            <span class="tfa-status-pill border-slate-200 bg-slate-50">@SpeakerLabel(turn.Speaker)</span>
-                                        </td>
-                                        <td class="max-w-[980px] whitespace-pre-wrap break-words font-mono text-xs leading-6 text-slate-800">
-                                            @TokenLabel(turn.PhoneTokens)
-                                        </td>
-                                        <td class="whitespace-nowrap font-mono text-xs text-slate-500">
-                                            @ConfidenceLabel(turn.Confidence)
-                                        </td>
-                                    </tr>
-                                }
-                            }
-                            else
-                            {
-                                <tr>
-                                    <td colspan="5" class="text-slate-500">
-                                        <span class="inline-flex items-center gap-2">
-                                            <FaIcon Name="circle-minus" Class="tfa-icon" />
-                                            表示できる時間軸データはありません。
-                                        </span>
-                                    </td>
-                                </tr>
-                            }
-                        </tbody>
-                    </table>
+            else
+            {
+                <div class="tfa-card tfa-card-pad">
+                    <h2 class="flex items-center gap-2 text-lg font-semibold">
+                        <FaIcon Name="language" Class="tfa-icon text-accent" />
+                        <span>言語化結果</span>
+                    </h2>
+                    <p class="mt-3 text-sm leading-6 text-slate-700">
+                        まだ読める文章は作成されていません。スキャンで言語化が完了すると、ここに表示されます。
+                    </p>
                 </div>
-            </details>
+            }
         </section>
     </div>
 }
@@ -345,6 +281,9 @@ else if (_file is not null)
     private AudioFileRow? _file;
     private string? _error;
     private string? _operationMessage;
+    private double? _activeTurnStartSec;
+    private DotNetObjectReference<FileDetail>? _audioDotNetRef;
+    private bool _audioWatchAttached;
     private bool _startingVerbalization;
     private CancellationTokenSource? _verbalizationPollingCts;
     private Task? _verbalizationPollingTask;
@@ -353,11 +292,13 @@ else if (_file is not null)
 
     protected override async Task OnParametersSetAsync()
     {
+        await UnwatchAudioAsync();
         _error = null;
         _operationMessage = null;
         _detail = null;
         _verbalizationResult = null;
         _file = null;
+        _activeTurnStartSec = null;
         CancelVerbalizationPolling();
         if (string.IsNullOrWhiteSpace(SourceId) || string.IsNullOrWhiteSpace(RelativePath))
         {
@@ -386,6 +327,16 @@ else if (_file is not null)
         }
     }
 
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!_audioWatchAttached && _detail?.AudioAvailable == true)
+        {
+            _audioDotNetRef ??= DotNetObjectReference.Create(this);
+            await JS.InvokeVoidAsync("timelineAudioPlayer.watch", AudioElementId, _audioDotNetRef);
+            _audioWatchAttached = true;
+        }
+    }
+
     private async Task LoadVerbalizationResultAsync(CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(SourceId) || string.IsNullOrWhiteSpace(RelativePath))
@@ -408,7 +359,22 @@ else if (_file is not null)
             return;
         }
 
+        _activeTurnStartSec = Math.Max(0, seconds);
+        StateHasChanged();
         await JS.InvokeVoidAsync("timelineAudioPlayer.seek", AudioElementId, Math.Max(0, seconds));
+    }
+
+    [JSInvokable]
+    public async Task OnAudioTimeChanged(double currentTime)
+    {
+        var nextStart = FindActiveTurnStart(currentTime);
+        if (nextStart == _activeTurnStartSec)
+        {
+            return;
+        }
+
+        _activeTurnStartSec = nextStart;
+        await InvokeAsync(StateHasChanged);
     }
 
     private async Task StartVerbalizationAsync()
@@ -503,10 +469,59 @@ else if (_file is not null)
         _verbalizationPollingTask = null;
     }
 
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
+        await UnwatchAudioAsync();
         CancelVerbalizationPolling();
-        return ValueTask.CompletedTask;
+        _audioDotNetRef?.Dispose();
+        _audioDotNetRef = null;
+    }
+
+    private async Task UnwatchAudioAsync()
+    {
+        if (!_audioWatchAttached)
+        {
+            return;
+        }
+
+        try
+        {
+            await JS.InvokeVoidAsync("timelineAudioPlayer.unwatch", AudioElementId);
+        }
+        catch
+        {
+        }
+        finally
+        {
+            _audioWatchAttached = false;
+        }
+    }
+
+    private double? FindActiveTurnStart(double currentTime)
+    {
+        if (_verbalizationResult?.Turns.Count > 0)
+        {
+            foreach (var turn in _verbalizationResult.Turns)
+            {
+                if (currentTime >= turn.StartSec && currentTime < Math.Max(turn.StartSec, turn.EndSec))
+                {
+                    return turn.StartSec;
+                }
+            }
+        }
+
+        if (_detail?.Turns.Count > 0)
+        {
+            foreach (var turn in _detail.Turns)
+            {
+                if (currentTime >= turn.StartSec && currentTime < Math.Max(turn.StartSec, turn.EndSec))
+                {
+                    return turn.StartSec;
+                }
+            }
+        }
+
+        return null;
     }
 
     private static string DurationLabel(double? seconds) =>
@@ -527,6 +542,11 @@ else if (_file is not null)
     private static string UncertainTermsText(AudioVerbalizedTurn turn) =>
         turn.UncertainTerms is { Count: > 0 } ? string.Join("、", turn.UncertainTerms) : "";
 
+    private string ActiveTurnRowClass(double startSec) =>
+        _activeTurnStartSec is not null && Math.Abs(_activeTurnStartSec.Value - startSec) < 0.01
+            ? "bg-teal-50"
+            : "";
+
     private static string ConfidenceLabel(double? value) =>
         value is null ? "-" : value.Value.ToString("0.000");
 
@@ -540,7 +560,7 @@ else if (_file is not null)
             "running" => "言語化中",
             "queued" => "待機中",
             "planned" => "準備済み",
-            "needs_review" => "一部未解決",
+            "needs_review" => "候補あり",
             "stale" => "再言語化必要",
             "failed" => "エラー",
             "unavailable" => "対象外",
@@ -647,7 +667,7 @@ else if (_file is not null)
         {
             "confirmed" => "確認済み",
             "candidate" => "候補",
-            "needs_review" => "要確認",
+            "needs_review" => "候補",
             "unresolved" => "未解決",
             "failed" => "失敗",
             _ => string.IsNullOrWhiteSpace(status) ? "候補" : status,
@@ -657,7 +677,7 @@ else if (_file is not null)
         (status ?? "").ToLowerInvariant() switch
         {
             "confirmed" => "tfa-status-pill border-teal-200 bg-teal-50 text-teal-800",
-            "candidate" => "tfa-status-pill border-sky-200 bg-sky-50 text-sky-800",
+            "candidate" or "needs_review" => "tfa-status-pill border-sky-200 bg-sky-50 text-sky-800",
             "failed" => "tfa-status-pill border-red-200 bg-red-50 text-red-800",
             _ => "tfa-status-pill border-amber-200 bg-amber-50 text-amber-900",
         };

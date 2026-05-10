@@ -1,0 +1,369 @@
+@page "/video/file-detail"
+@inject TimelineHelperClient Timeline
+@inject IJSRuntime JS
+
+<PageTitle>動画詳細 - Timeline</PageTitle>
+
+<TimelineBreadcrumbs>
+    <a href="scan">スキャン</a>
+    <span class="tfa-breadcrumb-separator">/</span>
+    <a href="video">動画ファイル一覧</a>
+    <span class="tfa-breadcrumb-separator">/</span>
+    <span aria-current="page">動画詳細</span>
+</TimelineBreadcrumbs>
+
+<div class="mb-6">
+    <h1 class="tfa-title flex items-center gap-2">
+        <FaIcon Name="video" Class="tfa-icon text-accent" />
+        <span>@(_detail?.File is { } file ? DisplayName(file) : "動画詳細")</span>
+    </h1>
+    @if (_detail?.File is { } loadedFile)
+    {
+        <p class="mt-2 break-all font-mono text-sm text-slate-600">@loadedFile.SourcePath</p>
+    }
+</div>
+
+@if (_error is not null)
+{
+    <div class="tfa-alert-danger mb-5 flex items-start gap-2">
+        <FaIcon Name="triangle-exclamation" Class="tfa-icon mt-0.5" />
+        <span>@_error</span>
+    </div>
+}
+
+@if (_loading)
+{
+    <section class="tfa-card tfa-card-pad flex items-center gap-3">
+        <FaIcon Name="spinner" Class="tfa-icon fa-spin text-accent" />
+        <span class="text-sm text-slate-600">動画ファイルを読み込んでいます。</span>
+    </section>
+}
+else if (_detail?.Available != true || _detail.File is null)
+{
+    <section class="tfa-card tfa-card-pad">
+        <div class="flex items-start gap-3 text-sm text-slate-600">
+            <FaIcon Name="circle-minus" Class="tfa-icon mt-0.5 text-slate-400" />
+            <div>
+                <div class="font-medium text-slate-900">動画ファイルを表示できません。</div>
+                <div class="mt-1">@EmptyText(_detail?.Message)</div>
+            </div>
+        </div>
+    </section>
+}
+else
+{
+    var videoFile = _detail.File!;
+
+    <div class="grid gap-5 xl:grid-cols-[420px_1fr]">
+        <aside class="grid gap-5">
+            <section class="tfa-card tfa-card-pad">
+                <h2 class="flex items-center gap-2 text-lg font-semibold">
+                    <FaIcon Name="circle-info" Class="tfa-icon text-accent" />
+                    <span>ファイル情報</span>
+                </h2>
+                <dl class="mt-4 grid grid-cols-2 gap-2 text-sm">
+                    <dt class="text-slate-500">状態</dt>
+                    <dd>
+                        <span class="@StatusPill(videoFile.Status)">
+                            <FaIcon Name="@StatusIcon(videoFile.Status)" Class="tfa-icon !h-3 !w-3" />
+                            <span>@StatusLabel(videoFile.Status)</span>
+                        </span>
+                    </dd>
+                    <dt class="text-slate-500">日時</dt>
+                    <dd>@UiFormat.ShortDate(videoFile.ModifiedAt)</dd>
+                    <dt class="text-slate-500">記録時間</dt>
+                    <dd>@DurationLabel(videoFile.DurationSec)</dd>
+                    <dt class="text-slate-500">サイズ</dt>
+                    <dd>@UiFormat.Bytes(videoFile.SizeBytes)</dd>
+                    <dt class="text-slate-500">形式</dt>
+                    <dd>@EmptyText(videoFile.Extension)</dd>
+                </dl>
+            </section>
+
+            <section class="tfa-card tfa-card-pad">
+                <h2 class="flex items-center gap-2 text-lg font-semibold">
+                    <FaIcon Name="file-lines" Class="tfa-icon text-accent" />
+                    <span>分析結果</span>
+                </h2>
+                <dl class="mt-4 grid grid-cols-2 gap-2 text-sm">
+                    <dt class="text-slate-500">フレーム</dt>
+                    <dd>@CountLabel(videoFile.FrameCount)</dd>
+                    <dt class="text-slate-500">テキスト</dt>
+                    <dd>@CountLabel(videoFile.TextBlockCount)</dd>
+                    <dt class="text-slate-500">音声区間</dt>
+                    <dd>@CountLabel(videoFile.TurnCount > 0 ? videoFile.TurnCount : videoFile.SpeechCandidateCount)</dd>
+                    <dt class="text-slate-500">言語化</dt>
+                    <dd>@VerbalizationLabel(_detail.AudioVerbalization)</dd>
+                </dl>
+            </section>
+        </aside>
+
+        <section class="grid gap-5">
+            <section class="tfa-card overflow-hidden">
+                <div class="tfa-card-pad border-b border-line">
+                    <h2 class="flex items-center gap-2 text-lg font-semibold">
+                        <FaIcon Name="play" Class="tfa-icon text-accent" />
+                        <span>動画プレビュー</span>
+                    </h2>
+                </div>
+                <div class="bg-slate-950 p-4">
+                    <video id="@VideoElementId" controls preload="metadata" class="mx-auto max-h-[680px] w-full rounded-md bg-black">
+                        <source src="@VideoSourceUrl(videoFile)" />
+                    </video>
+                </div>
+            </section>
+
+            @if (HasVerbalizedTurns)
+            {
+                <section class="tfa-card overflow-hidden">
+                    <div class="tfa-card-pad border-b border-line">
+                        <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                            <h2 class="flex items-center gap-2 text-lg font-semibold">
+                                <FaIcon Name="language" Class="tfa-icon text-accent" />
+                                <span>言語化結果</span>
+                            </h2>
+                            <div class="flex flex-wrap gap-2 text-xs text-slate-500">
+                                <span class="tfa-status-pill border-teal-200 bg-teal-50 text-teal-800">@_detail.AudioVerbalizationResult.Turns.Count 区間</span>
+                                <span class="@VerbalizationPill(_detail.AudioVerbalization.State)">
+                                    <FaIcon Name="@VerbalizationIcon(_detail.AudioVerbalization.State)" Class="tfa-icon !h-3 !w-3" />
+                                    <span>@VerbalizationStateLabel(_detail.AudioVerbalization.State)</span>
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="max-h-[680px] overflow-auto">
+                        <table class="tfa-table">
+                            <thead class="sticky top-0">
+                                <tr>
+                                    <th>再生</th>
+                                    <th>時間</th>
+                                    <th>話者</th>
+                                    <th>内容</th>
+                                    <th>確度</th>
+                                    <th>状態</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var turn in _detail.AudioVerbalizationResult.Turns)
+                                {
+                                    <tr class="@ActiveTurnRowClass(turn.StartSec)">
+                                        <td>
+                                            <button class="tfa-icon-box text-accent" type="button" title="この位置から再生" @onclick="() => SeekAsync(turn.StartSec)">
+                                                <FaIcon Name="play" Class="tfa-icon !h-3.5 !w-3.5" />
+                                            </button>
+                                        </td>
+                                        <td class="whitespace-nowrap font-mono text-xs">
+                                            @DurationLabel(turn.StartSec) - @DurationLabel(turn.EndSec)
+                                        </td>
+                                        <td>
+                                            <span class="tfa-status-pill border-slate-200 bg-slate-50">@SpeakerLabel(turn.Speaker)</span>
+                                        </td>
+                                        <td class="max-w-[980px] whitespace-pre-wrap break-words text-sm leading-6 text-slate-900">
+                                            @ReadableText(turn)
+                                        </td>
+                                        <td class="whitespace-nowrap font-mono text-xs text-slate-500">
+                                            @ConfidenceLabel(turn.Confidence)
+                                        </td>
+                                        <td>
+                                            <span class="@VerbalizedTurnPill(turn.Status)">@VerbalizedTurnLabel(turn.Status)</span>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+            }
+            else
+            {
+                <section class="tfa-card tfa-card-pad">
+                    <h2 class="flex items-center gap-2 text-lg font-semibold">
+                        <FaIcon Name="language" Class="tfa-icon text-accent" />
+                        <span>言語化結果</span>
+                    </h2>
+                    <div class="mt-4 text-sm leading-6 text-slate-700">
+                        まだ読める文章は作成されていません。スキャンで言語化が完了すると、ここに表示されます。
+                    </div>
+                </section>
+            }
+        </section>
+    </div>
+}
+
+@code {
+    private const string VideoElementId = "video-detail-player";
+
+    [SupplyParameterFromQuery(Name = "path")]
+    public string SourcePath { get; set; } = "";
+
+    private VideoFileDetailResult? _detail;
+    private bool _loading = true;
+    private string? _error;
+    private double? _activeTurnStartSec;
+
+    private bool HasVerbalizedTurns => _detail?.AudioVerbalizationResult.Turns.Count > 0;
+
+    protected override async Task OnParametersSetAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _error = null;
+        try
+        {
+            if (string.IsNullOrWhiteSpace(SourcePath))
+            {
+                _detail = new VideoFileDetailResult { Message = "動画ファイルが指定されていません。" };
+                return;
+            }
+
+            _detail = await Timeline.GetVideoFileDetailAsync(SourcePath);
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private static string DisplayName(VideoFileRow file) =>
+        !string.IsNullOrWhiteSpace(file.FileName) ? file.FileName : EmptyText(file.RelativePath);
+
+    private static string VideoSourceUrl(VideoFileRow file) =>
+        $"api/video/source?path={Uri.EscapeDataString(file.SourcePath)}";
+
+    private async Task SeekAsync(double seconds)
+    {
+        _activeTurnStartSec = Math.Max(0, seconds);
+        await JS.InvokeVoidAsync("timelineAudioPlayer.seek", VideoElementId, Math.Max(0, seconds));
+    }
+
+    private string ActiveTurnRowClass(double startSec) =>
+        _activeTurnStartSec is not null && Math.Abs(_activeTurnStartSec.Value - startSec) < 0.01
+            ? "bg-teal-50"
+            : "";
+
+    private static string DurationLabel(double? seconds) =>
+        seconds is > 0 ? UiFormat.Duration(seconds.Value) : "-";
+
+    private static string SpeakerLabel(string value) =>
+        string.IsNullOrWhiteSpace(value) ? "-" : value;
+
+    private static string ReadableText(AudioVerbalizedTurn turn) =>
+        string.IsNullOrWhiteSpace(turn.Text) ? "言語化候補はありません。" : turn.Text;
+
+    private static string ConfidenceLabel(double? value) =>
+        value is null ? "-" : value.Value.ToString("0.000");
+
+    private static string CountLabel(int count) =>
+        count > 0 ? $"{count:N0} 件" : "-";
+
+    private static string VerbalizationLabel(AudioVerbalizationStatus? status)
+    {
+        if (status?.Available != true)
+        {
+            return "-";
+        }
+
+        return status.State.ToLowerInvariant() switch
+        {
+            "completed" => $"{status.VerbalizedTurns:N0} / {status.TotalTurns:N0} 件",
+            "needs_review" => $"{status.VerbalizedTurns:N0} / {status.TotalTurns:N0} 件",
+            "running" => "処理中",
+            "queued" => "待機中",
+            "failed" => "失敗",
+            "stale" => "再処理待ち",
+            "not_started" => "未言語化",
+            "planned" => "準備済み",
+            _ => "未確認",
+        };
+    }
+
+    private static string VerbalizationStateLabel(string state) =>
+        state.ToLowerInvariant() switch
+        {
+            "completed" => "言語化済み",
+            "running" => "言語化中",
+            "queued" => "待機中",
+            "planned" => "準備済み",
+            "needs_review" => "候補あり",
+            "stale" => "再言語化待ち",
+            "failed" => "失敗",
+            _ => "未言語化",
+        };
+
+    private static string VerbalizationPill(string state) =>
+        state.ToLowerInvariant() switch
+        {
+            "completed" => "tfa-status-pill border-teal-200 bg-teal-50 text-teal-800",
+            "running" or "queued" => "tfa-status-pill border-sky-200 bg-sky-50 text-sky-800",
+            "planned" or "needs_review" or "stale" => "tfa-status-pill border-amber-200 bg-amber-50 text-amber-900",
+            "failed" => "tfa-status-pill border-red-200 bg-red-50 text-red-800",
+            _ => "tfa-status-pill border-slate-200 bg-slate-50 text-slate-700",
+        };
+
+    private static string VerbalizationIcon(string state) =>
+        state.ToLowerInvariant() switch
+        {
+            "completed" => "circle-check",
+            "running" => "spinner",
+            "queued" => "clock",
+            "planned" => "list-check",
+            "needs_review" => "triangle-exclamation",
+            "stale" => "arrows-rotate",
+            "failed" => "circle-xmark",
+            _ => "circle-minus",
+        };
+
+    private static string VerbalizedTurnLabel(string status) =>
+        (status ?? "").ToLowerInvariant() switch
+        {
+            "confirmed" => "確認済み",
+            "candidate" or "needs_review" => "候補",
+            "unresolved" => "未解決",
+            "failed" => "失敗",
+            _ => string.IsNullOrWhiteSpace(status) ? "候補" : status,
+        };
+
+    private static string VerbalizedTurnPill(string status) =>
+        (status ?? "").ToLowerInvariant() switch
+        {
+            "confirmed" => "tfa-status-pill border-teal-200 bg-teal-50 text-teal-800",
+            "candidate" or "needs_review" => "tfa-status-pill border-sky-200 bg-sky-50 text-sky-800",
+            "failed" => "tfa-status-pill border-red-200 bg-red-50 text-red-800",
+            _ => "tfa-status-pill border-slate-200 bg-slate-50 text-slate-700",
+        };
+
+    private static string StatusLabel(string status) =>
+        status.ToLowerInvariant() switch
+        {
+            "completed" => "処理済み",
+            "processing" => "処理中",
+            "failed" => "失敗",
+            _ => "未処理",
+        };
+
+    private static string StatusIcon(string status) =>
+        status.ToLowerInvariant() switch
+        {
+            "completed" => "circle-check",
+            "processing" => "spinner",
+            "failed" => "triangle-exclamation",
+            _ => "circle-minus",
+        };
+
+    private static string StatusPill(string status) =>
+        status.ToLowerInvariant() switch
+        {
+            "completed" => "tfa-status-pill border-teal-200 bg-teal-50 text-teal-800",
+            "processing" => "tfa-status-pill border-sky-200 bg-sky-50 text-sky-800",
+            "failed" => "tfa-status-pill border-red-200 bg-red-50 text-red-800",
+            _ => "tfa-status-pill border-slate-200 bg-slate-50 text-slate-700",
+        };
+
+    private static string EmptyText(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? "-" : value;
+}

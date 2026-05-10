@@ -1,0 +1,411 @@
+@inject TimelineHelperClient Timeline
+
+<div class="tfa-product-management">
+    @if (!Embedded)
+    {
+        <div class="tfa-product-management-header">
+        <div class="text-sm text-slate-600">導入済みの製品と、Timeline から操作した起動状態を確認します。</div>
+        <button class="tfa-button-secondary gap-2" @onclick="LoadAsync" disabled="@_loading">
+            <FaIcon Name="@(_loading ? "spinner" : "rotate")" Class="@($"tfa-icon {(_loading ? "fa-spin" : "")}")" />
+            <span>状態更新</span>
+        </button>
+        </div>
+    }
+
+    @if (!string.IsNullOrWhiteSpace(_error))
+    {
+        <div class="tfa-alert-danger flex items-start gap-2">
+            <FaIcon Name="triangle-exclamation" Class="tfa-icon mt-0.5" />
+            <span>@_error</span>
+        </div>
+    }
+
+    @if (!string.IsNullOrWhiteSpace(_message))
+    {
+        <div class="tfa-alert-info flex items-start gap-2">
+            <FaIcon Name="circle-info" Class="tfa-icon mt-0.5" />
+            <span>@_message</span>
+        </div>
+    }
+
+    @if (_loading && _overview is null)
+    {
+        <section class="tfa-card tfa-card-pad flex items-center gap-3">
+            <FaIcon Name="spinner" Class="tfa-icon fa-spin text-accent" />
+            <span class="text-sm text-slate-600">読み込み中</span>
+        </section>
+    }
+    else if (Products.Count == 0)
+    {
+        <section class="tfa-card tfa-card-pad text-sm text-slate-600">
+            製品情報を取得できませんでした。
+        </section>
+    }
+    else
+    {
+        <section class="tfa-card tfa-product-card">
+            <header class="tfa-product-card-header">
+                <h2 class="flex items-center gap-2 text-lg font-semibold">
+                    <FaIcon Name="list-check" Class="tfa-icon text-accent" />
+                    <span>製品</span>
+                </h2>
+            </header>
+
+            <div class="tfa-product-list">
+                @foreach (var product in Products)
+                {
+                    <article class="tfa-product-row">
+                        <div class="tfa-product-main">
+                            <span class="tfa-product-icon">
+                                <FaIcon Name="@ProductIcon(product.Id)" Class="tfa-icon" />
+                            </span>
+                            <div class="tfa-product-content">
+                                <div class="tfa-product-title-line">
+                                    <h3 class="tfa-product-title">@DisplayName(product)</h3>
+                                    <span class="@RuntimePillClass(product)">
+                                        <FaIcon Name="@RuntimeIcon(product)" Class="@($"tfa-icon !h-3 !w-3 {(IsBusy(product) ? "fa-spin" : "")}")" />
+                                        <span>@RuntimeLabel(product)</span>
+                                    </span>
+                                </div>
+
+                                <dl class="tfa-product-meta">
+                                    <div>
+                                        <dt>配置</dt>
+                                        <dd>@EmptyText(product.ProductPath)</dd>
+                                    </div>
+                                    <div>
+                                        <dt>管理状態</dt>
+                                        <dd>@RuntimeDetailLabel(product)</dd>
+                                    </div>
+                                </dl>
+
+                                @if (ShowProductMessage(product))
+                                {
+                                    <div class="tfa-product-message">
+                                        <FaIcon Name="triangle-exclamation" Class="tfa-icon !h-4 !w-4" />
+                                        <span>@ProductMessage(product)</span>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+
+                        <div class="tfa-product-actions">
+                            @if (IsInstalled(product))
+                            {
+                                @if (IsWindowsHostProduct(product))
+                                {
+                                    <span class="tfa-status-pill border-slate-200 bg-slate-50 text-slate-700">
+                                        <FaIcon Name="desktop" Class="tfa-icon !h-3 !w-3" />
+                                        <span>起動停止不要</span>
+                                    </span>
+                                }
+                                else
+                                {
+                                    <button type="button"
+                                            class="tfa-button-primary gap-2"
+                                            @onclick="@(() => StartProductAsync(product))"
+                                            disabled="@(!CanStart(product))">
+                                        <FaIcon Name="play" Class="tfa-icon" />
+                                        <span>起動</span>
+                                    </button>
+                                    <button type="button"
+                                            class="tfa-button-secondary gap-2"
+                                            @onclick="@(() => StopProductAsync(product))"
+                                            disabled="@(!CanStop(product))">
+                                        <FaIcon Name="stop" Class="tfa-icon" />
+                                        <span>停止</span>
+                                    </button>
+                                    <button type="button"
+                                            class="tfa-button-secondary gap-2"
+                                            @onclick="@(() => RestartProductAsync(product))"
+                                            disabled="@(!CanRestart(product))">
+                                        <FaIcon Name="rotate" Class="@($"tfa-icon {(IsBusy(product) ? "fa-spin" : "")}")" />
+                                        <span>再起動</span>
+                                    </button>
+                                }
+                                <button type="button"
+                                        class="tfa-button-secondary tfa-product-action-wide gap-2"
+                                        title="アンインストール機能はまだ接続していません。"
+                                        disabled>
+                                    <FaIcon Name="trash-can" Class="tfa-icon" />
+                                    <span>アンインストール</span>
+                                </button>
+                            }
+                            else
+                            {
+                                <button type="button"
+                                        class="tfa-button-primary gap-2"
+                                        title="インストール機能はまだ接続していません。"
+                                        disabled>
+                                    <FaIcon Name="download" Class="tfa-icon" />
+                                    <span>インストール</span>
+                                </button>
+                            }
+                        </div>
+                    </article>
+                }
+            </div>
+        </section>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public bool Embedded { get; set; }
+
+    private ProductRuntimeOverview? _overview;
+    private bool _loading = true;
+    private string? _error;
+    private string? _message;
+    private string? _actionProductId;
+
+    private IReadOnlyList<ProductRuntimeRow> Products => _overview?.Products ?? [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    public bool IsLoading => _loading;
+
+    public Task RefreshAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _error = null;
+        try
+        {
+            _overview = await Timeline.GetProductRuntimeOverviewAsync();
+            if (!string.IsNullOrWhiteSpace(_overview.Message))
+            {
+                _error = _overview.Message;
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task RestartProductAsync(ProductRuntimeRow product)
+    {
+        await RunProductActionAsync(product, "再起動", () => Timeline.RestartProductAsync(product.Id));
+    }
+
+    private async Task StartProductAsync(ProductRuntimeRow product)
+    {
+        await RunProductActionAsync(product, "起動", () => Timeline.StartProductAsync(product.Id));
+    }
+
+    private async Task StopProductAsync(ProductRuntimeRow product)
+    {
+        await RunProductActionAsync(product, "停止", () => Timeline.StopProductAsync(product.Id));
+    }
+
+    private async Task RunProductActionAsync(ProductRuntimeRow product, string label, Func<Task<ProductRuntimeRow>> action)
+    {
+        _actionProductId = product.Id;
+        _error = null;
+        _message = $"{DisplayName(product)} を{label}しています。";
+        try
+        {
+            await action();
+            _message = $"{DisplayName(product)} を{label}しました。";
+            _overview = await Timeline.GetProductRuntimeOverviewAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+            _message = null;
+        }
+        finally
+        {
+            _actionProductId = null;
+        }
+    }
+
+    private static bool IsInstalled(ProductRuntimeRow product) =>
+        product.ProductFound && product.ComposeFound;
+
+    private static bool IsWindowsHostProduct(ProductRuntimeRow product) =>
+        product.Id.Equals("pc", StringComparison.OrdinalIgnoreCase);
+
+    private bool CanStart(ProductRuntimeRow product) =>
+        IsActionTarget(product)
+        && product.StartFound
+        && !IsBusy(product)
+        && !IsRuntimeStarted(product);
+
+    private bool CanStop(ProductRuntimeRow product) =>
+        IsActionTarget(product)
+        && product.StopFound
+        && !IsBusy(product)
+        && IsRuntimeStarted(product);
+
+    private bool CanRestart(ProductRuntimeRow product) =>
+        IsActionTarget(product)
+        && product.StartFound
+        && !IsBusy(product)
+        && IsRuntimeStarted(product);
+
+    private bool IsActionTarget(ProductRuntimeRow product) =>
+        IsInstalled(product) && !IsWindowsHostProduct(product) && _actionProductId is null;
+
+    private bool IsBusy(ProductRuntimeRow product) =>
+        string.Equals(_actionProductId, product.Id, StringComparison.OrdinalIgnoreCase) ||
+        RuntimeState(product) is "starting" or "stopping" or "restarting";
+
+    private static bool IsRuntimeStarted(ProductRuntimeRow product) =>
+        product.Running || RuntimeState(product) is "running";
+
+    private static string RuntimeState(ProductRuntimeRow product) =>
+        product.State.Trim().ToLowerInvariant();
+
+    private static bool ShowProductMessage(ProductRuntimeRow product) =>
+        !IsInstalled(product) || (!IsWindowsHostProduct(product) && !string.IsNullOrWhiteSpace(product.Message));
+
+    private static string ProductMessage(ProductRuntimeRow product)
+    {
+        if (!product.ProductFound)
+        {
+            return "製品が見つかりません。インストールが必要です。";
+        }
+        if (!product.ComposeFound)
+        {
+            return "起動に必要なファイルが見つかりません。";
+        }
+        if (!product.StartFound && !product.StopFound)
+        {
+            if (IsWindowsHostProduct(product))
+            {
+                return "";
+            }
+            return "起動停止用のスクリプトが見つかりません。";
+        }
+        return product.Message;
+    }
+
+    private static string RuntimeLabel(ProductRuntimeRow product)
+    {
+        if (!product.ProductFound)
+        {
+            return "未インストール";
+        }
+        if (!product.ComposeFound)
+        {
+            return "不完全";
+        }
+        return product.State.Trim().ToLowerInvariant() switch
+        {
+            "starting" => "起動中",
+            "running" => "稼働中",
+            "stopping" => "停止中",
+            "stopped" => "停止",
+            "restarting" => "再起動中",
+            "failed" => "異常",
+            "ready" => "接続済み",
+            _ => "導入済み",
+        };
+    }
+
+    private static string RuntimePillClass(ProductRuntimeRow product)
+    {
+        if (!product.ProductFound || !product.ComposeFound)
+        {
+            return "tfa-status-pill border-red-200 bg-red-50 text-red-800";
+        }
+        return product.State.Trim().ToLowerInvariant() switch
+        {
+            "starting" => "tfa-status-pill border-sky-200 bg-sky-50 text-sky-800",
+            "running" => "tfa-status-pill border-teal-200 bg-teal-50 text-teal-800",
+            "stopping" => "tfa-status-pill border-sky-200 bg-sky-50 text-sky-800",
+            "stopped" => "tfa-status-pill border-slate-200 bg-slate-50 text-slate-700",
+            "restarting" => "tfa-status-pill border-sky-200 bg-sky-50 text-sky-800",
+            "failed" => "tfa-status-pill border-red-200 bg-red-50 text-red-800",
+            "ready" => "tfa-status-pill border-teal-200 bg-teal-50 text-teal-800",
+            _ => "tfa-status-pill border-line bg-slate-50 text-slate-700",
+        };
+    }
+
+    private static string RuntimeIcon(ProductRuntimeRow product)
+    {
+        if (!product.ProductFound || !product.ComposeFound)
+        {
+            return "triangle-exclamation";
+        }
+        return product.State.Trim().ToLowerInvariant() switch
+        {
+            "starting" => "spinner",
+            "running" => "circle-check",
+            "stopping" => "spinner",
+            "stopped" => "circle-minus",
+            "restarting" => "spinner",
+            "failed" => "triangle-exclamation",
+            "ready" => "circle-check",
+            _ => "circle-info",
+        };
+    }
+
+    private static string RuntimeDetailLabel(ProductRuntimeRow product)
+    {
+        if (!IsInstalled(product))
+        {
+            return "-";
+        }
+        if (IsWindowsHostProduct(product))
+        {
+            return "Windowsホストで実行";
+        }
+        if (product.Running && DateTimeOffset.TryParse(product.StartedAt, out var startedAt))
+        {
+            return $"稼働 {DurationLabel(DateTimeOffset.Now - startedAt)}";
+        }
+        return product.State.Trim().ToLowerInvariant() switch
+        {
+            "ready" => "CLI 接続済み",
+            "stopped" => "停止しています",
+            "failed" => "前回操作でエラー",
+            "" => "状態未取得",
+            _ => RuntimeLabel(product),
+        };
+    }
+
+    private static string DurationLabel(TimeSpan value)
+    {
+        if (value.TotalMinutes < 1)
+        {
+            return "1分未満";
+        }
+        if (value.TotalHours < 1)
+        {
+            return $"{Math.Max(1, (int)value.TotalMinutes)}分";
+        }
+        if (value.TotalDays < 1)
+        {
+            return $"{(int)value.TotalHours}時間{value.Minutes}分";
+        }
+        return $"{(int)value.TotalDays}日{value.Hours}時間";
+    }
+
+    private static string ProductIcon(string productId) => productId switch
+    {
+        "audio" => "file-audio",
+        "windows-codex" => "terminal",
+        "chatgpt" => "comments",
+        "image" => "image",
+        "video" => "video",
+        "pc" => "desktop",
+        _ => "box",
+    };
+
+    private static string DisplayName(ProductRuntimeRow product) =>
+        string.IsNullOrWhiteSpace(product.DisplayName) ? product.Id : product.DisplayName;
+
+    private static string EmptyText(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? "-" : value;
+}

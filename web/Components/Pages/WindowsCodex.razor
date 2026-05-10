@@ -4,18 +4,18 @@
 
 <PageTitle>スレッド一覧 - Timeline</PageTitle>
 
+<TimelineBreadcrumbs>
+    <a href="scan">スキャン</a>
+    <span class="tfa-breadcrumb-separator">/</span>
+    <span aria-current="page">Windows Codex スレッド一覧</span>
+</TimelineBreadcrumbs>
+
 <div class="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
     <div>
         <h1 class="tfa-title flex items-center gap-2">
             <FaIcon Name="terminal" Class="tfa-icon text-accent" />
             <span>スレッド一覧</span>
         </h1>
-    </div>
-    <div class="flex flex-wrap gap-2">
-        <button class="tfa-button-primary gap-2" @onclick="StartRefreshAsync" disabled="@(ListBusy || _refreshing || _downloading || !CanRefresh)">
-            <FaIcon Name="@(_refreshing ? "spinner" : "play")" Class="@($"tfa-icon {(_refreshing ? "fa-spin" : "")}")" />
-            <span>@(_refreshing ? "分析中" : "スキャンして分析")</span>
-        </button>
     </div>
 </div>
 
@@ -59,112 +59,15 @@ else if (_overview is not null && !_overview.SettingsValid)
 }
 else if (_overview is not null)
 {
-    @if (_refreshing)
-    {
-        <section class="tfa-card tfa-run-progress">
-            <div class="tfa-run-progress-head">
-                <div class="tfa-run-progress-summary">
-                    <div class="tfa-run-progress-title">
-                        <span class="tfa-icon-box text-sky-800">
-                            <FaIcon Name="@(_refreshing ? "spinner" : "circle-check")" Class="@($"tfa-icon {(_refreshing ? "fa-spin" : "")}")" />
-                        </span>
-                        <div class="tfa-run-progress-title-text">
-                            <h2>分析の進捗</h2>
-                            <div class="tfa-run-progress-meta">
-                                <span class="@RefreshStatePill">@RefreshStateLabel</span>
-                                <span class="tfa-status-pill border-slate-200 bg-white text-slate-700">@RefreshStageLabel</span>
-                                @if (!string.IsNullOrWhiteSpace(RefreshRunId))
-                                {
-                                    <span class="tfa-run-progress-id">実行ID: @RefreshRunId</span>
-                                }
-                                @if (_refreshStartedAt is not null)
-                                {
-                                    <span class="tfa-run-progress-current-inline">開始: @_refreshStartedAt.Value.ToString("HH:mm:ss")</span>
-                                }
-                            </div>
-                        </div>
-                    </div>
-                    <div class="tfa-run-progress-rate">
-                        <div class="tfa-run-progress-percent">@RefreshProgressLabel</div>
-                        <div class="tfa-run-progress-count">@RefreshProgressCountLabel</div>
-                    </div>
-                </div>
-
-                <div class="tfa-run-progress-bar-track"
-                     role="progressbar"
-                     aria-label="分析の進捗"
-                     aria-valuemin="0"
-                     aria-valuemax="100"
-                     aria-valuenow="@RefreshProgressAriaValue">
-                    <div class="@RefreshProgressBarClass" style="@RefreshProgressBarStyle"></div>
-                </div>
-            </div>
-
-            <div class="tfa-run-progress-body">
-                <div class="tfa-run-metrics">
-                    <div class="tfa-run-metric">
-                        <div class="tfa-kicker">対象スレッド</div>
-                        <div>@RefreshThreadCountLabel</div>
-                    </div>
-                    <div class="tfa-run-metric">
-                        <div class="tfa-kicker">生成</div>
-                        <div>@RefreshRenderedCountLabel</div>
-                    </div>
-                    <div class="tfa-run-metric">
-                        <div class="tfa-kicker">再利用</div>
-                        <div>@RefreshReusedCountLabel</div>
-                    </div>
-                    <div class="tfa-run-metric">
-                        <div class="tfa-kicker">メッセージ</div>
-                        <div>@RefreshMessageCountLabel</div>
-                    </div>
-                </div>
-            </div>
-        </section>
-    }
-
-    <div class="grid gap-4 md:grid-cols-4">
+    <div class="tfa-summary-grid">
         <section class="tfa-card tfa-card-pad">
             <div class="flex items-start justify-between gap-3">
                 <div>
-                    <div class="tfa-kicker">スレッド数</div>
-                    <div class="mt-2 text-3xl font-semibold">@ThreadCountLabel</div>
+                    <div class="tfa-kicker">取り込み済み</div>
+                    <div class="mt-2 text-3xl font-semibold">@ThreadImportCountLabel</div>
                 </div>
                 <span class="tfa-icon-box text-sky-800">
                     <FaIcon Name="comments" Class="tfa-icon" />
-                </span>
-            </div>
-        </section>
-        <section class="tfa-card tfa-card-pad">
-            <div class="flex items-start justify-between gap-3">
-                <div>
-                    <div class="tfa-kicker">生成済みスレッド数</div>
-                    <div class="mt-2 text-3xl font-semibold">@GeneratedThreadCount</div>
-                </div>
-                <span class="tfa-icon-box text-teal-700">
-                    <FaIcon Name="file-lines" Class="tfa-icon" />
-                </span>
-            </div>
-        </section>
-        <section class="tfa-card tfa-card-pad">
-            <div class="flex items-start justify-between gap-3">
-                <div>
-                    <div class="tfa-kicker">表示中メッセージ数</div>
-                    <div class="mt-2 text-3xl font-semibold">@TotalMessageCount</div>
-                </div>
-                <span class="tfa-icon-box text-teal-700">
-                    <FaIcon Name="timeline" Class="tfa-icon" />
-                </span>
-            </div>
-        </section>
-        <section class="tfa-card tfa-card-pad">
-            <div class="flex items-start justify-between gap-3">
-                <div>
-                    <div class="tfa-kicker">処理ステータス</div>
-                    <div class="mt-2 text-2xl font-semibold">@CurrentStateLabel</div>
-                </div>
-                <span class="@($"tfa-icon-box {CurrentStateIconClass}")">
-                    <FaIcon Name="@CurrentStateIcon" Class="@($"tfa-icon {(_refreshing ? "fa-spin" : "")}")" />
                 </span>
             </div>
         </section>
@@ -174,15 +77,15 @@ else if (_overview is not null)
     {
         <div class="tfa-alert-info mt-5 flex items-start gap-2">
             <FaIcon Name="circle-info" Class="tfa-icon mt-0.5" />
-            <span>スレッドはまだありません。スキャンして分析を実行してください。</span>
+            <span>スレッドはまだありません。スキャン画面でスキャンを実行してください。</span>
         </div>
     }
 
-    <section class="tfa-card mt-5 overflow-hidden">
+    <section class="tfa-card tfa-list-card mt-5 overflow-hidden">
         <div class="tfa-card-pad flex items-center justify-between gap-3 border-b border-line">
             <h2 class="flex items-center gap-2 text-lg font-semibold">
                 <FaIcon Name="comments" Class="tfa-icon text-accent" />
-                <span>スレッド一覧</span>
+                <span>アイテム一覧</span>
             </h2>
             <span class="text-sm text-slate-500">@ThreadListStatusLabel</span>
         </div>
@@ -217,7 +120,7 @@ else if (_overview is not null)
                     </button>
                 </div>
             </div>
-            <div class="overflow-x-auto">
+            <div class="overflow-x-auto tfa-long-list-scroll tfa-list-scroll">
                 <table class="tfa-table">
                     <thead>
                         <tr>
@@ -282,7 +185,7 @@ else if (_overview is not null)
             </div>
             <div class="p-5 text-sm text-slate-700">
                 <p>選択中の @SelectedItemCount 件の生成物を削除します。</p>
-                <p class="mt-2 text-slate-500">元の Codex 履歴は削除しません。削除後に再スキャンして分析すると、生成物は再作成できます。</p>
+                <p class="mt-2 text-slate-500">元の Codex 履歴は削除しません。削除後にスキャン画面でスキャンすると、生成物は再作成できます。</p>
             </div>
             <div class="flex flex-wrap justify-end gap-2 border-t border-line p-4">
                 <button class="tfa-button-secondary gap-2" @onclick="CloseDeleteModal" disabled="@_deleting">
@@ -299,21 +202,18 @@ else if (_overview is not null)
 }
 
 @code {
-    private const int ThreadPageSize = 100;
+    private const int ThreadPageSize = 25;
 
     private WindowsCodexOverview? _overview;
-    private WindowsCodexCurrent? _lastRefresh;
     private TimelineAppSettings? _timelineSettings;
     private TimelinePagination? _pagination;
     private readonly List<TimelineThreadRow> _threads = [];
     private readonly HashSet<string> _selectedThreadIds = new(StringComparer.OrdinalIgnoreCase);
     private bool _loading = true;
     private bool _loadingMoreThreads;
-    private bool _refreshing;
     private bool _downloading;
     private bool _deleting;
     private bool _deleteModalOpen;
-    private DateTime? _refreshStartedAt;
     private DateTime? _lastLoadedAt;
     private int _currentThreadPage = 1;
     private int _threadTotal;
@@ -333,30 +233,11 @@ else if (_overview is not null)
             : $"最終更新 {_lastLoadedAt.Value:HH:mm:ss}";
     private int ThreadCountLabel => Math.Max(Math.Max(_threadTotal, Threads.Count), Current.ThreadCount);
     private int GeneratedThreadCount => Current.Available ? Current.ThreadCount : 0;
+    private string ThreadImportCountLabel => $"{GeneratedThreadCount:N0} / {ThreadCountLabel:N0}";
     private int TotalMessageCount => Threads.Sum(thread => thread.MessageCount);
-    private bool CanRefresh => _overview?.ProductFound == true && _overview.SettingsValid;
-    private string CurrentStateLabel => _refreshing ? "分析中" : Current.Available ? StateLabel(Current.State) : "未作成";
-    private string CurrentStateIcon => _refreshing ? "spinner" : Current.Available && Current.State.Equals("completed", StringComparison.OrdinalIgnoreCase) ? "circle-check" : "circle-info";
-    private string CurrentStateIconClass => _refreshing ? "text-sky-800" : Current.Available && Current.State.Equals("completed", StringComparison.OrdinalIgnoreCase) ? "text-teal-700" : "text-slate-500";
-    private string RefreshStateLabel => _refreshing ? "分析中" : "完了";
-    private string RefreshStatePill => _refreshing
-        ? "tfa-status-pill border-sky-200 bg-sky-50 text-sky-800"
-        : "tfa-status-pill border-teal-200 bg-teal-50 text-teal-800";
-    private string RefreshStageLabel => _refreshing ? "スレッドを確認中" : "一覧を更新しました";
-    private string RefreshRunId => _lastRefresh?.RunId ?? "";
-    private string RefreshProgressLabel => _refreshing ? "処理中" : "100%";
-    private string RefreshProgressCountLabel => _refreshing
-        ? "完了後に一覧へ反映します"
-        : $"{(_lastRefresh?.ThreadCount ?? 0)} 件";
-    private int RefreshProgressAriaValue => _refreshing ? 0 : 100;
-    private string RefreshProgressBarClass => _refreshing
-        ? "tfa-run-progress-bar tfa-run-progress-bar-indeterminate"
-        : "tfa-run-progress-bar";
-    private string RefreshProgressBarStyle => _refreshing ? "" : "width:100%";
-    private string RefreshThreadCountLabel => _refreshing ? "確認中" : $"{_lastRefresh?.ThreadCount ?? 0} 件";
-    private string RefreshRenderedCountLabel => _refreshing ? "-" : $"{_lastRefresh?.RenderedThreadCount ?? 0} 件";
-    private string RefreshReusedCountLabel => _refreshing ? "-" : $"{_lastRefresh?.ReusedThreadCount ?? 0} 件";
-    private string RefreshMessageCountLabel => _refreshing ? "-" : $"{_lastRefresh?.EventCount ?? 0} 件";
+    private string CurrentStateLabel => Current.Available ? StateLabel(Current.State) : "未作成";
+    private string CurrentStateIcon => Current.Available && Current.State.Equals("completed", StringComparison.OrdinalIgnoreCase) ? "circle-check" : "circle-info";
+    private string CurrentStateIconClass => Current.Available && Current.State.Equals("completed", StringComparison.OrdinalIgnoreCase) ? "text-teal-700" : "text-slate-500";
     private string DisplayTimeZoneId => _timelineSettings?.TimeZoneId ?? "Asia/Tokyo";
     private bool HasSelection => _selectedThreadIds.Count > 0;
     private int SelectedItemCount => SelectedItemIds().Count;
@@ -427,6 +308,7 @@ else if (_overview is not null)
 
         _loadingMoreThreads = true;
         _error = null;
+        await InvokeAsync(StateHasChanged);
         try
         {
             await LoadThreadPageAsync(page, reset: true);
@@ -439,33 +321,6 @@ else if (_overview is not null)
         {
             _loadingMoreThreads = false;
             await InvokeAsync(StateHasChanged);
-        }
-    }
-
-    private async Task StartRefreshAsync()
-    {
-        _refreshing = true;
-        _refreshStartedAt = DateTime.Now;
-        _error = null;
-        _operationMessage = null;
-        await InvokeAsync(StateHasChanged);
-
-        try
-        {
-            var result = await Timeline.RefreshWindowsCodexAsync();
-            _lastRefresh = result;
-            _operationMessage = string.IsNullOrWhiteSpace(result.RunId)
-                ? "更新が完了しました。"
-                : $"更新が完了しました。実行ID: {result.RunId}";
-            await LoadAsync();
-        }
-        catch (Exception ex)
-        {
-            _error = ex.Message;
-        }
-        finally
-        {
-            _refreshing = false;
         }
     }
 

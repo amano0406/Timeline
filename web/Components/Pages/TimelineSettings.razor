@@ -1,17 +1,37 @@
-@page "/timeline/settings"
 @inject TimelineHelperClient Timeline
 @inject IJSRuntime Js
 
-<PageTitle>設定 - Timeline</PageTitle>
+@if (!Embedded)
+{
+    <PageTitle>設定 - Timeline</PageTitle>
+}
 
-<div class="mb-6 flex flex-wrap items-center justify-between gap-3">
-    <h1 class="tfa-title flex items-center gap-2">
-        <FaIcon Name="sliders" Class="tfa-icon text-accent" />
-        <span>設定</span>
-    </h1>
-    <button class="tfa-button-secondary gap-2" @onclick="LoadAsync" disabled="@_loading">
-        <FaIcon Name="@(_loading ? "spinner" : "rotate")" Class="@($"tfa-icon {(_loading ? "fa-spin" : "")}")" />
-        <span>更新</span>
+@if (!Embedded)
+{
+    <div class="mb-6 flex flex-wrap items-center justify-between gap-3">
+        <h1 class="tfa-title flex items-center gap-2">
+            <FaIcon Name="sliders" Class="tfa-icon text-accent" />
+            <span>設定</span>
+        </h1>
+    </div>
+}
+
+<div class="mb-5 flex flex-wrap gap-2" role="tablist" aria-label="設定モード">
+    <button type="button"
+            role="tab"
+            class="@ModeButtonClass(false)"
+            aria-selected="@NormalModeAriaSelected"
+            @onclick="ShowNormalMode">
+        <FaIcon Name="wand-magic-sparkles" Class="tfa-icon" />
+        <span>通常モード</span>
+    </button>
+    <button type="button"
+            role="tab"
+            class="@ModeButtonClass(true)"
+            aria-selected="@ProModeAriaSelected"
+            @onclick="OpenProModeConfirm">
+        <FaIcon Name="screwdriver-wrench" Class="tfa-icon" />
+        <span>プロモード</span>
     </button>
 </div>
 
@@ -27,7 +47,7 @@
 {
     <div class="tfa-alert-info mb-5 flex items-start gap-2">
         <FaIcon Name="circle-check" Class="tfa-icon mt-0.5" />
-        <span>Timeline設定を保存しました。</span>
+        <span>設定を保存しました。</span>
     </div>
 }
 
@@ -38,36 +58,35 @@
         <span class="text-sm text-slate-600">読み込み中</span>
     </section>
 }
-else
+else if (_proMode)
 {
     <section class="tfa-card tfa-card-pad">
         <h2 class="flex items-center gap-2 text-lg font-semibold">
-            <FaIcon Name="language" Class="tfa-icon text-accent" />
-            <span>表示</span>
+            <FaIcon Name="screwdriver-wrench" Class="tfa-icon text-accent" />
+            <span>プロモード</span>
+        </h2>
+        <p class="mt-2 text-sm text-slate-600">
+            Timeline本体と各製品の細かい設定を個別に扱います。通常モードの自動管理から外れる項目があります。
+        </p>
+    </section>
+
+    <section id="timeline-base-settings" class="tfa-card tfa-card-pad mt-5 scroll-mt-6">
+        <h2 class="flex items-center gap-2 text-lg font-semibold">
+            <FaIcon Name="timeline" Class="tfa-icon text-accent" />
+            <span>Timeline 本体</span>
         </h2>
 
-        <div class="mt-4 grid gap-5">
-            <div>
-                <label class="mb-2 block text-sm font-medium text-slate-700" for="timeline-display-language">表示言語</label>
-                <select id="timeline-display-language" class="tfa-input" @bind="_displayLanguageId">
-                    @foreach (var language in DisplayLanguages)
-                    {
-                        <option value="@language.Id">@language.Label</option>
-                    }
-                </select>
-            </div>
+        <div class="mt-4 grid gap-4">
+            @TimelineDisplayControls()
 
-            <div>
-                <label class="mb-2 block text-sm font-medium text-slate-700" for="timeline-time-zone">タイムゾーン</label>
-                <select id="timeline-time-zone" class="tfa-input" @bind="_timeZoneId">
-                    @foreach (var zone in TimeZones)
-                    {
-                        <option value="@zone.Id">@zone.Label</option>
-                    }
-                </select>
-                <div class="mt-3 rounded-md border border-line bg-slate-50 p-3 text-sm text-slate-700">
-                    <div class="tfa-kicker">表示例</div>
-                    <div class="mt-1 font-medium text-slate-900">@UiFormat.ShortDate(DateTimeOffset.Now.ToString("O"), _timeZoneId)</div>
+            <div class="rounded-md border border-line bg-slate-50 p-4">
+                <div class="mb-2 text-sm font-medium text-slate-700">保存先</div>
+                <div class="grid gap-3 lg:grid-cols-[1fr_auto] lg:items-center">
+                    <div class="min-w-0 break-all font-mono text-sm text-slate-900">@EmptyText(_timelineDirectory)</div>
+                    <button class="tfa-button-secondary gap-2" @onclick="PickTimelineDirectoryAsync">
+                        <FaIcon Name="folder-open" Class="tfa-icon" />
+                        <span>変更</span>
+                    </button>
                 </div>
             </div>
         </div>
@@ -75,207 +94,495 @@ else
 
     <section class="tfa-card tfa-card-pad mt-5">
         <h2 class="flex items-center gap-2 text-lg font-semibold">
-            <FaIcon Name="database" Class="tfa-icon text-accent" />
-            <span>保存先</span>
+            <FaIcon Name="boxes-stacked" Class="tfa-icon text-accent" />
+            <span>製品ごとの設定</span>
         </h2>
 
-        <div class="mt-4 grid gap-4">
-            <div>
-                <div class="mb-2 text-sm font-medium text-slate-700">作業ディレクトリ</div>
-                <div class="rounded-md border border-line bg-slate-50 p-4">
-                    <div class="grid gap-3 lg:grid-cols-[1fr_auto] lg:items-center">
-                        <div class="min-w-0 break-all font-mono text-sm text-slate-900">@EmptyText(_workDirectory)</div>
-                        <button class="tfa-button-secondary gap-2" @onclick="PickWorkDirectoryAsync">
-                            <FaIcon Name="folder-open" Class="tfa-icon" />
-                            <span>変更</span>
-                        </button>
-                    </div>
-                </div>
-            </div>
-
-            <div>
-                <div class="mb-2 text-sm font-medium text-slate-700">時間軸ストア</div>
-                <div class="rounded-md border border-line bg-slate-50 p-4">
-                    <div class="grid gap-3 lg:grid-cols-[1fr_auto] lg:items-center">
-                        <div class="min-w-0 break-all font-mono text-sm text-slate-900">@EmptyText(_storeDirectory)</div>
-                        <button class="tfa-button-secondary gap-2" @onclick="PickStoreDirectoryAsync">
-                            <FaIcon Name="folder-open" Class="tfa-icon" />
-                            <span>変更</span>
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </section>
-
-    <section class="mt-5 grid gap-4">
-        <div class="tfa-card tfa-card-pad">
-            <h2 class="flex items-center gap-2 text-lg font-semibold">
-                <FaIcon Name="boxes-stacked" Class="tfa-icon text-accent" />
-                <span>製品</span>
-            </h2>
-        </div>
-
-        @foreach (var product in Products)
+        @if (Products.Count == 0)
         {
-            var runtime = RuntimeFor(product.Id);
-            <article class="tfa-card tfa-card-pad">
-                <div class="flex flex-wrap items-start justify-between gap-3">
-                    <div class="min-w-0">
-                        <h3 class="flex items-center gap-2 text-lg font-semibold">
-                            <FaIcon Name="@ProductIcon(product.Id)" Class="tfa-icon text-accent" />
-                            <span>@DisplayName(product)</span>
-                        </h3>
-                        <div class="mt-2 flex flex-wrap gap-2 text-xs">
-                            <span class="@RuntimePillClass(runtime)">@RuntimeLabel(runtime)</span>
-                            @if (!product.Enabled)
-                            {
-                                <span class="rounded-full bg-slate-100 px-2 py-1 text-slate-600">無効</span>
-                            }
-                        </div>
-                    </div>
-                    <div class="flex flex-wrap gap-2">
-                        <a class="tfa-button-secondary gap-2" href="@RuntimePage(runtime)">
-                            <FaIcon Name="arrow-up-right-from-square" Class="tfa-icon" />
-                            <span>画面を開く</span>
-                        </a>
-                        <a class="tfa-button-secondary gap-2"
-                           href="@ProductSettingsLink(product.Id)"
-                           @onclick="@(() => SelectProductSettings(product.Id))">
-                            <FaIcon Name="gear" Class="tfa-icon" />
-                            <span>製品設定</span>
-                        </a>
+            <div class="mt-4 rounded-md border border-line bg-slate-50 p-4 text-sm text-slate-600">
+                製品は登録されていません。
+            </div>
+        }
+        else if (SelectedProductSettingsProduct is { } selectedProduct)
+        {
+            var runtime = RuntimeFor(selectedProduct.Id);
+
+            <div class="mt-4 flex flex-wrap gap-2" role="tablist" aria-label="製品ごとの設定">
+                @foreach (var product in Products)
+                {
+                    var selected = string.Equals(_selectedProductSettingsId, product.Id, StringComparison.OrdinalIgnoreCase);
+                    <button type="button"
+                            role="tab"
+                            aria-selected="@(selected ? "true" : "false")"
+                            class="@ProductSettingsTabClass(product.Id)"
+                            @onclick="@(() => SelectProductSettings(product.Id))">
+                        <FaIcon Name="@ProductIcon(product.Id)" Class="tfa-icon" />
+                        <span>@DisplayName(product)</span>
+                    </button>
+                }
+            </div>
+
+            <div class="mt-4 rounded-md border border-line bg-white p-4">
+                <div class="mb-4 rounded-md border border-line bg-slate-50 p-4">
+                    <div class="mb-2 text-sm font-medium text-slate-700">製品配置先</div>
+                    <div class="grid gap-3 lg:grid-cols-[1fr_auto] lg:items-center">
+                        <div class="min-w-0 break-all font-mono text-sm text-slate-900">@EmptyText(ProductConfiguredPath(selectedProduct, runtime))</div>
+                        <button class="tfa-button-secondary gap-2" @onclick="@(() => PickProductDirectoryAsync(selectedProduct))">
+                            <FaIcon Name="folder-open" Class="tfa-icon" />
+                            <span>変更</span>
+                        </button>
                     </div>
                 </div>
 
-                <div class="mt-5 grid gap-4">
-                    <div>
-                        <div class="mb-2 text-sm font-medium text-slate-700">管理配置</div>
-                        <div class="rounded-md border border-line bg-slate-50 p-4">
-                            <div class="grid gap-3 lg:grid-cols-[1fr_auto] lg:items-center">
-                                <div class="min-w-0 break-all font-mono text-sm text-slate-900">@EmptyText(ProductConfiguredPath(product, runtime))</div>
-                                <button class="tfa-button-secondary gap-2" @onclick="@(() => PickProductDirectoryAsync(product))">
-                                    <FaIcon Name="folder-open" Class="tfa-icon" />
-                                    <span>変更</span>
-                                </button>
-                            </div>
+                @switch (selectedProduct.Id)
+                {
+                    case "audio":
+                        <AudioSettings Embedded="true" />
+                        break;
+                    case "windows-codex":
+                        <WindowsCodexSettingsPage Embedded="true" />
+                        break;
+                    case "chatgpt":
+                        <ChatGptSettings Embedded="true" />
+                        break;
+                    case "image":
+                        <ImageSettings Embedded="true" />
+                        break;
+                    case "video":
+                        <VideoSettings Embedded="true" />
+                        break;
+                    case "pc":
+                        <div class="rounded-md border border-line bg-slate-50 p-4 text-sm text-slate-700">
+                            <div class="font-semibold text-slate-900">TimelineForPC</div>
+                            <div class="mt-2">PC状態をWindowsホスト上で取得します。Dockerの起動停止はありません。</div>
                         </div>
-                    </div>
-
-                    <div class="grid gap-3 text-sm lg:grid-cols-2">
-                        <div class="rounded-md border border-line bg-slate-50 p-3">
-                            <div class="tfa-kicker">現在の参照先</div>
-                            <div class="mt-1 break-all font-mono text-slate-900">@EmptyText(runtime?.ProductPath)</div>
-                        </div>
-                        <div class="rounded-md border border-line bg-slate-50 p-3">
-                            <div class="tfa-kicker">利用状態</div>
-                            <div class="mt-1 text-slate-900">@RuntimeMessage(runtime)</div>
-                        </div>
-                    </div>
-
-                    <div>
-                        <div class="mb-2 flex flex-wrap items-center gap-2 text-sm font-medium text-slate-700">
-                            <span>製品操作</span>
-                            <span class="rounded-full bg-slate-100 px-2 py-1 text-xs text-slate-600">準備中</span>
-                        </div>
-                        <p class="mb-3 text-sm text-slate-600">
-                            インストール、更新、アンインストールは確認ダイアログと配信方式を確定してから接続します。
-                        </p>
-                        <div class="flex flex-wrap gap-2">
-                            <button type="button" class="tfa-button-secondary gap-2 opacity-60" disabled>
-                                <FaIcon Name="download" Class="tfa-icon" />
-                                <span>インストール</span>
-                            </button>
-                            <button type="button" class="tfa-button-secondary gap-2 opacity-60" disabled>
-                                <FaIcon Name="rotate" Class="tfa-icon" />
-                                <span>更新</span>
-                            </button>
-                            <button type="button" class="tfa-button-secondary gap-2 opacity-60" disabled>
-                                <FaIcon Name="trash-can" Class="tfa-icon" />
-                                <span>アンインストール</span>
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </article>
+                        break;
+                }
+            </div>
         }
     </section>
 
+    @if (!Embedded)
+    {
     <div class="mt-5 flex flex-wrap gap-3">
-        <button class="tfa-button-primary gap-2" @onclick="SaveAsync" disabled="@_saving">
+        <button class="tfa-button-primary gap-2" @onclick="OpenSaveConfirm" disabled="@_saving">
             <FaIcon Name="@(_saving ? "spinner" : "floppy-disk")" Class="@($"tfa-icon {(_saving ? "fa-spin" : "")}")" />
-            <span>Timeline設定を保存</span>
-        </button>
-        <button class="tfa-button-secondary gap-2" @onclick="LoadAsync" disabled="@_saving">
-            <FaIcon Name="rotate-left" Class="tfa-icon" />
-            <span>戻す</span>
+            <span>保存</span>
         </button>
     </div>
-
-    <section id="product-specific-settings" class="tfa-card tfa-card-pad mt-5 scroll-mt-6">
+    }
+}
+else
+{
+    <section id="timeline-save-location" class="tfa-card tfa-card-pad scroll-mt-6">
         <h2 class="flex items-center gap-2 text-lg font-semibold">
-            <FaIcon Name="gear" Class="tfa-icon text-accent" />
-            <span>製品別設定</span>
+            <FaIcon Name="database" Class="tfa-icon text-accent" />
+            <span>データ保存先</span>
         </h2>
 
-        <div class="mt-4 flex flex-wrap gap-2">
-            @foreach (var product in Products)
+        <div class="mt-4 rounded-md border border-line bg-slate-50 p-4">
+            <div class="grid gap-3 lg:grid-cols-[1fr_auto] lg:items-center">
+                <div class="min-w-0">
+                    <div class="break-all font-mono text-sm text-slate-900">@EmptyText(_timelineDirectory)</div>
+                    <div class="mt-2 text-sm text-slate-600">作業データ、時間軸データ、各製品の生成データはこの中で管理します。</div>
+                </div>
+                <div class="flex flex-wrap gap-2">
+                    <button class="tfa-button-secondary gap-2" @onclick="PickTimelineDirectoryAsync">
+                        <FaIcon Name="folder-open" Class="tfa-icon" />
+                        <span>変更</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="timeline-display-settings" class="tfa-card tfa-card-pad mt-5 scroll-mt-6">
+        <h2 class="flex items-center gap-2 text-lg font-semibold">
+            <FaIcon Name="language" Class="tfa-icon text-accent" />
+            <span>表示</span>
+        </h2>
+        <div class="mt-4 grid gap-4">
+            @TimelineDisplayControls()
+        </div>
+    </section>
+
+    <section id="timeline-ai-settings" class="tfa-card tfa-card-pad mt-5 scroll-mt-6">
+        <h2 class="flex items-center gap-2 text-lg font-semibold">
+            <FaIcon Name="microchip" Class="tfa-icon text-accent" />
+            <span>AI設定</span>
+        </h2>
+
+        <div class="mt-4 grid gap-4">
+            <div class="rounded-md border border-line bg-slate-50 p-4">
+                <h3 class="text-base font-semibold">Hugging Face トークン</h3>
+                <div class="mt-3 grid gap-3 lg:grid-cols-[1fr_auto] lg:items-center">
+                    <div>
+                        <div class="inline-flex items-center gap-2 text-sm font-medium text-slate-700">
+                            <FaIcon Name="@((_audioOverview?.HasToken == true || !string.IsNullOrWhiteSpace(_tokenToSave)) ? "circle-check" : "circle-minus")"
+                                    Class="@($"tfa-icon {((_audioOverview?.HasToken == true || !string.IsNullOrWhiteSpace(_tokenToSave)) ? "text-teal-700" : "text-slate-400")}")" />
+                            <span>@((_audioOverview?.HasToken == true || !string.IsNullOrWhiteSpace(_tokenToSave)) ? "設定済み" : "未設定")</span>
+                        </div>
+                        <div class="mt-1 font-mono text-sm text-slate-900">@TokenDisplay</div>
+                    </div>
+                    <button class="tfa-button-secondary gap-2" @onclick="OpenTokenModal">
+                        <FaIcon Name="key" Class="tfa-icon" />
+                        <span>登録</span>
+                    </button>
+                </div>
+            </div>
+
+            <div class="rounded-md border border-line bg-slate-50 p-4">
+                <h3 class="text-base font-semibold">AI処理方法</h3>
+                <div class="mt-3 max-w-xl">
+                    <select class="tfa-input" value="@_commonComputeMode" @onchange="OnCommonComputeModeChanged" aria-label="AI処理方法">
+                        <option value="auto">@AutoComputeModeLabel</option>
+                        <option value="gpu">GPU</option>
+                        <option value="cpu">CPU</option>
+                    </select>
+                </div>
+                <div class="mt-3 grid gap-2 text-sm">
+                    @DevicePreview("CPU", "microchip", CpuDevices)
+                    @DevicePreview("GPU", "display", GpuDevices)
+                </div>
+            </div>
+
+            <div class="rounded-md border border-line bg-slate-50 p-4">
+                <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <h3 class="text-base font-semibold">モデル利用条件</h3>
+                    @if (_modelsLoading)
+                    {
+                        <div class="inline-flex items-center gap-2 text-sm text-slate-500">
+                            <FaIcon Name="spinner" Class="tfa-icon fa-spin !h-4 !w-4" />
+                            <span>確認中</span>
+                        </div>
+                    }
+                </div>
+
+                @if (_modelsLoading)
+                {
+                    <div class="mt-3 text-sm text-slate-600">モデル情報を確認しています。</div>
+                }
+                else if (_audioModels is { Available: false })
+                {
+                    <div class="mt-3 text-sm text-slate-600">@_audioModels.Message</div>
+                }
+                else if (HuggingFaceModels.Count == 0)
+                {
+                    <div class="mt-3 text-sm text-slate-600">Hugging Face モデルは見つかりませんでした。</div>
+                }
+                else
+                {
+                    <div class="mt-3 grid gap-2">
+                        @foreach (var model in HuggingFaceModels)
+                        {
+                            <div class="grid gap-3 rounded-md border border-line bg-white p-3 lg:grid-cols-[1fr_auto] lg:items-center">
+                                <div class="min-w-0">
+                                    <div class="font-medium text-slate-900">TimelineForAudio / @ModelRoleLabel(model)</div>
+                                    <div class="mt-1 break-all font-mono text-xs text-slate-600">@model.ModelId</div>
+                                    <div class="mt-2 flex flex-wrap gap-2">
+                                        @if (model.RequiresHuggingFaceToken)
+                                        {
+                                            <span class="tfa-status-pill border-sky-200 bg-sky-50 text-sky-800">トークン</span>
+                                        }
+                                        @if (model.RequiresAccessApproval)
+                                        {
+                                            <span class="tfa-status-pill border-amber-200 bg-amber-50 text-amber-900">利用承認</span>
+                                        }
+                                        @if (!string.IsNullOrWhiteSpace(model.License))
+                                        {
+                                            <span class="tfa-status-pill border-slate-200 bg-slate-50 text-slate-700">ライセンス: @model.License</span>
+                                        }
+                                    </div>
+                                </div>
+                                @if (!string.IsNullOrWhiteSpace(model.Url))
+                                {
+                                    <a class="tfa-button-secondary gap-2" href="@model.Url" target="_blank" rel="noreferrer">
+                                        <FaIcon Name="arrow-up-right-from-square" Class="tfa-icon" />
+                                        <span>モデルページ</span>
+                                    </a>
+                                }
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+    </section>
+
+    <section id="timeline-input-settings" class="tfa-card tfa-card-pad mt-5 scroll-mt-6">
+        <h2 class="flex items-center gap-2 text-lg font-semibold">
+            <FaIcon Name="folder" Class="tfa-icon text-accent" />
+            <span>入力データ</span>
+        </h2>
+
+        <div class="mt-4 grid gap-4">
+            @if (_audioSettingsLoading)
             {
-                <button type="button"
-                        class="@ProductSettingsTabClass(product.Id)"
-                        @onclick="@(() => SelectProductSettings(product.Id))">
-                    <FaIcon Name="@ProductIcon(product.Id)" Class="tfa-icon" />
-                    <span>@DisplayName(product)</span>
-                </button>
+                @InputRootLoadingSection("音声")
+            }
+            else
+            {
+                @InputRootSection("音声", _audioInputRoots.Select(root => root.Path).ToList(), "追加", AddAudioInputRootAsync, RemoveAudioInputRoot)
+            }
+            @if (_imageSettingsLoading)
+            {
+                @InputRootLoadingSection("画像")
+            }
+            else
+            {
+                @InputRootSection("画像", _imageInputRoots.Select(DirectoryDisplay).ToList(), "追加", AddImageInputRootAsync, RemoveImageInputRootByDisplay)
+            }
+            @if (_videoSettingsLoading)
+            {
+                @InputRootLoadingSection("動画")
+            }
+            else
+            {
+                @InputRootSection("動画", _videoInputRoots.Select(DirectoryDisplay).ToList(), "追加", AddVideoInputRootAsync, RemoveVideoInputRootByDisplay)
             }
         </div>
     </section>
 
-    <div class="mt-5">
-        @switch (_selectedProductSettingsId)
-        {
-            case "audio":
-                <AudioSettings Embedded="true" />
-                break;
-            case "windows-codex":
-                <WindowsCodexSettingsPage Embedded="true" />
-                break;
-            case "chatgpt":
-                <ChatGptSettings Embedded="true" />
-                break;
-            case "image":
-                <ImageSettings Embedded="true" />
-                break;
-            default:
-                <section class="tfa-card tfa-card-pad text-sm text-slate-600">
-                    製品を選択してください。
-                </section>
-                break;
-        }
+    @if (!Embedded)
+    {
+    <div class="mt-5 flex flex-wrap gap-3">
+        <button class="tfa-button-primary gap-2" @onclick="OpenSaveConfirm" disabled="@_saving">
+            <FaIcon Name="@(_saving ? "spinner" : "floppy-disk")" Class="@($"tfa-icon {(_saving ? "fa-spin" : "")}")" />
+            <span>保存</span>
+        </button>
     </div>
+    }
+}
 
+@if (_saveConfirmOpen)
+{
+    <div class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4">
+        <section class="w-full max-w-3xl rounded-md bg-white shadow-xl"
+                 role="dialog"
+                 aria-modal="true"
+                 aria-labelledby="timeline-settings-save-confirm-title">
+            <div class="flex items-center justify-between gap-3 border-b border-line p-5">
+                <h2 id="timeline-settings-save-confirm-title" class="flex items-center gap-2 text-lg font-semibold">
+                    <FaIcon Name="floppy-disk" Class="tfa-icon text-accent" />
+                    <span>設定を保存しますか？</span>
+                </h2>
+                <button type="button" class="tfa-button-secondary !min-h-9 !px-2" aria-label="閉じる" @onclick="CloseSaveConfirm">
+                    <FaIcon Name="xmark" Class="tfa-icon" />
+                </button>
+            </div>
+            <div class="max-h-[52vh] overflow-auto p-5">
+                @if (_pendingSaveChanges.Count == 0)
+                {
+                    <div class="rounded-md border border-line bg-slate-50 p-4 text-sm text-slate-700">
+                        変更はありません。現在の内容で保存します。
+                    </div>
+                }
+                else
+                {
+                    <div class="grid gap-3">
+                        @foreach (var change in _pendingSaveChanges)
+                        {
+                            <article class="rounded-md border border-line bg-slate-50 p-3">
+                                <div class="text-sm font-semibold text-slate-900">@change.Label</div>
+                                <div class="mt-2 grid gap-2 text-sm lg:grid-cols-2">
+                                    <div class="min-w-0">
+                                        <div class="tfa-kicker">現在</div>
+                                        <div class="mt-1 break-all font-mono text-slate-700">@EmptyText(change.Before)</div>
+                                    </div>
+                                    <div class="min-w-0">
+                                        <div class="tfa-kicker">保存後</div>
+                                        <div class="mt-1 break-all font-mono text-slate-900">@EmptyText(change.After)</div>
+                                    </div>
+                                </div>
+                            </article>
+                        }
+                    </div>
+                }
+            </div>
+            <div class="flex flex-wrap justify-end gap-2 border-t border-line p-4">
+                <button class="tfa-button-secondary gap-2" @onclick="CloseSaveConfirm" disabled="@_saving">
+                    <FaIcon Name="xmark" Class="tfa-icon" />
+                    <span>キャンセル</span>
+                </button>
+                <button class="tfa-button-primary gap-2" @onclick="ConfirmSaveAsync" disabled="@_saving">
+                    <FaIcon Name="@(_saving ? "spinner" : "circle-check")" Class="@($"tfa-icon {(_saving ? "fa-spin" : "")}")" />
+                    <span>保存する</span>
+                </button>
+            </div>
+        </section>
+    </div>
+}
+
+@if (_tokenModalOpen)
+{
+    <div class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4">
+        <section class="w-full max-w-xl rounded-md bg-white shadow-xl"
+                 role="dialog"
+                 aria-modal="true"
+                 aria-labelledby="timeline-settings-token-title">
+            <div class="border-b border-line p-5">
+                <h2 id="timeline-settings-token-title" class="flex items-center gap-2 text-lg font-semibold">
+                    <FaIcon Name="key" Class="tfa-icon text-accent" />
+                    <span>Hugging Face トークンを登録</span>
+                </h2>
+            </div>
+            <div class="p-5">
+                @if (_tokenValidationError is not null)
+                {
+                    <div class="tfa-alert-danger mb-4 flex items-start gap-2">
+                        <FaIcon Name="triangle-exclamation" Class="tfa-icon mt-0.5" />
+                        <span>@_tokenValidationError</span>
+                    </div>
+                }
+                <label class="tfa-label" for="token-modal-input">Hugging Face token</label>
+                <input id="token-modal-input"
+                       class="tfa-input font-mono"
+                       type="password"
+                       autocomplete="off"
+                       placeholder="hf_..."
+                       @bind="_tokenDraft" />
+                <div class="mt-3 text-sm text-slate-600">
+                    <span class="font-medium">トークンの作成:</span>
+                    <a class="text-accent underline" href="https://huggingface.co/settings/tokens" target="_blank" rel="noreferrer">Hugging Face tokens</a>
+                </div>
+            </div>
+            <div class="flex flex-wrap justify-end gap-2 border-t border-line p-4">
+                <button class="tfa-button-secondary gap-2" @onclick="CloseTokenModal">
+                    <FaIcon Name="xmark" Class="tfa-icon" />
+                    <span>キャンセル</span>
+                </button>
+                <button class="tfa-button-primary gap-2" @onclick="SaveTokenDraft">
+                    <FaIcon Name="circle-check" Class="tfa-icon" />
+                    <span>OK</span>
+                </button>
+            </div>
+        </section>
+    </div>
+}
+
+@if (_proModeConfirmOpen)
+{
+    <div class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4">
+        <section class="w-full max-w-xl rounded-md bg-white shadow-xl"
+                 role="dialog"
+                 aria-modal="true"
+                 aria-labelledby="timeline-settings-pro-mode-title">
+            <div class="border-b border-line p-5">
+                <h2 id="timeline-settings-pro-mode-title" class="flex items-center gap-2 text-lg font-semibold">
+                    <FaIcon Name="screwdriver-wrench" Class="tfa-icon text-accent" />
+                    <span>プロモードに切り替えますか？</span>
+                </h2>
+            </div>
+            <div class="p-5 text-sm text-slate-700">
+                <p>プロモードでは、Timeline本体と各製品の保存先などを個別に設定できます。</p>
+                <p class="mt-2">通常モードの自動管理から外れる項目があるため、必要な場合だけ変更してください。</p>
+            </div>
+            <div class="flex flex-wrap justify-end gap-2 border-t border-line p-4">
+                <button class="tfa-button-secondary gap-2" @onclick="CloseProModeConfirm">
+                    <FaIcon Name="xmark" Class="tfa-icon" />
+                    <span>キャンセル</span>
+                </button>
+                <button class="tfa-button-primary gap-2" @onclick="ConfirmProMode">
+                    <FaIcon Name="circle-check" Class="tfa-icon" />
+                    <span>続ける</span>
+                </button>
+            </div>
+        </section>
+    </div>
 }
 
 @code {
+    [Parameter]
+    public bool Embedded { get; set; }
+
+    [Parameter]
+    public string? ProductId { get; set; }
+
     private TimelineAppSettings? _settings;
     private ProductRuntimeOverview _runtime = new();
     private TimelineProductRegistry _registry = new();
+    private TimelineProductOverview? _audioOverview;
+    private ImageOverview? _imageOverview;
+    private VideoOverview? _videoOverview;
+    private AudioModelInventoryResult? _audioModels;
+    private readonly List<RootRow> _audioInputRoots = [];
+    private readonly List<ImageInputRoot> _imageInputRoots = [];
+    private readonly List<VideoInputRoot> _videoInputRoots = [];
+    private RootRow _audioOutputRoot = new() { Id = "master", DisplayName = "TimelineForAudio Master", Enabled = true };
+    private ImageDirectoryRoot _imageOutputRoot = new() { Id = "output", DisplayName = "Output", Path = @"C:\TimelineData\image" };
+    private VideoDirectoryRoot _videoOutputRoot = new() { Id = "output", DisplayName = "Output", Path = @"C:\TimelineData\video" };
     private bool _loading = true;
     private bool _saving;
     private bool _saved;
+    private bool _proMode;
+    private bool _proModeConfirmOpen;
+    private bool _saveConfirmOpen;
+    private bool _tokenModalOpen;
+    private bool _modelsLoading;
+    private bool _audioSettingsLoading;
+    private bool _imageSettingsLoading;
+    private bool _videoSettingsLoading;
+    private bool _audioDirty;
+    private bool _imageDirty;
+    private bool _videoDirty;
     private string? _error;
+    private string? _tokenDraft;
+    private string? _tokenToSave;
+    private string? _tokenValidationError;
+    private List<SettingsChangeRow> _pendingSaveChanges = [];
     private string _displayLanguageId = "ja-JP";
     private string _timeZoneId = "Asia/Tokyo";
-    private string _workDirectory = @"C:\TimelineData\Timeline\work";
-    private string _storeDirectory = @"C:\TimelineData\Timeline\store";
+    private string _timelineDirectory = DefaultTimelineDirectory;
+    private string _commonComputeMode = "auto";
+    private string _audioComputeMode = "cpu";
     private string _selectedProductSettingsId = "audio";
 
-    [SupplyParameterFromQuery(Name = "product")]
-    private string? ProductQuery { get; set; }
+    private const string DefaultTimelineDirectory = @"C:\TimelineData\Timeline";
 
     private IReadOnlyList<TimelineDisplayLanguageOption> DisplayLanguages => _settings?.DisplayLanguages ?? [];
     private IReadOnlyList<TimelineTimeZoneOption> TimeZones => _settings?.TimeZones ?? [];
     private IReadOnlyList<TimelineProductRegistryProduct> Products => _registry.Products;
+    private TimelineProductRegistryProduct? SelectedProductSettingsProduct =>
+        Products.FirstOrDefault(product => string.Equals(product.Id, _selectedProductSettingsId, StringComparison.OrdinalIgnoreCase))
+        ?? Products.FirstOrDefault();
+    private bool HardwareDevicesLoaded => _audioOverview is not null;
+    private string NormalModeAriaSelected => _proMode ? "false" : "true";
+    private string ProModeAriaSelected => _proMode ? "true" : "false";
+    private IReadOnlyList<string> CpuDevices => _audioOverview?.CpuDevices ?? [];
+    private IReadOnlyList<string> GpuDevices => _audioOverview?.GpuDevices ?? [];
+    private IReadOnlyList<AudioModelRow> HuggingFaceModels =>
+        _audioModels?.Models
+            .Where(model => model.Source.Equals("huggingface", StringComparison.OrdinalIgnoreCase))
+            .ToList()
+        ?? [];
+
+    public bool IsSaving => _saving;
+
+    public bool IsBusy =>
+        _loading
+        || _saving
+        || _audioSettingsLoading
+        || _imageSettingsLoading
+        || _videoSettingsLoading;
+
+    private string AutoComputeModeLabel =>
+        ResolveAutoComputeMode() == "gpu" ? "自動: GPUを使用" : "自動: CPUを使用";
+
+    private string CommonComputeModeDisplay => _commonComputeMode switch
+    {
+        "auto" => AutoComputeModeLabel,
+        "gpu" => "GPU",
+        "cpu" => "CPU",
+        _ => "自動",
+    };
+
+    private string TokenDisplay =>
+        _tokenToSave is { Length: > 0 }
+            ? MaskToken(_tokenToSave)
+            : _audioOverview?.HasToken == true
+                ? _audioOverview.TokenPreview
+                : "未設定";
 
     protected override async Task OnInitializedAsync()
     {
@@ -284,9 +591,10 @@ else
 
     protected override void OnParametersSet()
     {
-        if (TryNormalizeProductId(ProductQuery, out var productId))
+        if (TryNormalizeProductId(ProductId, out var productId))
         {
             _selectedProductSettingsId = productId;
+            _proMode = true;
         }
     }
 
@@ -295,25 +603,206 @@ else
         _loading = true;
         _saved = false;
         _error = null;
+        _modelsLoading = true;
+        _audioSettingsLoading = true;
+        _imageSettingsLoading = true;
+        _videoSettingsLoading = true;
         try
         {
-            _settings = await Timeline.GetTimelineSettingsAsync();
-            _runtime = await Timeline.GetProductRuntimeOverviewAsync();
+            var settingsTask = Timeline.GetTimelineSettingsAsync();
+            var runtimeTask = Timeline.GetProductRuntimeOverviewAsync();
+
+            await Task.WhenAll(settingsTask, runtimeTask);
+
+            _settings = await settingsTask;
+            _runtime = await runtimeTask;
+
             _displayLanguageId = string.IsNullOrWhiteSpace(_settings.DisplayLanguageId) ? "ja-JP" : _settings.DisplayLanguageId;
             _timeZoneId = string.IsNullOrWhiteSpace(_settings.TimeZoneId) ? "Asia/Tokyo" : _settings.TimeZoneId;
-            _workDirectory = string.IsNullOrWhiteSpace(_settings.WorkDirectory) ? @"C:\TimelineData\Timeline\work" : _settings.WorkDirectory;
-            _storeDirectory = string.IsNullOrWhiteSpace(_settings.StoreDirectory) ? @"C:\TimelineData\Timeline\store" : _settings.StoreDirectory;
+            _timelineDirectory = TimelineDirectoryFromSettings(_settings.WorkDirectory, _settings.StoreDirectory);
+            _commonComputeMode = NormalizeCommonComputeMode(_settings.CommonAi.ComputeMode);
             _registry = CloneRegistry(_settings.ProductRegistry);
+
+            _audioInputRoots.Clear();
+            _imageInputRoots.Clear();
+            _videoInputRoots.Clear();
             EnsureSelectedProductSettings();
+            _audioDirty = false;
+            _imageDirty = false;
+            _videoDirty = false;
+            _tokenToSave = null;
         }
         catch (Exception ex)
         {
             _error = ex.Message;
+            _modelsLoading = false;
+            _audioSettingsLoading = false;
+            _imageSettingsLoading = false;
+            _videoSettingsLoading = false;
         }
         finally
         {
             _loading = false;
+            await InvokeAsync(StateHasChanged);
         }
+
+        if (_settings is not null)
+        {
+            _ = LoadAudioOverviewLaterAsync();
+            _ = LoadImageOverviewLaterAsync();
+            _ = LoadVideoOverviewLaterAsync();
+            _ = LoadAudioModelsLaterAsync();
+        }
+    }
+
+    private async Task LoadAudioOverviewLaterAsync()
+    {
+        try
+        {
+            _audioOverview = await Timeline.GetAudioOverviewAsync();
+            LoadAudioState(_audioOverview);
+            _audioDirty = false;
+        }
+        catch (Exception ex)
+        {
+            _error ??= ex.Message;
+        }
+        finally
+        {
+            _audioSettingsLoading = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task LoadImageOverviewLaterAsync()
+    {
+        try
+        {
+            _imageOverview = await Timeline.GetImageOverviewAsync();
+            LoadImageState(_imageOverview);
+            _imageDirty = false;
+        }
+        catch (Exception ex)
+        {
+            _error ??= ex.Message;
+        }
+        finally
+        {
+            _imageSettingsLoading = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task LoadVideoOverviewLaterAsync()
+    {
+        try
+        {
+            _videoOverview = await Timeline.GetVideoOverviewAsync();
+            LoadVideoState(_videoOverview);
+            _videoDirty = false;
+        }
+        catch (Exception ex)
+        {
+            _error ??= ex.Message;
+        }
+        finally
+        {
+            _videoSettingsLoading = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task LoadAudioModelsLaterAsync()
+    {
+        try
+        {
+            _audioModels = await Timeline.GetAudioModelsAsync();
+        }
+        catch (Exception ex)
+        {
+            _error ??= ex.Message;
+        }
+        finally
+        {
+            _modelsLoading = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private void LoadAudioState(TimelineProductOverview? overview)
+    {
+        _audioComputeMode = string.IsNullOrWhiteSpace(overview?.ComputeMode) ? "cpu" : overview.ComputeMode;
+        _audioInputRoots.Clear();
+        _audioInputRoots.AddRange((overview?.InputRoots ?? []).Select(CloneRoot));
+        if (_audioInputRoots.Count == 0)
+        {
+            _audioInputRoots.Add(new RootRow { Id = "audio-1", DisplayName = "Audio", Enabled = true });
+        }
+
+        _audioOutputRoot = CloneRoot(overview?.OutputRoot ?? new RootRow
+        {
+            Id = "master",
+            DisplayName = "TimelineForAudio Master",
+            Enabled = true,
+        });
+    }
+
+    private void LoadImageState(ImageOverview? overview)
+    {
+        _imageInputRoots.Clear();
+        foreach (var root in overview?.Settings.InputRoots ?? [])
+        {
+            _imageInputRoots.Add(CloneRoot(root));
+        }
+
+        if (_imageInputRoots.Count == 0)
+        {
+            _imageInputRoots.Add(new ImageInputRoot
+            {
+                Id = "input-1",
+                DisplayName = "Input",
+                Path = @"C:\TimelineData\input-image",
+                DisplayPath = @"C:\TimelineData\input-image",
+                Enabled = true,
+            });
+        }
+
+        _imageOutputRoot = CloneRoot(overview?.Settings.OutputRoot ?? new ImageDirectoryRoot
+        {
+            Id = "output",
+            DisplayName = "Output",
+            Path = @"C:\TimelineData\image",
+            DisplayPath = @"C:\TimelineData\image",
+        });
+    }
+
+    private void LoadVideoState(VideoOverview? overview)
+    {
+        _videoInputRoots.Clear();
+        foreach (var root in overview?.Settings.InputRoots ?? [])
+        {
+            _videoInputRoots.Add(CloneRoot(root));
+        }
+
+        if (_videoInputRoots.Count == 0)
+        {
+            _videoInputRoots.Add(new VideoInputRoot
+            {
+                Id = "input-1",
+                DisplayName = "Input",
+                Path = @"C:\TimelineData\input-video",
+                DisplayPath = @"C:\TimelineData\input-video",
+                Enabled = true,
+            });
+        }
+
+        _videoOutputRoot = CloneRoot(overview?.Settings.OutputRoot ?? new VideoDirectoryRoot
+        {
+            Id = "output",
+            DisplayName = "Output",
+            Path = @"C:\TimelineData\video",
+            DisplayPath = @"C:\TimelineData\video",
+        });
     }
 
     private async Task SaveAsync()
@@ -323,29 +812,74 @@ else
         _error = null;
         try
         {
-            if (string.IsNullOrWhiteSpace(_workDirectory))
+            if (string.IsNullOrWhiteSpace(_timelineDirectory))
             {
-                throw new InvalidOperationException("作業ディレクトリを設定してください。");
+                throw new InvalidOperationException("保存先を設定してください。");
             }
-            if (string.IsNullOrWhiteSpace(_storeDirectory))
+            if (_tokenToSave is { Length: > 0 } && !ValidateTokenFormat(_tokenToSave, out var tokenMessage))
             {
-                throw new InvalidOperationException("時間軸ストアを設定してください。");
+                throw new InvalidOperationException(tokenMessage);
             }
 
+            var timelineDirectory = TrimTrailingDirectorySeparators(_timelineDirectory);
             _settings = await Timeline.SaveTimelineSettingsAsync(new TimelineAppSettingsSaveRequest
             {
                 DisplayLanguageId = _displayLanguageId,
                 TimeZoneId = _timeZoneId,
-                WorkDirectory = _workDirectory,
-                StoreDirectory = _storeDirectory,
+                WorkDirectory = CombineWindowsPath(timelineDirectory, "work"),
+                StoreDirectory = CombineWindowsPath(timelineDirectory, "store"),
+                CommonAi = new TimelineCommonAiSettings { ComputeMode = _commonComputeMode },
                 ProductRegistry = _registry,
             });
+
+            if (_audioOverview?.ProductFound == true && (_audioDirty || !string.IsNullOrWhiteSpace(_tokenToSave)))
+            {
+                _audioOverview = await Timeline.SaveAudioSettingsAsync(new AudioSettingsSaveRequest
+                {
+                    Token = _tokenToSave,
+                    ComputeMode = _proMode ? _audioComputeMode : ResolveCommonComputeModeForProduct(),
+                    InputRoots = _audioInputRoots
+                        .Where(root => !string.IsNullOrWhiteSpace(root.Path))
+                        .Select(CloneRoot)
+                        .ToList(),
+                    OutputRoot = CloneRoot(_audioOutputRoot),
+                    OutputPath = _audioOutputRoot.Path,
+                });
+                LoadAudioState(_audioOverview);
+            }
+
+            if (_imageOverview?.ProductFound == true && _imageDirty)
+            {
+                _imageOverview = await Timeline.SaveImageSettingsAsync(new ImageSettingsSaveRequest
+                {
+                    InputRoots = _imageInputRoots.Select(CloneRoot).ToList(),
+                    OutputRoot = CloneRoot(_imageOutputRoot),
+                    OutputRootPath = _imageOutputRoot.Path,
+                });
+                LoadImageState(_imageOverview);
+            }
+
+            if (_videoOverview?.ProductFound == true && _videoDirty)
+            {
+                _videoOverview = await Timeline.SaveVideoSettingsAsync(new VideoSettingsSaveRequest
+                {
+                    InputRoots = _videoInputRoots.Select(CloneRoot).ToList(),
+                    OutputRoot = CloneRoot(_videoOutputRoot),
+                    OutputRootPath = _videoOutputRoot.Path,
+                    ComputeMode = ResolveCommonComputeModeForProduct(),
+                });
+                LoadVideoState(_videoOverview);
+            }
+
             _displayLanguageId = _settings.DisplayLanguageId;
             _timeZoneId = _settings.TimeZoneId;
-            _workDirectory = _settings.WorkDirectory;
-            _storeDirectory = _settings.StoreDirectory;
+            _timelineDirectory = TimelineDirectoryFromSettings(_settings.WorkDirectory, _settings.StoreDirectory);
             _registry = CloneRegistry(_settings.ProductRegistry);
             _runtime = await Timeline.GetProductRuntimeOverviewAsync();
+            _tokenToSave = null;
+            _audioDirty = false;
+            _imageDirty = false;
+            _videoDirty = false;
             _saved = true;
         }
         catch (Exception ex)
@@ -358,39 +892,159 @@ else
         }
     }
 
-    private async Task PickWorkDirectoryAsync()
+    private async Task PickTimelineDirectoryAsync()
     {
-        var path = await PickDirectoryAsync("作業ディレクトリを選択", _workDirectory);
+        var path = await PickDirectoryAsync("保存先を選択", _timelineDirectory);
         if (string.IsNullOrWhiteSpace(path))
         {
             return;
         }
 
-        _workDirectory = path;
-        _saved = false;
-    }
-
-    private async Task PickStoreDirectoryAsync()
-    {
-        var path = await PickDirectoryAsync("時間軸ストアを選択", _storeDirectory);
-        if (string.IsNullOrWhiteSpace(path))
+        _timelineDirectory = TrimTrailingDirectorySeparators(path);
+        if (!_proMode)
         {
-            return;
+            ApplyManagedOutputDirectories();
         }
-
-        _storeDirectory = path;
         _saved = false;
     }
 
     private async Task PickProductDirectoryAsync(TimelineProductRegistryProduct product)
     {
-        var path = await PickDirectoryAsync($"{DisplayName(product)} の管理配置を選択", ProductConfiguredPath(product, RuntimeFor(product.Id)));
+        var path = await PickDirectoryAsync($"{DisplayName(product)} の製品配置先を選択", ProductConfiguredPath(product, RuntimeFor(product.Id)));
         if (string.IsNullOrWhiteSpace(path))
         {
             return;
         }
 
         product.Path = path;
+        _saved = false;
+    }
+
+    private async Task AddAudioInputRootAsync()
+    {
+        var path = await PickDirectoryAsync("音声ディレクトリを選択", LastAudioInputPath());
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return;
+        }
+        if (_audioInputRoots.Any(root => root.Path.Equals(path, StringComparison.OrdinalIgnoreCase)))
+        {
+            _error = "同じ音声ディレクトリが既にあります。";
+            return;
+        }
+
+        _audioInputRoots.Add(new RootRow
+        {
+            Id = NextAudioInputRootId(),
+            DisplayName = DirectoryNameFromPath(path),
+            Path = path,
+            Enabled = true,
+        });
+        _audioDirty = true;
+        _saved = false;
+    }
+
+    private void RemoveAudioInputRoot(string path)
+    {
+        if (_audioInputRoots.Count <= 1)
+        {
+            return;
+        }
+
+        var root = _audioInputRoots.FirstOrDefault(item => DirectoryDisplay(item.Path).Equals(path, StringComparison.OrdinalIgnoreCase));
+        if (root is null)
+        {
+            return;
+        }
+
+        _audioInputRoots.Remove(root);
+        _audioDirty = true;
+        _saved = false;
+    }
+
+    private async Task AddImageInputRootAsync()
+    {
+        var path = await PickDirectoryAsync("画像ディレクトリを選択", LastImageInputPath());
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return;
+        }
+        if (_imageInputRoots.Any(root => root.Path.Equals(path, StringComparison.OrdinalIgnoreCase)))
+        {
+            _error = "同じ画像ディレクトリが既にあります。";
+            return;
+        }
+
+        _imageInputRoots.Add(new ImageInputRoot
+        {
+            Id = $"input-{_imageInputRoots.Count + 1}",
+            DisplayName = "Input",
+            Path = path,
+            DisplayPath = path,
+            Enabled = true,
+        });
+        _imageDirty = true;
+        _saved = false;
+    }
+
+    private void RemoveImageInputRootByDisplay(string path)
+    {
+        if (_imageInputRoots.Count <= 1)
+        {
+            return;
+        }
+
+        var root = _imageInputRoots.FirstOrDefault(item => DirectoryDisplay(item).Equals(path, StringComparison.OrdinalIgnoreCase));
+        if (root is null)
+        {
+            return;
+        }
+
+        _imageInputRoots.Remove(root);
+        _imageDirty = true;
+        _saved = false;
+    }
+
+    private async Task AddVideoInputRootAsync()
+    {
+        var path = await PickDirectoryAsync("動画ディレクトリを選択", LastVideoInputPath());
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return;
+        }
+        if (_videoInputRoots.Any(root => root.Path.Equals(path, StringComparison.OrdinalIgnoreCase)))
+        {
+            _error = "同じ動画ディレクトリが既にあります。";
+            return;
+        }
+
+        _videoInputRoots.Add(new VideoInputRoot
+        {
+            Id = $"input-{_videoInputRoots.Count + 1}",
+            DisplayName = "Input",
+            Path = path,
+            DisplayPath = path,
+            Enabled = true,
+        });
+        _videoDirty = true;
+        _saved = false;
+    }
+
+    private void RemoveVideoInputRootByDisplay(string path)
+    {
+        if (_videoInputRoots.Count <= 1)
+        {
+            return;
+        }
+
+        var root = _videoInputRoots.FirstOrDefault(item => DirectoryDisplay(item).Equals(path, StringComparison.OrdinalIgnoreCase));
+        if (root is null)
+        {
+            return;
+        }
+
+        _videoInputRoots.Remove(root);
+        _videoDirty = true;
         _saved = false;
     }
 
@@ -408,10 +1062,285 @@ else
         }
     }
 
+    private void OpenTokenModal()
+    {
+        _tokenDraft = "";
+        _tokenValidationError = null;
+        _tokenModalOpen = true;
+    }
+
+    private void CloseTokenModal()
+    {
+        _tokenModalOpen = false;
+        _tokenDraft = null;
+        _tokenValidationError = null;
+    }
+
+    private void SaveTokenDraft()
+    {
+        var token = _tokenDraft?.Trim() ?? "";
+        if (!ValidateTokenFormat(token, out var message))
+        {
+            _tokenValidationError = message;
+            return;
+        }
+
+        _tokenToSave = token;
+        _audioDirty = true;
+        CloseTokenModal();
+    }
+
+    private void OpenSaveConfirm()
+    {
+        _saved = false;
+        _error = null;
+        if (!ValidateBeforeSave(out var message))
+        {
+            _error = message;
+            return;
+        }
+
+        _pendingSaveChanges = BuildSaveChanges().ToList();
+        _saveConfirmOpen = true;
+    }
+
+    public bool HasUnsavedChanges() =>
+        !_loading && BuildSaveChanges().Count > 0;
+
+    public Task OpenSaveConfirmAsync()
+    {
+        OpenSaveConfirm();
+        return Task.CompletedTask;
+    }
+
+    private void CloseSaveConfirm()
+    {
+        if (_saving)
+        {
+            return;
+        }
+
+        _saveConfirmOpen = false;
+    }
+
+    private async Task ConfirmSaveAsync()
+    {
+        _saveConfirmOpen = false;
+        await SaveAsync();
+    }
+
+    private bool ValidateBeforeSave(out string message)
+    {
+        if (string.IsNullOrWhiteSpace(_timelineDirectory))
+        {
+            message = "保存先を設定してください。";
+            return false;
+        }
+        if (_tokenToSave is { Length: > 0 } && !ValidateTokenFormat(_tokenToSave, out message))
+        {
+            return false;
+        }
+
+        message = "";
+        return true;
+    }
+
+    private List<SettingsChangeRow> BuildSaveChanges()
+    {
+        var changes = new List<SettingsChangeRow>();
+        var currentTimelineDirectory = _settings is null
+            ? DefaultTimelineDirectory
+            : TimelineDirectoryFromSettings(_settings.WorkDirectory, _settings.StoreDirectory);
+        AddChange("データ保存先", currentTimelineDirectory, _timelineDirectory);
+        AddChange("表示言語", LabelFor(DisplayLanguages, _settings?.DisplayLanguageId), LabelFor(DisplayLanguages, _displayLanguageId));
+        AddChange("タイムゾーン", LabelFor(TimeZones, _settings?.TimeZoneId), LabelFor(TimeZones, _timeZoneId));
+        AddChange("AI処理方法", ComputeModeLabel(_settings?.CommonAi.ComputeMode), ComputeModeLabel(_commonComputeMode));
+        if (!string.IsNullOrWhiteSpace(_tokenToSave))
+        {
+            changes.Add(new SettingsChangeRow("Hugging Face トークン", TokenDisplay, MaskToken(_tokenToSave)));
+        }
+
+        if (_audioOverview?.ProductFound == true)
+        {
+            AddChange("音声入力ディレクトリ", JoinPaths(_audioOverview.InputRoots.Select(root => root.Path)), JoinPaths(_audioInputRoots.Select(root => root.Path)));
+            AddChange("TimelineForAudio 生成データ", _audioOverview.OutputRoot?.Path, _audioOutputRoot.Path);
+            var nextAudioComputeMode = _proMode ? _audioComputeMode : ResolveCommonComputeModeForProduct();
+            AddChange("TimelineForAudio AI処理方法", ComputeModeLabel(_audioOverview.ComputeMode), ComputeModeLabel(nextAudioComputeMode));
+        }
+
+        if (_imageOverview?.ProductFound == true)
+        {
+            AddChange("画像入力ディレクトリ", JoinPaths((_imageOverview.Settings.InputRoots ?? []).Select(root => root.Path)), JoinPaths(_imageInputRoots.Select(root => root.Path)));
+            AddChange("TimelineForImage 生成データ", _imageOverview.Settings.OutputRoot?.Path, _imageOutputRoot.Path);
+        }
+
+        if (_videoOverview?.ProductFound == true)
+        {
+            AddChange("動画入力ディレクトリ", JoinPaths((_videoOverview.Settings.InputRoots ?? []).Select(root => root.Path)), JoinPaths(_videoInputRoots.Select(root => root.Path)));
+            AddChange("TimelineForVideo 生成データ", _videoOverview.Settings.OutputRoot?.Path, _videoOutputRoot.Path);
+        }
+
+        foreach (var product in Products)
+        {
+            var originalProduct = _settings?.ProductRegistry.Products.FirstOrDefault(item => item.Id.Equals(product.Id, StringComparison.OrdinalIgnoreCase));
+            AddChange($"{DisplayName(product)} 製品配置先", originalProduct?.Path, product.Path);
+        }
+
+        return changes;
+
+        void AddChange(string label, string? before, string? after)
+        {
+            var beforeValue = NormalizeChangeText(before);
+            var afterValue = NormalizeChangeText(after);
+            if (!beforeValue.Equals(afterValue, StringComparison.OrdinalIgnoreCase))
+            {
+                changes.Add(new SettingsChangeRow(label, beforeValue, afterValue));
+            }
+        }
+    }
+
+    private void OnCommonComputeModeChanged(ChangeEventArgs args)
+    {
+        _commonComputeMode = NormalizeCommonComputeMode(args.Value?.ToString());
+        _audioComputeMode = ResolveCommonComputeModeForProduct();
+        _audioDirty = true;
+        _saved = false;
+    }
+
+    private void OnAudioComputeModeChanged(ChangeEventArgs args)
+    {
+        _audioComputeMode = args.Value?.ToString() ?? "cpu";
+        _audioDirty = true;
+        _saved = false;
+    }
+
+    private void ShowNormalMode()
+    {
+        _proMode = false;
+        _proModeConfirmOpen = false;
+    }
+
+    private void OpenProModeConfirm()
+    {
+        if (_proMode)
+        {
+            return;
+        }
+        _proModeConfirmOpen = true;
+    }
+
+    private void CloseProModeConfirm() => _proModeConfirmOpen = false;
+
+    private void ConfirmProMode()
+    {
+        _proMode = true;
+        _proModeConfirmOpen = false;
+    }
+
     private void SelectProductSettings(string productId)
     {
         _selectedProductSettingsId = productId;
     }
+
+    private void ApplyManagedOutputDirectories()
+    {
+        var timelineDirectory = TrimTrailingDirectorySeparators(_timelineDirectory);
+        if (string.IsNullOrWhiteSpace(timelineDirectory))
+        {
+            timelineDirectory = DefaultTimelineDirectory;
+        }
+
+        _audioOutputRoot.Path = CombineWindowsPath(CombineWindowsPath(timelineDirectory, "products"), "audio");
+        _audioOutputRoot.DisplayName = string.IsNullOrWhiteSpace(_audioOutputRoot.DisplayName) ? "TimelineForAudio Master" : _audioOutputRoot.DisplayName;
+        _audioOutputRoot.Enabled = true;
+        _imageOutputRoot.Path = CombineWindowsPath(CombineWindowsPath(timelineDirectory, "products"), "image");
+        _imageOutputRoot.DisplayPath = _imageOutputRoot.Path;
+        _imageOutputRoot.DisplayName = string.IsNullOrWhiteSpace(_imageOutputRoot.DisplayName) ? "Output" : _imageOutputRoot.DisplayName;
+        _videoOutputRoot.Path = CombineWindowsPath(CombineWindowsPath(timelineDirectory, "products"), "video");
+        _videoOutputRoot.DisplayPath = _videoOutputRoot.Path;
+        _videoOutputRoot.DisplayName = string.IsNullOrWhiteSpace(_videoOutputRoot.DisplayName) ? "Output" : _videoOutputRoot.DisplayName;
+        _audioDirty = true;
+        _imageDirty = true;
+        _videoDirty = true;
+    }
+
+    private RenderFragment TimelineDisplayControls() => @<div class="grid gap-4">
+        <div>
+            <label class="mb-2 block text-sm font-medium text-slate-700" for="timeline-display-language">表示言語</label>
+            <select id="timeline-display-language" class="tfa-input" @bind="_displayLanguageId">
+                @foreach (var language in DisplayLanguages)
+                {
+                    <option value="@language.Id">@language.Label</option>
+                }
+            </select>
+        </div>
+
+        <div>
+            <label class="mb-2 block text-sm font-medium text-slate-700" for="timeline-time-zone">タイムゾーン</label>
+            <select id="timeline-time-zone" class="tfa-input" @bind="_timeZoneId">
+                @foreach (var zone in TimeZones)
+                {
+                    <option value="@zone.Id">@zone.Label</option>
+                }
+            </select>
+            <div class="mt-3 rounded-md border border-line bg-slate-50 p-3 text-sm text-slate-700">
+                <div class="tfa-kicker">表示例</div>
+                <div class="mt-1 font-medium text-slate-900">@UiFormat.ShortDate(DateTimeOffset.Now.ToString("O"), _timeZoneId)</div>
+            </div>
+        </div>
+    </div>;
+
+    private RenderFragment DevicePreview(string label, string icon, IReadOnlyList<string> devices) => @<div class="grid gap-1 rounded-md border border-line bg-white p-3">
+        <div class="inline-flex items-center gap-2 font-medium text-slate-700">
+            <FaIcon Name="@icon" Class="tfa-icon !h-4 !w-4 text-slate-500" />
+            <span>@label</span>
+        </div>
+        @if (!HardwareDevicesLoaded)
+        {
+            <span class="text-slate-500">確認中</span>
+        }
+        else if (devices.Count == 0)
+        {
+            <span class="text-slate-500">取得できませんでした</span>
+        }
+        else
+        {
+            @foreach (var device in devices)
+            {
+                <span class="text-slate-900">@device</span>
+            }
+        }
+    </div>;
+
+    private RenderFragment InputRootSection(string title, IReadOnlyList<string> roots, string addLabel, Func<Task> onAdd, Action<string> onRemove) => @<div class="rounded-md border border-line bg-slate-50 p-4">
+        <h3 class="text-base font-semibold">@title</h3>
+        <div class="mt-3 grid gap-2">
+            @foreach (var root in roots)
+            {
+                <div class="grid gap-3 rounded-md border border-line bg-white p-3 lg:grid-cols-[1fr_auto] lg:items-center">
+                    <div class="min-w-0 break-all font-mono text-sm text-slate-900">@EmptyText(root)</div>
+                    <button class="tfa-button-secondary gap-2" @onclick="@(() => onRemove(root))" disabled="@(roots.Count <= 1)">
+                        <FaIcon Name="xmark" Class="tfa-icon" />
+                        <span>外す</span>
+                    </button>
+                </div>
+            }
+        </div>
+        <div class="mt-3 flex justify-end">
+            <button class="tfa-button-secondary gap-2" @onclick="onAdd">
+                <FaIcon Name="plus" Class="tfa-icon" />
+                <span>@addLabel</span>
+            </button>
+        </div>
+    </div>;
+
+    private static RenderFragment InputRootLoadingSection(string title) => @<div class="rounded-md border border-line bg-slate-50 p-4">
+        <h3 class="text-base font-semibold">@title</h3>
+        <div class="mt-3 flex items-center gap-3 rounded-md border border-line bg-white p-3 text-sm text-slate-600">
+            <FaIcon Name="spinner" Class="tfa-icon fa-spin text-accent" />
+            <span>読み込み中</span>
+        </div>
+    </div>;
 
     private ProductRuntimeRow? RuntimeFor(string productId) =>
         _runtime.Products.FirstOrDefault(product => string.Equals(product.Id, productId, StringComparison.OrdinalIgnoreCase));
@@ -435,6 +1364,52 @@ else
         };
     }
 
+    private static RootRow CloneRoot(RootRow root) => new()
+    {
+        Id = root.Id,
+        DisplayName = root.DisplayName,
+        Path = root.Path,
+        Enabled = root.Enabled,
+    };
+
+    private static ImageInputRoot CloneRoot(ImageInputRoot root) => new()
+    {
+        Id = root.Id,
+        DisplayName = root.DisplayName,
+        Path = root.Path,
+        DisplayPath = root.DisplayPath,
+        Enabled = root.Enabled,
+        Exists = root.Exists,
+    };
+
+    private static ImageDirectoryRoot CloneRoot(ImageDirectoryRoot root) => new()
+    {
+        Id = root.Id,
+        DisplayName = root.DisplayName,
+        Path = root.Path,
+        DisplayPath = root.DisplayPath,
+        Exists = root.Exists,
+    };
+
+    private static VideoInputRoot CloneRoot(VideoInputRoot root) => new()
+    {
+        Id = root.Id,
+        DisplayName = root.DisplayName,
+        Path = root.Path,
+        DisplayPath = root.DisplayPath,
+        Enabled = root.Enabled,
+        Exists = root.Exists,
+    };
+
+    private static VideoDirectoryRoot CloneRoot(VideoDirectoryRoot root) => new()
+    {
+        Id = root.Id,
+        DisplayName = root.DisplayName,
+        Path = root.Path,
+        DisplayPath = root.DisplayPath,
+        Exists = root.Exists,
+    };
+
     private static string DisplayName(TimelineProductRegistryProduct product) =>
         string.IsNullOrWhiteSpace(product.DisplayName) ? product.Id : product.DisplayName;
 
@@ -454,53 +1429,87 @@ else
         "windows-codex" => "terminal",
         "chatgpt" => "comments",
         "image" => "image",
+        "video" => "video",
+        "pc" => "desktop",
         _ => "box",
     };
 
-    private static string RuntimePage(ProductRuntimeRow? runtime) =>
-        string.IsNullOrWhiteSpace(runtime?.PagePath) ? "" : runtime.PagePath;
-
-    private static string ProductSettingsLink(string productId) =>
-        $"timeline/settings?product={Uri.EscapeDataString(productId)}#product-specific-settings";
-
-    private static string RuntimeLabel(ProductRuntimeRow? runtime)
+    private static string TimelineDirectoryFromSettings(string? workDirectory, string? storeDirectory)
     {
-        if (runtime is null)
+        var workParent = ParentForNamedChild(workDirectory, "work");
+        var storeParent = ParentForNamedChild(storeDirectory, "store");
+        if (!string.IsNullOrWhiteSpace(workParent)
+            && !string.IsNullOrWhiteSpace(storeParent)
+            && string.Equals(workParent, storeParent, StringComparison.OrdinalIgnoreCase))
         {
-            return "未確認";
+            return workParent;
         }
-        if (!runtime.ProductFound)
+
+        if (!string.IsNullOrWhiteSpace(storeParent))
         {
-            return "未検出";
+            return storeParent;
         }
-        if (!runtime.ComposeFound)
+
+        if (!string.IsNullOrWhiteSpace(workParent))
         {
-            return "CLI未検出";
+            return workParent;
         }
-        return "利用可";
+
+        return DefaultTimelineDirectory;
     }
 
-    private static string RuntimePillClass(ProductRuntimeRow? runtime)
+    private static string ParentForNamedChild(string? path, string childName)
     {
-        if (runtime?.ProductFound != true || !runtime.ComposeFound)
+        var trimmed = TrimTrailingDirectorySeparators(path);
+        if (string.IsNullOrWhiteSpace(trimmed))
         {
-            return "rounded-full bg-rose-50 px-2 py-1 text-rose-700";
+            return "";
         }
-        return "rounded-full bg-teal-50 px-2 py-1 text-teal-700";
+
+        var separator = Math.Max(trimmed.LastIndexOf('\\'), trimmed.LastIndexOf('/'));
+        if (separator < 0 || separator + 1 >= trimmed.Length)
+        {
+            return "";
+        }
+
+        var name = trimmed[(separator + 1)..];
+        if (!string.Equals(name, childName, StringComparison.OrdinalIgnoreCase))
+        {
+            return "";
+        }
+
+        return TrimTrailingDirectorySeparators(trimmed[..separator]);
     }
 
-    private static string RuntimeMessage(ProductRuntimeRow? runtime)
+    private static string CombineWindowsPath(string basePath, string childName)
     {
-        if (runtime is null)
-        {
-            return "状態を取得できていません。";
-        }
-        if (!string.IsNullOrWhiteSpace(runtime.Message))
-        {
-            return runtime.Message;
-        }
-        return RuntimeLabel(runtime);
+        var trimmed = TrimTrailingDirectorySeparators(basePath);
+        return string.IsNullOrWhiteSpace(trimmed) ? childName : $"{trimmed}\\{childName}";
     }
+
+    private static string TrimTrailingDirectorySeparators(string? path) =>
+        (path ?? "").Trim().TrimEnd('\\', '/');
+
+    private string ResolveCommonComputeModeForProduct() =>
+        _commonComputeMode == "auto" ? ResolveAutoComputeMode() : NormalizeProductComputeMode(_commonComputeMode);
+
+    private string ResolveAutoComputeMode() =>
+        GpuDevices.Count > 0 ? "gpu" : "cpu";
+
+    private static string NormalizeCommonComputeMode(string? value)
+    {
+        var mode = value?.Trim().ToLowerInvariant() ?? "";
+        return mode is "auto" or "gpu" or "cpu" ? mode : "auto";
+    }
+
+    private static string NormalizeProductComputeMode(string? value)
+    {
+        var mode = value?.Trim().ToLowerInvariant() ?? "";
+        return mode == "gpu" ? "gpu" : "cpu";
+    }
+
+    private string ModeButtonClass(bool proMode) =>
+        _proMode == proMode ? "tfa-button-primary gap-2" : "tfa-button-secondary gap-2";
 
     private string ProductSettingsTabClass(string productId) =>
         string.Equals(_selectedProductSettingsId, productId, StringComparison.OrdinalIgnoreCase)
@@ -509,7 +1518,7 @@ else
 
     private void EnsureSelectedProductSettings()
     {
-        if (TryNormalizeProductId(ProductQuery, out var productId)
+        if (TryNormalizeProductId(ProductId, out var productId)
             && Products.Any(product => string.Equals(product.Id, productId, StringComparison.OrdinalIgnoreCase)))
         {
             _selectedProductSettingsId = productId;
@@ -527,9 +1536,126 @@ else
     private static bool TryNormalizeProductId(string? value, out string productId)
     {
         productId = value?.Trim().ToLowerInvariant() ?? "";
-        return productId is "audio" or "windows-codex" or "chatgpt" or "image";
+        return productId is "audio" or "windows-codex" or "chatgpt" or "image" or "video" or "pc";
+    }
+
+    private string LastAudioInputPath() =>
+        _audioInputRoots.LastOrDefault(root => !string.IsNullOrWhiteSpace(root.Path))?.Path
+        ?? @"C:\TimelineData\input-audio";
+
+    private string LastImageInputPath() =>
+        _imageInputRoots.LastOrDefault(root => !string.IsNullOrWhiteSpace(root.Path))?.Path
+        ?? @"C:\TimelineData\input-image";
+
+    private string LastVideoInputPath() =>
+        _videoInputRoots.LastOrDefault(root => !string.IsNullOrWhiteSpace(root.Path))?.Path
+        ?? @"C:\TimelineData\input-video";
+
+    private string NextAudioInputRootId()
+    {
+        var index = _audioInputRoots.Count + 1;
+        var candidate = $"audio-{index}";
+        while (_audioInputRoots.Any(root => root.Id.Equals(candidate, StringComparison.OrdinalIgnoreCase)))
+        {
+            index++;
+            candidate = $"audio-{index}";
+        }
+        return candidate;
+    }
+
+    private static string DirectoryNameFromPath(string path, string fallback = "Directory")
+    {
+        var text = path.Trim().TrimEnd('\\', '/');
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return fallback;
+        }
+        var separator = Math.Max(text.LastIndexOf('\\'), text.LastIndexOf('/'));
+        if (separator >= 0 && separator + 1 < text.Length)
+        {
+            return text[(separator + 1)..];
+        }
+        return text.Length == 2 && text[1] == ':' ? text : fallback;
+    }
+
+    private static string DirectoryDisplay(string path) =>
+        string.IsNullOrWhiteSpace(path) ? "未設定" : path;
+
+    private static string DirectoryDisplay(ImageInputRoot root) =>
+        !string.IsNullOrWhiteSpace(root.DisplayPath) ? root.DisplayPath : EmptyText(root.Path);
+
+    private static string DirectoryDisplay(VideoInputRoot root) =>
+        !string.IsNullOrWhiteSpace(root.DisplayPath) ? root.DisplayPath : EmptyText(root.Path);
+
+    private static string LabelFor(IEnumerable<TimelineDisplayLanguageOption> options, string? id) =>
+        options.FirstOrDefault(option => option.Id.Equals(id ?? "", StringComparison.OrdinalIgnoreCase))?.Label
+        ?? EmptyText(id);
+
+    private static string LabelFor(IEnumerable<TimelineTimeZoneOption> options, string? id) =>
+        options.FirstOrDefault(option => option.Id.Equals(id ?? "", StringComparison.OrdinalIgnoreCase))?.Label
+        ?? EmptyText(id);
+
+    private static string ComputeModeLabel(string? value) => NormalizeCommonComputeMode(value) switch
+    {
+        "gpu" => "GPU",
+        "cpu" => "CPU",
+        "auto" => "自動",
+        _ => "自動",
+    };
+
+    private static string JoinPaths(IEnumerable<string?> paths)
+    {
+        var values = paths
+            .Select(NormalizeChangeText)
+            .Where(value => value != "-")
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        return values.Count == 0 ? "-" : string.Join(" / ", values);
+    }
+
+    private static string NormalizeChangeText(string? value)
+    {
+        var text = TrimTrailingDirectorySeparators(value);
+        return string.IsNullOrWhiteSpace(text) ? "-" : text;
+    }
+
+    private static string ModelRoleLabel(AudioModelRow model) => model.Role switch
+    {
+        "speaker_diarization" => "話者分離",
+        "acoustic_unit_extraction" => "音響単位抽出",
+        "speech_candidate_detection" => "発話候補検出",
+        _ => string.IsNullOrWhiteSpace(model.DisplayName) ? model.ModelId : model.DisplayName,
+    };
+
+    private static bool ValidateTokenFormat(string token, out string message)
+    {
+        if (string.IsNullOrWhiteSpace(token))
+        {
+            message = "トークンを入力してください。";
+            return false;
+        }
+        if (!token.StartsWith("hf_", StringComparison.Ordinal) || token.Length < 12)
+        {
+            message = "Hugging Face token の形式を確認してください。";
+            return false;
+        }
+
+        message = "";
+        return true;
+    }
+
+    private static string MaskToken(string token)
+    {
+        var value = token.Trim();
+        if (value.Length <= 8)
+        {
+            return new string('•', value.Length);
+        }
+        return $"{value[..4]}{new string('•', Math.Max(4, value.Length - 8))}{value[^4..]}";
     }
 
     private static string EmptyText(string? value) =>
         string.IsNullOrWhiteSpace(value) ? "-" : value;
+
+    private sealed record SettingsChangeRow(string Label, string Before, string After);
 }

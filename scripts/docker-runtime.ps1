@@ -170,6 +170,8 @@ function Start-TimelineHelperServer {
         [string]$WindowsCodexProductPath = "C:\apps\TimelineForWindowsCodex",
         [string]$ChatGptProductPath = "C:\apps\TimelineForChatGPT",
         [string]$ImageProductPath = "C:\apps\TimelineForImage",
+        [string]$VideoProductPath = "C:\apps\TimelineForVideo",
+        [string]$PcProductPath = "C:\apps\TimelineForPC",
         [int]$Port = 19001
     )
 
@@ -200,7 +202,11 @@ function Start-TimelineHelperServer {
         "-ChatGptProductPath",
         "`"$ChatGptProductPath`"",
         "-ImageProductPath",
-        "`"$ImageProductPath`""
+        "`"$ImageProductPath`"",
+        "-VideoProductPath",
+        "`"$VideoProductPath`"",
+        "-PcProductPath",
+        "`"$PcProductPath`""
     )
 
     Start-Process -FilePath "powershell.exe" -ArgumentList $arguments -WindowStyle Hidden | Out-Null

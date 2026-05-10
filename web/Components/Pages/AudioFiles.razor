@@ -5,6 +5,12 @@
 
 <PageTitle>音声ファイル一覧 - Timeline</PageTitle>
 
+<TimelineBreadcrumbs>
+    <a href="scan">スキャン</a>
+    <span class="tfa-breadcrumb-separator">/</span>
+    <span aria-current="page">音声ファイル一覧</span>
+</TimelineBreadcrumbs>
+
 <div class="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
     <div>
         <h1 class="tfa-title flex items-center gap-2">
@@ -16,10 +22,6 @@
         <button class="tfa-button-secondary gap-2" @onclick="LoadAsync" disabled="@(ListBusy || _refreshing)">
             <FaIcon Name="rotate" Class="@($"tfa-icon {(ListBusy ? "fa-spin" : "")}")" />
             <span>一覧更新</span>
-        </button>
-        <button class="tfa-button-primary gap-2" @onclick="StartAudioRefreshAsync" disabled="@(ListBusy || _refreshing || _deleting || _downloading)">
-            <FaIcon Name="@(_refreshing ? "spinner" : "play")" Class="@($"tfa-icon {(_refreshing ? "fa-spin" : "")}")" />
-            <span>@(_refreshing ? "分析開始中" : "再スキャンして分析")</span>
         </button>
     </div>
 </div>
@@ -149,12 +151,12 @@ else
         </section>
     }
 
-    <div class="grid gap-4 md:grid-cols-4">
+    <div class="tfa-summary-grid">
         <section class="tfa-card tfa-card-pad">
             <div class="flex items-start justify-between gap-3">
                 <div>
-                    <div class="tfa-kicker">総ファイル数</div>
-                    <div class="mt-2 text-3xl font-semibold">@FileCount</div>
+                    <div class="tfa-kicker">取り込み済み</div>
+                    <div class="mt-2 text-3xl font-semibold">@ImportedFileCountLabel</div>
                 </div>
                 <span class="tfa-icon-box">
                     <FaIcon Name="file-audio" Class="tfa-icon" />
@@ -164,48 +166,22 @@ else
         <section class="tfa-card tfa-card-pad">
             <div class="flex items-start justify-between gap-3">
                 <div>
-                    <div class="tfa-kicker">表示中未処理</div>
-                    <div class="mt-2 text-3xl font-semibold">@UnprocessedCount</div>
+                    <div class="tfa-kicker">言語化済み</div>
+                    <div class="mt-2 text-3xl font-semibold">@VerbalizedFileCountLabel</div>
                 </div>
-                <span class="tfa-icon-box text-slate-600">
-                    <FaIcon Name="circle-minus" Class="tfa-icon" />
-                </span>
-            </div>
-        </section>
-        <section class="tfa-card tfa-card-pad">
-            <div class="flex items-start justify-between gap-3">
-                <div>
-                    <div class="tfa-kicker">表示中記録時間</div>
-                    <div class="mt-2 text-2xl font-semibold">@TotalDurationLabel</div>
-                    @if (HasPartialDuration)
-                    {
-                        <div class="mt-1 text-xs text-slate-500">@KnownDurationCount / @Files.Count 件</div>
-                    }
-                </div>
-                <span class="tfa-icon-box text-sky-800">
-                    <FaIcon Name="stopwatch" Class="tfa-icon" />
-                </span>
-            </div>
-        </section>
-        <section class="tfa-card tfa-card-pad">
-            <div class="flex items-start justify-between gap-3">
-                <div>
-                    <div class="tfa-kicker">処理ステータス</div>
-                    <div class="mt-2 text-2xl font-semibold">@WorkerStateLabel</div>
-                </div>
-                <span class="@($"tfa-icon-box {WorkerStateIconClass}")">
-                    <FaIcon Name="@WorkerStateIcon" Class="@($"tfa-icon {(WorkerWaiting ? "fa-spin" : "")}")" />
+                <span class="tfa-icon-box text-teal-700">
+                    <FaIcon Name="language" Class="tfa-icon" />
                 </span>
             </div>
         </section>
     </div>
 
-    <section class="tfa-card mt-5 overflow-hidden">
+    <section class="tfa-card tfa-list-card mt-5 overflow-hidden">
     <div class="tfa-card-pad flex flex-col gap-3 border-b border-line sm:flex-row sm:items-center sm:justify-between">
         <div>
             <h2 class="flex items-center gap-2 text-lg font-semibold">
                 <FaIcon Name="folder-open" Class="tfa-icon text-accent" />
-                <span>ファイル一覧</span>
+                <span>アイテム一覧</span>
             </h2>
         </div>
         <div class="flex items-center gap-2 text-sm text-slate-500">
@@ -250,8 +226,8 @@ else
             </div>
         </div>
 
-        <div class="overflow-x-auto tfa-long-list-scroll">
-            <div class="tfa-file-tree" role="treegrid" aria-label="ファイル一覧">
+        <div class="overflow-x-auto tfa-long-list-scroll tfa-list-scroll">
+            <div class="tfa-file-tree" role="treegrid" aria-label="音声アイテム一覧">
                 <div class="tfa-file-tree-header" role="row">
                     <div class="tfa-file-tree-select" role="columnheader">
                         <input type="checkbox"
@@ -433,7 +409,7 @@ else
 
     private sealed record FileTreeRow(string Name, int Depth, AudioFileRow? File, IReadOnlyList<string> FileKeys);
 
-    private const int FilePageSize = 100;
+    private const int FilePageSize = 25;
 
     private TimelineProductOverview? _overview;
     private AudioFileListResult? _files;
@@ -465,6 +441,11 @@ else
         : _lastLoadedAt is null
             ? ""
             : $"最終更新 {_lastLoadedAt.Value:HH:mm:ss}";
+    private int ImportedFileCount => Math.Max(_overview?.AudioItemCount ?? 0, Files.Count(file => file.HasTimeline));
+    private string ImportedFileCountLabel => $"{ImportedFileCount:N0} / {Math.Max(FileCount, _overview?.AudioFileCount ?? 0):N0}";
+    private int VerbalizationTargetFileCount => Math.Max(_overview?.AudioVerbalizationTargetFileCount ?? 0, Files.Count(file => file.HasTimeline && file.TurnCount > 0));
+    private int FullyVerbalizedFileCount => Math.Max(_overview?.AudioVerbalizedFileCount ?? 0, Files.Count(IsFullyVerbalized));
+    private string VerbalizedFileCountLabel => $"{FullyVerbalizedFileCount:N0} / {VerbalizationTargetFileCount:N0}";
     private int UnprocessedCount => Files.Count(file => !file.Status.Equals("completed", StringComparison.OrdinalIgnoreCase));
     private int KnownDurationCount => Files.Count(file => file.DurationSec is > 0);
     private double TotalDurationSec => Files.Where(file => file.DurationSec is > 0).Sum(file => file.DurationSec!.Value);
@@ -576,6 +557,7 @@ else
 
         _loadingMoreFiles = true;
         _error = null;
+        await InvokeAsync(StateHasChanged);
         try
         {
             await LoadFilePageAsync(page, reset: true);
@@ -687,6 +669,11 @@ else
 
     private static bool ShouldShowVerbalizationStatus(AudioFileRow file) =>
         file.HasTimeline && file.AudioVerbalization is not null;
+
+    private static bool IsFullyVerbalized(AudioFileRow file) =>
+        file.HasTimeline
+        && file.TurnCount > 0
+        && file.AudioVerbalization.State.Equals("completed", StringComparison.OrdinalIgnoreCase);
 
     private static string VerbalizationLabel(AudioVerbalizationStatus status)
     {

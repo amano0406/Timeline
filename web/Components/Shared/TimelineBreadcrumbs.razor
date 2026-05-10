@@ -1,0 +1,8 @@
+<nav class="tfa-breadcrumbs" aria-label="パンくずリスト">
+    @ChildContent
+</nav>
+
+@code {
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
+}

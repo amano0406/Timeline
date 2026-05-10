@@ -4,6 +4,12 @@
 
 <PageTitle>画像ファイル一覧 - Timeline</PageTitle>
 
+<TimelineBreadcrumbs>
+    <a href="scan">スキャン</a>
+    <span class="tfa-breadcrumb-separator">/</span>
+    <span aria-current="page">画像ファイル一覧</span>
+</TimelineBreadcrumbs>
+
 <div class="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
     <div>
         <h1 class="tfa-title flex items-center gap-2">
@@ -15,10 +21,6 @@
         <button class="tfa-button-secondary gap-2" @onclick="LoadAsync" disabled="@Busy">
             <FaIcon Name="rotate" Class="@($"tfa-icon {(_loading ? "fa-spin" : "")}")" />
             <span>一覧更新</span>
-        </button>
-        <button class="tfa-button-primary gap-2" @onclick="StartRefreshAsync" disabled="@(Busy || !CanRefresh)">
-            <FaIcon Name="@(_refreshing ? "spinner" : "play")" Class="@($"tfa-icon {(_refreshing ? "fa-spin" : "")}")" />
-            <span>@(_refreshing ? "分析開始中" : "再スキャンして分析")</span>
         </button>
     </div>
 </div>
@@ -74,62 +76,38 @@ else if (_overview is not null)
         </div>
     }
 
-    <div class="grid gap-4 md:grid-cols-4">
+    <div class="tfa-summary-grid">
         <section class="tfa-card tfa-card-pad">
             <div class="flex items-start justify-between gap-3">
                 <div>
-                    <div class="tfa-kicker">総ファイル数</div>
-                    <div class="mt-2 text-3xl font-semibold">@_overview.SourceFileCount</div>
+                    <div class="tfa-kicker">取り込み済み</div>
+                    <div class="mt-2 text-3xl font-semibold">@ImportedFileCountLabel</div>
                 </div>
                 <span class="tfa-icon-box text-emerald-700">
                     <FaIcon Name="images" Class="tfa-icon" />
                 </span>
             </div>
         </section>
-        <section class="tfa-card tfa-card-pad">
-            <div class="flex items-start justify-between gap-3">
-                <div>
-                    <div class="tfa-kicker">未処理ファイル数</div>
-                    <div class="mt-2 text-3xl font-semibold">@UnprocessedCount</div>
-                </div>
-                <span class="tfa-icon-box text-slate-600">
-                    <FaIcon Name="circle-minus" Class="tfa-icon" />
-                </span>
-            </div>
-        </section>
-        <section class="tfa-card tfa-card-pad">
-            <div class="flex items-start justify-between gap-3">
-                <div>
-                    <div class="tfa-kicker">生成済みファイル数</div>
-                    <div class="mt-2 text-3xl font-semibold">@_overview.ItemCount</div>
-                </div>
-                <span class="tfa-icon-box text-sky-800">
-                    <FaIcon Name="file-lines" Class="tfa-icon" />
-                </span>
-            </div>
-        </section>
-        <section class="tfa-card tfa-card-pad">
-            <div class="flex items-start justify-between gap-3">
-                <div>
-                    <div class="tfa-kicker">処理ステータス</div>
-                    <div class="mt-2 text-2xl font-semibold">@ProcessingLabel</div>
-                </div>
-                <span class="@($"tfa-icon-box {ProcessingIconClass}")">
-                    <FaIcon Name="@ProcessingIcon" Class="@($"tfa-icon {(_refreshing ? "fa-spin" : "")}")" />
-                </span>
-            </div>
-        </section>
     </div>
 
-    <section class="tfa-card mt-5 overflow-hidden">
+    <section class="tfa-card tfa-list-card mt-5 overflow-hidden">
         <div class="tfa-card-pad flex items-center justify-between gap-3 border-b border-line">
             <h2 class="flex items-center gap-2 text-lg font-semibold">
                 <FaIcon Name="images" Class="tfa-icon text-accent" />
-                <span>画像ファイル一覧</span>
+                <span>アイテム一覧</span>
             </h2>
         </div>
 
-        @if (Items.Count == 0)
+        @if (_loadingMore)
+        {
+            <div class="p-5 text-sm text-slate-600">
+                <div class="flex items-center gap-3">
+                    <FaIcon Name="spinner" Class="tfa-icon fa-spin text-accent" />
+                    <span>読み込み中</span>
+                </div>
+            </div>
+        }
+        else if (Items.Count == 0)
         {
             <div class="p-5 text-sm text-slate-600">画像はありません。</div>
         }
@@ -160,55 +138,75 @@ else if (_overview is not null)
                 </div>
             </div>
 
-            <div class="overflow-x-auto">
-                <table class="tfa-table">
-                    <thead>
-                        <tr>
-                            <th class="w-10">
-                                <input type="checkbox"
-                                       checked="@AllSelected"
-                                       @onchange="ToggleAll"
-                                       disabled="@Busy"
-                                       aria-label="すべての画像を選択" />
-                            </th>
-                            <th>ファイル</th>
-                            <th>日時</th>
-                            <th>サイズ</th>
-                            <th>生成物</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach (var item in Items)
-                        {
-                            <tr class="hover:bg-slate-50">
-                                <td class="w-10">
+            <div class="overflow-x-auto tfa-long-list-scroll tfa-list-scroll">
+                <div class="tfa-file-tree tfa-file-tree-image" role="treegrid" aria-label="画像アイテム一覧">
+                    <div class="tfa-file-tree-header" role="row">
+                        <div class="tfa-file-tree-select" role="columnheader">
+                            <input type="checkbox"
+                                   checked="@AllSelected"
+                                   @onchange="ToggleAll"
+                                   disabled="@Busy"
+                                   aria-label="すべての画像を選択" />
+                        </div>
+                        <div role="columnheader">名前</div>
+                        <div role="columnheader">日時</div>
+                        <div role="columnheader">サイズ</div>
+                        <div role="columnheader">生成物</div>
+                    </div>
+
+                    @foreach (var row in BuildTreeRows(Items))
+                    {
+                        <div class="@TreeRowClass(row)" role="row">
+                            <div class="tfa-file-tree-select" role="gridcell">
+                                <span class="tfa-file-tree-check">
                                     <input type="checkbox"
-                                           checked="@IsSelected(item)"
-                                           @onchange="args => ToggleItem(item, IsChecked(args))"
-                                           disabled="@Busy"
-                                           aria-label="@($"{DisplayName(item)} を選択")" />
-                                </td>
-                                <td class="min-w-80">
-                                    <a class="inline-flex items-center gap-2 font-medium text-accent hover:underline"
-                                       href="@DetailHref(item)"
-                                       title="画像詳細を開く">
-                                        <FaIcon Name="image" Class="tfa-icon !h-3.5 !w-3.5" />
-                                        <span>@DisplayName(item)</span>
+                                           checked="@IsTreeRowSelected(row)"
+                                           @onchange="args => ToggleTreeRow(row, IsChecked(args))"
+                                           disabled="@(Busy || row.ItemIds.Count == 0)"
+                                           aria-label="@SelectionLabel(row)" />
+                                    @if (IsTreeRowPartiallySelected(row))
+                                    {
+                                        <span class="tfa-file-tree-check-partial"></span>
+                                    }
+                                </span>
+                            </div>
+                            <div class="tfa-file-tree-name" role="gridcell">
+                                <span class="tfa-file-tree-indent" style="@TreeIndentStyle(row.Depth)"></span>
+                                <FaIcon Name="@(row.File is null ? "folder" : "image")"
+                                        Class="@($"tfa-icon {(row.File is null ? "text-slate-500" : "text-accent")}")" />
+                                @if (row.File is null)
+                                {
+                                    <span class="tfa-file-tree-directory-name">@row.Name</span>
+                                }
+                                else
+                                {
+                                    <a class="tfa-file-tree-file-name" href="@DetailHref(row.File)" title="画像詳細を開く">
+                                        @row.Name
                                     </a>
-                                    <div class="mt-1 break-all text-xs text-slate-500">@EmptyText(item.RelativePath)</div>
-                                </td>
-                                <td class="whitespace-nowrap">@ShortDate(item.ModifiedAt)</td>
-                                <td class="whitespace-nowrap">@FormatBytes(item.SizeBytes)</td>
-                                <td class="whitespace-nowrap">
+                                }
+                            </div>
+
+                            @if (row.File is null)
+                            {
+                                <div role="gridcell"></div>
+                                <div role="gridcell"></div>
+                                <div role="gridcell"></div>
+                            }
+                            else
+                            {
+                                var item = row.File;
+                                <div class="tfa-file-tree-meta" role="gridcell">@ShortDate(item.ModifiedAt)</div>
+                                <div class="tfa-file-tree-meta" role="gridcell">@FormatBytes(item.SizeBytes)</div>
+                                <div class="tfa-file-tree-meta" role="gridcell">
                                     <span class="@ArtifactPillClass(item)">
                                         <FaIcon Name="file-lines" Class="tfa-icon !h-3 !w-3" />
                                         <span>@ArtifactLabel(item)</span>
                                     </span>
-                                </td>
-                            </tr>
-                        }
-                    </tbody>
-                </table>
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
             </div>
 
             <PaginationControls CurrentPage="@_currentPage"
@@ -222,30 +220,66 @@ else if (_overview is not null)
 }
 
 @code {
-    private const int PageSize = 100;
+    private sealed class FileTreeDirectory
+    {
+        private readonly Dictionary<string, FileTreeDirectory> _directories = new(StringComparer.OrdinalIgnoreCase);
+
+        public FileTreeDirectory(string name)
+        {
+            Name = name;
+        }
+
+        public string Name { get; }
+        public IReadOnlyCollection<FileTreeDirectory> Directories => _directories.Values;
+        public List<ImageItemRow> Files { get; } = [];
+
+        public FileTreeDirectory GetOrAddDirectory(string name)
+        {
+            if (!_directories.TryGetValue(name, out var directory))
+            {
+                directory = new FileTreeDirectory(name);
+                _directories.Add(name, directory);
+            }
+
+            return directory;
+        }
+    }
+
+    private sealed record ImageFileTreeRow(string Name, int Depth, ImageItemRow? File, IReadOnlyList<string> ItemIds);
+
+    private const int PageSize = 25;
     private ImageOverview? _overview;
+    private ImageFileListResult? _files;
     private TimelinePagination? _pagination;
     private readonly List<ImageItemRow> _items = [];
     private readonly HashSet<string> _selected = new(StringComparer.OrdinalIgnoreCase);
     private int _currentPage = 1;
     private bool _loading = true;
     private bool _loadingMore;
-    private bool _refreshing;
     private bool _downloading;
     private bool _deleting;
     private string? _error;
     private string? _operationMessage;
 
     private IReadOnlyList<ImageItemRow> Items => _items;
-    private bool Busy => _loading || _loadingMore || _refreshing || _downloading || _deleting;
+    private bool Busy => _loading || _loadingMore || _downloading || _deleting;
     private bool HasSelection => _selected.Count > 0;
     private bool HasGeneratedSelection => SelectedGeneratedItemIds().Count > 0;
-    private bool AllSelected => Items.Count > 0 && Items.All(item => _selected.Contains(item.ItemId));
-    private bool CanRefresh => _overview?.ProductFound == true;
+    private bool AllSelected => SelectableItems.Count > 0 && SelectableItems.All(item => _selected.Contains(item.ItemId));
+    private IReadOnlyList<ImageItemRow> SelectableItems => Items.Where(item => !string.IsNullOrWhiteSpace(item.ItemId)).ToList();
+    private int SourceFileTotal => _files?.Total > 0
+        ? _files.Total
+        : _pagination?.TotalItems > 0
+            ? _pagination.TotalItems
+            : _overview?.SourceFileCount ?? _items.Count;
+    private int ProcessedFileTotal => _files is not null
+        ? _files.ProcessedTotal
+        : Math.Min(_overview?.ItemCount ?? 0, SourceFileTotal);
+    private string ImportedFileCountLabel => $"{ProcessedFileTotal:N0} / {SourceFileTotal:N0}";
     private int UnprocessedCount => Math.Max(0, (_overview?.SourceFileCount ?? 0) - (_overview?.ItemCount ?? 0));
-    private string ProcessingLabel => _refreshing ? "分析中" : "待機中";
-    private string ProcessingIcon => _refreshing ? "spinner" : "circle-check";
-    private string ProcessingIconClass => _refreshing ? "text-sky-800" : "text-teal-700";
+    private string ProcessingLabel => "待機中";
+    private string ProcessingIcon => "circle-check";
+    private string ProcessingIconClass => "text-teal-700";
     private string SelectionSummary => HasSelection ? $"{_selected.Count} 件選択中" : "未選択";
     private int ListTotalItems => _pagination?.TotalItems > 0
         ? _pagination.TotalItems
@@ -263,7 +297,13 @@ else if (_overview is not null)
     private IReadOnlyList<ImageInputRoot> MissingInputRoots =>
         _overview?.Settings.InputRoots.Where(root => !root.Exists).ToList() ?? [];
 
-    protected override async Task OnInitializedAsync() => await LoadAsync();
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await LoadAsync();
+        }
+    }
 
     private async Task LoadAsync()
     {
@@ -273,13 +313,23 @@ else if (_overview is not null)
         {
             _overview = await Timeline.GetImageOverviewAsync();
             _items.Clear();
+            _files = null;
             _selected.Clear();
             _currentPage = 1;
+            _pagination = new TimelinePagination
+            {
+                Page = 1,
+                PageSize = PageSize,
+                TotalItems = _overview.SourceFileCount,
+                ReturnedItems = 0,
+            };
+            await InvokeAsync(StateHasChanged);
             await LoadPageAsync(_currentPage);
         }
         finally
         {
             _loading = false;
+            await InvokeAsync(StateHasChanged);
         }
     }
 
@@ -297,11 +347,13 @@ else if (_overview is not null)
     {
         _loadingMore = true;
         _error = null;
+        await InvokeAsync(StateHasChanged);
         try
         {
             var result = await Timeline.GetImageFilesAsync(page, PageSize);
             _items.Clear();
             _items.AddRange(result.Files);
+            _files = result;
             _pagination = result.Pagination;
             _currentPage = Math.Max(1, result.Pagination.Page);
             RemoveMissingSelections();
@@ -313,27 +365,7 @@ else if (_overview is not null)
         finally
         {
             _loadingMore = false;
-        }
-    }
-
-    private async Task StartRefreshAsync()
-    {
-        _refreshing = true;
-        _error = null;
-        _operationMessage = null;
-        try
-        {
-            var result = await Timeline.RefreshImageAsync(new ImageRefreshRequest());
-            _operationMessage = RefreshMessage(result);
-            await LoadAsync();
-        }
-        catch (Exception ex)
-        {
-            _error = ex.Message;
-        }
-        finally
-        {
-            _refreshing = false;
+            await InvokeAsync(StateHasChanged);
         }
     }
 
@@ -420,17 +452,32 @@ else if (_overview is not null)
     {
         if (IsChecked(args))
         {
-            foreach (var item in Items)
+            foreach (var item in SelectableItems)
             {
-                if (!string.IsNullOrWhiteSpace(item.ItemId))
-                {
-                    _selected.Add(item.ItemId);
-                }
+                _selected.Add(item.ItemId);
             }
         }
         else
         {
-            ClearSelection();
+            foreach (var item in SelectableItems)
+            {
+                _selected.Remove(item.ItemId);
+            }
+        }
+    }
+
+    private void ToggleTreeRow(ImageFileTreeRow row, bool selected)
+    {
+        foreach (var itemId in row.ItemIds)
+        {
+            if (selected)
+            {
+                _selected.Add(itemId);
+            }
+            else
+            {
+                _selected.Remove(itemId);
+            }
         }
     }
 
@@ -471,6 +518,96 @@ else if (_overview is not null)
     private static bool IsChecked(ChangeEventArgs args) =>
         args.Value is bool value && value;
 
+    private static List<ImageFileTreeRow> BuildTreeRows(IEnumerable<ImageItemRow> files)
+    {
+        var virtualRoot = new FileTreeDirectory("");
+        foreach (var file in files.OrderBy(FileSortPath, StringComparer.OrdinalIgnoreCase))
+        {
+            var directory = virtualRoot;
+            foreach (var part in SplitPathParts(FileDirectoryPath(file)))
+            {
+                directory = directory.GetOrAddDirectory(part);
+            }
+            directory.Files.Add(file);
+        }
+
+        var rows = new List<ImageFileTreeRow>();
+        AddDirectoryRows(virtualRoot, 0, rows);
+        return rows;
+    }
+
+    private static void AddDirectoryRows(FileTreeDirectory directory, int depth, List<ImageFileTreeRow> rows)
+    {
+        foreach (var child in directory.Directories.OrderBy(item => item.Name, StringComparer.OrdinalIgnoreCase))
+        {
+            rows.Add(new ImageFileTreeRow(child.Name, depth, null, CollectItemIds(child)));
+            AddDirectoryRows(child, depth + 1, rows);
+        }
+
+        foreach (var file in directory.Files.OrderBy(DisplayName, StringComparer.OrdinalIgnoreCase))
+        {
+            rows.Add(new ImageFileTreeRow(DisplayName(file), depth, file, ImageItemKey(file)));
+        }
+    }
+
+    private static List<string> CollectItemIds(FileTreeDirectory directory)
+    {
+        var keys = new List<string>();
+        foreach (var child in directory.Directories)
+        {
+            keys.AddRange(CollectItemIds(child));
+        }
+        keys.AddRange(directory.Files.SelectMany(ImageItemKey));
+        return keys;
+    }
+
+    private static IReadOnlyList<string> ImageItemKey(ImageItemRow item) =>
+        string.IsNullOrWhiteSpace(item.ItemId) ? [] : [item.ItemId];
+
+    private bool IsTreeRowSelected(ImageFileTreeRow row) =>
+        row.ItemIds.Count > 0 && row.ItemIds.All(itemId => _selected.Contains(itemId));
+
+    private bool IsTreeRowPartiallySelected(ImageFileTreeRow row) =>
+        row.File is null
+        && row.ItemIds.Any(itemId => _selected.Contains(itemId))
+        && !IsTreeRowSelected(row);
+
+    private static string SelectionLabel(ImageFileTreeRow row) =>
+        row.File is null ? $"{row.Name} 配下を選択" : $"{row.Name} を選択";
+
+    private static string FileDirectoryPath(ImageItemRow item)
+    {
+        var sourcePath = (item.SourcePath ?? "").Trim().Replace('/', '\\');
+        if (!string.IsNullOrWhiteSpace(sourcePath))
+        {
+            var index = sourcePath.LastIndexOf('\\');
+            return index > 0 ? sourcePath[..index] : "";
+        }
+
+        var relativePath = (item.RelativePath ?? "").Trim().Replace('/', '\\');
+        var relativeIndex = relativePath.LastIndexOf('\\');
+        return relativeIndex > 0 ? relativePath[..relativeIndex] : "";
+    }
+
+    private static string FileSortPath(ImageItemRow item) =>
+        !string.IsNullOrWhiteSpace(item.SourcePath)
+            ? item.SourcePath
+            : item.RelativePath;
+
+    private static IEnumerable<string> SplitPathParts(string path)
+    {
+        var normalized = (path ?? "").Trim().Replace('/', '\\').Trim('\\');
+        return string.IsNullOrWhiteSpace(normalized)
+            ? []
+            : normalized.Split('\\', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+    }
+
+    private static string TreeIndentStyle(int depth) =>
+        $"--depth:{Math.Max(0, depth)}";
+
+    private static string TreeRowClass(ImageFileTreeRow row) =>
+        row.File is null ? "tfa-file-tree-row tfa-file-tree-row-directory" : "tfa-file-tree-row tfa-file-tree-row-file";
+
     private static string DisplayName(ImageItemRow item) =>
         !string.IsNullOrWhiteSpace(item.SourceDisplayName) ? item.SourceDisplayName : EmptyText(item.RelativePath);
 
@@ -490,26 +627,6 @@ else if (_overview is not null)
 
     private static bool HasGeneratedItem(ImageItemRow item) =>
         item.HasTimeline && item.HasImageRecord;
-
-    private static string RefreshMessage(ImageRefreshResult result)
-    {
-        if (result.ProcessedCount > 0)
-        {
-            var message = $"{result.ProcessedCount} 件の分析を開始しました。処理状況は一覧更新で確認できます。";
-            if (result.FailedCount > 0)
-            {
-                message += $" 失敗: {result.FailedCount} 件。";
-            }
-            return message;
-        }
-
-        if (result.SkippedCount > 0)
-        {
-            return "新しく分析する画像はありませんでした。";
-        }
-
-        return "再スキャンを開始しました。処理状況は一覧更新で確認できます。";
-    }
 
     private static string EmptyText(string? value) =>
         string.IsNullOrWhiteSpace(value) ? "-" : value;

@@ -1,4 +1,6 @@
 @inject NavigationManager Navigation
+@inject TimelineSettingsDialogService SettingsDialog
+@inject TimelineProductsDialogService ProductsDialog
 @implements IDisposable
 @using Microsoft.AspNetCore.Components.Routing
 
@@ -19,102 +21,28 @@
                     <FaIcon Name="gauge" Class="tfa-icon" />
                     <span>ダッシュボード</span>
                 </a>
-                <a class="@LinkClass("timeline")"
-                   href="timeline"
+                <a class="@ScanLinkClass()"
+                   href="scan"
                    @onclick="NotifyNavigateAsync">
-                    <FaIcon Name="timeline" Class="tfa-icon" />
-                    <span>時間軸</span>
-                </a>
-                <a class="@LinkClass("timeline/settings")"
-                   href="timeline/settings"
-                   @onclick="NotifyNavigateAsync">
-                    <FaIcon Name="sliders" Class="tfa-icon" />
-                    <span>設定</span>
-                </a>
-                <a class="@LinkClass("timeline/operations")"
-                   href="timeline/operations"
-                   @onclick="NotifyNavigateAsync">
-                    <FaIcon Name="clipboard-list" Class="tfa-icon" />
-                    <span>操作ログ</span>
+                    <FaIcon Name="arrows-rotate" Class="tfa-icon" />
+                    <span>スキャン</span>
                 </a>
             </div>
-
-            <section>
-                <div class="flex items-center gap-2 px-3 py-2 font-semibold text-white">
-                    <FaIcon Name="file-audio" Class="tfa-icon text-teal-300" />
-                    <span>TimelineForAudio</span>
-                </div>
-                <div class="ml-3 border-l border-white/10 pl-3">
-                    <a class="@LinkClass("audio/files", "audio/file-detail")"
-                       href="audio/files"
-                       @onclick="NotifyNavigateAsync">
-                        <FaIcon Name="list-ul" Class="tfa-icon" />
-                        <span>ファイル一覧</span>
-                    </a>
-                </div>
-            </section>
-
-            <section>
-                <div class="flex items-center gap-2 px-3 py-2 font-semibold text-white">
-                    <FaIcon Name="terminal" Class="tfa-icon text-teal-300" />
-                    <span>TimelineForWindowsCodex</span>
-                </div>
-                <div class="ml-3 border-l border-white/10 pl-3">
-                    <a class="@LinkClass("windows-codex", "windows-codex/thread/*")"
-                       href="windows-codex"
-                       @onclick="NotifyNavigateAsync">
-                        <FaIcon Name="clock-rotate-left" Class="tfa-icon" />
-                        <span>スレッド一覧</span>
-                    </a>
-                </div>
-            </section>
-
-            <section>
-                <div class="flex items-center gap-2 px-3 py-2 font-semibold text-white">
-                    <FaIcon Name="comments" Class="tfa-icon text-teal-300" />
-                    <span>TimelineForChatGPT</span>
-                </div>
-                <div class="ml-3 border-l border-white/10 pl-3">
-                    <a class="@LinkClass("chatgpt", "chatgpt/thread/*")"
-                       href="chatgpt"
-                       @onclick="NotifyNavigateAsync">
-                        <FaIcon Name="file-zipper" Class="tfa-icon" />
-                        <span>スレッド一覧</span>
-                    </a>
-                </div>
-            </section>
-
-            <section>
-                <div class="flex items-center gap-2 px-3 py-2 font-semibold text-white">
-                    <FaIcon Name="image" Class="tfa-icon text-teal-300" />
-                    <span>TimelineForImage</span>
-                </div>
-                <div class="ml-3 border-l border-white/10 pl-3">
-                    <a class="@LinkClass("image", "image/file-detail")"
-                       href="image"
-                       @onclick="NotifyNavigateAsync">
-                        <FaIcon Name="images" Class="tfa-icon" />
-                        <span>ファイル一覧</span>
-                    </a>
-                </div>
-            </section>
-
-            <section class="border-t border-white/10 pt-3">
-                <div class="px-3 text-xs font-semibold uppercase tracking-normal text-slate-400">他プロダクト</div>
-                <div class="mt-2 grid gap-1">
-                    <div class="flex items-center gap-2 rounded-md px-3 py-2 text-slate-500">
-                        <FaIcon Name="video" Class="tfa-icon" />
-                        <span>TimelineForVideo</span>
-                    </div>
-                </div>
-            </section>
         </nav>
 
-        <div class="mt-auto border-t border-white/10 p-4 text-xs text-slate-300">
-            <div class="flex items-center gap-2 font-medium text-white">
-                <FaIcon Name="circle-check" Class="tfa-icon text-teal-300" />
-                <span>ローカル実行</span>
-            </div>
+        <div class="mt-auto border-t border-white/10 p-3 text-sm">
+            <button type="button"
+                    class="@ProductsLinkClass()"
+                    @onclick="OpenProductsAsync">
+                <FaIcon Name="boxes-stacked" Class="tfa-icon" />
+                <span>製品管理</span>
+            </button>
+            <button type="button"
+                    class="@SettingsLinkClass()"
+                    @onclick="OpenSettingsAsync">
+                <FaIcon Name="sliders" Class="tfa-icon" />
+                <span>設定</span>
+            </button>
         </div>
     </div>
 </aside>
@@ -123,7 +51,13 @@
     [Parameter]
     public EventCallback OnNavigate { get; set; }
 
-    private const string NavItemClass = "flex items-center gap-2 rounded-md px-3 py-2 hover:bg-white/10 hover:text-white";
+    [Parameter]
+    public bool SettingsOpen { get; set; }
+
+    [Parameter]
+    public bool ProductsOpen { get; set; }
+
+    private const string NavItemClass = "flex w-full items-center gap-2 rounded-md px-3 py-2 text-left hover:bg-white/10 hover:text-white";
 
     private string CurrentPath
     {
@@ -141,6 +75,33 @@
 
     private string LinkClass(params string[] activePaths)
         => IsActive(activePaths)
+            ? $"{NavItemClass} bg-white/15 text-white"
+            : $"{NavItemClass} text-slate-200";
+
+    private string ScanLinkClass()
+        => LinkClass(
+            "scan",
+            "timeline",
+            "audio/files",
+            "audio/file-detail",
+            "windows-codex",
+            "windows-codex/thread/*",
+            "chatgpt",
+            "chatgpt/thread/*",
+            "image",
+            "image/file-detail",
+            "video",
+            "video/*",
+            "pc",
+            "pc/*");
+
+    private string SettingsLinkClass()
+        => SettingsOpen
+            ? $"{NavItemClass} bg-white/15 text-white"
+            : $"{NavItemClass} text-slate-200";
+
+    private string ProductsLinkClass()
+        => ProductsOpen
             ? $"{NavItemClass} bg-white/15 text-white"
             : $"{NavItemClass} text-slate-200";
 
@@ -172,6 +133,18 @@
     }
 
     private Task NotifyNavigateAsync() => OnNavigate.InvokeAsync();
+
+    private async Task OpenSettingsAsync()
+    {
+        SettingsDialog.Open();
+        await OnNavigate.InvokeAsync();
+    }
+
+    private async Task OpenProductsAsync()
+    {
+        ProductsDialog.Open();
+        await OnNavigate.InvokeAsync();
+    }
 
     private void HandleLocationChanged(object? sender, LocationChangedEventArgs args)
     {

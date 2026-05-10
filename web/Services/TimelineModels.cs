@@ -1,4 +1,3 @@
-using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace Timeline.Web.Services;
@@ -20,6 +19,7 @@ public sealed class TimelineAppSettings
     public List<TimelineTimeZoneOption> TimeZones { get; set; } = [];
     public string WorkDirectory { get; set; } = @"C:\TimelineData\Timeline\work";
     public string StoreDirectory { get; set; } = @"C:\TimelineData\Timeline\store";
+    public TimelineCommonAiSettings CommonAi { get; set; } = new();
     public TimelineProductRegistry ProductRegistry { get; set; } = new();
     public TimelineAudioVerbalizationSettings AudioVerbalization { get; set; } = new();
 }
@@ -30,7 +30,13 @@ public sealed class TimelineAppSettingsSaveRequest
     public string TimeZoneId { get; set; } = "Asia/Tokyo";
     public string WorkDirectory { get; set; } = @"C:\TimelineData\Timeline\work";
     public string StoreDirectory { get; set; } = @"C:\TimelineData\Timeline\store";
+    public TimelineCommonAiSettings? CommonAi { get; set; }
     public TimelineProductRegistry? ProductRegistry { get; set; }
+}
+
+public sealed class TimelineCommonAiSettings
+{
+    public string ComputeMode { get; set; } = "auto";
 }
 
 public sealed class TimelineProductRegistry
@@ -61,7 +67,7 @@ public sealed class TimelineAudioVerbalizationSettings
     public int ChunkMinMinutes { get; set; } = 5;
     public int ChunkMaxMinutes { get; set; } = 10;
     public int ChunkMaxTurns { get; set; } = 12;
-    public int NearbyContextMinutes { get; set; } = 10;
+    public int NearbyContextMinutes { get; set; } = 1440;
     public int NearbyTimelineHintMaxEvents { get; set; } = 24;
     public int NearbyTimelineHintMaxChars { get; set; } = 500;
     public int MaxConcurrentJobs { get; set; } = 1;
@@ -82,84 +88,6 @@ public sealed class TimelineTimeZoneOption
     public string Label { get; set; } = "";
 }
 
-public sealed class TimelineConsoleLogResult
-{
-    public List<TimelineConsoleLogEntry> Entries { get; set; } = [];
-    public long LastId { get; set; }
-    public int Count { get; set; }
-    public string Message { get; set; } = "";
-}
-
-public sealed class TimelineConsoleLogEntry
-{
-    public long Id { get; set; }
-    public string OccurredAt { get; set; } = "";
-    public string Level { get; set; } = "";
-    public string Kind { get; set; } = "";
-    public string ProductName { get; set; } = "";
-    public string Action { get; set; } = "";
-    public string CommandLine { get; set; } = "";
-    public string OperationId { get; set; } = "";
-    public string ParentOperationId { get; set; } = "";
-    public int? ExitCode { get; set; }
-    public int? DurationMs { get; set; }
-    public string Stdout { get; set; } = "";
-    public string Stderr { get; set; } = "";
-    public string Message { get; set; } = "";
-}
-
-public sealed class TimelineOperationLogListResult
-{
-    public string LogRoot { get; set; } = "";
-    public int Total { get; set; }
-    public List<TimelineOperationSummary> Operations { get; set; } = [];
-    public string Message { get; set; } = "";
-}
-
-public sealed class TimelineOperationLogDetailResult
-{
-    public bool Available { get; set; }
-    public TimelineOperationSummary? Summary { get; set; }
-    public List<TimelineOperationEventRow> Events { get; set; } = [];
-    public string LogDirectory { get; set; } = "";
-    public string Message { get; set; } = "";
-}
-
-public sealed class TimelineOperationSummary
-{
-    public string OperationId { get; set; } = "";
-    public string ParentOperationId { get; set; } = "";
-    public string Kind { get; set; } = "";
-    public string ProductName { get; set; } = "";
-    public string Action { get; set; } = "";
-    public string State { get; set; } = "";
-    public string Message { get; set; } = "";
-    public string CommandLine { get; set; } = "";
-    public int? ExitCode { get; set; }
-    public int? DurationMs { get; set; }
-    public string UpdatedAt { get; set; } = "";
-    public JsonElement? Details { get; set; }
-    public string LogDirectory { get; set; } = "";
-}
-
-public sealed class TimelineOperationEventRow
-{
-    public string OperationId { get; set; } = "";
-    public string ParentOperationId { get; set; } = "";
-    public string OccurredAt { get; set; } = "";
-    public string Kind { get; set; } = "";
-    public string ProductName { get; set; } = "";
-    public string Action { get; set; } = "";
-    public string State { get; set; } = "";
-    public string Message { get; set; } = "";
-    public string CommandLine { get; set; } = "";
-    public int? ExitCode { get; set; }
-    public int? DurationMs { get; set; }
-    public string StdoutTail { get; set; } = "";
-    public string StderrTail { get; set; } = "";
-    public JsonElement? Details { get; set; }
-}
-
 public sealed class TimelineProductOverview
 {
     public bool ProductFound { get; set; }
@@ -172,6 +100,9 @@ public sealed class TimelineProductOverview
     public List<RootRow> InputRoots { get; set; } = [];
     public RootRow? OutputRoot { get; set; }
     public int AudioFileCount { get; set; }
+    public int AudioItemCount { get; set; }
+    public int AudioVerbalizationTargetFileCount { get; set; }
+    public int AudioVerbalizedFileCount { get; set; }
     public string WorkerState { get; set; } = "未確認";
     public AudioRunProgress? ActiveRun { get; set; }
     public bool RestartRequired { get; set; }
@@ -370,6 +301,20 @@ public sealed class AudioVerbalizationBulkStatus
     public string Message { get; set; } = "";
 }
 
+public sealed class AudioVerbalizationBulkTargetSummary
+{
+    public bool Available { get; set; }
+    public int TargetCount { get; set; }
+    public int FailedItems { get; set; }
+    public int ChangedItems { get; set; }
+    public int NotStartedItems { get; set; }
+    public int UnknownItems { get; set; }
+    public int ActiveOrStaleItems { get; set; }
+    public Dictionary<string, int> ByState { get; set; } = [];
+    public string UpdatedAt { get; set; } = "";
+    public string Message { get; set; } = "";
+}
+
 public sealed class AudioVerbalizationOllamaStatus
 {
     public bool Available { get; set; }
@@ -508,6 +453,8 @@ public sealed class ProductRuntimeRow
     public bool Enabled { get; set; } = true;
     public bool ProductFound { get; set; }
     public bool ComposeFound { get; set; }
+    public bool StartFound { get; set; }
+    public bool StopFound { get; set; }
     public string ContainerName { get; set; } = "";
     public string State { get; set; } = "";
     public string Status { get; set; } = "";
@@ -1021,6 +968,7 @@ public sealed class ImageItemListResult
 public sealed class ImageFileListResult
 {
     public int Total { get; set; }
+    public int ProcessedTotal { get; set; }
     public TimelinePagination Pagination { get; set; } = new();
     public List<ImageItemRow> Files { get; set; } = [];
 }
@@ -1127,6 +1075,172 @@ public sealed class ImageSettingsSaveRequest
     public List<ImageInputRoot> InputRoots { get; set; } = [];
     public ImageDirectoryRoot OutputRoot { get; set; } = new();
     public string OutputRootPath { get; set; } = "";
+}
+
+public sealed class VideoOverview
+{
+    public bool ProductFound { get; set; }
+    public string ProductPath { get; set; } = "";
+    public bool SettingsValid { get; set; }
+    public VideoSettings Settings { get; set; } = new();
+    public int SourceFileCount { get; set; }
+    public int ItemCount { get; set; }
+    public int AudioVerbalizationTargetFileCount { get; set; }
+    public int AudioVerbalizedFileCount { get; set; }
+    public List<string> CpuDevices { get; set; } = [];
+    public List<string> GpuDevices { get; set; } = [];
+    public string Message { get; set; } = "";
+}
+
+public sealed class VideoSettings
+{
+    public string SettingsPath { get; set; } = "";
+    public List<VideoInputRoot> InputRoots { get; set; } = [];
+    public VideoDirectoryRoot OutputRoot { get; set; } = new();
+    public string ComputeMode { get; set; } = "gpu";
+    public bool HasToken { get; set; }
+    public string TokenPreview { get; set; } = "";
+    public List<string> Issues { get; set; } = [];
+}
+
+public sealed class VideoInputRoot
+{
+    public string Id { get; set; } = "";
+    public string DisplayName { get; set; } = "";
+    public string Path { get; set; } = "";
+    public string DisplayPath { get; set; } = "";
+    public bool Enabled { get; set; } = true;
+    public bool Exists { get; set; }
+}
+
+public sealed class VideoDirectoryRoot
+{
+    public string Id { get; set; } = "";
+    public string DisplayName { get; set; } = "";
+    public string Path { get; set; } = "";
+    public string DisplayPath { get; set; } = "";
+    public bool Exists { get; set; }
+}
+
+public sealed class VideoSettingsSaveRequest
+{
+    public List<VideoInputRoot> InputRoots { get; set; } = [];
+    public VideoDirectoryRoot OutputRoot { get; set; } = new();
+    public string OutputRootPath { get; set; } = "";
+    public string Token { get; set; } = "";
+    public string ComputeMode { get; set; } = "gpu";
+}
+
+public sealed class VideoFileListResult
+{
+    public int Total { get; set; }
+    public TimelinePagination Pagination { get; set; } = new();
+    public List<VideoFileRow> Files { get; set; } = [];
+}
+
+public sealed class VideoFileRow
+{
+    public string ItemId { get; set; } = "";
+    public string SourceFileIdentity { get; set; } = "";
+    public string SourcePath { get; set; } = "";
+    public string RootPath { get; set; } = "";
+    public string DisplayPath { get; set; } = "";
+    public string RelativePath { get; set; } = "";
+    public string Directory { get; set; } = "";
+    public string FileName { get; set; } = "";
+    public string Extension { get; set; } = "";
+    public long SizeBytes { get; set; }
+    public string ModifiedAt { get; set; } = "";
+    public double? DurationSec { get; set; }
+    public string Status { get; set; } = "";
+    public bool HasTimeline { get; set; }
+    public int FrameCount { get; set; }
+    public int TextBlockCount { get; set; }
+    public int SpeechCandidateCount { get; set; }
+    public int TurnCount { get; set; }
+    public AudioVerbalizationStatus AudioVerbalization { get; set; } = new();
+}
+
+public sealed class VideoFileDetailResult
+{
+    public bool Available { get; set; }
+    public string Message { get; set; } = "";
+    public VideoFileRow? File { get; set; }
+    public bool VideoAvailable { get; set; }
+    public bool TimelineAvailable { get; set; }
+    public List<AudioTimelineTurn> Turns { get; set; } = [];
+    public AudioVerbalizationStatus AudioVerbalization { get; set; } = new();
+    public AudioVerbalizationResult AudioVerbalizationResult { get; set; } = new();
+}
+
+public sealed class PcOverview
+{
+    public bool ProductFound { get; set; }
+    public string ProductPath { get; set; } = "";
+    public bool SettingsValid { get; set; }
+    public PcSettings Settings { get; set; } = new();
+    public int ItemCount { get; set; }
+    public string Message { get; set; } = "";
+}
+
+public sealed class PcSettings
+{
+    public string SettingsPath { get; set; } = "";
+    public string OutputRoot { get; set; } = "";
+    public string OutputRootDisplayPath { get; set; } = "";
+    public bool OutputRootReady { get; set; }
+    public string RedactionProfile { get; set; } = "";
+    public string MockProfile { get; set; } = "";
+}
+
+public sealed class PcItemListResult
+{
+    public int Total { get; set; }
+    public TimelinePagination Pagination { get; set; } = new();
+    public List<PcItemRow> Items { get; set; } = [];
+}
+
+public sealed class PcItemRow
+{
+    public string ItemId { get; set; } = "";
+    public string ItemType { get; set; } = "";
+    public string Title { get; set; } = "";
+    public string CreatedAt { get; set; } = "";
+    public string UpdatedAt { get; set; } = "";
+    public int EventCount { get; set; }
+    public string LatestUpdateStatus { get; set; } = "";
+    public string TimelinePath { get; set; } = "";
+    public string ConvertInfoPath { get; set; } = "";
+}
+
+public sealed class PcRefreshResult
+{
+    public string RunId { get; set; } = "";
+    public string State { get; set; } = "";
+    public string ItemId { get; set; } = "";
+    public string EventId { get; set; } = "";
+    public string ReportPath { get; set; } = "";
+    public string CompletedAt { get; set; } = "";
+}
+
+public sealed class PcItemsRequest
+{
+    public List<string> ItemIds { get; set; } = [];
+    public string OutputPath { get; set; } = "";
+}
+
+public sealed class PcItemsDownloadResult
+{
+    public string ArchivePath { get; set; } = "";
+    public List<string> ItemIds { get; set; } = [];
+}
+
+public sealed class PcSettingsSaveRequest
+{
+    public string OutputRoot { get; set; } = "";
+    public string OutputRootPath { get; set; } = "";
+    public string RedactionProfile { get; set; } = "";
+    public string MockProfile { get; set; } = "";
 }
 
 public sealed class HelperHealth

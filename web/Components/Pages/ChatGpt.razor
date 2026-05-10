@@ -5,6 +5,12 @@
 
 <PageTitle>スレッド一覧 - Timeline</PageTitle>
 
+<TimelineBreadcrumbs>
+    <a href="scan">スキャン</a>
+    <span class="tfa-breadcrumb-separator">/</span>
+    <span aria-current="page">ChatGPT スレッド一覧</span>
+</TimelineBreadcrumbs>
+
 <div class="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
     <div>
         <h1 class="tfa-title flex items-center gap-2">
@@ -124,58 +130,25 @@ else if (_overview is not null)
         </section>
     }
 
-    <div class="grid gap-4 md:grid-cols-4">
+    <div class="tfa-summary-grid">
         <section class="tfa-card tfa-card-pad">
             <div class="flex items-start justify-between gap-3">
                 <div>
-                    <div class="tfa-kicker">スレッド数</div>
-                    <div class="mt-2 text-3xl font-semibold">@_overview.ItemCount</div>
+                    <div class="tfa-kicker">取り込み済み</div>
+                    <div class="mt-2 text-3xl font-semibold">@ImportedThreadCountLabel</div>
                 </div>
                 <span class="tfa-icon-box text-sky-800">
                     <FaIcon Name="comments" Class="tfa-icon" />
                 </span>
             </div>
         </section>
-        <section class="tfa-card tfa-card-pad">
-            <div class="flex items-start justify-between gap-3">
-                <div>
-                    <div class="tfa-kicker">表示中メッセージ数</div>
-                    <div class="mt-2 text-3xl font-semibold">@TotalMessageCount</div>
-                </div>
-                <span class="tfa-icon-box text-teal-700">
-                    <FaIcon Name="comments" Class="tfa-icon" />
-                </span>
-            </div>
-        </section>
-        <section class="tfa-card tfa-card-pad">
-            <div class="flex items-start justify-between gap-3">
-                <div>
-                    <div class="tfa-kicker">入力ZIP</div>
-                    <div class="mt-2 text-2xl font-semibold">アップロード</div>
-                </div>
-                <span class="tfa-icon-box text-slate-600">
-                    <FaIcon Name="file-zipper" Class="tfa-icon" />
-                </span>
-            </div>
-        </section>
-        <section class="tfa-card tfa-card-pad">
-            <div class="flex items-start justify-between gap-3">
-                <div>
-                    <div class="tfa-kicker">処理ステータス</div>
-                    <div class="mt-2 text-2xl font-semibold">@ProcessingSummaryLabel</div>
-                </div>
-                <span class="@($"tfa-icon-box {ProcessingSummaryIconClass}")">
-                    <FaIcon Name="@ProcessingSummaryIcon" Class="@($"tfa-icon {(ShowProcessingProgress ? "fa-spin" : "")}")" />
-                </span>
-            </div>
-        </section>
     </div>
 
-    <section class="tfa-card mt-5 overflow-hidden">
+    <section class="tfa-card tfa-list-card mt-5 overflow-hidden">
         <div class="tfa-card-pad flex items-center justify-between gap-3 border-b border-line">
             <h2 class="flex items-center gap-2 text-lg font-semibold">
                 <FaIcon Name="comments" Class="tfa-icon text-accent" />
-                <span>スレッド一覧</span>
+                <span>アイテム一覧</span>
             </h2>
             <span class="text-sm text-slate-500">@ThreadListStatusLabel</span>
         </div>
@@ -210,7 +183,7 @@ else if (_overview is not null)
                     </button>
                 </div>
             </div>
-            <div class="overflow-x-auto">
+            <div class="overflow-x-auto tfa-long-list-scroll tfa-list-scroll">
                 <table class="tfa-table">
                     <thead>
                         <tr>
@@ -293,7 +266,7 @@ else if (_overview is not null)
 }
 
 @code {
-    private const int ThreadPageSize = 100;
+    private const int ThreadPageSize = 25;
 
     private ChatGptOverview? _overview;
     private TimelineAppSettings? _timelineSettings;
@@ -326,6 +299,7 @@ else if (_overview is not null)
         : _lastLoadedAt is null
             ? ""
             : $"最終更新 {_lastLoadedAt.Value:HH:mm:ss}";
+    private string ImportedThreadCountLabel => $"{(_overview?.ItemCount ?? 0):N0} 件";
     private int TotalMessageCount => Threads.Sum(thread => thread.MessageCount);
     private ChatGptJobRow? ActiveJob => _overview?.Jobs.FirstOrDefault(IsActiveJob);
     private bool ShowProcessingProgress => _refreshing || ActiveJob is not null;
@@ -434,6 +408,7 @@ else if (_overview is not null)
 
         _loadingMoreThreads = true;
         _error = null;
+        await InvokeAsync(StateHasChanged);
         try
         {
             await LoadThreadPageAsync(page, reset: true);

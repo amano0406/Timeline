@@ -6,7 +6,9 @@ param(
     [string]$AudioProductPath = "C:\apps\TimelineForAudio",
     [string]$WindowsCodexProductPath = "C:\apps\TimelineForWindowsCodex",
     [string]$ChatGptProductPath = "C:\apps\TimelineForChatGPT",
-    [string]$ImageProductPath = "C:\apps\TimelineForImage"
+    [string]$ImageProductPath = "C:\apps\TimelineForImage",
+    [string]$VideoProductPath = "C:\apps\TimelineForVideo",
+    [string]$PcProductPath = "C:\apps\TimelineForPC"
 )
 
 Set-StrictMode -Version Latest
@@ -23,6 +25,8 @@ if (-not (Test-Path -LiteralPath $helperScript -PathType Leaf)) {
     -WindowsCodexProductPath $WindowsCodexProductPath `
     -ChatGptProductPath $ChatGptProductPath `
     -ImageProductPath $ImageProductPath `
+    -VideoProductPath $VideoProductPath `
+    -PcProductPath $PcProductPath `
     -ImportOnly
 
 function Write-AudioVerbalizationBulkWorkerFailure {

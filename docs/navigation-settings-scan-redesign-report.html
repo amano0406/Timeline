@@ -1,0 +1,1207 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Timeline 画面構造再設計レポート</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f4f7fb;
+      --panel: #ffffff;
+      --ink: #111827;
+      --muted: #5f6b7a;
+      --line: #d8e0ea;
+      --accent: #2f7d74;
+      --accent-soft: #e5f3f1;
+      --blue-soft: #eaf2ff;
+      --warn: #8a4b16;
+      --warn-soft: #fff2df;
+      --danger: #9f1d1d;
+      --danger-soft: #fff1f1;
+      --code: #eef2f7;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: "Yu Gothic", "Meiryo", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.75;
+    }
+
+    main {
+      width: min(1180px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 40px 0 72px;
+    }
+
+    h1,
+    h2,
+    h3 {
+      margin: 0;
+      line-height: 1.35;
+      letter-spacing: 0;
+    }
+
+    h1 {
+      font-size: clamp(2rem, 4vw, 3rem);
+    }
+
+    h2 {
+      margin-top: 36px;
+      font-size: 1.5rem;
+    }
+
+    h3 {
+      margin-top: 24px;
+      font-size: 1.12rem;
+    }
+
+    p {
+      margin: 10px 0 0;
+    }
+
+    ul,
+    ol {
+      margin-top: 10px;
+      padding-left: 1.35rem;
+    }
+
+    li {
+      margin-top: 6px;
+    }
+
+    code {
+      padding: 2px 6px;
+      border-radius: 5px;
+      background: var(--code);
+      font-family: Consolas, "Liberation Mono", monospace;
+      font-size: .92em;
+    }
+
+    table {
+      display: block;
+      width: 100%;
+      overflow-x: auto;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      border-collapse: collapse;
+      background: var(--panel);
+    }
+
+    th,
+    td {
+      min-width: 160px;
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      background: #f8fafc;
+      color: #334155;
+      font-size: .9rem;
+      white-space: nowrap;
+    }
+
+    tr:last-child td {
+      border-bottom: 0;
+    }
+
+    .lead {
+      max-width: 920px;
+      color: #263445;
+      font-size: 1.08rem;
+    }
+
+    .meta {
+      margin-top: 10px;
+      color: var(--muted);
+      font-size: .92rem;
+    }
+
+    .panel {
+      margin-top: 18px;
+      padding: 22px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      box-shadow: 0 8px 20px rgba(15, 23, 42, .05);
+    }
+
+    .note {
+      border-left: 4px solid var(--accent);
+      background: var(--accent-soft);
+    }
+
+    .info {
+      border-left: 4px solid #4f83cc;
+      background: var(--blue-soft);
+    }
+
+    .implemented {
+      border-left: 4px solid #2f7dff;
+      background: #eaf2ff;
+    }
+
+    .warning {
+      border-left: 4px solid #e0a84a;
+      background: var(--warn-soft);
+      color: var(--warn);
+    }
+
+    .danger {
+      border-left: 4px solid #e46a6a;
+      background: var(--danger-soft);
+      color: var(--danger);
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px;
+      margin-top: 16px;
+    }
+
+    .card {
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+    }
+
+    .card p {
+      color: var(--muted);
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 3px 9px;
+      border-radius: 999px;
+      background: var(--accent-soft);
+      color: #1f665f;
+      font-size: .8rem;
+      font-weight: 700;
+      vertical-align: middle;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 260px minmax(0, 1fr);
+      gap: 18px;
+      margin-top: 18px;
+    }
+
+    .sidebar-demo {
+      min-height: 520px;
+      padding: 16px;
+      border-radius: 8px;
+      background: #162033;
+      color: #e8eef8;
+    }
+
+    .nav-group {
+      display: grid;
+      gap: 6px;
+      margin-top: 18px;
+    }
+
+    .nav-item,
+    .utility-item {
+      padding: 9px 11px;
+      border-radius: 6px;
+      background: rgba(255, 255, 255, .08);
+    }
+
+    .nav-item.secondary {
+      background: transparent;
+      color: #cbd5e1;
+    }
+
+    .utility {
+      margin-top: 64px;
+      padding-top: 14px;
+      border-top: 1px solid rgba(255, 255, 255, .15);
+    }
+
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 18px;
+    }
+
+    .flow-step {
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      text-align: center;
+    }
+
+    .flow-step strong {
+      display: block;
+      margin-bottom: 4px;
+      color: #0f3f3a;
+    }
+
+    .flow-step span {
+      display: block;
+      color: var(--muted);
+      font-size: .9rem;
+    }
+
+    .decision {
+      display: grid;
+      gap: 12px;
+      margin-top: 16px;
+    }
+
+    .decision-item {
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+    }
+
+    .decision-item strong {
+      color: #0f3f3a;
+    }
+
+    .modal-demo {
+      position: relative;
+      min-height: 320px;
+      margin-top: 16px;
+      padding: 24px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: linear-gradient(135deg, #eef4fb, #f8fafc);
+    }
+
+    .modal-window {
+      position: relative;
+      width: min(760px, 100%);
+      max-height: 58vh;
+      margin: 0 auto;
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--panel);
+      box-shadow: 0 20px 40px rgba(15, 23, 42, .18);
+    }
+
+    .modal-head {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(255, 255, 255, .96);
+    }
+
+    .modal-close {
+      display: inline-grid;
+      width: 36px;
+      height: 36px;
+      place-items: center;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      font-size: 22px;
+      line-height: 1;
+    }
+
+    .modal-body {
+      display: grid;
+      gap: 14px;
+      padding: 18px;
+    }
+
+    .modal-foot {
+      position: sticky;
+      bottom: 0;
+      display: flex;
+      justify-content: flex-end;
+      padding: 14px 18px;
+      border-top: 1px solid var(--line);
+      background: rgba(255, 255, 255, .96);
+    }
+
+    .button-demo {
+      min-height: 40px;
+      padding: 8px 16px;
+      border: 1px solid #1f665f;
+      border-radius: 8px;
+      background: var(--accent);
+      color: #fff;
+      font-weight: 700;
+    }
+
+    .pattern-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 16px;
+      margin-top: 16px;
+    }
+
+    .pattern-card {
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+    }
+
+    .pattern-card h3 {
+      margin-top: 0;
+    }
+
+    .screen-box {
+      display: grid;
+      gap: 8px;
+      margin-top: 12px;
+      padding: 12px;
+      border: 1px dashed #9aa8bb;
+      border-radius: 8px;
+      background: #f8fafc;
+      font-size: .92rem;
+    }
+
+    .screen-row {
+      padding: 8px 10px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
+    }
+
+    @media (max-width: 860px) {
+      .grid,
+      .layout,
+      .flow,
+      .pattern-grid {
+        grid-template-columns: 1fr;
+      }
+
+      main {
+        width: min(100% - 20px, 1180px);
+        padding-top: 24px;
+      }
+    }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Timeline 画面構造再設計レポート</h1>
+    <p class="lead">
+      設定、製品管理、スキャン、時間軸、分析、ログの役割を整理し、
+      Timeline 本体が「サブ製品の寄せ集め」ではなく「時間軸を扱う製品」として見えるようにするための設計レポート。
+    </p>
+    <p class="meta">作成日: 2026-05-08 / 対象: Timeline Web UI / 状態: 段階実装中</p>
+  </header>
+
+  <section class="panel implemented">
+    <h2>実装済み</h2>
+    <ul>
+      <li>サイドバー上部の設定を外し、左下の補助導線へ移動した。</li>
+      <li>操作ログページ、右下コンソール、ローカル実行表示を通常ユーザー向けUIから削除した。</li>
+      <li>設定はページではなくモーダルとして表示する構成に寄せた。</li>
+      <li>設定モーダル右上に固定の閉じるボタンを追加し、縦幅を抑えた。</li>
+      <li>保存ボタンを1つに整理し、保存前に変更差分を確認するステップを追加した。</li>
+      <li>未保存の設定がある状態で閉じる場合は、破棄確認を表示する。</li>
+      <li>左下の補助導線に製品管理を追加し、製品の存在、配置、状態を読み取り専用で確認できるモーダルを追加した。</li>
+    </ul>
+  </section>
+
+  <section class="panel note">
+    <h2>要約</h2>
+    <p>
+      現在の UI は、サブ製品が増えたことで「各製品の一覧ページ」と「各製品の設定」がサイドバーに広がり始めている。
+      初期段階では正しいが、Timeline 本体の価値が見えにくくなる。
+    </p>
+    <p>
+      次の段階では、サイドバーの主導線を <strong>ダッシュボード、スキャン、時間軸、分析、レポート</strong> に絞り、
+      設定と製品管理だけを左下の補助領域へ退避するのがよい。
+      ローカル実行とコンソールはユーザー向けUIから削除し、状態やログは内部で保持する。
+    </p>
+  </section>
+
+  <section>
+    <h2>今回の論点</h2>
+    <div class="grid">
+      <div class="card">
+        <h3>設定が主機能に見える</h3>
+        <p>
+          設定は日常的に使うページではない。現在のサイドバー上では通常ページと同列に見えるため、
+          ユーザーの視線を主作業から外してしまう。
+        </p>
+      </div>
+      <div class="card">
+        <h3>製品別メニューが増えすぎる</h3>
+        <p>
+          Audio、WindowsCodex、ChatGPT、Image に続き Video、PC、Web などが増えると、
+          サブ製品名と一覧ページだけでナビゲーションが膨らむ。
+        </p>
+      </div>
+      <div class="card">
+        <h3>ログの入口が重複している</h3>
+        <p>
+          操作ログページとコンソールが並存している。通常ユーザーに見せる価値は低く、
+          インシデント対応用に内部ログとして保持する方がよい。
+        </p>
+      </div>
+      <div class="card">
+        <h3>時間軸の前処理が見えにくい</h3>
+        <p>
+          スキャンで素材を取得し、時間軸で整理し、分析や記事生成に使うという段階が、
+          画面構造としてまだ十分に分離されていない。
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>ユーザーの心理モデル</h2>
+    <p>
+      この製品を使うユーザーは、サブ製品名や CLI の都合を知りたいわけではない。
+      期待しているのは、手元の素材が取り込まれ、時間軸に並び、分析や出力に使える状態になること。
+    </p>
+    <table>
+      <thead>
+      <tr>
+        <th>ユーザーの問い</th>
+        <th>画面上の受け皿</th>
+        <th>隠したい内部概念</th>
+      </tr>
+      </thead>
+      <tbody>
+      <tr>
+        <td>素材はちゃんと見つかっているか</td>
+        <td>スキャン</td>
+        <td>製品別 CLI、items list、files list、worker 出力</td>
+      </tr>
+      <tr>
+        <td>変換できているか、失敗していないか</td>
+        <td>スキャン詳細、進捗、警告</td>
+        <td>run、artifact、generated、source identity</td>
+      </tr>
+      <tr>
+        <td>いつ何があったか</td>
+        <td>時間軸</td>
+        <td>サブ製品ごとの JSON 形式差、タイムゾーン補正</td>
+      </tr>
+      <tr>
+        <td>LLM に渡せる読みやすい形になっているか</td>
+        <td>時間軸の整理、言語化状態</td>
+        <td>phone token、OCR raw、intermediate chunk</td>
+      </tr>
+      <tr>
+        <td>何を分析できるか</td>
+        <td>分析、レポート、記事生成</td>
+        <td>ストア構造、内部インデックス、ジョブ管理</td>
+      </tr>
+      <tr>
+        <td>問題が起きた時に原因を追えるか</td>
+        <td>通常UIには出さない。内部ログ、診断パック、インシデントレポートで扱う。</td>
+        <td>CLI標準出力、PowerShellログ、operation log、worker log</td>
+      </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>推奨する全体構造</h2>
+    <p>
+      サイドバーは「毎日使う作業」を中心にする。設定や製品管理は重要だが、日常操作ではないため左下の補助領域へ移す。
+      ローカル実行は製品前提そのものなので表示しない。コンソールもユーザー向けの常設UIから削除する。
+    </p>
+
+    <div class="layout">
+      <div class="sidebar-demo" aria-label="推奨サイドバー構成">
+        <strong>Timeline</strong>
+        <div class="nav-group">
+          <div class="nav-item">ダッシュボード</div>
+          <div class="nav-item">スキャン</div>
+          <div class="nav-item">時間軸</div>
+          <div class="nav-item">分析</div>
+          <div class="nav-item">レポート</div>
+        </div>
+        <div class="utility">
+          <div class="utility-item">製品管理</div>
+          <div class="utility-item">設定</div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h3>配置方針</h3>
+        <ul>
+          <li><strong>上部</strong>: Timeline 本体の主作業だけを置く。</li>
+          <li><strong>中段</strong>: サブ製品名を常時展開しない。必要ならスキャン画面内のフィルタやタブで扱う。</li>
+          <li><strong>左下</strong>: 設定と製品管理だけを置く。</li>
+          <li><strong>表示しない</strong>: ローカル実行、コンソール、操作ログは通常ユーザー向けUIから外す。</li>
+        </ul>
+        <p>
+          これにより、サブ製品が増えてもサイドバーの密度が増えにくい。
+          新製品追加時も「スキャンの対象が増える」と認識できる。
+        </p>
+        <p>
+          異常時の調査情報は内部ログとして残し、必要に応じて診断パックやインシデントレポートとして取り出す。
+          常時表示のコンソールは、ユーザー体験としては負担が大きい。
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>設定の再設計</h2>
+    <p>
+      設定は通常ページではなく、左下の補助メニューから開くモーダルとして扱う。
+      直接 URL は保守用に残してもよいが、通常導線はページ遷移にしない。
+    </p>
+
+    <h3>モーダルの見た目</h3>
+    <table>
+      <thead>
+      <tr>
+        <th>項目</th>
+        <th>推奨</th>
+        <th>理由</th>
+      </tr>
+      </thead>
+      <tbody>
+      <tr>
+        <td>縦幅</td>
+        <td>現在より狭くする。目安は <code>max-height: 56vh</code> から <code>64vh</code>。</td>
+        <td>画面全体を覆うとページに近く見える。設定は補助操作なので、背後の作業画面が残る方がよい。</td>
+      </tr>
+      <tr>
+        <td>横幅</td>
+        <td>現状程度でよい。</td>
+        <td>設定項目は横幅がある方がパスやモデル情報を読みやすい。</td>
+      </tr>
+      <tr>
+        <td>ヘッダー</td>
+        <td>タイトル、モード表示、右上の固定された×ボタン。</td>
+        <td>スクロールしても閉じる場所が変わらないため、ユーザーが迷いにくい。</td>
+      </tr>
+      <tr>
+        <td>フッター</td>
+        <td>左下に保存ボタン。ボタンは原則1つ。</td>
+        <td>右上の×で閉じ、左下の保存で確定する形に統一する。</td>
+      </tr>
+      <tr>
+        <td>更新ボタン</td>
+        <td>削除。</td>
+        <td>設定画面で更新すると、保存前の値と読み込み値が衝突しやすく、通常ユーザーにも目的が分かりにくい。</td>
+      </tr>
+      <tr>
+        <td>戻すボタン</td>
+        <td>通常は不要。閉じる時に未保存確認を出す。</td>
+        <td>「戻す」が何を戻すのかが分かりにくい。</td>
+      </tr>
+      </tbody>
+    </table>
+
+    <div class="modal-demo" aria-label="設定モーダルの推奨イメージ">
+      <div class="modal-window">
+        <div class="modal-head">
+          <strong>設定</strong>
+          <button class="modal-close" type="button" aria-label="閉じる">×</button>
+        </div>
+        <div class="modal-body">
+          <div class="screen-row">通常モード / プロモード</div>
+          <div class="screen-row">表示言語、タイムゾーン</div>
+          <div class="screen-row">保存先、入力データ、AI設定</div>
+          <div class="screen-row">製品別の詳細設定は折りたたみ</div>
+        </div>
+        <div class="modal-foot">
+          <button class="button-demo" type="button">保存</button>
+        </div>
+      </div>
+    </div>
+
+    <h3>TW Elements モーダルとの比較</h3>
+    <table>
+      <thead>
+      <tr>
+        <th>方式</th>
+        <th>利点</th>
+        <th>懸念</th>
+        <th>判断</th>
+      </tr>
+      </thead>
+      <tbody>
+      <tr>
+        <td>現行の Blazor 管理モーダル</td>
+        <td>状態管理、保存確認、未保存差分、プロ/通常切り替えを C# 側で制御しやすい。</td>
+        <td>見た目の部品品質は自前で整える必要がある。</td>
+        <td>本命。設定のような状態が重い画面に向く。</td>
+      </tr>
+      <tr>
+        <td>TW Elements モーダル</td>
+        <td>標準的な見た目、アニメーション、属性ベースの実装が使える。</td>
+        <td>Blazor 再描画後の初期化、状態同期、閉じる時の未保存確認が複雑になりやすい。</td>
+        <td>AB比較用に試作する価値はあるが、全面採用は慎重に判断する。</td>
+      </tr>
+      </tbody>
+    </table>
+
+    <h3>通常モードとプロモードの制御</h3>
+    <div class="panel warning">
+      <p>
+        プロモードで個別設定を変更したあと通常モードに戻す場合、単なる表示切り替えとして扱うと値の不整合が起きる。
+        ここは「表示モード」ではなく「設定管理方式」の切り替えとして扱うべき。
+      </p>
+    </div>
+
+    <table>
+      <thead>
+      <tr>
+        <th>状態</th>
+        <th>意味</th>
+        <th>保存時の扱い</th>
+      </tr>
+      </thead>
+      <tbody>
+      <tr>
+        <td>通常モード</td>
+        <td>Timeline が保存先、作業領域、製品別出力先を自動管理する。</td>
+        <td>共通設定を保存し、製品別の個別上書きは使わない。</td>
+      </tr>
+      <tr>
+        <td>プロモード</td>
+        <td>各製品や内部ディレクトリを個別に設定できる。</td>
+        <td>明示された個別設定を保存する。通常モードの自動展開とは分ける。</td>
+      </tr>
+      <tr>
+        <td>プロから通常へ戻す</td>
+        <td>個別設定の利用をやめ、自動管理へ戻る。</td>
+        <td>確認を出し、保存ボタンで確定する。閉じるだけなら破棄する。</td>
+      </tr>
+      </tbody>
+    </table>
+
+    <h3>保存ロジックの推奨</h3>
+    <ol>
+      <li>モーダルを開いた時点で、設定のスナップショットを1つ読み込む。</li>
+      <li>通常モードとプロモードは同じ draft model を編集する。</li>
+      <li>表示上は通常モードで省略しても、内部では draft に差分を保持する。</li>
+      <li>保存ボタンは1つだけにする。</li>
+      <li>保存ボタンを押したら、変更差分を一覧表示する確認ステップを挟む。</li>
+      <li>差分確認で「確定」を押した時だけ保存する。</li>
+      <li>閉じる時に未保存差分があれば確認する。</li>
+      <li>保存成功後だけ実設定へ反映し、必要なら再起動が必要であることを表示する。</li>
+    </ol>
+
+    <h3>保存前確認で見せる差分</h3>
+    <table>
+      <thead>
+      <tr>
+        <th>表示項目</th>
+        <th>例</th>
+        <th>目的</th>
+      </tr>
+      </thead>
+      <tbody>
+      <tr>
+        <td>変更対象</td>
+        <td>TimelineForAudio / AI処理方法</td>
+        <td>どの設定を変えるのか分かる。</td>
+      </tr>
+      <tr>
+        <td>変更前</td>
+        <td>CPU</td>
+        <td>戻したい時に判断できる。</td>
+      </tr>
+      <tr>
+        <td>変更後</td>
+        <td>GPU</td>
+        <td>保存後の状態を事前確認できる。</td>
+      </tr>
+      <tr>
+        <td>影響</td>
+        <td>TimelineForAudio の再起動が必要</td>
+        <td>保存後に何が起きるか分かる。</td>
+      </tr>
+      </tbody>
+    </table>
+
+    <h3>再起動が必要な設定</h3>
+    <p>
+      設定によっては、保存だけでは反映されない。特に CPU/GPU 切り替え、ディレクトリのマウント、
+      Docker Compose の構成に関わる項目は、Timeline 本体またはサブ製品の再起動が必要になる。
+    </p>
+    <table>
+      <thead>
+      <tr>
+        <th>設定例</th>
+        <th>再起動対象</th>
+        <th>UIでの扱い</th>
+      </tr>
+      </thead>
+      <tbody>
+      <tr>
+        <td>AI処理方法 CPU / GPU</td>
+        <td>対象サブ製品</td>
+        <td>保存前確認に「再起動が必要」と表示し、確定後に再起動中ステータスを出す。</td>
+      </tr>
+      <tr>
+        <td>入力ディレクトリ、出力ディレクトリ</td>
+        <td>対象サブ製品、場合により Timeline helper</td>
+        <td>保存後に再スキャンが必要なことも合わせて表示する。</td>
+      </tr>
+      <tr>
+        <td>Timeline の保存先</td>
+        <td>Timeline 本体</td>
+        <td>保存先の移行、再起動、再読み込みの扱いを分けて表示する。</td>
+      </tr>
+      </tbody>
+    </table>
+
+    <div class="panel warning">
+      <p>
+        再起動の実行はサブ製品操作に当たるため、引き続き各製品の既存入口または <code>cli.ps1</code> 経由に限定する。
+        Timeline がサブ製品 Docker を直接操作する設計にはしない。
+      </p>
+    </div>
+  </section>
+
+  <section>
+    <h2>製品管理の位置づけ</h2>
+    <p>
+      製品管理は設定に近いが、同じものではない。
+      設定は「使い方を決める」機能で、製品管理は「使える製品を増やす、更新する、外す」機能。
+    </p>
+    <table>
+      <thead>
+      <tr>
+        <th>区分</th>
+        <th>含める内容</th>
+        <th>通常ユーザーへの見せ方</th>
+      </tr>
+      </thead>
+      <tbody>
+      <tr>
+        <td>設定</td>
+        <td>表示言語、タイムゾーン、保存先、入力ディレクトリ、AIトークン、処理方法</td>
+        <td>左下の設定からモーダルで開く。</td>
+      </tr>
+      <tr>
+        <td>製品管理</td>
+        <td>Audio、Image、ChatGPT、WindowsCodex、Video、PC などのインストール、更新、削除、配置確認</td>
+        <td>左下の製品管理から開く。設定とは入口を分ける。</td>
+      </tr>
+      </tbody>
+    </table>
+
+    <div class="panel info">
+      <p>
+        将来的に Timeline 本体だけをインストールし、そこからサブ製品を追加していくなら、
+        製品管理はかなり重要になる。ただし、設定モーダルにすべて詰めると重くなるため、
+        左下の隣接メニューとして独立させるのがよい。
+      </p>
+    </div>
+  </section>
+
+  <section>
+    <h2>ログとコンソール</h2>
+    <p>
+      操作ログは重要だが、通常ユーザーに見せる画面としては不要。
+      コンソールも、ユーザーが喜ぶ情報ではないため、表からきれいに削除する。
+      ただし、インシデント対応に備えて内部ログは保持する。
+    </p>
+
+    <table>
+      <thead>
+      <tr>
+        <th>現在の要素</th>
+        <th>整理方針</th>
+        <th>理由</th>
+      </tr>
+      </thead>
+      <tbody>
+      <tr>
+        <td>操作ログページ</td>
+        <td>通常ナビから削除。必要なら開発者用または診断用URLに限定する。</td>
+        <td>ユーザーの主作業ではない。</td>
+      </tr>
+      <tr>
+        <td>コンソール</td>
+        <td>ユーザー向けUIから削除。右下、左下、下部の表示領域も残さない。</td>
+        <td>ユーザーに見せても判断材料になりにくく、画面のノイズになる。</td>
+      </tr>
+      <tr>
+        <td>履歴ボタン</td>
+        <td>削除。</td>
+        <td>操作対象が曖昧で、現状の価値が低い。</td>
+      </tr>
+      </tbody>
+    </table>
+
+    <h3>内部ログとして保持する情報</h3>
+    <ul>
+      <li>ユーザー操作: どのボタンが押されたか。</li>
+      <li>実行対象: どの製品、どの CLI、どの操作か。</li>
+      <li>operation id: 後からログを追える識別子。</li>
+      <li>状態: 開始、実行中、成功、失敗、タイムアウト。</li>
+      <li>エラー: CLI の exit code、標準エラー、失敗したステージ。</li>
+    </ul>
+    <div class="panel info">
+      <p>
+        インシデント対応は別途設計する。通常画面には出さず、必要な時に診断情報をまとめて取得できる形がよい。
+        画面上に空のコンソール領域や履歴ボタンを残さない。
+      </p>
+    </div>
+  </section>
+
+  <section>
+    <h2>スキャンへの統合</h2>
+    <p>
+      サブ製品ごとの一覧ページは、Timeline 本体の主機能ではなく「素材が正しく取り込めているか」を確認するための補助機能。
+      そのため、サイドバー上では <strong>スキャン</strong> に統合する。
+    </p>
+
+    <table>
+      <thead>
+      <tr>
+        <th>現在</th>
+        <th>統合後</th>
+        <th>詳細の扱い</th>
+      </tr>
+      </thead>
+      <tbody>
+      <tr>
+        <td>TimelineForAudio / ファイル一覧</td>
+        <td>スキャン / 音声</td>
+        <td>ファイルをクリックすると音声詳細モーダル。再生、区間、言語化状態を確認。</td>
+      </tr>
+      <tr>
+        <td>TimelineForImage / ファイル一覧</td>
+        <td>スキャン / 画像</td>
+        <td>画像プレビュー、OCR、解析結果をモーダルで確認。</td>
+      </tr>
+      <tr>
+        <td>TimelineForWindowsCodex / スレッド一覧</td>
+        <td>スキャン / Windows Codex</td>
+        <td>スレッド本文はモーダルまたは詳細パネルで確認。</td>
+      </tr>
+      <tr>
+        <td>TimelineForChatGPT / スレッド一覧</td>
+        <td>スキャン / ChatGPT</td>
+        <td>取り込み済みスレッドの内容確認と処理状態を表示。</td>
+      </tr>
+      </tbody>
+    </table>
+
+    <h3>スキャン画面の役割</h3>
+    <ul>
+      <li>素材が見つかっているか確認する。</li>
+      <li>取り込み済み、未処理、失敗、警告を確認する。</li>
+      <li>製品ごとの処理状況を同じ画面で比較する。</li>
+      <li>必要な時だけ製品別の詳細を開く。</li>
+      <li>メインの分析画面とは分ける。</li>
+    </ul>
+
+    <div class="panel warning">
+      <p>
+        スキャンは「ローデータ取得」という意味合いに近いが、その言葉はユーザー向けには使わない。
+        画面名は <strong>スキャン</strong>、説明では <strong>素材の取り込み状況</strong> と表現するのが分かりやすい。
+      </p>
+    </div>
+  </section>
+
+  <section>
+    <h2>スキャンと時間軸整理を一緒にする案</h2>
+    <p>
+      本質的には、ユーザーはスキャン、変換、言語化、整理のボタンを押したいわけではない。
+      できるだけ自動で最新状態を保ち、必要な時だけ状態や詳細を確認できる画面が望ましい。
+    </p>
+
+    <div class="panel implemented">
+      <p>
+        ABC比較用の試作HTMLを作成済み:
+        <a href="scan-timeline-integration-prototypes.html">スキャンと時間軸整理 UI 試作</a>
+      </p>
+    </div>
+
+    <div class="pattern-grid">
+      <div class="pattern-card">
+        <h3>案A: 取り込み状況ダッシュボード型</h3>
+        <p>
+          スキャン、変換、言語化、時間軸反映を1つの「取り込み状況」として見せる。
+          ユーザーは状態を見るだけで、通常は実行ボタンを押さない。
+        </p>
+        <div class="screen-box">
+          <div class="screen-row">全体状態: 最新です / 処理中です / 対応が必要です</div>
+          <div class="screen-row">音声: 79件中79件 取り込み済み、75件 言語化済み</div>
+          <div class="screen-row">画像: 665件中665件 取り込み済み</div>
+          <div class="screen-row">ChatGPT: 3299件 取り込み済み</div>
+          <div class="screen-row">詳細は各行クリックでモーダル</div>
+        </div>
+        <p>
+          最も分かりやすい。最初の実装候補。
+        </p>
+      </div>
+
+      <div class="pattern-card">
+        <h3>案B: 時間軸を整える中心型</h3>
+        <p>
+          画面名を「時間軸」に寄せ、上部に「自動で整えています」という状態を出す。
+          スキャンは時間軸を作るための内部ステップとして吸収する。
+        </p>
+        <div class="screen-box">
+          <div class="screen-row">時間軸の状態: 整理中 / 最新</div>
+          <div class="screen-row">次の処理: 音声の言語化、画像OCR反映</div>
+          <div class="screen-row">タイムライン一覧</div>
+          <div class="screen-row">未反映素材、警告、処理失敗は折りたたみ</div>
+        </div>
+        <p>
+          Timeline 本体の価値は前に出るが、素材確認の入口が少し分かりにくくなる。
+        </p>
+      </div>
+
+      <div class="pattern-card">
+        <h3>案C: 自動処理センター型</h3>
+        <p>
+          スキャン、変換、言語化、時間軸反映を「自動処理」としてまとめる。
+          処理待ち、処理中、失敗だけを見せる。
+        </p>
+        <div class="screen-box">
+          <div class="screen-row">自動処理: 稼働中</div>
+          <div class="screen-row">待機中: 0件 / 処理中: 1件 / 要確認: 2件</div>
+          <div class="screen-row">最近の処理: 音声言語化、画像取り込み、ChatGPT反映</div>
+          <div class="screen-row">素材別詳細はフィルタで確認</div>
+        </div>
+        <p>
+          実運用には強いが、初見ユーザーには「何を見ればいいか」が少し抽象的。
+        </p>
+      </div>
+    </div>
+
+    <div class="panel implemented">
+      <p>
+        レビュー結果として <strong>案C: 自動処理センター型</strong> を採用する。
+        ここではスキャン、変換、言語化、時間軸反映をユーザーが毎回実行する操作ではなく、
+        Timeline が最新状態を保つための自動処理として扱う。
+        画面は価値提供そのものではなく、現在の状態、待機中、処理中、失敗、要確認を正確に伝える役割に寄せる。
+      </p>
+    </div>
+  </section>
+
+  <section>
+    <h2>時間軸と「整理」の役割</h2>
+    <p>
+      スキャンは素材を見つけて変換する段階。時間軸は、それらを時系列に並べ、分析や LLM へ渡しやすい形に整える段階。
+      ここには、単なる並べ替えだけでなく、音声の言語化や重複整理も含まれる。
+    </p>
+
+    <div class="flow" aria-label="データ処理の流れ">
+      <div class="flow-step">
+        <strong>スキャン</strong>
+        <span>素材を見つける</span>
+      </div>
+      <div class="flow-step">
+        <strong>変換</strong>
+        <span>製品ごとに処理する</span>
+      </div>
+      <div class="flow-step">
+        <strong>整理</strong>
+        <span>時間軸に使える形へ整える</span>
+      </div>
+      <div class="flow-step">
+        <strong>分析</strong>
+        <span>意味や傾向を見る</span>
+      </div>
+      <div class="flow-step">
+        <strong>出力</strong>
+        <span>LLM用・記事・レポート</span>
+      </div>
+    </div>
+
+    <h3>「最適化」の代替語</h3>
+    <table>
+      <thead>
+      <tr>
+        <th>候補</th>
+        <th>評価</th>
+        <th>使いどころ</th>
+      </tr>
+      </thead>
+      <tbody>
+      <tr>
+        <td>整理</td>
+        <td>最も分かりやすい。技術臭が少ない。</td>
+        <td>画面名、ボタン名、状態名に使える。</td>
+      </tr>
+      <tr>
+        <td>時間軸を整える</td>
+        <td>処理内容が伝わりやすい。</td>
+        <td>主要ボタン名に向く。</td>
+      </tr>
+      <tr>
+        <td>分析準備</td>
+        <td>目的は伝わるが、作業感が強い。</td>
+        <td>説明文や内部セクション名に向く。</td>
+      </tr>
+      <tr>
+        <td>最適化</td>
+        <td>意味は近いが一般ユーザーには硬い。</td>
+        <td>内部用語に留める。</td>
+      </tr>
+      </tbody>
+    </table>
+
+    <div class="panel note">
+      <p>
+        推奨は、サイドバー名を <strong>時間軸</strong> のままにし、ページ内の主要操作を
+        <strong>時間軸を整える</strong> にすること。未言語化データの一括言語化も、この「整える」の一部として扱う。
+        ただし、理想はユーザーがそのボタンを頻繁に押さなくてよい状態で、常に自動で最新化されること。
+      </p>
+    </div>
+  </section>
+
+  <section>
+    <h2>分析と出力の位置づけ</h2>
+    <p>
+      Timeline のメイン価値は、スキャン済み素材を眺めることではなく、時間軸を使って分析、検索、記事化、レポート化できること。
+      そのため、将来的には <strong>分析</strong> と <strong>レポート</strong> を主導線に置く。
+    </p>
+    <table>
+      <thead>
+      <tr>
+        <th>機能</th>
+        <th>役割</th>
+        <th>UIの置き場所</th>
+      </tr>
+      </thead>
+      <tbody>
+      <tr>
+        <td>LLM用ダウンロード</td>
+        <td>整えた時間軸を外部またはローカルLLMへ渡せる形で出力する。</td>
+        <td>時間軸、分析、レポートのいずれかから実行。</td>
+      </tr>
+      <tr>
+        <td>ローカル分析</td>
+        <td>Ollama などを使ってローカルで分析する。</td>
+        <td>分析ページ。</td>
+      </tr>
+      <tr>
+        <td>記事生成</td>
+        <td>時間軸から記事、日報、記録、振り返りを生成する。</td>
+        <td>レポートまたは記事ページ。</td>
+      </tr>
+      <tr>
+        <td>期間指定出力</td>
+        <td>今日、今週、会議単位などで必要範囲だけを切り出す。</td>
+        <td>時間軸または分析ページ。</td>
+      </tr>
+      <tr>
+        <td>意味ベクトル検索</td>
+        <td>言葉が完全一致しなくても、意味が近い出来事、会話、画像、記事候補を探す。</td>
+        <td>分析、検索、記事生成の下地。</td>
+      </tr>
+      </tbody>
+    </table>
+
+    <div class="panel info">
+      <p>
+        意味ベクトルは、Timeline の分析機能を強くする可能性が高い。
+        ただし、最初から画面に「ベクトル」という言葉を出す必要はない。
+        ユーザー向けには「似た内容を探す」「関連する出来事を集める」「記事の材料を探す」と表現する方がよい。
+      </p>
+    </div>
+  </section>
+
+  <section>
+    <h2>推奨する移行ステップ</h2>
+    <ol>
+      <li>
+        <strong>実装済み: 設定モーダルの整理</strong>
+        サイドバー上の設定を左下へ移し、モーダル縦幅、保存ボタン、閉じる操作、通常/プロモードの保存制御を整理する。
+      </li>
+      <li>
+        <strong>実装済み: 操作ログページとコンソールを通常UIから削除する</strong>
+        内部ログは残すが、ユーザー向けの空間としては見せない。
+      </li>
+      <li>
+        <strong>実装済み: 製品管理の入口を左下に作る</strong>
+        まずはインストールや更新を実行しなくてもよい。製品の存在、配置、状態を一覧できる入口にする。
+      </li>
+      <li>
+        <strong>実装中: スキャンと時間軸整理を自動処理センター型へ寄せる</strong>
+        ABC案を比較し、案Cを採用した。まずは画面名とサイドバー導線をスキャンに寄せ、処理状態を中心に見せる。
+      </li>
+      <li>
+        <strong>既存の製品別一覧ページを隠す</strong>
+        直接URLは残してもよいが、サイドバーからは外す。
+      </li>
+      <li>
+        <strong>時間軸の整理機能を明確化する</strong>
+        「時間軸を再構築」よりも「時間軸を整える」に寄せる。ただし、最終的には自動実行を基本にする。
+      </li>
+      <li>
+        <strong>分析とレポートを主導線に育てる</strong>
+        最初はモックでもよいが、Timeline本体の価値がここにあることを画面構造で示す。
+      </li>
+    </ol>
+  </section>
+
+  <section>
+    <h2>実装時の注意点</h2>
+    <div class="decision">
+      <div class="decision-item">
+        <strong>サブ製品操作は引き続き cli.ps1 経由にする。</strong>
+        <p>スキャン統合後も、Timeline がサブ製品 Docker を直接触らないルールは変えない。</p>
+      </div>
+      <div class="decision-item">
+        <strong>詳細モーダルは既存ページの完全コピーにしない。</strong>
+        <p>スキャン詳細は「取れているか確認する」ための画面なので、編集や高度な分析は置かない。</p>
+      </div>
+      <div class="decision-item">
+        <strong>設定と製品管理を混ぜすぎない。</strong>
+        <p>製品管理は将来インストール、アンインストール、更新、ライセンスにも関わるため、設定とは別の入口がよい。</p>
+      </div>
+      <div class="decision-item">
+        <strong>既存URLは急に壊さないが、通常導線からは外す。</strong>
+        <p>過去の直接URLや検証用URLは残してよい。ただしサイドバーの主役にはしない。</p>
+      </div>
+      <div class="decision-item">
+        <strong>ユーザーに見せないと決めたUIは、隙間も含めて削除する。</strong>
+        <p>コンソール、操作ログ、ローカル実行は、非表示にするだけでなく通常UIの構成から外す。</p>
+      </div>
+      <div class="decision-item">
+        <strong>自動処理を前提にする。</strong>
+        <p>スキャン、変換、言語化、時間軸反映は、ユーザーが毎回押すものではなく、最新状態を維持する処理として設計する。</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel note">
+    <h2>推奨結論</h2>
+    <p>
+      次のUI整理は、設定モーダルの細部修正だけでなく、サイドバー全体の意味を変える作業として扱うべき。
+      サブ製品ごとの一覧や設定を前面に出す段階は終わりつつある。
+    </p>
+    <p>
+      推奨する最終形は、主導線を <strong>ダッシュボード、スキャン、時間軸、分析、レポート</strong> に集約し、
+      左下には <strong>製品管理、設定</strong> だけを置く構成。
+      これなら、今後サブ製品が増えても Timeline 本体の価値が崩れにくい。
+    </p>
+    <p>
+      ローカル実行、操作ログ、コンソールはユーザー向けUIから削除する。
+      ログは内部保持し、インシデント対応時に取り出せる形を別途設計する。
+      スキャンと時間軸整理は、最終的には自動で最新状態を保つ方向へ寄せる。
+    </p>
+  </section>
+</main>
+</body>
+</html>

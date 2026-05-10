@@ -1,0 +1,405 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>スキャンと時間軸整理 UI 試作</title>
+  <style>
+    :root {
+      --bg: #f4f7fb;
+      --panel: #fff;
+      --ink: #111827;
+      --muted: #64748b;
+      --line: #d8e0ea;
+      --accent: #2f7d74;
+      --soft: #e5f3f1;
+      --blue: #eaf2ff;
+      --warn: #fff4df;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: "Yu Gothic", "Meiryo", system-ui, sans-serif;
+      line-height: 1.7;
+    }
+
+    main {
+      width: min(1180px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 36px 0 72px;
+    }
+
+    h1, h2, h3 { margin: 0; line-height: 1.35; }
+    h1 { font-size: clamp(2rem, 4vw, 3rem); }
+    h2 { margin-top: 38px; font-size: 1.5rem; }
+    h3 { margin-top: 0; font-size: 1.1rem; }
+    p { margin: 8px 0 0; color: var(--muted); }
+
+    .lead {
+      max-width: 900px;
+      color: #263445;
+      font-size: 1.06rem;
+    }
+
+    .meta {
+      margin-top: 10px;
+      color: var(--muted);
+      font-size: .92rem;
+    }
+
+    .note {
+      margin-top: 18px;
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-left: 4px solid var(--accent);
+      border-radius: 8px;
+      background: var(--soft);
+    }
+
+    .prototype {
+      margin-top: 18px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      overflow: hidden;
+      box-shadow: 0 8px 20px rgba(15, 23, 42, .05);
+    }
+
+    .prototype-header {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 18px;
+      border-bottom: 1px solid var(--line);
+      background: #f8fafc;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 3px 9px;
+      border-radius: 999px;
+      background: var(--blue);
+      color: #28508f;
+      font-size: .8rem;
+      font-weight: 700;
+    }
+
+    .screen {
+      padding: 18px;
+      background: #eef3f9;
+    }
+
+    .screen-title {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    .button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 40px;
+      padding: 8px 14px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
+      font-weight: 700;
+    }
+
+    .button.primary {
+      border-color: transparent;
+      background: var(--accent);
+      color: white;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .card, .bar, .list, .timeline, .detail {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+    }
+
+    .card {
+      padding: 16px;
+      min-height: 96px;
+    }
+
+    .label {
+      color: #526176;
+      font-size: .86rem;
+      font-weight: 700;
+    }
+
+    .value {
+      margin-top: 8px;
+      font-size: 1.7rem;
+      font-weight: 800;
+    }
+
+    .bar {
+      margin-top: 14px;
+      padding: 14px;
+    }
+
+    .progress {
+      height: 10px;
+      border-radius: 999px;
+      background: #dbe4ef;
+      overflow: hidden;
+    }
+
+    .progress span {
+      display: block;
+      height: 100%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, #2f7d74, #3272ad);
+    }
+
+    .columns {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(280px, .42fr);
+      gap: 14px;
+      margin-top: 14px;
+    }
+
+    .list, .timeline, .detail {
+      padding: 14px;
+    }
+
+    .row {
+      display: grid;
+      grid-template-columns: 1fr auto auto;
+      gap: 12px;
+      align-items: center;
+      padding: 11px 0;
+      border-top: 1px solid var(--line);
+      font-size: .94rem;
+    }
+
+    .row:first-of-type {
+      border-top: 0;
+    }
+
+    .pill {
+      display: inline-block;
+      padding: 2px 8px;
+      border: 1px solid #b9ddd8;
+      border-radius: 999px;
+      background: #effaf8;
+      color: #1f665f;
+      font-size: .78rem;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .pill.warn {
+      border-color: #efd29b;
+      background: var(--warn);
+      color: #7a4b0c;
+    }
+
+    .timeline-row {
+      display: grid;
+      grid-template-columns: 96px minmax(0, 1fr);
+      gap: 12px;
+      padding: 12px 0;
+      border-top: 1px solid var(--line);
+    }
+
+    .timeline-row:first-of-type { border-top: 0; }
+    .time { color: #526176; font-weight: 700; }
+
+    .comparison {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 14px;
+    }
+
+    .mini {
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+    }
+
+    .mini strong {
+      display: block;
+      margin-bottom: 6px;
+    }
+
+    @media (max-width: 900px) {
+      .grid, .columns, .comparison {
+        grid-template-columns: 1fr;
+      }
+
+      .row {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>スキャンと時間軸整理 UI 試作</h1>
+    <p class="lead">
+      スキャン、変換、言語化、時間軸反映をユーザーに何度も押させないための画面案。
+      ここでは本実装ではなく、レビュー用のABC案として見る。
+    </p>
+    <p class="meta">作成日: 2026-05-08 / 対象: Timeline Web UI / 状態: 試作レビュー用</p>
+  </header>
+
+  <section class="note">
+    <h2>前提</h2>
+    <p>
+      ユーザーが本当に知りたいのは、各サブ製品のCLI名や処理名ではなく、
+      「素材が取り込まれているか」「時間軸に使える状態か」「未処理や失敗が残っていないか」。
+      そのため、ボタンは少なくし、基本は自動で最新化する画面として考える。
+    </p>
+  </section>
+
+  <section class="prototype">
+    <div class="prototype-header">
+      <div>
+        <h2>案A: 取り込み状況ダッシュボード型</h2>
+        <p>サブ製品別の素材取得状態を中心に見る。最も現在の一覧ページ群から移行しやすい。</p>
+      </div>
+      <span class="badge">現実的</span>
+    </div>
+    <div class="screen">
+      <div class="screen-title">
+        <h3>取り込み状況</h3>
+        <button class="button primary">最新状態にする</button>
+      </div>
+      <div class="grid">
+        <div class="card"><div class="label">音声</div><div class="value">79</div><p>一部未言語化</p></div>
+        <div class="card"><div class="label">画像</div><div class="value">665</div><p>未処理あり</p></div>
+        <div class="card"><div class="label">Windows Codex</div><div class="value">97</div><p>取得済み</p></div>
+        <div class="card"><div class="label">ChatGPT</div><div class="value">12</div><p>アップロード待ち</p></div>
+      </div>
+      <div class="bar">
+        <div class="label">全体の処理</div>
+        <div class="progress"><span style="width:72%"></span></div>
+        <p>素材の取り込み、変換、言語化、時間軸反映を順番に進めています。</p>
+      </div>
+      <div class="columns">
+        <div class="list">
+          <h3>確認が必要なもの</h3>
+          <div class="row"><span>20220401020001.m4a</span><span class="pill warn">一部未言語化</span><span>音声</span></div>
+          <div class="row"><span>Screenshots/2026-05-04.png</span><span class="pill warn">未処理</span><span>画像</span></div>
+          <div class="row"><span>プロダクト_TimelineForAudio_v2</span><span class="pill">取得済み</span><span>Codex</span></div>
+        </div>
+        <div class="detail">
+          <h3>この案の特徴</h3>
+          <p>「取れているか確認する」目的が明確。サブ製品の一覧ページを統合しやすい。</p>
+          <p>一方で、時間軸そのものの価値はまだ少し後ろに下がる。</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="prototype">
+    <div class="prototype-header">
+      <div>
+        <h2>案B: 時間軸を整える中心型</h2>
+        <p>スキャンを内部処理として扱い、ユーザーには「時間軸を使える状態に整えている」と見せる。</p>
+      </div>
+      <span class="badge">本命候補</span>
+    </div>
+    <div class="screen">
+      <div class="screen-title">
+        <h3>時間軸</h3>
+        <button class="button primary">時間軸を整える</button>
+      </div>
+      <div class="bar">
+        <div class="label">現在の状態</div>
+        <div class="progress"><span style="width:58%"></span></div>
+        <p>新しい素材を確認し、読める形に変換して、時間順に並べています。</p>
+      </div>
+      <div class="columns">
+        <div class="timeline">
+          <h3>今日の時間軸</h3>
+          <div class="timeline-row"><div class="time">09:12</div><div>Windows Codex の作業スレッドを取得</div></div>
+          <div class="timeline-row"><div class="time">10:03</div><div>音声ファイルから発話候補を検出 <span class="pill warn">言語化待ち</span></div></div>
+          <div class="timeline-row"><div class="time">10:25</div><div>画像ファイルを取り込み <span class="pill">反映済み</span></div></div>
+        </div>
+        <div class="detail">
+          <h3>この案の特徴</h3>
+          <p>Timeline 本体の価値が一番見えやすい。スキャン、変換、言語化を「時間軸を整える」に吸収できる。</p>
+          <p>ただし、サブ製品別に正しく取れているかを詳細確認する入口を別途きれいに用意する必要がある。</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="prototype">
+    <div class="prototype-header">
+      <div>
+        <h2>案C: 自動処理センター型</h2>
+        <p>裏で何が動いているかを中心に見せる。通常操作の主役ではなく、現在の処理状態を正確に伝える。</p>
+      </div>
+      <span class="badge">採用</span>
+    </div>
+    <div class="screen">
+      <div class="screen-title">
+        <h3>自動処理</h3>
+        <button class="button">一時停止</button>
+      </div>
+      <div class="grid">
+        <div class="card"><div class="label">取り込み</div><div class="value">稼働中</div><p>4製品を確認中</p></div>
+        <div class="card"><div class="label">変換</div><div class="value">12</div><p>待機中</p></div>
+        <div class="card"><div class="label">言語化</div><div class="value">5</div><p>順番に処理</p></div>
+        <div class="card"><div class="label">時間軸反映</div><div class="value">最新</div><p>反映済み</p></div>
+      </div>
+      <div class="columns">
+        <div class="list">
+          <h3>処理キュー</h3>
+          <div class="row"><span>音声の言語化</span><span class="pill warn">処理中</span><span>残り 5件</span></div>
+          <div class="row"><span>画像の取り込み</span><span class="pill">待機</span><span>665件</span></div>
+          <div class="row"><span>時間軸反映</span><span class="pill">完了</span><span>最新</span></div>
+        </div>
+        <div class="detail">
+          <h3>この案の特徴</h3>
+          <p>処理が見えるので待ちやすい。障害調査にも強い。</p>
+          <p>ただし、ユーザーに処理名を見せすぎるため、主画面にすると認知負荷が上がる可能性がある。</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>比較</h2>
+    <div class="comparison">
+      <div class="mini">
+        <strong>案A</strong>
+        <p>サブ製品の一覧確認を自然に統合できる。現行UIからの移行が簡単。</p>
+      </div>
+      <div class="mini">
+        <strong>案B</strong>
+        <p>Timeline の主価値が出る。最終形として一番強いが、詳細確認導線の設計が必要。</p>
+      </div>
+      <div class="mini">
+        <strong>案C</strong>
+        <p>採用案。ユーザーが何度も実行する画面ではなく、Timeline が自動で整えている状態を確認する画面として使う。</p>
+      </div>
+    </div>
+  </section>
+</main>
+</body>
+</html>
