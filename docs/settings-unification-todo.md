@@ -7,7 +7,7 @@ Status: settings modal and normal/pro mode integration implemented. Remaining op
 - [x] Replace separate basic settings and product management screens with one settings hub.
 - [x] Remove the old standalone product-management page from the navigation and smoke list.
 - [x] Remove product start/restart controls from the dashboard.
-- [ ] Product install/update/uninstall is intentionally deferred. Do not show it as a normal settings task until the operation design is settled.
+- [x] Product install/update/uninstall is intentionally deferred. Do not show it as a normal settings task until the operation design is settled.
 - [x] Render existing sub-product settings inside the settings hub with a product selector.
 - [x] Remove standalone sub-product settings routes from the Blazor router.
 - [x] Place the Timeline settings save button before sub-product settings so the save scope is clear.
@@ -36,6 +36,7 @@ Notes:
 - Normal mode hides product installation paths. Product placement is only exposed in pro mode.
 - Changing the Timeline save location in normal mode also moves managed Audio/Image generated-data destinations under the new Timeline save location before saving.
 - Product package operations are intentionally tracked as a separate future feature, not as remaining work in this settings-unification pass.
-- Product management currently shows product existence, placement, runtime state, and start/stop/restart controls. Install/update/uninstall remains deferred.
+- Product management currently shows product existence, placement, runtime state, and start/stop/restart controls. Install/update/uninstall remains deferred and is not shown as a disabled normal-user action.
 - Screenshot: `output/playwright/product-management-modal-check.png`
+- Screenshot: `output/playwright/verify-product-management-no-install-buttons-8s.png`
 - The common AI compute mode is Timeline-level state. Current supported propagation is TimelineForAudio only.

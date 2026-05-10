@@ -89,9 +89,9 @@
                             </div>
                         </div>
 
-                        <div class="tfa-product-actions">
-                            @if (IsInstalled(product))
-                            {
+                        @if (IsInstalled(product))
+                        {
+                            <div class="tfa-product-actions">
                                 @if (IsWindowsHostProduct(product))
                                 {
                                     <span class="tfa-status-pill border-slate-200 bg-slate-50 text-slate-700">
@@ -123,25 +123,8 @@
                                         <span>再起動</span>
                                     </button>
                                 }
-                                <button type="button"
-                                        class="tfa-button-secondary tfa-product-action-wide gap-2"
-                                        title="アンインストール機能はまだ接続していません。"
-                                        disabled>
-                                    <FaIcon Name="trash-can" Class="tfa-icon" />
-                                    <span>アンインストール</span>
-                                </button>
-                            }
-                            else
-                            {
-                                <button type="button"
-                                        class="tfa-button-primary gap-2"
-                                        title="インストール機能はまだ接続していません。"
-                                        disabled>
-                                    <FaIcon Name="download" Class="tfa-icon" />
-                                    <span>インストール</span>
-                                </button>
-                            }
-                        </div>
+                            </div>
+                        }
                     </article>
                 }
             </div>
