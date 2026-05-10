@@ -836,7 +836,7 @@ else
             {
                 _audioOverview = await Timeline.SaveAudioSettingsAsync(new AudioSettingsSaveRequest
                 {
-                    Token = _tokenToSave,
+                    Token = _tokenToSave ?? "",
                     ComputeMode = _proMode ? _audioComputeMode : ResolveCommonComputeModeForProduct(),
                     InputRoots = _audioInputRoots
                         .Where(root => !string.IsNullOrWhiteSpace(root.Path))
@@ -859,13 +859,14 @@ else
                 LoadImageState(_imageOverview);
             }
 
-            if (_videoOverview?.ProductFound == true && _videoDirty)
+            if (_videoOverview?.ProductFound == true && (_videoDirty || !string.IsNullOrWhiteSpace(_tokenToSave)))
             {
                 _videoOverview = await Timeline.SaveVideoSettingsAsync(new VideoSettingsSaveRequest
                 {
                     InputRoots = _videoInputRoots.Select(CloneRoot).ToList(),
                     OutputRoot = CloneRoot(_videoOutputRoot),
                     OutputRootPath = _videoOutputRoot.Path,
+                    Token = _tokenToSave ?? "",
                     ComputeMode = ResolveCommonComputeModeForProduct(),
                 });
                 LoadVideoState(_videoOverview);
@@ -1157,7 +1158,7 @@ else
         AddChange("AI処理方法", ComputeModeLabel(_settings?.CommonAi.ComputeMode), ComputeModeLabel(_commonComputeMode));
         if (!string.IsNullOrWhiteSpace(_tokenToSave))
         {
-            changes.Add(new SettingsChangeRow("Hugging Face トークン", TokenDisplay, MaskToken(_tokenToSave)));
+            changes.Add(new SettingsChangeRow("Hugging Face トークン（Audio / Video）", TokenDisplay, MaskToken(_tokenToSave)));
         }
 
         if (_audioOverview?.ProductFound == true)
@@ -1178,6 +1179,7 @@ else
         {
             AddChange("動画入力ディレクトリ", JoinPaths((_videoOverview.Settings.InputRoots ?? []).Select(root => root.Path)), JoinPaths(_videoInputRoots.Select(root => root.Path)));
             AddChange("TimelineForVideo 生成データ", _videoOverview.Settings.OutputRoot?.Path, _videoOutputRoot.Path);
+            AddChange("TimelineForVideo AI処理方法", ComputeModeLabel(_videoOverview.Settings.ComputeMode), ComputeModeLabel(ResolveCommonComputeModeForProduct()));
         }
 
         foreach (var product in Products)
@@ -1204,6 +1206,7 @@ else
         _commonComputeMode = NormalizeCommonComputeMode(args.Value?.ToString());
         _audioComputeMode = ResolveCommonComputeModeForProduct();
         _audioDirty = true;
+        _videoDirty = true;
         _saved = false;
     }
 
