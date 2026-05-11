@@ -208,32 +208,43 @@ else
                 <span>素材別の状況</span>
             </h2>
         </div>
-        <div class="grid gap-4 p-4 lg:grid-cols-2">
-            @foreach (var source in DataSources)
-            {
-                <div class="rounded-md border border-line bg-slate-50 p-4">
-                    <div class="flex items-start justify-between gap-3">
-                        <div class="min-w-0">
-                            <div class="flex items-center gap-2 font-bold text-slate-950">
-                                <FaIcon Name="@source.Icon" Class="tfa-icon text-accent" />
-                                <span>@source.Name</span>
-                            </div>
-                            <div class="mt-2 text-sm text-slate-500">@source.Description</div>
-                        </div>
-                        <span class="@($"tfa-status-pill {SourceStateClass(source)}")">@source.StateLabel</span>
-                    </div>
-                    <div class="mt-4 grid grid-cols-2 gap-3">
-                        @foreach (var metric in source.Metrics)
-                        {
-                            <div class="rounded-md border border-line bg-white p-3">
-                                <div class="text-xs font-semibold text-slate-500">@metric.Label</div>
-                                <div class="mt-1 text-lg font-bold text-slate-950">@metric.Value</div>
-                            </div>
-                        }
-                    </div>
+        @if (DataSources.Count == 0)
+        {
+            <div class="p-4">
+                <div class="rounded-md border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+                    製品をインストールすると、取り込み状況をここで確認できます。
                 </div>
-            }
-        </div>
+            </div>
+        }
+        else
+        {
+            <div class="grid gap-4 p-4 lg:grid-cols-2">
+                @foreach (var source in DataSources)
+                {
+                    <div class="rounded-md border border-line bg-slate-50 p-4">
+                        <div class="flex items-start justify-between gap-3">
+                            <div class="min-w-0">
+                                <div class="flex items-center gap-2 font-bold text-slate-950">
+                                    <FaIcon Name="@source.Icon" Class="tfa-icon text-accent" />
+                                    <span>@source.Name</span>
+                                </div>
+                                <div class="mt-2 text-sm text-slate-500">@source.Description</div>
+                            </div>
+                            <span class="@($"tfa-status-pill {SourceStateClass(source)}")">@source.StateLabel</span>
+                        </div>
+                        <div class="mt-4 grid grid-cols-2 gap-3">
+                            @foreach (var metric in source.Metrics)
+                            {
+                                <div class="rounded-md border border-line bg-white p-3">
+                                    <div class="text-xs font-semibold text-slate-500">@metric.Label</div>
+                                    <div class="mt-1 text-lg font-bold text-slate-950">@metric.Value</div>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                }
+            </div>
+        }
     </section>
 }
 
@@ -276,6 +287,7 @@ else
 
     private int TotalProductCount => _runtime?.Products.Count ?? 0;
     private int AvailableProductCount => _runtime?.Products.Count(product => product.ProductFound && product.ComposeFound) ?? 0;
+    private bool HasInstalledProducts => AvailableProductCount > 0;
 
     private int AlertLevel => _alerts.Any(alert => alert.Severity == "danger")
         ? 2
@@ -399,6 +411,20 @@ else
         _loadingDetails = true;
         try
         {
+            if (!HasInstalledProducts)
+            {
+                _audio = null;
+                _windowsCodex = null;
+                _chatGpt = null;
+                _image = null;
+                _video = null;
+                _pc = null;
+                _verbalizationTargets = null;
+                _verbalizationBulk = null;
+                BuildDashboard();
+                return;
+            }
+
             var audioTask = Timeline.GetAudioOverviewAsync();
             var windowsTask = Timeline.GetWindowsCodexOverviewAsync();
             var chatGptTask = Timeline.GetChatGptOverviewAsync();
@@ -496,15 +522,20 @@ else
 
         if (_runtime is not null)
         {
-            var missingProducts = _runtime.Products
-                .Where(product => !product.ProductFound || !product.ComposeFound)
+            if (AvailableProductCount == 0)
+            {
+                _alerts.Add(new("warning", "製品が未インストールです", "製品管理から必要な製品をインストールしてください。", "製品管理を開く", "", "products"));
+            }
+
+            var brokenProducts = _runtime.Products
+                .Where(product => product.ProductFound && !product.ComposeFound)
                 .Select(product => product.DisplayName)
                 .Take(3)
                 .ToList();
 
-            if (missingProducts.Count > 0)
+            if (brokenProducts.Count > 0)
             {
-                _alerts.Add(new("warning", "使えない製品があります", $"{string.Join("、", missingProducts)} を確認してください。", "製品管理を開く", "", "products"));
+                _alerts.Add(new("warning", "確認が必要な製品があります", $"{string.Join("、", brokenProducts)} を確認してください。", "製品管理を開く", "", "products"));
             }
         }
 
@@ -554,6 +585,11 @@ else
 
     private void AddProcessingAlerts()
     {
+        if (!HasInstalledProducts)
+        {
+            return;
+        }
+
         var bulkState = (_verbalizationBulk?.State ?? "").Trim().ToLowerInvariant();
         if (bulkState is "running" or "queued" or "starting")
         {
@@ -567,6 +603,11 @@ else
 
     private void AddDataSources()
     {
+        if (!HasInstalledProducts)
+        {
+            return;
+        }
+
         var audioStoreCount = StoreItemCount("audio", _audio?.AudioItemCount ?? 0);
         var videoStoreCount = StoreItemCount("video", _video?.ItemCount ?? 0);
         var imageStoreCount = StoreItemCount("image", _image?.ItemCount ?? 0);
