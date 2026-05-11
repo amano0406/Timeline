@@ -1,0 +1,307 @@
+@inject TimelineHelperClient Timeline
+@inject IJSRuntime Js
+
+@if (_visible)
+{
+    <div class="tfa-initial-setup-overlay fixed inset-0 flex items-center justify-center bg-slate-950/60 p-4">
+        <section class="tfa-initial-setup-dialog rounded-md bg-white shadow-xl"
+                 role="dialog"
+                 aria-modal="true"
+                 aria-labelledby="initial-product-setup-title">
+            <header class="flex items-start justify-between gap-4 border-b border-line p-5">
+                <div>
+                    <h2 id="initial-product-setup-title" class="flex items-center gap-2 text-xl font-semibold text-slate-900">
+                        <FaIcon Name="boxes-stacked" Class="tfa-icon text-accent" />
+                        <span>使う製品をインストール</span>
+                    </h2>
+                    <p class="mt-2 text-sm text-slate-600">
+                        Timeline はサブ製品を追加すると、音声・画像・動画などを取り込めるようになります。
+                    </p>
+                </div>
+                <button type="button"
+                        class="tfa-button-secondary !min-h-9 !px-2"
+                        aria-label="初期設定を閉じる"
+                        disabled="@_installing"
+                        @onclick="DismissAsync">
+                    <FaIcon Name="xmark" Class="tfa-icon" />
+                </button>
+            </header>
+
+            <div class="tfa-initial-setup-body space-y-4 p-5">
+                @if (!string.IsNullOrWhiteSpace(_error))
+                {
+                    <div class="tfa-alert-danger flex items-start gap-2">
+                        <FaIcon Name="triangle-exclamation" Class="tfa-icon mt-0.5" />
+                        <span>@_error</span>
+                    </div>
+                }
+
+                @if (!string.IsNullOrWhiteSpace(_message))
+                {
+                    <div class="tfa-alert-info flex items-start gap-2">
+                        <FaIcon Name="circle-info" Class="tfa-icon mt-0.5" />
+                        <span>@_message</span>
+                    </div>
+                }
+
+                <div class="grid gap-3">
+                    @foreach (var product in InstallableProducts)
+                    {
+                        var state = ProductInstallState(product.Id);
+                        <label class="flex items-start gap-3 rounded-md border border-line bg-slate-50 p-4">
+                            <input type="checkbox"
+                                   class="mt-1 h-4 w-4 rounded border-line text-accent"
+                                   checked="@IsSelected(product.Id)"
+                                   disabled="@(_installing || state == "done")"
+                                   @onchange="@(args => SetSelected(product.Id, args))" />
+                            <span class="min-w-0 flex-1">
+                                <span class="flex flex-wrap items-center gap-2 font-semibold text-slate-900">
+                                    <FaIcon Name="@ProductIcon(product.Id)" Class="tfa-icon text-accent" />
+                                    <span>@DisplayName(product)</span>
+                                    @if (DefaultSelectedProductIds.Contains(product.Id))
+                                    {
+                                        <span class="tfa-status-pill border-teal-200 bg-teal-50 text-teal-800">推奨</span>
+                                    }
+                                    <span class="@InstallStatePillClass(state)">@InstallStateLabel(state)</span>
+                                </span>
+                                <span class="mt-1 block text-sm text-slate-600">@ProductDescription(product.Id)</span>
+                                @if (!string.IsNullOrWhiteSpace(product.LatestVersion))
+                                {
+                                    <span class="mt-1 block text-xs text-slate-500">最新: @product.LatestVersion</span>
+                                }
+                            </span>
+                        </label>
+                    }
+                </div>
+
+                <div class="rounded-md border border-line bg-white p-4 text-sm text-slate-600">
+                    Windows Codex、ChatGPT、PC状態は使う人が分かれるため、最初は未選択です。必要になったら製品管理から追加できます。
+                </div>
+            </div>
+
+            <footer class="flex flex-col gap-3 border-t border-line p-5 sm:flex-row sm:justify-end">
+                <button type="button"
+                        class="tfa-button-secondary gap-2"
+                        disabled="@_installing"
+                        @onclick="DismissAsync">
+                    <FaIcon Name="clock" Class="tfa-icon" />
+                    <span>あとで設定する</span>
+                </button>
+                <button type="button"
+                        class="tfa-button-primary gap-2"
+                        disabled="@(!CanInstallSelected)"
+                        @onclick="InstallSelectedAsync">
+                    <FaIcon Name="@(_installing ? "spinner" : "download")" Class="@($"tfa-icon {(_installing ? "fa-spin" : "")}")" />
+                    <span>@(_installing ? "インストール中" : "選択した製品をインストール")</span>
+                </button>
+            </footer>
+        </section>
+    </div>
+}
+
+@code {
+    private const string SetupDismissedKey = "timeline.initialProductSetup.dismissedForSession";
+
+    private ProductRuntimeOverview? _overview;
+    private bool _initialized;
+    private bool _visible;
+    private bool _installing;
+    private string? _error;
+    private string? _message;
+    private readonly HashSet<string> _selectedProductIds = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, string> _installStates = new(StringComparer.OrdinalIgnoreCase);
+
+    private static readonly HashSet<string> DefaultSelectedProductIds = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "audio",
+        "image",
+        "video",
+    };
+
+    private IReadOnlyList<ProductRuntimeRow> Products => _overview?.Products ?? [];
+
+    private IReadOnlyList<ProductRuntimeRow> InstallableProducts =>
+        Products
+            .Where(product => !IsInstalled(product) && !string.IsNullOrWhiteSpace(product.SourceUrl))
+            .ToList();
+
+    private bool HasInstalledProducts => Products.Any(IsInstalled);
+
+    private bool CanInstallSelected =>
+        !_installing
+        && InstallableProducts.Any(product => IsSelected(product.Id) && ProductInstallState(product.Id) != "done");
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _initialized)
+        {
+            return;
+        }
+
+        _initialized = true;
+        await InitializeAsync();
+    }
+
+    private async Task InitializeAsync()
+    {
+        try
+        {
+            var dismissed = await Js.InvokeAsync<string?>("sessionStorage.getItem", SetupDismissedKey);
+            if (string.Equals(dismissed, "true", StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            _overview = await Timeline.GetProductRuntimeOverviewAsync();
+            if (HasInstalledProducts || InstallableProducts.Count == 0)
+            {
+                return;
+            }
+
+            foreach (var product in InstallableProducts)
+            {
+                if (DefaultSelectedProductIds.Contains(product.Id))
+                {
+                    _selectedProductIds.Add(product.Id);
+                }
+            }
+
+            _visible = true;
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+            _visible = true;
+            StateHasChanged();
+        }
+    }
+
+    private async Task DismissAsync()
+    {
+        await Js.InvokeVoidAsync("sessionStorage.setItem", SetupDismissedKey, "true");
+        _visible = false;
+    }
+
+    private async Task InstallSelectedAsync()
+    {
+        _installing = true;
+        _error = null;
+        _message = null;
+        try
+        {
+            var targets = InstallableProducts
+                .Where(product => IsSelected(product.Id) && ProductInstallState(product.Id) != "done")
+                .ToList();
+
+            if (targets.Count == 0)
+            {
+                _message = "インストールする製品を選択してください。";
+                return;
+            }
+
+            foreach (var product in targets)
+            {
+                _installStates[product.Id] = "running";
+                _message = $"{DisplayName(product)} をインストールしています。";
+                StateHasChanged();
+
+                try
+                {
+                    await Timeline.InstallProductAsync(
+                        product.Id,
+                        new ProductInstallRequest { RestoreSettingsBackup = true });
+                    _installStates[product.Id] = "done";
+                }
+                catch (Exception ex)
+                {
+                    _installStates[product.Id] = "failed";
+                    _error = $"{DisplayName(product)} のインストールに失敗しました。{ex.Message}";
+                    break;
+                }
+            }
+
+            _overview = await Timeline.GetProductRuntimeOverviewAsync();
+            if (_installStates.Values.Any(state => state == "failed"))
+            {
+                _message = "失敗した製品があります。成功した製品はそのまま利用できます。";
+                return;
+            }
+
+            await Js.InvokeVoidAsync("sessionStorage.setItem", SetupDismissedKey, "true");
+            _message = "選択した製品をインストールしました。";
+            _visible = false;
+        }
+        finally
+        {
+            _installing = false;
+            StateHasChanged();
+        }
+    }
+
+    private bool IsSelected(string productId) => _selectedProductIds.Contains(productId);
+
+    private void SetSelected(string productId, ChangeEventArgs args)
+    {
+        var selected = args.Value is bool value
+            ? value
+            : string.Equals(Convert.ToString(args.Value), "true", StringComparison.OrdinalIgnoreCase);
+
+        if (selected)
+        {
+            _selectedProductIds.Add(productId);
+        }
+        else
+        {
+            _selectedProductIds.Remove(productId);
+        }
+    }
+
+    private string ProductInstallState(string productId) =>
+        _installStates.TryGetValue(productId, out var state) ? state : "waiting";
+
+    private static bool IsInstalled(ProductRuntimeRow product) =>
+        product.ProductFound
+        && (product.ComposeFound || product.Id.Equals("pc", StringComparison.OrdinalIgnoreCase));
+
+    private static string DisplayName(ProductRuntimeRow product) =>
+        string.IsNullOrWhiteSpace(product.DisplayName) ? product.Id : product.DisplayName;
+
+    private static string ProductIcon(string productId) => productId switch
+    {
+        "audio" => "file-audio",
+        "image" => "image",
+        "video" => "video",
+        "windows-codex" => "terminal",
+        "chatgpt" => "comments",
+        "pc" => "desktop",
+        _ => "box",
+    };
+
+    private static string ProductDescription(string productId) => productId switch
+    {
+        "audio" => "音声ファイルを取り込み、時間軸で扱える形にします。",
+        "image" => "画像ファイルを取り込み、後から確認・分析できる形にします。",
+        "video" => "動画ファイルを取り込み、映像と音声を時間軸で扱える形にします。",
+        "windows-codex" => "Windows Codex のスレッドを取り込みます。",
+        "chatgpt" => "ChatGPT のエクスポートデータを取り込みます。",
+        "pc" => "PC状態の記録を取り込みます。",
+        _ => "Timeline で扱うデータを増やします。",
+    };
+
+    private static string InstallStateLabel(string state) => state switch
+    {
+        "running" => "処理中",
+        "done" => "完了",
+        "failed" => "失敗",
+        _ => "未インストール",
+    };
+
+    private static string InstallStatePillClass(string state) => state switch
+    {
+        "running" => "tfa-status-pill border-sky-200 bg-sky-50 text-sky-800",
+        "done" => "tfa-status-pill border-teal-200 bg-teal-50 text-teal-800",
+        "failed" => "tfa-status-pill border-red-200 bg-red-50 text-red-800",
+        _ => "tfa-status-pill border-slate-200 bg-slate-50 text-slate-700",
+    };
+}

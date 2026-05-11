@@ -580,11 +580,12 @@ else
 
     private IReadOnlyList<TimelineDisplayLanguageOption> DisplayLanguages => _settings?.DisplayLanguages ?? [];
     private IReadOnlyList<TimelineTimeZoneOption> TimeZones => _settings?.TimeZones ?? [];
-    private IReadOnlyList<TimelineProductRegistryProduct> Products => _registry.Products;
+    private IReadOnlyList<TimelineProductRegistryProduct> Products =>
+        _registry.Products.Where(product => IsInstalledProduct(product.Id)).ToList();
     private TimelineProductRegistryProduct? SelectedProductSettingsProduct =>
         Products.FirstOrDefault(product => string.Equals(product.Id, _selectedProductSettingsId, StringComparison.OrdinalIgnoreCase))
         ?? Products.FirstOrDefault();
-    private bool HasInstalledProducts => _runtime.Products.Any(product => product.ProductFound && product.ComposeFound);
+    private bool HasInstalledProducts => _runtime.Products.Any(IsInstalledProduct);
     private bool HardwareDevicesLoaded => _audioOverview is not null;
     private string NormalModeAriaSelected => _proMode ? "false" : "true";
     private string ProModeAriaSelected => _proMode ? "true" : "false";
@@ -1438,6 +1439,13 @@ else
 
     private ProductRuntimeRow? RuntimeFor(string productId) =>
         _runtime.Products.FirstOrDefault(product => string.Equals(product.Id, productId, StringComparison.OrdinalIgnoreCase));
+
+    private bool IsInstalledProduct(string productId) =>
+        RuntimeFor(productId) is { } product && IsInstalledProduct(product);
+
+    private static bool IsInstalledProduct(ProductRuntimeRow product) =>
+        product.ProductFound
+        && (product.ComposeFound || product.Id.Equals("pc", StringComparison.OrdinalIgnoreCase));
 
     private static TimelineProductRegistry CloneRegistry(TimelineProductRegistry? source)
     {

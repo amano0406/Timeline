@@ -109,6 +109,8 @@ else
         </div>
     </section>
 
+    @if (InstalledMaterialLinks.Count > 0)
+    {
     <section class="tfa-card tfa-card-pad mt-5">
         <div class="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <h2 class="flex items-center gap-2 text-lg font-semibold text-slate-900">
@@ -118,66 +120,21 @@ else
             <span class="text-sm text-slate-500">取り込み状況を詳しく見たいときだけ開きます</span>
         </div>
         <div class="grid gap-4 lg:grid-cols-2">
-            <div class="grid gap-4">
+            @foreach (var link in InstalledMaterialLinks)
+            {
                 <a class="rounded-md border border-line bg-slate-50 p-4 text-slate-900 hover:border-teal-300 hover:bg-teal-50"
-                   href="audio/files">
+                   href="@link.Href">
                     <div class="flex flex-wrap items-center gap-2 font-semibold">
-                        <FaIcon Name="file-audio" Class="tfa-icon text-teal-700" />
-                        <span>音声ファイル</span>
-                        <span class='@MaterialProductPillClass("audio")'>@MaterialProductStatusLabel("audio")</span>
+                        <FaIcon Name="@link.Icon" Class="tfa-icon text-teal-700" />
+                        <span>@link.Label</span>
+                        <span class='@MaterialProductPillClass(link.ProductId)'>@MaterialProductStatusLabel(link.ProductId)</span>
                     </div>
-                    <div class="mt-2 text-sm text-slate-600">音声の取り込みと補正状態を確認</div>
+                    <div class="mt-2 text-sm text-slate-600">@link.Description</div>
                 </a>
-                <a class="rounded-md border border-line bg-slate-50 p-4 text-slate-900 hover:border-teal-300 hover:bg-teal-50"
-                   href="video">
-                    <div class="flex flex-wrap items-center gap-2 font-semibold text-slate-800">
-                        <FaIcon Name="video" Class="tfa-icon text-teal-700" />
-                        <span>動画ファイル</span>
-                        <span class='@MaterialProductPillClass("video")'>@MaterialProductStatusLabel("video")</span>
-                    </div>
-                    <div class="mt-2 text-sm text-slate-600">動画の取り込みと補正状態を確認</div>
-                </a>
-                <a class="rounded-md border border-line bg-slate-50 p-4 text-slate-900 hover:border-teal-300 hover:bg-teal-50"
-                   href="image">
-                    <div class="flex flex-wrap items-center gap-2 font-semibold">
-                        <FaIcon Name="image" Class="tfa-icon text-teal-700" />
-                        <span>画像ファイル</span>
-                        <span class='@MaterialProductPillClass("image")'>@MaterialProductStatusLabel("image")</span>
-                    </div>
-                    <div class="mt-2 text-sm text-slate-600">画像の取り込み状態を確認</div>
-                </a>
-            </div>
-            <div class="grid gap-4">
-                <a class="rounded-md border border-line bg-slate-50 p-4 text-slate-900 hover:border-teal-300 hover:bg-teal-50"
-                   href="chatgpt">
-                    <div class="flex flex-wrap items-center gap-2 font-semibold">
-                        <FaIcon Name="comments" Class="tfa-icon text-teal-700" />
-                        <span>ChatGPT</span>
-                        <span class='@MaterialProductPillClass("chatgpt")'>@MaterialProductStatusLabel("chatgpt")</span>
-                    </div>
-                    <div class="mt-2 text-sm text-slate-600">ChatGPT スレッドの取り込み状態を確認</div>
-                </a>
-                <a class="rounded-md border border-line bg-slate-50 p-4 text-slate-900 hover:border-teal-300 hover:bg-teal-50"
-                   href="windows-codex">
-                    <div class="flex flex-wrap items-center gap-2 font-semibold">
-                        <FaIcon Name="terminal" Class="tfa-icon text-teal-700" />
-                        <span>Windows Codex</span>
-                        <span class='@MaterialProductPillClass("windows-codex")'>@MaterialProductStatusLabel("windows-codex")</span>
-                    </div>
-                    <div class="mt-2 text-sm text-slate-600">Codex スレッドの取り込み状態を確認</div>
-                </a>
-                <a class="rounded-md border border-line bg-slate-50 p-4 text-slate-900 hover:border-teal-300 hover:bg-teal-50"
-                   href="pc">
-                    <div class="flex flex-wrap items-center gap-2 font-semibold">
-                        <FaIcon Name="desktop" Class="tfa-icon text-teal-700" />
-                        <span>PC状態</span>
-                        <span class='@MaterialProductPillClass("pc")'>@MaterialProductStatusLabel("pc")</span>
-                    </div>
-                    <div class="mt-2 text-sm text-slate-600">PC状態の取り込み結果を確認</div>
-                </a>
-            </div>
+            }
         </div>
     </section>
+    }
 
     @if (ShouldShowAudioVerbalizationProgress)
     {
@@ -281,6 +238,7 @@ else
 
 @code {
     private TimelineStoreOverview? _overview;
+    private ProductRuntimeOverview? _runtime;
     private TimelineDockerWorkerStatus? _dockerWorkerStatus;
     private AudioVerbalizationBulkStatus? _audioVerbalizationStatus;
     private AudioVerbalizationBulkTargetSummary? _audioVerbalizationTargetSummary;
@@ -310,6 +268,8 @@ else
     private string StoreMessage => _overview?.Available == true
         ? ""
         : "スキャンすると確認できます。";
+    private IReadOnlyList<MaterialProductLink> InstalledMaterialLinks =>
+        AllMaterialProductLinks.Where(link => IsInstalledProduct(link.ProductId)).ToList();
     private string DockerWorkerStatusLabel => _dockerWorkerStatus switch
     {
         { Available: true, State: "running" } => "稼働中",
@@ -470,10 +430,12 @@ else
             var overviewTask = Timeline.GetTimelineStoreOverviewAsync();
             var workerTask = Timeline.GetTimelineWorkerStatusAsync();
             var verbalizationTask = Timeline.GetAudioVerbalizationBulkStatusAsync();
-            await Task.WhenAll(overviewTask, workerTask, verbalizationTask);
+            var runtimeTask = Timeline.GetProductRuntimeOverviewAsync();
+            await Task.WhenAll(overviewTask, workerTask, verbalizationTask, runtimeTask);
             _overview = await overviewTask;
             _dockerWorkerStatus = await workerTask;
             _audioVerbalizationStatus = await verbalizationTask;
+            _runtime = await runtimeTask;
             if (AudioVerbalizationActive)
             {
                 _audioVerbalizationTargetSummary = null;
@@ -944,6 +906,12 @@ else
         _overview?.Products.FirstOrDefault(product =>
             product.ProductId.Equals(productId, StringComparison.OrdinalIgnoreCase));
 
+    private bool IsInstalledProduct(string productId) =>
+        _runtime?.Products.Any(product =>
+            product.Id.Equals(productId, StringComparison.OrdinalIgnoreCase)
+            && product.ProductFound
+            && (product.ComposeFound || product.Id.Equals("pc", StringComparison.OrdinalIgnoreCase))) == true;
+
     private string MaterialProductStatusLabel(string productId)
     {
         if (_overview?.Available != true)
@@ -1002,4 +970,21 @@ else
         _pollingCts?.Cancel();
         _pollingCts?.Dispose();
     }
+
+    private sealed record MaterialProductLink(
+        string ProductId,
+        string Label,
+        string Icon,
+        string Href,
+        string Description);
+
+    private static readonly MaterialProductLink[] AllMaterialProductLinks =
+    [
+        new("audio", "音声ファイル", "file-audio", "audio/files", "音声の取り込みと補正状態を確認"),
+        new("video", "動画ファイル", "video", "video", "動画の取り込みと補正状態を確認"),
+        new("image", "画像ファイル", "image", "image", "画像の取り込み状態を確認"),
+        new("chatgpt", "ChatGPT", "comments", "chatgpt", "ChatGPT スレッドの取り込み状態を確認"),
+        new("windows-codex", "Windows Codex", "terminal", "windows-codex", "Codex スレッドの取り込み状態を確認"),
+        new("pc", "PC状態", "desktop", "pc", "PC状態の取り込み結果を確認"),
+    ];
 }

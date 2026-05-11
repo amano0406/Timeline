@@ -4,26 +4,36 @@
 
 <aside id="timeline-sidebar" class="tfa-sidebar">
     <div class="flex h-full flex-col">
-        <div class="border-b border-white/10 p-5">
-            <a class="flex items-center gap-2 text-lg font-semibold text-white" href="" @onclick="NotifyNavigateAsync">
+        <div class="tfa-sidebar-header">
+            <a class="tfa-sidebar-brand" href="" title="Timeline" aria-label="Timeline" @onclick="NotifyNavigateAsync">
                 <FaIcon Name="timeline" Class="tfa-icon text-teal-300" />
-                <span>Timeline</span>
+                <span class="tfa-sidebar-label">Timeline</span>
             </a>
+            <button type="button"
+                    class="tfa-sidebar-collapse-button"
+                    title="@CollapseButtonText"
+                    aria-label="@CollapseButtonText"
+                    aria-expanded="@(!IsCollapsed)"
+                    @onclick="ToggleCollapsedAsync">
+                <FaIcon Name="@CollapseButtonIcon" Class="tfa-icon" />
+            </button>
         </div>
 
         <nav class="flex flex-col gap-4 p-3 text-sm">
             <div class="grid gap-1">
                 <a class="@LinkClass("")"
                    href=""
+                   title="ダッシュボード"
                    @onclick="NotifyNavigateAsync">
                     <FaIcon Name="gauge" Class="tfa-icon" />
-                    <span>ダッシュボード</span>
+                    <span class="tfa-sidebar-label">ダッシュボード</span>
                 </a>
                 <a class="@ScanLinkClass()"
                    href="scan"
+                   title="スキャン"
                    @onclick="NotifyNavigateAsync">
                     <FaIcon Name="arrows-rotate" Class="tfa-icon" />
-                    <span>スキャン</span>
+                    <span class="tfa-sidebar-label">スキャン</span>
                 </a>
             </div>
         </nav>
@@ -31,21 +41,29 @@
         <div class="mt-auto border-t border-white/10 p-3 text-sm">
             <a class="@ProductsLinkClass()"
                href="timeline/products"
+               title="製品管理"
                @onclick="NotifyNavigateAsync">
                 <FaIcon Name="boxes-stacked" Class="tfa-icon" />
-                <span>製品管理</span>
+                <span class="tfa-sidebar-label">製品管理</span>
             </a>
             <a class="@SettingsLinkClass()"
                href="timeline/settings"
+               title="設定"
                @onclick="NotifyNavigateAsync">
                 <FaIcon Name="sliders" Class="tfa-icon" />
-                <span>設定</span>
+                <span class="tfa-sidebar-label">設定</span>
             </a>
         </div>
     </div>
 </aside>
 
 @code {
+    [Parameter]
+    public bool IsCollapsed { get; set; }
+
+    [Parameter]
+    public EventCallback OnToggleCollapsed { get; set; }
+
     [Parameter]
     public EventCallback OnNavigate { get; set; }
 
@@ -100,6 +118,12 @@
     private string ProductsLinkClass()
         => LinkClass("timeline/products");
 
+    private string CollapseButtonText =>
+        IsCollapsed ? "メニューを開く" : "メニューを閉じる";
+
+    private string CollapseButtonIcon =>
+        IsCollapsed ? "angles-right" : "angles-left";
+
     protected override void OnInitialized()
     {
         Navigation.LocationChanged += HandleLocationChanged;
@@ -128,6 +152,8 @@
     }
 
     private Task NotifyNavigateAsync() => OnNavigate.InvokeAsync();
+
+    private Task ToggleCollapsedAsync() => OnToggleCollapsed.InvokeAsync();
 
     private void HandleLocationChanged(object? sender, LocationChangedEventArgs args)
     {

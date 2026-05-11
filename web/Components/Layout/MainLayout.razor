@@ -7,7 +7,9 @@
             aria-label="メニューを閉じる"
             @onclick="CloseSidebar"></button>
 
-    <NavMenu OnNavigate="CloseSidebar" />
+    <NavMenu IsCollapsed="@_desktopSidebarCollapsed"
+             OnToggleCollapsed="ToggleDesktopSidebar"
+             OnNavigate="CloseSidebar" />
 
     <header class="tfa-mobile-topbar">
         <button type="button"
@@ -27,13 +29,16 @@
     <main class="tfa-main">
         @Body
     </main>
+
+    <InitialProductSetup />
 </div>
 
 @code {
     private bool _sidebarOpen;
+    private bool _desktopSidebarCollapsed;
 
     private string ShellClass =>
-        _sidebarOpen ? "tfa-shell tfa-shell-sidebar-open" : "tfa-shell";
+        $"tfa-shell{(_sidebarOpen ? " tfa-shell-sidebar-open" : "")}{(_desktopSidebarCollapsed ? " tfa-shell-sidebar-collapsed" : "")}";
 
     private void ToggleSidebar()
     {
@@ -43,5 +48,10 @@
     private void CloseSidebar()
     {
         _sidebarOpen = false;
+    }
+
+    private void ToggleDesktopSidebar()
+    {
+        _desktopSidebarCollapsed = !_desktopSidebarCollapsed;
     }
 }
