@@ -176,8 +176,11 @@ function Start-TimelineHelperServer {
     )
 
     if (Test-TimelineHelperServer -Port $Port) {
-        Stop-TimelineHelperServer
+        Stop-TimelineHelperServer -Port $Port
         Start-Sleep -Milliseconds 300
+        if (Test-TimelineHelperServer -Port $Port) {
+            throw "Timeline helper server is already running on port $Port and could not be stopped."
+        }
     }
 
     $scriptPath = Join-Path $RepoRoot "scripts\timeline-helper-server.ps1"
@@ -224,11 +227,33 @@ function Start-TimelineHelperServer {
 }
 
 function Stop-TimelineHelperServer {
+    param([int]$Port = 19001)
+
+    $processIds = @()
     $processes = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
         Where-Object { $_.CommandLine -like "*-File*timeline-helper-server.ps1*" }
 
-    foreach ($process in $processes) {
-        Stop-Process -Id $process.ProcessId -Force -ErrorAction SilentlyContinue
+    foreach ($process in @($processes)) {
+        if ($process.ProcessId) {
+            $processIds += [int]$process.ProcessId
+        }
+    }
+
+    try {
+        $listeners = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue
+        foreach ($listener in @($listeners)) {
+            if ($listener.OwningProcess) {
+                $processIds += [int]$listener.OwningProcess
+            }
+        }
+    }
+    catch {
+    }
+
+    foreach ($processId in @($processIds | Select-Object -Unique)) {
+        if ($processId -ne $PID) {
+            Stop-Process -Id $processId -Force -ErrorAction SilentlyContinue
+        }
     }
 }
 
