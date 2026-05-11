@@ -1,12 +1,17 @@
 [CmdletBinding()]
 param(
-    [string]$AudioProductPath = "C:\apps\TimelineForAudio",
+    [string]$AudioProductPath = "",
     [string]$HelperBaseUrl = "http://127.0.0.1:19001",
     [string]$TimelineBaseUrl = "http://127.0.0.1:19000"
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+
+if (-not $AudioProductPath) {
+    $repoRoot = Split-Path -Parent $PSScriptRoot
+    $AudioProductPath = Join-Path (Join-Path (Join-Path $repoRoot "data") "products") "TimelineForAudio"
+}
 
 function Assert-TimelineSmoke {
     param(

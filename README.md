@@ -14,14 +14,15 @@ it must not enter or operate a sub-product Docker container directly.
 
 ## Supported Products
 
-The default product registry points to the local products under `C:\apps`:
+The default product registry is derived from Timeline's data root. With the
+default configuration, sub-products are installed under:
 
-- `C:\apps\TimelineForAudio`
-- `C:\apps\TimelineForVideo`
-- `C:\apps\TimelineForImage`
-- `C:\apps\TimelineForWindowsCodex`
-- `C:\apps\TimelineForChatGPT`
-- `C:\apps\TimelineForPC`
+- `<Timeline>\data\products\TimelineForAudio`
+- `<Timeline>\data\products\TimelineForVideo`
+- `<Timeline>\data\products\TimelineForImage`
+- `<Timeline>\data\products\TimelineForWindowsCodex`
+- `<Timeline>\data\products\TimelineForChatGPT`
+- `<Timeline>\data\products\TimelineForPC`
 
 Each product is expected to expose a `cli.ps1`. Newer products should also ship
 a `timeline-product.json` manifest so Timeline can understand product identity,
@@ -73,7 +74,7 @@ and timeline analysis workflows become mature enough to justify it.
 Use PowerShell from the repository directory:
 
 ```powershell
-cd C:\apps\Timeline
+cd <Timeline>
 .\start.ps1
 ```
 
@@ -154,28 +155,37 @@ otherwise, such as "download all".
 
 Timeline has its own cross-product store for normalized timeline data.
 
-Default root:
+Default data root:
 
 ```text
-C:\TimelineData\Timeline
+<Timeline>\data
 ```
 
 Timeline manages these subdirectories under the root:
 
 ```text
-C:\TimelineData\Timeline\work
-C:\TimelineData\Timeline\store
-C:\TimelineData\Timeline\logs
+data\products\<sub-product>
+data\work
+data\to_text\<sub-product>
+data\to_timeline
+data\logs
+data\backups
+data\test
 ```
 
 Main store files:
 
 ```text
-store\manifest.json
-store\items.jsonl
-store\events.jsonl
-store\rebuilds\<rebuild-id>\
+to_timeline\manifest.json
+to_timeline\items.jsonl
+to_timeline\events.jsonl
+to_timeline\rebuilds\<rebuild-id>\
 ```
+
+`settings.json` is stored directly under the Timeline product directory. Its
+`dataRoot` value controls the data root. Empty or relative values are resolved
+from the Timeline product directory; drive-rooted or UNC values are used as
+absolute paths.
 
 The scan page rebuilds this store by downloading from each sub-product through
 that product's `cli.ps1` into Timeline's work directory, then normalizing the
@@ -248,7 +258,7 @@ http://127.0.0.1:11434
 Timeline writes persistent operation logs for incident review under:
 
 ```text
-C:\TimelineData\Timeline\logs\operations\<operation-id>\
+data\logs\operations\<operation-id>\
 ```
 
 Each operation directory contains:

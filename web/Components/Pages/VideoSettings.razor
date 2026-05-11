@@ -205,7 +205,7 @@ else
 
     private VideoOverview? _overview;
     private readonly List<VideoInputRoot> _inputRoots = [];
-    private VideoDirectoryRoot _outputRoot = new() { Id = "output", DisplayName = "Output", Path = @"C:\TimelineData\video" };
+    private VideoDirectoryRoot _outputRoot = new() { Id = "output", DisplayName = "Output" };
     private readonly List<string> _cpuDevices = [];
     private readonly List<string> _gpuDevices = [];
     private string _computeMode = "gpu";
@@ -242,8 +242,6 @@ else
                 {
                     Id = "input-1",
                     DisplayName = "Input",
-                    Path = @"C:\TimelineData\input-video",
-                    DisplayPath = @"C:\TimelineData\input-video",
                     Enabled = true,
                 });
             }
@@ -251,7 +249,6 @@ else
             _outputRoot = CloneRoot(_overview.Settings.OutputRoot);
             if (string.IsNullOrWhiteSpace(_outputRoot.Path))
             {
-                _outputRoot.Path = @"C:\TimelineData\video";
                 _outputRoot.DisplayPath = _outputRoot.Path;
             }
             _computeMode = NormalizeComputeMode(_overview.Settings.ComputeMode);
@@ -423,7 +420,7 @@ else
 
     private string LastInputPath() =>
         _inputRoots.LastOrDefault(root => !string.IsNullOrWhiteSpace(root.Path))?.Path
-        ?? @"C:\TimelineData\input-video";
+        ?? "";
 
     private static VideoInputRoot CloneRoot(VideoInputRoot root) => new()
     {

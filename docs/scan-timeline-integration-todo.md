@@ -32,8 +32,8 @@
 - [x] スキャン画面から `分析用データ` ブロックを削除する。
 - [x] 音声言語化の周辺ヒント範囲を前後 1 日に変更する。
 - [x] TimelineForVideo の `audioModelMode` を Timeline 側の設定画面と保存経路から削除する。
-- [x] 製品管理の `ready` 表示を `未確認` ではなく `接続済み` として表示する。
-- [x] 音声言語化の完了、失敗、要確認の扱いを画面文言として整理する。
+- [x] 製品管理の `ready` 表示を、実稼働中と誤解しない `未起動` として表示する。
+- [x] 音声言語化の完了、失敗、未解決の扱いを画面文言として整理する。
 - [x] 時系列再構築の途中ステージを `preparing`、`downloading`、`importing`、`sorting`、`publishing` として画面に出せるようにする。
 - [x] 音声言語化の一括対象から `needs_review` を外し、通常の `スキャン` では未開始、古い結果、失敗だけを再処理する。
 - [x] `smoke-web.ps1` を現在の導線に合わせ、削除済みの旧設定ページ・旧操作ログページを確認対象から外す。
@@ -54,7 +54,7 @@
 - [x] 巨大な時系列ストアの全件ソートを、PowerShell のメモリソートではない方式へ再設計する。
 - [x] `スキャン` 実行後、音声言語化が完了して成果がある場合は、自動で時間軸を再反映する。失敗で止まった場合は勝手に進めず、エラー・再試行対象の表示に留める。
 - [x] 製品管理の実稼働状態を、Timeline から起動した履歴だけで見るか、各製品の CLI/overview で実状態を確認するかを決める。サブ製品Dockerを直接確認せず、CLIの状態確認が副作用でworkerを起動する製品もあるため、製品管理では `Timeline から操作した起動状態` と `CLI接続可能状態` を分けて扱う。
-- [x] モーダルは TW Elements 読み込みを前提に、固定ヘッダー、右上の閉じるボタン、リサイズ、ヘッダーのドラッグ移動を最小 JS で補う。
+- [x] 設定と製品管理は通常ページへ戻し、破壊的操作など重要判断だけを確認モーダルとして表示する。
 - [x] Video 詳細画面で動画そのものを再生し、言語化済みの音声区間があれば読める候補を表示する。
 - [x] 言語化プロンプト修正後の既存結果を、いつ再生成するか決める。プロンプト版を `audio-verbalization-v2` に上げ、既存結果は次回スキャン時に `stale` として再言語化対象へ戻す。
 - [x] Video の `audio_acoustic_units` 由来の `phone_tokens` を一括言語化対象に含める。Video の音声区間は Timeline store から発話単位に組み立て、Audio と同じ言語化保存先で管理する。
@@ -77,10 +77,9 @@
 - [x] 言語化プロンプトへ表示言語を明示し、`ja-JP` ではローマ字だけ・カタカナだけに寄らないよう指示を強める。
 - [x] スキャン画面の自動処理状態で、上部と下部で重複している項目数・イベント数表示を削除し、段階カード側へ寄せる。
 - [x] 製品管理で、稼働中は起動不可、停止中は停止・再起動不可になるよう、状態別の操作可否を確認する。
-- [x] Timeline を再起動して、設定モーダルと製品管理モーダルの固定ヘッダー、閉じるボタン、固定フッター、リサイズを実画面で確認する。
-- [x] 設定モーダルと製品管理モーダルにフォーカス初期化と Escape キーで閉じる操作を追加し、右上の閉じるボタンも含めて実画面で確認する。
-- [x] モーダルのリサイズ後にマウスを離すと背景クリック扱いで閉じる問題を避けるため、背景クリックで閉じる導線を廃止し、右上の閉じるボタンとフッター操作に寄せる。
-- [x] 設定モーダルは Timeline 本体設定を先に表示し、Audio / Image / Video の重い設定確認は後追いで読み込む。
+- [x] Timeline を再起動して、設定ページと製品管理ページが常駐モーダルなしで表示されることを実画面で確認する。
+- [x] 製品管理のアンインストール確認は、製品行内の展開ではなく確認モーダルで表示する。
+- [x] 設定ページは Timeline 本体設定を先に表示し、Audio / Image / Video の重い設定確認は後追いで読み込む。
 - [x] Video 一覧は、重い overview を待ってから一覧を取る直列処理をやめ、先にファイル一覧を表示して overview は後追い更新する。
 - [x] 既存の要約寄り言語化結果を、どのタイミングで新プロンプトの文字化・翻訳候補として再生成するか決める。次回スキャン時に `stale` 判定で再処理する。
 - [x] Video の `files list` / overview に短期キャッシュを追加し、通常の再表示では待ち時間を減らす。ユーザーが `一覧更新` を押した場合は `refresh=1` で CLI 読み直しを行う。
@@ -98,7 +97,7 @@
 
 - Video の `files list` 自体は、2026-05-10 時点で CLI 経由の読み取りに約 13 秒かかる。画面側は先に一覧を出す構造へ寄せたが、さらに速くするには TimelineForVideo 側の `files list` 高速化か、Timeline helper 側の永続キャッシュ設計が必要。
 - Video の永続キャッシュは 1 時間 TTL。`一覧更新` やスキャン実行では明示的に CLI 読み直しを行う。TTL 切れ後の初回取得は引き続き TimelineForVideo CLI の速度に依存する。
-- 製品管理モーダルは、`/scan` 初期ロード中に開くと helper の単一処理待ちで数秒以上 `読み込み中` になることがある。UI上は待機表示できているが、根本改善するなら helper の並列処理または起動状態キャッシュが必要。
+- 製品管理ページは、`/scan` 初期ロード中など helper が重い処理中の場合に数秒以上 `読み込み中` になることがある。UI上は待機表示できているが、根本改善するなら helper の並列処理または起動状態キャッシュが必要。
 - 2026-05-10 の言語化 v5 検証では、音声1件・動画1件とも読める候補を作れなかった。誤候補を出さない安全弁は入ったが、品質改善までは全件処理へ戻さない。
 - `/timeline/audio-verbalization/bulk/targets` の短期キャッシュは 15 分 TTL。スキャン直後や状態変化後は無効化されるが、TTL の長さは言語化の全件処理を再開する段階で再調整する余地がある。
 - TimelineForImage は製品側生成済み 705 件、Timeline store 反映済み 704 件という差がある。差分は `image-023099e810527f0c` で、成果物側には `timeline.json` と `image_record.json` が両方存在する。成果物更新は 2026-05-09 23:46:54、Timeline store 更新は 2026-05-09 14:16:07 なので、現時点では store 再構築後に生成された未反映データとして扱う。ダッシュボードでは Timeline として使えるデータを示すため、store 反映済み件数を表示する。
@@ -107,12 +106,13 @@
 ## 現在確認した状態
 
 - 一括音声言語化は `audio-verbalization-bulk-20260509-005814-f271c650` が完了。
-- 完了結果は対象 66 件、要確認 53 件、失敗 13 件。失敗理由はログ上 `Ollama request failed...`。
+- 完了結果は対象 66 件、未解決 53 件、失敗 13 件。失敗理由はログ上 `Ollama request failed...`。
 - `needs_review` は有力候補が作られた状態として扱い、通常の `スキャン` では再言語化しない。
 - スクリーンショット: `output/playwright/scan-after-c-redesign-step.png`
 - スクリーンショット: `output/playwright/scan-analysis-pagination-after-partial-label.png`
 - スクリーンショット: `output/playwright/audio-pagination-last-check-after-wait.png`
 - スクリーンショット: `output/playwright/scan-step-status-after-implementation.png`
+- 2026-05-11 に設定と製品管理を常駐モーダルから通常ページへ戻した。`/timeline/settings` と `/timeline/products` は `role=dialog` なしで表示され、アンインストール確認だけがモーダルとして表示される。スクリーンショット: `output/playwright/timeline-settings-page-final-clean.png`, `output/playwright/timeline-products-page-final-clean.png`, `output/playwright/product-uninstall-confirm-modal-final-clean.png`
 - 2026-05-09 に TimelineForVideo を含む時系列再構築が完了。
 - 再構築結果は 4,417 アイテム / 750,843 イベント。
 - Video は 234 アイテム / 614,202 イベントとして反映済み。
@@ -124,8 +124,8 @@
 - スクリーンショット: `output/playwright/scan-after-needs-review-target-fix.png`
 - 読み取り専用の `/timeline/audio-verbalization/bulk/targets` で、次回一括言語化の対象件数を確認できるようにした。
 - スクリーンショット: `output/playwright/scan-after-bulk-target-summary-loaded.png`
-- 2026-05-09 に失敗 13 件を一括再実行した。ジョブ `audio-verbalization-bulk-20260509-134942-1a86bbd8` は完了し、13 件すべてが要確認へ移行、失敗 0 件、次回一括対象 0 件になった。
-- 完了結果は対象 13 件、要確認 13 件、失敗 0 件、86 / 86 チャンク、言語化済み turn 305 件、未解決 turn 611 件、処理時間 3004 秒。
+- 2026-05-09 に失敗 13 件を一括再実行した。ジョブ `audio-verbalization-bulk-20260509-134942-1a86bbd8` は完了し、13 件すべてが未解決へ移行、失敗 0 件、次回一括対象 0 件になった。
+- 完了結果は対象 13 件、未解決 13 件、失敗 0 件、86 / 86 チャンク、言語化済み turn 305 件、未解決 turn 611 件、処理時間 3004 秒。
 - スクリーンショット: `output/playwright/scan-after-audio-verbalization-retry-completed.png`
 - 2026-05-09 に Video 一覧と PC 一覧の API を確認。Video は 234 件、PC は 1 件を返す。
 - Video 詳細 API は `C:\Users\amano\Videos\2026-04-23 16-59-46.mp4` で詳細取得に成功。`/api/video/source` は Range 付き GET で `206 Partial Content` / `video/mp4` を返すことを確認。
@@ -143,7 +143,7 @@
 - 2026-05-09 23:41 時点で一括言語化ジョブ `audio-verbalization-bulk-20260509-230454-82a802f7` は継続中。対象 229 件、候補あり 11 件、言語化済み 174 区間、未解決 200 区間、進捗 5%。
 - 2026-05-09 24:25 時点で一括言語化ジョブ `audio-verbalization-bulk-20260509-230454-82a802f7` は継続中。対象 229 件、候補あり 22 件、失敗 0 件、言語化済み 462 区間、未解決 734 区間、進捗 10%。
 - 2026-05-09 に `/scan` の初期ロード遅延を確認。`/timeline/audio-verbalization/bulk/targets` が約 19 秒かかって画面全体をブロックしていたため、初期ロードと5秒ポーリングから分離した。
-- 2026-05-09 に設定・製品管理モーダルを固定ヘッダー付きへ変更。右上の閉じるボタン、リサイズ、ヘッダードラッグ用の `timeline-modal.js` を追加。実行中の一括言語化ジョブを止めないため、画面反映確認は再起動後に行う。
+- 2026-05-09 に設定・製品管理モーダルを固定ヘッダー付きへ変更。右上の閉じるボタン、リサイズ、ヘッダードラッグ用の `timeline-modal.js` を追加。実行中の一括言語化ジョブを止めないため、画面反映確認は再起動後に行う。2026-05-11 に方針変更し、設定と製品管理は通常ページへ戻したため、この専用 JS は削除済み。
 - 2026-05-09 に Audio 一覧の取得負荷を確認。1ページ表示でも全件分の言語化状態を作っていたため、表示ページ分だけ状態を付けるよう修正。実行中の一括言語化ジョブを止めないため、速度確認は再起動後に行う。
 - 2026-05-09 に Video / Image / PC 一覧の初期表示を調整。概要取得後に一度画面を反映し、その後に一覧ページを読み込むため、一覧APIが遅くてもユーザーは対象件数や状態を先に確認できる。
 - 2026-05-09 に Windows Codex と Image の一覧ページから個別スキャンボタンを削除。スキャンの主操作は `/scan` に集約する。ChatGPT はZIPアップロードが必要なため個別導線を維持。
@@ -159,10 +159,10 @@
 - 2026-05-10 に Audio / Video overview へ全体の言語化対象ファイル数と言語化済みファイル数を追加。上部カードが表示中ページだけの件数に寄らないようにした。
 - 2026-05-10 に言語化プロンプトへ `context.language` の扱いを明記し、`ja-JP` では自然な日本語を返し、ローマ字のみ・カタカナのみへ寄らないようにした。
 - 2026-05-10 に言語化プロンプト版を `audio-verbalization-v2` へ更新。旧プロンプトで作られた要約寄り結果は、次回スキャン時に `stale` として再言語化対象へ戻る。
-- 2026-05-10 に製品管理の状態表示方針を確定。サブ製品Dockerを直接見ず、Timeline が起動・停止した履歴を起動状態として扱い、CLIが見つかるだけの状態は `接続済み` と表示する。
+- 2026-05-10 に製品管理の状態表示方針を確定。サブ製品Dockerを直接見ず、Timeline が起動・停止した履歴を起動状態として扱う。CLIが見つかるだけの状態は稼働中ではないため、画面では `未起動` と表示する。
 - 2026-05-10 に PC 状態の詳細画面は一旦作らない方針にした。TimelineForPC の現行連携は一覧で取り込み確認するところまでとし、詳細が必要になったら既存成果物を読む専用APIを追加する。
 - 2026-05-10 に設定モーダルを再起動後に確認。固定ヘッダー、右上閉じる、固定フッターの保存ボタン、通常モードの先行表示を確認した。スクリーンショット: `output/playwright/verify-settings-6s.png`
-- 2026-05-10 に製品管理モーダルを再起動後に確認。`ready` は `接続済み` で、CLI が見つかるだけの状態として扱う。起動ボタンは有効、停止・再起動は無効、PC は `起動停止不要` として表示される。スクリーンショット: `output/playwright/verify-product-management-after-state-buttons.png`
+- 2026-05-11 に製品管理モーダルを再起動後に確認。`ready` は `未起動` で、CLI が見つかり起動できる状態として扱う。起動ボタンは有効、停止・再起動は無効、PC は `起動停止不要` として表示される。スクリーンショット: `output/playwright/product-modal-state-label-after-helper-ok.png`
 - 2026-05-10 に一覧カードの画面下追従を再確認。`.tfa-main` の下余白を計算に含め、一覧カードの高さ指定によるページ全体の余分な縦スクロールを抑制した。スクリーンショット: `output/playwright/verify-list-layout-after-bottom-gap-video.png`, `output/playwright/verify-list-layout-after-bottom-gap-image.png`, `output/playwright/verify-list-layout-after-bottom-gap-windows-codex.png`, `output/playwright/verify-list-layout-after-bottom-gap-chatgpt.png`, `output/playwright/verify-list-layout-after-bottom-gap-pc.png`
 - 2026-05-10 に音声言語化の周辺ヒント範囲を、設定値が読めない場合でも前後 1 日へ揃えた。既定値やフォールバックが 10 分に戻らないよう、補助サーバー側の fallback を 1440 分へ統一した。
 - 2026-05-10 に音声一覧の長め待機を確認。再起動直後や一括言語化中は数秒では `読み込み中` のままになることがあるが、30 秒待機では 79 件の一覧が表示された。スクリーンショット: `output/playwright/verify-audio-longwait-after-permission.png`

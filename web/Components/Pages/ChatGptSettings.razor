@@ -79,7 +79,7 @@ else
     [Parameter] public bool Embedded { get; set; }
 
     private ChatGptOverview? _overview;
-    private ChatGptDirectoryRoot _outputRoot = new() { Id = "output", DisplayName = "Output", Path = @"C:\TimelineData\chatgpt" };
+    private ChatGptDirectoryRoot _outputRoot = new() { Id = "output", DisplayName = "Output" };
     private bool _loading = true;
     private bool _saving;
     private bool _saved;
@@ -97,7 +97,6 @@ else
             _outputRoot = CloneRoot(_overview.OutputRoot);
             if (string.IsNullOrWhiteSpace(_outputRoot.Path))
             {
-                _outputRoot.Path = @"C:\TimelineData\chatgpt";
                 _outputRoot.DisplayPath = _outputRoot.Path;
             }
         }

@@ -92,7 +92,7 @@ else
                     <dd>@CountLabel(videoFile.TextBlockCount)</dd>
                     <dt class="text-slate-500">音声区間</dt>
                     <dd>@CountLabel(videoFile.TurnCount > 0 ? videoFile.TurnCount : videoFile.SpeechCandidateCount)</dd>
-                    <dt class="text-slate-500">言語化</dt>
+                    <dt class="text-slate-500">文字起こし</dt>
                     <dd>@VerbalizationLabel(_detail.AudioVerbalization)</dd>
                 </dl>
             </section>
@@ -120,7 +120,7 @@ else
                         <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                             <h2 class="flex items-center gap-2 text-lg font-semibold">
                                 <FaIcon Name="language" Class="tfa-icon text-accent" />
-                                <span>言語化結果</span>
+                                <span>文字起こし</span>
                             </h2>
                             <div class="flex flex-wrap gap-2 text-xs text-slate-500">
                                 <span class="tfa-status-pill border-teal-200 bg-teal-50 text-teal-800">@_detail.AudioVerbalizationResult.Turns.Count 区間</span>
@@ -179,10 +179,10 @@ else
                 <section class="tfa-card tfa-card-pad">
                     <h2 class="flex items-center gap-2 text-lg font-semibold">
                         <FaIcon Name="language" Class="tfa-icon text-accent" />
-                        <span>言語化結果</span>
+                        <span>文字起こし</span>
                     </h2>
                     <div class="mt-4 text-sm leading-6 text-slate-700">
-                        まだ読める文章は作成されていません。スキャンで言語化が完了すると、ここに表示されます。
+                        この動画には文字起こし結果がまだありません。スキャンで音声解析が完了すると、ここに表示されます。
                     </div>
                 </section>
             }
@@ -253,7 +253,7 @@ else
         string.IsNullOrWhiteSpace(value) ? "-" : value;
 
     private static string ReadableText(AudioVerbalizedTurn turn) =>
-        string.IsNullOrWhiteSpace(turn.Text) ? "言語化候補はありません。" : turn.Text;
+        string.IsNullOrWhiteSpace(turn.Text) ? "文字起こしはありません。" : turn.Text;
 
     private static string ConfidenceLabel(double? value) =>
         value is null ? "-" : value.Value.ToString("0.000");
@@ -271,12 +271,13 @@ else
         return status.State.ToLowerInvariant() switch
         {
             "completed" => $"{status.VerbalizedTurns:N0} / {status.TotalTurns:N0} 件",
+            "source_transcript" => "補正前",
             "needs_review" => $"{status.VerbalizedTurns:N0} / {status.TotalTurns:N0} 件",
             "running" => "処理中",
             "queued" => "待機中",
             "failed" => "失敗",
             "stale" => "再処理待ち",
-            "not_started" => "未言語化",
+            "not_started" => "未取得",
             "planned" => "準備済み",
             _ => "未確認",
         };
@@ -285,20 +286,22 @@ else
     private static string VerbalizationStateLabel(string state) =>
         state.ToLowerInvariant() switch
         {
-            "completed" => "言語化済み",
-            "running" => "言語化中",
+            "completed" => "取得済み",
+            "source_transcript" => "補正前",
+            "running" => "取得中",
             "queued" => "待機中",
             "planned" => "準備済み",
             "needs_review" => "候補あり",
-            "stale" => "再言語化待ち",
+            "stale" => "再取得待ち",
             "failed" => "失敗",
-            _ => "未言語化",
+            _ => "未取得",
         };
 
     private static string VerbalizationPill(string state) =>
         state.ToLowerInvariant() switch
         {
             "completed" => "tfa-status-pill border-teal-200 bg-teal-50 text-teal-800",
+            "source_transcript" => "tfa-status-pill border-sky-200 bg-sky-50 text-sky-800",
             "running" or "queued" => "tfa-status-pill border-sky-200 bg-sky-50 text-sky-800",
             "planned" or "needs_review" or "stale" => "tfa-status-pill border-amber-200 bg-amber-50 text-amber-900",
             "failed" => "tfa-status-pill border-red-200 bg-red-50 text-red-800",
@@ -309,6 +312,7 @@ else
         state.ToLowerInvariant() switch
         {
             "completed" => "circle-check",
+            "source_transcript" => "file-lines",
             "running" => "spinner",
             "queued" => "clock",
             "planned" => "list-check",
@@ -322,6 +326,7 @@ else
         (status ?? "").ToLowerInvariant() switch
         {
             "confirmed" => "確認済み",
+            "source_transcript" => "補正前",
             "candidate" or "needs_review" => "候補",
             "unresolved" => "未解決",
             "failed" => "失敗",

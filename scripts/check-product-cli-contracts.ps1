@@ -1,15 +1,34 @@
 [CmdletBinding()]
 param(
-    [string]$AudioProductPath = "C:\apps\TimelineForAudio",
-    [string]$WindowsCodexProductPath = "C:\apps\TimelineForWindowsCodex",
-    [string]$ChatGptProductPath = "C:\apps\TimelineForChatGPT",
-    [string]$ImageProductPath = "C:\apps\TimelineForImage",
-    [string]$DownloadRoot = "C:\TimelineData\Timeline\work\contract-smoke",
+    [string]$AudioProductPath = "",
+    [string]$WindowsCodexProductPath = "",
+    [string]$ChatGptProductPath = "",
+    [string]$ImageProductPath = "",
+    [string]$DownloadRoot = "",
     [switch]$IncludeDownloads
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+
+$repoRoot = Split-Path -Parent $PSScriptRoot
+$defaultDataRoot = Join-Path $repoRoot "data"
+$defaultProductsRoot = Join-Path $defaultDataRoot "products"
+if (-not $AudioProductPath) {
+    $AudioProductPath = Join-Path $defaultProductsRoot "TimelineForAudio"
+}
+if (-not $WindowsCodexProductPath) {
+    $WindowsCodexProductPath = Join-Path $defaultProductsRoot "TimelineForWindowsCodex"
+}
+if (-not $ChatGptProductPath) {
+    $ChatGptProductPath = Join-Path $defaultProductsRoot "TimelineForChatGPT"
+}
+if (-not $ImageProductPath) {
+    $ImageProductPath = Join-Path $defaultProductsRoot "TimelineForImage"
+}
+if (-not $DownloadRoot) {
+    $DownloadRoot = Join-Path (Join-Path $defaultDataRoot "work") "contract-smoke"
+}
 
 $script:Failures = New-Object System.Collections.Generic.List[string]
 

@@ -119,7 +119,7 @@ else
 
     private ImageOverview? _overview;
     private readonly List<ImageInputRoot> _inputRoots = [];
-    private ImageDirectoryRoot _outputRoot = new() { Id = "output", DisplayName = "Output", Path = @"C:\TimelineData\image" };
+    private ImageDirectoryRoot _outputRoot = new() { Id = "output", DisplayName = "Output" };
     private bool _loading = true;
     private bool _saving;
     private bool _saved;
@@ -146,8 +146,6 @@ else
                 {
                     Id = "input-1",
                     DisplayName = "Input",
-                    Path = @"C:\TimelineData\input-image",
-                    DisplayPath = @"C:\TimelineData\input-image",
                     Enabled = true,
                 });
             }
@@ -155,7 +153,6 @@ else
             _outputRoot = CloneRoot(_overview.Settings.OutputRoot);
             if (string.IsNullOrWhiteSpace(_outputRoot.Path))
             {
-                _outputRoot.Path = @"C:\TimelineData\image";
                 _outputRoot.DisplayPath = _outputRoot.Path;
             }
 
@@ -265,7 +262,7 @@ else
 
     private string LastInputPath() =>
         _inputRoots.LastOrDefault(root => !string.IsNullOrWhiteSpace(root.Path))?.Path
-        ?? @"C:\TimelineData\input-image";
+        ?? "";
 
     private static ImageInputRoot CloneRoot(ImageInputRoot root) => new()
     {

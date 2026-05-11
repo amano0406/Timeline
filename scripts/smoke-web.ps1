@@ -53,13 +53,21 @@ function Assert-NoUnicodeReplacementCharacter {
 $paths = @(
     "/",
     "/timeline",
+    "/timeline/products",
+    "/timeline/settings",
     "/scan",
     "/audio/files",
+    "/audio/settings",
     "/video",
+    "/video/settings",
     "/pc",
+    "/pc/settings",
     "/windows-codex",
+    "/windows-codex/settings",
     "/chatgpt",
+    "/chatgpt/settings",
     "/image",
+    "/image/settings",
     "/api/health"
 )
 

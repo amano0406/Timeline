@@ -166,12 +166,12 @@ function Start-TimelineHelperServer {
     param(
         [Parameter(Mandatory = $true)]
         [string]$RepoRoot,
-        [string]$AudioProductPath = "C:\apps\TimelineForAudio",
-        [string]$WindowsCodexProductPath = "C:\apps\TimelineForWindowsCodex",
-        [string]$ChatGptProductPath = "C:\apps\TimelineForChatGPT",
-        [string]$ImageProductPath = "C:\apps\TimelineForImage",
-        [string]$VideoProductPath = "C:\apps\TimelineForVideo",
-        [string]$PcProductPath = "C:\apps\TimelineForPC",
+        [string]$AudioProductPath = "",
+        [string]$WindowsCodexProductPath = "",
+        [string]$ChatGptProductPath = "",
+        [string]$ImageProductPath = "",
+        [string]$VideoProductPath = "",
+        [string]$PcProductPath = "",
         [int]$Port = 19001
     )
 
@@ -193,6 +193,8 @@ function Start-TimelineHelperServer {
         "Bypass",
         "-File",
         "`"$scriptPath`"",
+        "-TimelineProductPath",
+        "`"$RepoRoot`"",
         "-Port",
         "$Port",
         "-AudioProductPath",

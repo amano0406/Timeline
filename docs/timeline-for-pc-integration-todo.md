@@ -26,8 +26,8 @@ TimelineForPC は Docker worker 型ではなく、Windows ホスト上で PC 状
 
 ## Known facts
 
-- Product path: `C:\apps\TimelineForPC`
-- CLI launcher: `C:\apps\TimelineForPC\cli.ps1`
+- Product path: `<Timeline>\data\products\TimelineForPC`
+- CLI launcher: `<Timeline>\data\products\TimelineForPC\cli.ps1`
 - Runtime kind: Windows host
 - Docker is not required.
 - Settings:

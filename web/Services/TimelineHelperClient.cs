@@ -542,6 +542,12 @@ public sealed class TimelineHelperClient
         CancellationToken cancellationToken = default)
         => await PostProductRuntimeActionAsync(productId, "install", cancellationToken);
 
+    public async Task<ProductRuntimeRow> InstallProductAsync(
+        string productId,
+        ProductInstallRequest request,
+        CancellationToken cancellationToken = default)
+        => await PostProductRuntimeActionAsync(productId, "install", request, cancellationToken);
+
     public async Task<ProductRuntimeRow> UpdateProductAsync(
         string productId,
         CancellationToken cancellationToken = default)
@@ -1096,7 +1102,7 @@ public sealed class TimelineHelperClient
     private static TimelineProductOverview OfflineOverview(string message) => new()
     {
         ProductFound = false,
-        ProductPath = @"C:\apps\TimelineForAudio",
+        ProductPath = "",
         WorkerState = "未確認",
         Message = message,
     };
@@ -1104,35 +1110,35 @@ public sealed class TimelineHelperClient
     private static WindowsCodexOverview OfflineWindowsCodexOverview(string message) => new()
     {
         ProductFound = false,
-        ProductPath = @"C:\apps\TimelineForWindowsCodex",
+        ProductPath = "",
         Message = message,
     };
 
     private static ChatGptOverview OfflineChatGptOverview(string message) => new()
     {
         ProductFound = false,
-        ProductPath = @"C:\apps\TimelineForChatGPT",
+        ProductPath = "",
         Message = message,
     };
 
     private static ImageOverview OfflineImageOverview(string message) => new()
     {
         ProductFound = false,
-        ProductPath = @"C:\apps\TimelineForImage",
+        ProductPath = "",
         Message = message,
     };
 
     private static VideoOverview OfflineVideoOverview(string message) => new()
     {
         ProductFound = false,
-        ProductPath = @"C:\apps\TimelineForVideo",
+        ProductPath = "",
         Message = message,
     };
 
     private static PcOverview OfflinePcOverview(string message) => new()
     {
         ProductFound = false,
-        ProductPath = @"C:\apps\TimelineForPC",
+        ProductPath = "",
         Message = message,
     };
 

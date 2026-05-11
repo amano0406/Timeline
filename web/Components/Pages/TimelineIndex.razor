@@ -90,7 +90,7 @@ else
                 <div class="flex items-center justify-between gap-3">
                     <div class="flex items-center gap-2 font-semibold text-slate-900">
                         <FaIcon Name="language" Class="tfa-icon text-accent" />
-                        <span>言語化</span>
+                        <span>文字起こし補正</span>
                     </div>
                     <span class="@AudioVerbalizationStepPillClass">@AudioVerbalizationStepLabel</span>
                 </div>
@@ -126,7 +126,7 @@ else
                         <span>音声ファイル</span>
                         <span class='@MaterialProductPillClass("audio")'>@MaterialProductStatusLabel("audio")</span>
                     </div>
-                    <div class="mt-2 text-sm text-slate-600">音声の取り込みと言語化状態を確認</div>
+                    <div class="mt-2 text-sm text-slate-600">音声の取り込みと補正状態を確認</div>
                 </a>
                 <a class="rounded-md border border-line bg-slate-50 p-4 text-slate-900 hover:border-teal-300 hover:bg-teal-50"
                    href="video">
@@ -135,7 +135,7 @@ else
                         <span>動画ファイル</span>
                         <span class='@MaterialProductPillClass("video")'>@MaterialProductStatusLabel("video")</span>
                     </div>
-                    <div class="mt-2 text-sm text-slate-600">動画の取り込みと言語化状態を確認</div>
+                    <div class="mt-2 text-sm text-slate-600">動画の取り込みと補正状態を確認</div>
                 </a>
                 <a class="rounded-md border border-line bg-slate-50 p-4 text-slate-900 hover:border-teal-300 hover:bg-teal-50"
                    href="image">
@@ -189,7 +189,7 @@ else
                             <FaIcon Name="@AudioVerbalizationIcon" Class="@($"tfa-icon {AudioVerbalizationIconSpin}")" />
                         </span>
                         <div class="tfa-run-progress-title-text">
-                            <h2>言語化の進捗</h2>
+                            <h2>文字起こし補正の進捗</h2>
                             <div class="tfa-run-progress-meta">
                                 <span class="@AudioVerbalizationStatePill">@AudioVerbalizationStateLabel</span>
                                 @if (!string.IsNullOrWhiteSpace(_audioVerbalizationStatus?.JobId))
@@ -211,7 +211,7 @@ else
 
                 <div class="tfa-run-progress-bar-track"
                      role="progressbar"
-                     aria-label="言語化の進捗"
+                     aria-label="文字起こし補正の進捗"
                      aria-valuemin="0"
                      aria-valuemax="100"
                      aria-valuenow="@ProgressAriaValue(AudioVerbalizationProgressPercent)">
@@ -246,7 +246,7 @@ else
                             <div>@_audioVerbalizationStatus.SkippedItems 件</div>
                         </div>
                         <div class="tfa-run-metric">
-                            <div class="tfa-kicker">言語化済み区間</div>
+                            <div class="tfa-kicker">補正済み区間</div>
                             <div>@_audioVerbalizationStatus.VerbalizedTurns / @_audioVerbalizationStatus.TotalTurns</div>
                         </div>
                         <div class="tfa-run-metric">
@@ -349,20 +349,20 @@ else
     {
         "running" => "処理中",
         "failed" => "失敗",
-        "review" => "要確認",
+        "review" => "未解決あり",
         "completed" => "完了",
         _ => "未実行",
     };
     private string AudioVerbalizationStepDetail => _audioVerbalizationStatus switch
     {
-        null => "未言語化の音声・動画があれば、まとめて言語化できます。",
-        { State: "running" or "queued" or "starting" } => $"言語化中 {_audioVerbalizationStatus.CompletedChunks:N0} / {_audioVerbalizationStatus.TotalChunks:N0} チャンク",
+        null => "未補正の音声・動画があれば、まとめて補正できます。",
+        { State: "running" or "queued" or "starting" } => $"補正中 {_audioVerbalizationStatus.CompletedChunks:N0} / {_audioVerbalizationStatus.TotalChunks:N0} チャンク",
         { State: "completed", FailedItems: > 0 } => FailedAudioVerbalizationDetail,
-        { State: "completed", ReviewItems: > 0, VerbalizedTurns: > 0 } => $"要確認 {_audioVerbalizationStatus.ReviewItems:N0} 件。読める候補を確認してください。",
-        { State: "completed", ReviewItems: > 0 } => $"要確認 {_audioVerbalizationStatus.ReviewItems:N0} 件。読める候補は作成できませんでした。",
-        { State: "completed" } => "未言語化の音声・動画は残っていません。",
-        { State: "failed" } => "言語化が途中で止まりました。",
-        _ => "未言語化の音声・動画があれば、まとめて言語化できます。",
+        { State: "completed", ReviewItems: > 0, VerbalizedTurns: > 0 } => $"未解決 {_audioVerbalizationStatus.ReviewItems:N0} 件。作成済みの補正候補だけを表示します。",
+        { State: "completed", ReviewItems: > 0 } => $"未解決 {_audioVerbalizationStatus.ReviewItems:N0} 件。読める候補は作成できませんでした。",
+        { State: "completed" } => "未補正の音声・動画は残っていません。",
+        { State: "failed" } => "補正が途中で止まりました。",
+        _ => "未補正の音声・動画があれば、まとめて補正できます。",
     };
     private string FailedAudioVerbalizationDetail =>
         _audioVerbalizationTargetSummary?.TargetCount > 0
@@ -607,11 +607,11 @@ else
             return;
         }
 
-        SetOperationMessage("言語化した結果を時間軸へ反映しています。");
+        SetOperationMessage("文字起こし補正の結果を時間軸へ反映しています。");
         var rebuilt = await RebuildAsync();
         if (rebuilt)
         {
-            SetOperationMessage("言語化した結果を時間軸へ反映しました。", TimeSpan.FromSeconds(10));
+            SetOperationMessage("文字起こし補正の結果を時間軸へ反映しました。", TimeSpan.FromSeconds(10));
         }
     }
 
@@ -623,14 +623,14 @@ else
         {
             if (showPrerequisiteError)
             {
-                _error = "先にスキャンしてください。言語化では周辺情報をヒントとして使います。";
+                _error = "先にスキャンしてください。文字起こし補正では周辺情報をヒントとして使います。";
             }
             return;
         }
 
         _verbalizing = true;
         _error = null;
-        SetOperationMessage("未言語化の音声・動画があれば、周辺情報を使って順番に言語化します。");
+        SetOperationMessage("未補正の音声・動画があれば、周辺情報を使って順番に補正します。");
         await InvokeAsync(StateHasChanged);
         try
         {
@@ -683,36 +683,36 @@ else
     {
         if (status is null)
         {
-            return "言語化の状態を確認しています。";
+            return "文字起こし補正の状態を確認しています。";
         }
 
         if (status.TotalItems == 0 && status.State.Equals("completed", StringComparison.OrdinalIgnoreCase))
         {
-            return "未言語化の音声・動画はありませんでした。";
+            return "未補正の音声・動画はありませんでした。";
         }
 
         if (IsActiveAudioVerbalization(status))
         {
-            return "未言語化の音声・動画を周辺情報を使って順番に言語化しています。";
+            return "未補正の音声・動画を周辺情報を使って順番に補正しています。";
         }
 
         if (status.State.Equals("failed", StringComparison.OrdinalIgnoreCase))
         {
             return string.IsNullOrWhiteSpace(status.Message)
-                ? "言語化に失敗しました。"
+                ? "文字起こし補正に失敗しました。"
                 : status.Message;
         }
 
         if (status.FailedItems > 0)
         {
-            return $"言語化が完了しました。失敗 {status.FailedItems:N0} 件。";
+            return $"文字起こし補正が完了しました。失敗 {status.FailedItems:N0} 件。";
         }
 
         return status.ReviewItems > 0 && status.VerbalizedTurns > 0
-            ? $"言語化が完了しました。要確認 {status.ReviewItems:N0} 件。"
+            ? $"文字起こし補正が完了しました。未解決 {status.ReviewItems:N0} 件。"
             : status.ReviewItems > 0
-                ? $"言語化が完了しましたが、読める候補は作成できませんでした。要確認 {status.ReviewItems:N0} 件。"
-            : "言語化が完了しました。未言語化の音声・動画は残っていません。";
+                ? $"文字起こし補正が完了しましたが、読める候補は作成できませんでした。未解決 {status.ReviewItems:N0} 件。"
+            : "文字起こし補正が完了しました。未補正の音声・動画は残っていません。";
     }
 
     private static TimeSpan? AudioVerbalizationMessageAutoClearDelay(AudioVerbalizationBulkStatus? status)
@@ -805,7 +805,7 @@ else
     private static string AudioVerbalizationStateText(string state) =>
         state.ToLowerInvariant() switch
         {
-            "running" => "言語化中",
+            "running" => "補正中",
             "queued" or "starting" => "待機中",
             "completed" => "完了",
             "failed" => "失敗",

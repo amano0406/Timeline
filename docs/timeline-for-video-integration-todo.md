@@ -6,9 +6,9 @@ TimelineForVideo を Timeline 本体へ取り込むための作業リスト。
 
 ## 現在の判断
 
-- TimelineForVideo は `C:\apps\TimelineForVideo` に存在する。
+- TimelineForVideo は既定では `<Timeline>\data\products\TimelineForVideo` に配置する。
 - TimelineForVideo の README 上は `cli.ps1`、`items refresh`、`files list`、`items list`、`items download`、`models list` が存在する。
-- 生成済み成果物は `C:\TimelineData\video` に存在する。
+- 生成済み成果物は既定では `<Timeline>\data\to_text\video` に配置する。
 - Timeline 本体のヘルパーからは、設定ファイルと既存成果物を読み取って概要を表示できる。
 - 2026-05-09 時点では、`cli.ps1 settings status --json`、`models list --json`、`files list --page 1 --page-size 5 --json`、`items list --page 1 --page-size 5 --json`、`items download --json` が成功する。
 - TimelineForVideo の `items download` は `--output` を持たないため、Timeline 側は製品が返す正式な ZIP パスを読み取って時間軸ストアへ取り込む。

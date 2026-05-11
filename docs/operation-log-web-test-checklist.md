@@ -5,7 +5,7 @@ Purpose: verify that user-facing Web operations leave enough live console and pe
 Persistent log location:
 
 ```text
-C:\TimelineData\Timeline\logs\operations\<operation-id>\
+data\logs\operations\<operation-id>\
 ```
 
 Expected files per operation:
@@ -71,17 +71,17 @@ Run time: 2026-05-04 19:18 JST.
 Result artifact:
 
 ```text
-C:\apps\Timeline\output\playwright\operation-log-web-test-results.json
+<Timeline>\output\playwright\operation-log-web-test-results.json
 ```
 
 Screenshots:
 
 ```text
-C:\apps\Timeline\output\playwright\operation-log-console-open.png
-C:\apps\Timeline\output\playwright\operation-log-audio-list.png
-C:\apps\Timeline\output\playwright\operation-log-image-list.png
-C:\apps\Timeline\output\playwright\operation-log-timeline-rebuild.png
-C:\apps\Timeline\output\playwright\operation-log-console-after-actions.png
+<Timeline>\output\playwright\operation-log-console-open.png
+<Timeline>\output\playwright\operation-log-audio-list.png
+<Timeline>\output\playwright\operation-log-image-list.png
+<Timeline>\output\playwright\operation-log-timeline-rebuild.png
+<Timeline>\output\playwright\operation-log-console-after-actions.png
 ```
 
 Summary:

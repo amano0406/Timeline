@@ -290,7 +290,7 @@
         <div class="row">
           <div>
             <label class="label" for="normal-data-root">Timeline が使う保存先</label>
-            <div id="normal-data-root" class="input">C:\TimelineData</div>
+            <div id="normal-data-root" class="input">&lt;Timeline&gt;\data</div>
             <p class="muted">作業データ、時間軸データ、各製品の生成データはこの中で管理します。</p>
           </div>
           <div class="button-row">
@@ -305,19 +305,19 @@
           <div class="field-stack">
             <div class="thin-box">
               <div class="label">Timeline 作業用</div>
-              <div class="input">C:\TimelineData\Timeline\work</div>
+              <div class="input">&lt;Timeline&gt;\data\work</div>
             </div>
             <div class="thin-box">
               <div class="label">時間軸ストア</div>
-              <div class="input">C:\TimelineData\Timeline\store</div>
+              <div class="input">&lt;Timeline&gt;\data\to_timeline</div>
             </div>
             <div class="thin-box">
               <div class="label">操作ログ</div>
-              <div class="input">C:\TimelineData\Timeline\logs</div>
+              <div class="input">&lt;Timeline&gt;\data\logs</div>
             </div>
             <div class="thin-box">
               <div class="label">製品別生成データ</div>
-              <div class="input">C:\TimelineData\products</div>
+              <div class="input">&lt;Timeline&gt;\data\products</div>
             </div>
           </div>
           <div class="button-row">
@@ -494,7 +494,7 @@
           <div class="thin-box implemented">
             <label class="label" for="pro-save-root">保存先</label>
             <div class="path-row">
-              <div id="pro-save-root" class="input">C:\TimelineData\Timeline</div>
+              <div id="pro-save-root" class="input">&lt;Timeline&gt;\data</div>
               <button type="button">変更</button>
             </div>
             <p class="muted">作業データ、時間軸ストア、操作ログはこの中で自動管理します。</p>
@@ -505,15 +505,15 @@
             <div class="field-stack">
               <div class="thin-box">
                 <div class="label">作業ディレクトリ</div>
-                <div class="input">C:\TimelineData\Timeline\work</div>
+                <div class="input">&lt;Timeline&gt;\data\work</div>
               </div>
               <div class="thin-box">
                 <div class="label">時間軸ストア</div>
-                <div class="input">C:\TimelineData\Timeline\store</div>
+                <div class="input">&lt;Timeline&gt;\data\to_timeline</div>
               </div>
               <div class="thin-box">
                 <div class="label">操作ログ</div>
-                <div class="input">C:\TimelineData\Timeline\logs</div>
+                <div class="input">&lt;Timeline&gt;\data\logs</div>
               </div>
             </div>
           </div>
@@ -537,7 +537,7 @@
                 <div class="thin-box">
                   <label class="label" for="audio-product-path">製品配置先</label>
                   <div class="path-row">
-                    <div id="audio-product-path" class="input">C:\apps\TimelineForAudio</div>
+                    <div id="audio-product-path" class="input">&lt;Timeline&gt;\data\products\TimelineForAudio</div>
                     <button type="button">変更</button>
                   </div>
                 </div>
@@ -573,7 +573,7 @@
                 <div class="thin-box">
                   <label class="label" for="audio-output">生成データ保存先</label>
                   <div class="path-row">
-                    <div id="audio-output" class="input">C:\TimelineData\products\audio</div>
+                    <div id="audio-output" class="input">&lt;Timeline&gt;\data\to_text\audio</div>
                     <button type="button">変更</button>
                   </div>
                 </div>
@@ -606,7 +606,7 @@
                 <div class="thin-box">
                   <label class="label" for="image-product-path">製品配置先</label>
                   <div class="path-row">
-                    <div id="image-product-path" class="input">C:\apps\TimelineForImage</div>
+                    <div id="image-product-path" class="input">&lt;Timeline&gt;\data\products\TimelineForImage</div>
                     <button type="button">変更</button>
                   </div>
                 </div>
@@ -625,7 +625,7 @@
                 <div class="thin-box">
                   <label class="label" for="image-output">生成データ保存先</label>
                   <div class="path-row">
-                    <div id="image-output" class="input">C:\TimelineData\products\image</div>
+                    <div id="image-output" class="input">&lt;Timeline&gt;\data\to_text\image</div>
                     <button type="button">変更</button>
                   </div>
                 </div>
@@ -639,14 +639,14 @@
                 <div class="thin-box">
                   <label class="label" for="chatgpt-product-path">製品配置先</label>
                   <div class="path-row">
-                    <div id="chatgpt-product-path" class="input">C:\apps\TimelineForChatGPT</div>
+                    <div id="chatgpt-product-path" class="input">&lt;Timeline&gt;\data\products\TimelineForChatGPT</div>
                     <button type="button">変更</button>
                   </div>
                 </div>
                 <div class="thin-box">
                   <label class="label" for="chatgpt-output">生成データ保存先</label>
                   <div class="path-row">
-                    <div id="chatgpt-output" class="input">C:\TimelineData\products\chatgpt</div>
+                    <div id="chatgpt-output" class="input">&lt;Timeline&gt;\data\to_text\chatgpt</div>
                     <button type="button">変更</button>
                   </div>
                 </div>
@@ -660,14 +660,14 @@
                 <div class="thin-box">
                   <label class="label" for="codex-product-path">製品配置先</label>
                   <div class="path-row">
-                    <div id="codex-product-path" class="input">C:\apps\TimelineForWindowsCodex</div>
+                    <div id="codex-product-path" class="input">&lt;Timeline&gt;\data\products\TimelineForWindowsCodex</div>
                     <button type="button">変更</button>
                   </div>
                 </div>
                 <div class="thin-box">
                   <label class="label" for="codex-output">生成データ保存先</label>
                   <div class="path-row">
-                    <div id="codex-output" class="input">C:\TimelineData\products\windows-codex</div>
+                    <div id="codex-output" class="input">&lt;Timeline&gt;\data\to_text\windows-codex</div>
                     <button type="button">変更</button>
                   </div>
                 </div>

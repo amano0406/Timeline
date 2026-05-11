@@ -21,8 +21,6 @@ builder.Services.AddHttpClient("TimelineHelperProxy", client =>
     client.BaseAddress = new Uri(helperBaseUrl);
     client.Timeout = TimeSpan.FromMinutes(15);
 });
-builder.Services.AddScoped<TimelineSettingsDialogService>();
-builder.Services.AddScoped<TimelineProductsDialogService>();
 
 var app = builder.Build();
 

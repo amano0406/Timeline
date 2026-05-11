@@ -42,10 +42,10 @@ services:
       Timeline__StoreDirectory: /data/store
     volumes:
       - type: bind
-        source: C:\TimelineData\Timeline\work
+        source: ${TIMELINE_WORK_SOURCE:-./data/work}
         target: /data/work
       - type: bind
-        source: C:\TimelineData\Timeline\store
+        source: ${TIMELINE_STORE_SOURCE:-./data/to_timeline}
         target: /data/store
 
 volumes:

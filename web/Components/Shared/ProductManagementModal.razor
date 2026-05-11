@@ -22,9 +22,70 @@
 
     @if (!string.IsNullOrWhiteSpace(_message))
     {
-        <div class="tfa-alert-info flex items-start gap-2">
-            <FaIcon Name="circle-info" Class="tfa-icon mt-0.5" />
+        <div class="@($"{MessageAlertClass} flex items-start gap-2")">
+            <FaIcon Name="@MessageIcon" Class="tfa-icon mt-0.5" />
             <span>@_message</span>
+        </div>
+    }
+
+    @if (_completion is not null)
+    {
+        <div class="fixed inset-0 z-[1080] flex items-center justify-center bg-slate-950/60 p-4">
+            <section class="w-full max-w-xl rounded-md bg-white shadow-xl"
+                     role="dialog"
+                     aria-modal="true"
+                     aria-labelledby="product-completion-title">
+                <header class="flex items-start justify-between gap-4 border-b border-line p-5">
+                    <div>
+                        <h2 id="product-completion-title" class="flex items-center gap-2 text-lg font-semibold">
+                            <FaIcon Name="circle-check" Class="tfa-icon text-accent" />
+                            <span>@_completion.Title</span>
+                        </h2>
+                        <p class="mt-1 text-sm text-slate-600">@_completion.Message</p>
+                    </div>
+                    <button type="button"
+                            class="tfa-button-secondary !min-h-9 !px-2"
+                            aria-label="完了通知を閉じる"
+                            @onclick="CloseCompletion">
+                        <FaIcon Name="xmark" Class="tfa-icon" />
+                    </button>
+                </header>
+
+                <div class="space-y-4 p-5 text-sm text-slate-700">
+                    <dl class="grid gap-2 rounded-md border border-line bg-slate-50 p-4">
+                        @foreach (var row in _completion.Rows)
+                        {
+                            <div class="grid gap-1 border-b border-line/70 pb-2 last:border-b-0 last:pb-0 sm:grid-cols-[12rem_1fr]">
+                                <dt class="font-semibold text-slate-900">@row.Label</dt>
+                                <dd class="min-w-0 break-words">@row.Value</dd>
+                            </div>
+                        }
+                    </dl>
+
+                    @if (_completion.Warnings.Count > 0)
+                    {
+                        <div class="rounded-md border border-amber-200 bg-amber-50 p-4 text-amber-900">
+                            <div class="mb-2 flex items-center gap-2 font-semibold">
+                                <FaIcon Name="triangle-exclamation" Class="tfa-icon !h-4 !w-4" />
+                                <span>確認が必要な項目</span>
+                            </div>
+                            <ul class="space-y-1">
+                                @foreach (var warning in _completion.Warnings)
+                                {
+                                    <li>@warning</li>
+                                }
+                            </ul>
+                        </div>
+                    }
+                </div>
+
+                <footer class="flex justify-end border-t border-line p-4">
+                    <button type="button" class="tfa-button-primary gap-2" @onclick="CloseCompletion">
+                        <FaIcon Name="circle-check" Class="tfa-icon" />
+                        <span>確認しました</span>
+                    </button>
+                </footer>
+            </section>
         </div>
     }
 
@@ -92,6 +153,27 @@
                                     <div class="tfa-product-message">
                                         <FaIcon Name="triangle-exclamation" Class="tfa-icon !h-4 !w-4" />
                                         <span>@ProductMessage(product)</span>
+                                    </div>
+                                }
+
+                                @if (HasSettingsBackupForInstall(product))
+                                {
+                                    <div class="mt-3 rounded-md border border-teal-200 bg-teal-50 p-3 text-sm text-teal-900">
+                                        <div class="flex items-start gap-2">
+                                            <FaIcon Name="rotate-left" Class="tfa-icon !h-4 !w-4 mt-0.5" />
+                                            <div>
+                                                <div class="font-semibold">前回の設定を利用できます</div>
+                                                <label class="mt-2 flex items-center gap-2">
+                                                    <input type="checkbox"
+                                                           class="h-4 w-4 rounded border-line text-accent"
+                                                           checked="@InstallRestoreSettings(product)"
+                                                           @onchange="@(args => SetInstallRestoreSettings(product, args))"
+                                                           disabled="@(_actionProductId is not null)" />
+                                                    <span>インストール時にこの設定を使う</span>
+                                                </label>
+                                                <div class="mt-1 break-all text-xs text-teal-800">@product.SettingsBackupPath</div>
+                                            </div>
+                                        </div>
                                     </div>
                                 }
                             </div>
@@ -168,113 +250,166 @@
                             }
                         </div>
 
-                        @if (IsUninstallPending(product))
-                        {
-                            <div class="tfa-product-confirm">
-                                <div class="tfa-product-confirm-text items-start">
-                                    <FaIcon Name="triangle-exclamation" Class="tfa-icon !h-4 !w-4 mt-0.5" />
-                                    <div class="space-y-3">
-                                        <p>製品アプリ本体は削除されます。元ファイルは削除されません。</p>
-                                        @if (IsRuntimeStarted(product))
-                                        {
-                                            <p class="rounded-md border border-amber-200 bg-amber-50 p-2 text-amber-900">
-                                                現在起動中です。アンインストール前に停止し、停止に失敗した場合は削除しません。
-                                            </p>
-                                        }
-                                        <div class="grid gap-2">
-                                            <label class="flex items-center gap-2 text-sm">
-                                                <input type="checkbox"
-                                                       class="h-4 w-4 rounded border-line text-accent"
-                                                       checked="@_uninstallKeepSettings"
-                                                       @onchange="@(async args => await SetUninstallKeepSettingsAsync(args))"
-                                                       disabled="@(_actionProductId is not null || _uninstallPlanLoading)" />
-                                                <span>設定を退避して残す</span>
-                                            </label>
-                                            <fieldset class="grid gap-1 text-sm">
-                                                <legend class="font-semibold text-slate-700">取り込んだデータ</legend>
-                                                <label class="flex items-center gap-2">
-                                                    <input type="radio"
-                                                           name="@($"uninstall-data-{product.Id}")"
-                                                           class="h-4 w-4 border-line text-accent"
-                                                           checked="@(!_uninstallRemoveGeneratedData)"
-                                                           @onchange="@(async _ => await SetUninstallRemoveGeneratedDataAsync(false))"
-                                                           disabled="@(_actionProductId is not null || _uninstallPlanLoading)" />
-                                                    <span>残す</span>
-                                                </label>
-                                                <label class="flex items-center gap-2">
-                                                    <input type="radio"
-                                                           name="@($"uninstall-data-{product.Id}")"
-                                                           class="h-4 w-4 border-line text-accent"
-                                                           checked="@_uninstallRemoveGeneratedData"
-                                                           @onchange="@(async _ => await SetUninstallRemoveGeneratedDataAsync(true))"
-                                                           disabled="@(_actionProductId is not null || _uninstallPlanLoading)" />
-                                                    <span>生成済みデータも削除する</span>
-                                                </label>
-                                            </fieldset>
-                                        </div>
-
-                                        @if (_uninstallPlanLoading)
-                                        {
-                                            <div class="flex items-center gap-2 text-sm text-slate-600">
-                                                <FaIcon Name="spinner" Class="tfa-icon fa-spin" />
-                                                <span>削除内容を確認しています。</span>
-                                            </div>
-                                        }
-                                        else if (!string.IsNullOrWhiteSpace(_uninstallPlanError))
-                                        {
-                                            <div class="tfa-alert-danger">@_uninstallPlanError</div>
-                                        }
-                                        else if (_uninstallPlan is not null)
-                                        {
-                                            <div class="rounded-md border border-line bg-white p-3 text-sm text-slate-700">
-                                                <div class="mb-2 font-semibold text-slate-900">実行内容</div>
-                                                <dl class="grid gap-1">
-                                                    <div class="flex justify-between gap-4">
-                                                        <dt>削除するアプリ本体</dt>
-                                                        <dd class="font-mono">@FormatBytes(_uninstallPlan.AppDirectory.SizeBytes)</dd>
-                                                    </div>
-                                                    <div class="flex justify-between gap-4">
-                                                        <dt>生成済みデータ</dt>
-                                                        <dd>@GeneratedDataPlanLabel(_uninstallPlan)</dd>
-                                                    </div>
-                                                    <div class="flex justify-between gap-4">
-                                                        <dt>設定</dt>
-                                                        <dd>@SettingsPlanLabel(_uninstallPlan)</dd>
-                                                    </div>
-                                                    <div class="flex justify-between gap-4 border-t border-line pt-2">
-                                                        <dt>空き容量の見込み</dt>
-                                                        <dd class="font-mono font-semibold">@FormatBytes(_uninstallPlan.TotalDeleteBytes)</dd>
-                                                    </div>
-                                                </dl>
-                                                <div class="mt-2 break-all text-xs text-slate-500">@_uninstallPlan.ProductPath</div>
-                                            </div>
-                                        }
-                                    </div>
-                                </div>
-                                <div class="tfa-product-confirm-actions">
-                                    <button type="button"
-                                            class="tfa-button-secondary gap-2"
-                                            @onclick="@(() => ConfirmUninstallAsync(product))"
-                                            disabled="@(!CanConfirmUninstall(product))">
-                                        <FaIcon Name="trash" Class="tfa-icon" />
-                                        <span>@ConfirmUninstallLabel</span>
-                                    </button>
-                                    <button type="button"
-                                            class="tfa-button-secondary gap-2"
-                                            @onclick="CancelUninstall"
-                                            disabled="@(_actionProductId is not null)">
-                                        <FaIcon Name="xmark" Class="tfa-icon" />
-                                        <span>キャンセル</span>
-                                    </button>
-                                </div>
-                            </div>
-                        }
                     </article>
                 }
             </div>
         </section>
     }
 </div>
+
+@if (PendingUninstallProduct is { } pendingProduct)
+{
+    <div class="fixed inset-0 z-[1080] flex items-center justify-center bg-slate-950/60 p-4">
+        <section class="flex max-h-[88vh] w-full max-w-xl flex-col overflow-hidden rounded-md bg-white shadow-xl"
+                 role="dialog"
+                 aria-modal="true"
+                 aria-labelledby="product-uninstall-title">
+            <header class="flex items-start justify-between gap-4 border-b border-line p-5">
+                <div class="min-w-0">
+                    <h2 id="product-uninstall-title" class="flex items-center gap-2 text-lg font-semibold">
+                        <FaIcon Name="trash" Class="tfa-icon text-warning" />
+                        <span>@DisplayName(pendingProduct) をアンインストールしますか？</span>
+                    </h2>
+                    <p class="mt-1 text-sm text-slate-600">
+                        製品アプリ本体は削除されます。元ファイルは削除されません。
+                    </p>
+                </div>
+                <button type="button"
+                        class="tfa-button-secondary !min-h-9 !px-2"
+                        aria-label="アンインストール確認を閉じる"
+                        @onclick="CancelUninstall"
+                        disabled="@(_actionProductId is not null)">
+                    <FaIcon Name="xmark" Class="tfa-icon" />
+                </button>
+            </header>
+
+            <div class="overflow-auto p-5">
+                <div class="grid gap-4">
+                    @if (IsRuntimeStarted(pendingProduct))
+                    {
+                        <div class="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                            現在起動中です。アンインストール前に停止し、停止に失敗した場合は削除しません。
+                        </div>
+                    }
+
+                    <div class="grid gap-3 rounded-md border border-line bg-slate-50 p-4">
+                        <label class="flex items-center gap-2 text-sm">
+                            <input type="checkbox"
+                                   class="h-4 w-4 rounded border-line text-accent"
+                                   checked="@_uninstallKeepSettings"
+                                   @onchange="@(async args => await SetUninstallKeepSettingsAsync(args))"
+                                   disabled="@(_actionProductId is not null || _uninstallPlanLoading)" />
+                            <span>設定を退避して残す</span>
+                        </label>
+                        <fieldset class="grid gap-2 text-sm">
+                            <legend class="font-semibold text-slate-700">取り込んだデータ</legend>
+                            <label class="flex items-center gap-2">
+                                <input type="radio"
+                                       name="@($"uninstall-data-{pendingProduct.Id}")"
+                                       class="h-4 w-4 border-line text-accent"
+                                       checked="@(!_uninstallRemoveGeneratedData)"
+                                       @onchange="@(async _ => await SetUninstallRemoveGeneratedDataAsync(false))"
+                                       disabled="@(_actionProductId is not null || _uninstallPlanLoading)" />
+                                <span>残す</span>
+                            </label>
+                            <label class="flex items-center gap-2">
+                                <input type="radio"
+                                       name="@($"uninstall-data-{pendingProduct.Id}")"
+                                       class="h-4 w-4 border-line text-accent"
+                                       checked="@_uninstallRemoveGeneratedData"
+                                       @onchange="@(async _ => await SetUninstallRemoveGeneratedDataAsync(true))"
+                                       disabled="@(_actionProductId is not null || _uninstallPlanLoading)" />
+                                <span>生成済みデータも削除する</span>
+                            </label>
+                        </fieldset>
+                    </div>
+
+                    @if (_uninstallPlanLoading)
+                    {
+                        <div class="flex items-center gap-2 rounded-md border border-line bg-slate-50 p-4 text-sm text-slate-600">
+                            <FaIcon Name="spinner" Class="tfa-icon fa-spin" />
+                            <span>削除内容を確認しています。</span>
+                        </div>
+                    }
+                    else if (!string.IsNullOrWhiteSpace(_uninstallPlanError))
+                    {
+                        <div class="tfa-alert-danger">@_uninstallPlanError</div>
+                    }
+                    else if (_uninstallPlan is not null)
+                    {
+                        <div class="rounded-md border border-line bg-white p-4 text-sm text-slate-700">
+                            <div class="mb-3 font-semibold text-slate-900">実行内容</div>
+                            <dl class="grid gap-2">
+                                <div class="flex justify-between gap-4">
+                                    <dt>削除するアプリ本体</dt>
+                                    <dd class="font-mono">@FormatBytes(_uninstallPlan.AppDirectory.SizeBytes)</dd>
+                                </div>
+                                <div class="flex justify-between gap-4">
+                                    <dt>生成済みデータ</dt>
+                                    <dd>@GeneratedDataPlanLabel(_uninstallPlan)</dd>
+                                </div>
+                                <div class="flex justify-between gap-4">
+                                    <dt>実行環境データ</dt>
+                                    <dd>@RuntimeDataPlanLabel(_uninstallPlan)</dd>
+                                </div>
+                                <div class="flex justify-between gap-4">
+                                    <dt>設定</dt>
+                                    <dd>@SettingsPlanLabel(_uninstallPlan)</dd>
+                                </div>
+                                <div class="flex justify-between gap-4 border-t border-line pt-2">
+                                    <dt>空き容量の見込み</dt>
+                                    <dd class="font-mono font-semibold">@FormatBytes(_uninstallPlan.TotalDeleteBytes)</dd>
+                                </div>
+                            </dl>
+                            @if (_uninstallPlan.RuntimeData.Resources.Count > 0)
+                            {
+                                <div class="mt-4 rounded-md border border-line bg-slate-50 p-3">
+                                    <div class="mb-2 font-semibold text-slate-900">実行環境データの内訳</div>
+                                    <ul class="grid gap-2">
+                                        @foreach (var resource in _uninstallPlan.RuntimeData.Resources)
+                                        {
+                                            <li class="rounded-md border border-line bg-white p-2">
+                                                <div class="grid gap-1 sm:grid-cols-[9rem_1fr_auto_auto]">
+                                                    <span class="font-semibold text-slate-700">@RuntimeResourceKindLabel(resource.Kind)</span>
+                                                    <span class="min-w-0 break-all">@RuntimeResourceDisplay(resource)</span>
+                                                    <span class="font-mono text-slate-600">@RuntimeResourceSizeLabel(resource)</span>
+                                                    <span class="@RuntimeResourceStatusClass(resource)">@RuntimeResourceStatusLabel(resource)</span>
+                                                </div>
+                                                @if (!string.IsNullOrWhiteSpace(RuntimeResourceMessage(resource)))
+                                                {
+                                                    <div class="mt-1 text-xs text-slate-500">@RuntimeResourceMessage(resource)</div>
+                                                }
+                                            </li>
+                                        }
+                                    </ul>
+                                </div>
+                            }
+                            <div class="mt-2 break-all text-xs text-slate-500">@_uninstallPlan.ProductPath</div>
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <footer class="flex flex-wrap justify-end gap-2 border-t border-line bg-white p-4">
+                <button type="button"
+                        class="tfa-button-secondary gap-2"
+                        @onclick="CancelUninstall"
+                        disabled="@(_actionProductId is not null)">
+                    <FaIcon Name="xmark" Class="tfa-icon" />
+                    <span>キャンセル</span>
+                </button>
+                <button type="button"
+                        class="tfa-button-primary gap-2"
+                        @onclick="@(() => ConfirmUninstallAsync(pendingProduct))"
+                        disabled="@(!CanConfirmUninstall(pendingProduct))">
+                    <FaIcon Name="@(_actionProductId == pendingProduct.Id ? "spinner" : "trash")"
+                            Class="@($"tfa-icon {(_actionProductId == pendingProduct.Id ? "fa-spin" : "")}")" />
+                    <span>@ConfirmUninstallLabel</span>
+                </button>
+            </footer>
+        </section>
+    </div>
+}
 
 @code {
     [Parameter]
@@ -284,6 +419,7 @@
     private bool _loading = true;
     private string? _error;
     private string? _message;
+    private bool _messageIsSuccess;
     private string? _actionProductId;
     private string? _pendingUninstallProductId;
     private bool _uninstallKeepSettings = true;
@@ -291,8 +427,14 @@
     private bool _uninstallPlanLoading;
     private string? _uninstallPlanError;
     private ProductUninstallPlan? _uninstallPlan;
+    private ProductActionCompletion? _completion;
+    private readonly Dictionary<string, bool> _installRestoreSettings = new(StringComparer.OrdinalIgnoreCase);
 
     private IReadOnlyList<ProductRuntimeRow> Products => _overview?.Products ?? [];
+    private ProductRuntimeRow? PendingUninstallProduct =>
+        string.IsNullOrWhiteSpace(_pendingUninstallProductId)
+            ? null
+            : Products.FirstOrDefault(product => string.Equals(product.Id, _pendingUninstallProductId, StringComparison.OrdinalIgnoreCase));
 
     protected override async Task OnInitializedAsync()
     {
@@ -327,26 +469,40 @@
 
     private async Task RestartProductAsync(ProductRuntimeRow product)
     {
+        _completion = null;
         await RunProductActionAsync(product, "再起動", () => Timeline.RestartProductAsync(product.Id));
     }
 
     private async Task StartProductAsync(ProductRuntimeRow product)
     {
+        _completion = null;
         await RunProductActionAsync(product, "起動", () => Timeline.StartProductAsync(product.Id));
     }
 
     private async Task StopProductAsync(ProductRuntimeRow product)
     {
+        _completion = null;
         await RunProductActionAsync(product, "停止", () => Timeline.StopProductAsync(product.Id));
     }
 
     private async Task InstallProductAsync(ProductRuntimeRow product)
     {
-        await RunProductActionAsync(product, "インストール", () => Timeline.InstallProductAsync(product.Id));
+        var settingsBackupAvailable = product.SettingsBackupAvailable;
+        var settingsBackupPath = product.SettingsBackupPath;
+        var restoreSettings = !settingsBackupAvailable || InstallRestoreSettings(product);
+        _completion = null;
+        await RunProductActionAsync(product, "インストール", () => Timeline.InstallProductAsync(
+            product.Id,
+            new ProductInstallRequest { RestoreSettingsBackup = restoreSettings }));
+        if (_messageIsSuccess)
+        {
+            _completion = BuildInstallCompletion(DisplayName(product), settingsBackupAvailable, restoreSettings, settingsBackupPath);
+        }
     }
 
     private async Task UpdateProductAsync(ProductRuntimeRow product)
     {
+        _completion = null;
         await RunProductActionAsync(product, "更新", () => Timeline.UpdateProductAsync(product.Id));
     }
 
@@ -357,7 +513,9 @@
         _uninstallRemoveGeneratedData = false;
         _uninstallPlan = null;
         _uninstallPlanError = null;
-        _message = $"{DisplayName(product)} をアンインストールする前に内容を確認してください。";
+        _completion = null;
+        _message = null;
+        _messageIsSuccess = false;
         _error = null;
         await LoadUninstallPlanAsync();
     }
@@ -366,6 +524,7 @@
     {
         _pendingUninstallProductId = null;
         _message = null;
+        _messageIsSuccess = false;
         _uninstallPlan = null;
         _uninstallPlanError = null;
         _uninstallPlanLoading = false;
@@ -374,10 +533,38 @@
     private async Task ConfirmUninstallAsync(ProductRuntimeRow product)
     {
         var request = CurrentUninstallRequest();
-        await RunProductActionAsync(product, "アンインストール", () => Timeline.UninstallProductAsync(product.Id, request));
-        _pendingUninstallProductId = null;
-        _uninstallPlan = null;
-        _uninstallPlanError = null;
+        var plan = _uninstallPlan;
+        var displayName = DisplayName(product);
+
+        _actionProductId = product.Id;
+        _error = null;
+        _message = $"{displayName} をアンインストールしています。";
+        _messageIsSuccess = false;
+        _completion = null;
+        try
+        {
+            await Timeline.UninstallProductAsync(product.Id, request);
+            _message = $"{displayName} をアンインストールしました。";
+            _messageIsSuccess = true;
+            if (plan is not null)
+            {
+                _completion = BuildUninstallCompletion(displayName, plan);
+            }
+            _overview = await Timeline.GetProductRuntimeOverviewAsync();
+            _pendingUninstallProductId = null;
+            _uninstallPlan = null;
+            _uninstallPlanError = null;
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+            _message = null;
+            _messageIsSuccess = false;
+        }
+        finally
+        {
+            _actionProductId = null;
+        }
     }
 
     private ProductUninstallRequest CurrentUninstallRequest() =>
@@ -428,16 +615,19 @@
         _actionProductId = product.Id;
         _error = null;
         _message = $"{DisplayName(product)} を{label}しています。";
+        _messageIsSuccess = false;
         try
         {
             await action();
             _message = $"{DisplayName(product)} を{label}しました。";
+            _messageIsSuccess = true;
             _overview = await Timeline.GetProductRuntimeOverviewAsync();
         }
         catch (Exception ex)
         {
             _error = ex.Message;
             _message = null;
+            _messageIsSuccess = false;
         }
         finally
         {
@@ -509,7 +699,10 @@
         product.State.Trim().ToLowerInvariant();
 
     private static bool ShowProductMessage(ProductRuntimeRow product) =>
-        !IsInstalled(product) || (!IsWindowsHostProduct(product) && !string.IsNullOrWhiteSpace(product.Message));
+        !IsInstalled(product) ||
+        (!IsWindowsHostProduct(product) &&
+            RuntimeState(product) is "failed" &&
+            !string.IsNullOrWhiteSpace(product.Message));
 
     private static string ProductMessage(ProductRuntimeRow product)
     {
@@ -555,7 +748,7 @@
             "restarting" => "再起動中",
             "uninstalling" => "削除中",
             "failed" => "異常",
-            "ready" => "接続済み",
+            "ready" => "未起動",
             _ => "導入済み",
         };
     }
@@ -577,7 +770,7 @@
             "restarting" => "tfa-status-pill border-sky-200 bg-sky-50 text-sky-800",
             "uninstalling" => "tfa-status-pill border-sky-200 bg-sky-50 text-sky-800",
             "failed" => "tfa-status-pill border-red-200 bg-red-50 text-red-800",
-            "ready" => "tfa-status-pill border-teal-200 bg-teal-50 text-teal-800",
+            "ready" => "tfa-status-pill border-slate-200 bg-slate-50 text-slate-700",
             _ => "tfa-status-pill border-line bg-slate-50 text-slate-700",
         };
     }
@@ -599,7 +792,7 @@
             "restarting" => "spinner",
             "uninstalling" => "spinner",
             "failed" => "triangle-exclamation",
-            "ready" => "circle-check",
+            "ready" => "circle-minus",
             _ => "circle-info",
         };
     }
@@ -620,7 +813,7 @@
         }
         return product.State.Trim().ToLowerInvariant() switch
         {
-            "ready" => "CLI 接続済み",
+            "ready" => "起動できます",
             "updating" => "更新しています",
             "stopped" => "停止しています",
             "failed" => "前回操作でエラー",
@@ -685,6 +878,12 @@
             ? "データも削除してアンインストールする"
             : "アンインストールする";
 
+    private string MessageAlertClass =>
+        _messageIsSuccess ? "tfa-alert-info border-teal-200 bg-teal-50 text-teal-800" : "tfa-alert-info";
+
+    private string MessageIcon =>
+        _messageIsSuccess ? "circle-check" : "circle-info";
+
     private static string SettingsPlanLabel(ProductUninstallPlan plan)
     {
         if (!plan.Settings.Exists)
@@ -698,6 +897,213 @@
     {
         var size = plan.GeneratedData.Where(item => item.WillDelete).Sum(item => item.SizeBytes);
         return plan.RemoveGeneratedData ? $"削除する / {FormatBytes(size)}" : "残す";
+    }
+
+    private static string RuntimeDataPlanLabel(ProductUninstallPlan plan)
+    {
+        if (!plan.RuntimeData.UsesDocker)
+        {
+            return "対象外";
+        }
+        if (!plan.RuntimeData.ManagedByTimeline)
+        {
+            return "未確認";
+        }
+        var deleteCount = plan.RuntimeData.Resources.Count(item => item.WillDelete);
+        var deleteBytes = plan.RuntimeData.Resources.Where(item => item.WillDelete).Sum(item => item.SizeBytes);
+        if (deleteCount > 0)
+        {
+            return $"削除する / {deleteCount} 件 / {FormatBytes(deleteBytes)}";
+        }
+        if (plan.RuntimeData.Resources.Count > 0)
+        {
+            return $"残す / {plan.RuntimeData.Resources.Count} 件";
+        }
+        return plan.RuntimeData.WillDelete
+            ? $"削除する / {FormatBytes(plan.RuntimeData.SizeBytes)}"
+            : "残す";
+    }
+
+    private static string RuntimeResourceKindLabel(string kind) => kind switch
+    {
+        "docker-project" => "Docker構成",
+        "docker-container" => "コンテナ",
+        "docker-image" => "イメージ",
+        "docker-volume" => "ボリューム",
+        "docker-network" => "ネットワーク",
+        "local-path" => "ローカル",
+        _ => string.IsNullOrWhiteSpace(kind) ? "リソース" : kind,
+    };
+
+    private static string RuntimeResourceDisplay(ProductRuntimeResourcePlan resource)
+    {
+        if (!string.IsNullOrWhiteSpace(resource.Path))
+        {
+            return resource.Path;
+        }
+        if (!string.IsNullOrWhiteSpace(resource.Name))
+        {
+            return resource.Name;
+        }
+        return "-";
+    }
+
+    private static string RuntimeResourceSizeLabel(ProductRuntimeResourcePlan resource)
+    {
+        if (resource.SizeBytes > 0)
+        {
+            return FormatBytes(resource.SizeBytes);
+        }
+        return string.IsNullOrWhiteSpace(resource.Message) ? "容量未確認" : "未確認";
+    }
+
+    private static string RuntimeResourceStatusLabel(ProductRuntimeResourcePlan resource)
+    {
+        if (resource.WillDelete)
+        {
+            return "削除";
+        }
+        if (resource.Kind.StartsWith("docker-", StringComparison.OrdinalIgnoreCase))
+        {
+            return "削除未対応";
+        }
+        return "残す";
+    }
+
+    private static string RuntimeResourceStatusClass(ProductRuntimeResourcePlan resource)
+    {
+        if (resource.WillDelete)
+        {
+            return "tfa-status-pill border-red-200 bg-red-50 text-red-800";
+        }
+        if (resource.Kind.StartsWith("docker-", StringComparison.OrdinalIgnoreCase))
+        {
+            return "tfa-status-pill border-amber-200 bg-amber-50 text-amber-800";
+        }
+        return "tfa-status-pill border-slate-200 bg-slate-50 text-slate-700";
+    }
+
+    private static string RuntimeResourceMessage(ProductRuntimeResourcePlan resource)
+    {
+        if (resource.WillDelete)
+        {
+            return "";
+        }
+        if (resource.Kind.StartsWith("docker-", StringComparison.OrdinalIgnoreCase))
+        {
+            return "実行環境側のデータです。現時点では容量を確認せず、削除もしません。";
+        }
+        return resource.Message;
+    }
+
+    private static ProductActionCompletion BuildUninstallCompletion(string displayName, ProductUninstallPlan plan)
+    {
+        var rows = new List<ProductCompletionRow>
+        {
+            new("削除したアプリ本体", $"{FormatBytes(plan.AppDirectory.SizeBytes)} / {plan.ProductPath}"),
+            new("取り込んだデータ", GeneratedDataCompletionLabel(plan)),
+            new("実行環境データ", RuntimeDataCompletionLabel(plan)),
+            new("設定", SettingsCompletionLabel(plan)),
+            new("空き容量の見込み", FormatBytes(plan.TotalDeleteBytes)),
+        };
+
+        return new ProductActionCompletion(
+            $"{displayName} のアンインストールが完了しました",
+            "削除したものと残したものを確認できます。",
+            rows,
+            plan.Warnings);
+    }
+
+    private static ProductActionCompletion BuildInstallCompletion(
+        string displayName,
+        bool settingsBackupAvailable,
+        bool restoreSettings,
+        string settingsBackupPath)
+    {
+        var rows = new List<ProductCompletionRow>
+        {
+            new("製品アプリ本体", "インストールしました。"),
+            new("設定", settingsBackupAvailable
+                ? (restoreSettings
+                    ? $"退避済み設定を復元しました / {settingsBackupPath}"
+                    : "退避済み設定は使わず、新しい設定で開始します。")
+                : "新しい設定で開始します。"),
+        };
+
+        return new ProductActionCompletion(
+            $"{displayName} のインストールが完了しました",
+            "製品管理から起動できる状態になりました。",
+            rows,
+            []);
+    }
+
+    private static bool HasSettingsBackupForInstall(ProductRuntimeRow product) =>
+        !IsInstalled(product) && product.SettingsBackupAvailable;
+
+    private bool InstallRestoreSettings(ProductRuntimeRow product)
+    {
+        if (!_installRestoreSettings.TryGetValue(product.Id, out var value))
+        {
+            value = true;
+            _installRestoreSettings[product.Id] = value;
+        }
+        return value;
+    }
+
+    private void SetInstallRestoreSettings(ProductRuntimeRow product, ChangeEventArgs args)
+    {
+        _installRestoreSettings[product.Id] = args.Value is bool value
+            ? value
+            : string.Equals(Convert.ToString(args.Value), "true", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string SettingsCompletionLabel(ProductUninstallPlan plan)
+    {
+        if (!plan.Settings.Exists)
+        {
+            return "設定ファイルは見つかりませんでした。";
+        }
+        return plan.Settings.WillBackup
+            ? $"退避しました / {plan.Settings.BackupPath}"
+            : "退避せず削除しました。";
+    }
+
+    private static string GeneratedDataCompletionLabel(ProductUninstallPlan plan)
+    {
+        if (!plan.RemoveGeneratedData)
+        {
+            return "残しました。再インストール時に再利用できる可能性があります。";
+        }
+
+        var size = plan.GeneratedData.Where(item => item.WillDelete).Sum(item => item.SizeBytes);
+        return $"削除しました / {FormatBytes(size)}";
+    }
+
+    private static string RuntimeDataCompletionLabel(ProductUninstallPlan plan)
+    {
+        if (!plan.RuntimeData.UsesDocker)
+        {
+            return "対象外です。";
+        }
+        if (!plan.RuntimeData.ManagedByTimeline)
+        {
+            return "未確認のため削除していません。";
+        }
+        var deleteCount = plan.RuntimeData.Resources.Count(item => item.WillDelete);
+        var deleteBytes = plan.RuntimeData.Resources.Where(item => item.WillDelete).Sum(item => item.SizeBytes);
+        if (deleteCount > 0)
+        {
+            var keepCount = plan.RuntimeData.Resources.Count - deleteCount;
+            var keepLabel = keepCount > 0 ? $" / 残した明示リソース {keepCount} 件" : "";
+            return $"削除しました / {deleteCount} 件 / {FormatBytes(deleteBytes)}{keepLabel}";
+        }
+        if (plan.RuntimeData.Resources.Count > 0)
+        {
+            return $"削除未対応または保持対象のため残しました。明示リソース {plan.RuntimeData.Resources.Count} 件";
+        }
+        return plan.RuntimeData.WillDelete
+            ? $"削除しました / {FormatBytes(plan.RuntimeData.SizeBytes)}"
+            : "残しました。";
     }
 
     private static string FormatBytes(long bytes)
@@ -720,4 +1126,17 @@
             ? $"{bytes} B"
             : $"{value:0.##} {units[unit]}";
     }
+
+    private void CloseCompletion()
+    {
+        _completion = null;
+    }
+
+    private sealed record ProductActionCompletion(
+        string Title,
+        string Message,
+        IReadOnlyList<ProductCompletionRow> Rows,
+        IReadOnlyList<string> Warnings);
+
+    private sealed record ProductCompletionRow(string Label, string Value);
 }

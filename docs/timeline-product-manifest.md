@@ -35,9 +35,9 @@ timeline-product.json
 例:
 
 ```text
-C:\apps\TimelineForAudio\timeline-product.json
-C:\apps\TimelineForImage\timeline-product.json
-C:\apps\TimelineForVideo\timeline-product.json
+<Timeline>\data\products\TimelineForAudio\timeline-product.json
+<Timeline>\data\products\TimelineForImage\timeline-product.json
+<Timeline>\data\products\TimelineForVideo\timeline-product.json
 ```
 
 `manifest.json` という名前は使いません。
@@ -72,7 +72,7 @@ Timeline 側は、インストール前に必要な最低限の製品カタロ�
       {
         "id": "audio",
         "displayName": "TimelineForAudio",
-        "path": "C:\\apps\\TimelineForAudio",
+        "path": "data\\products\\TimelineForAudio",
         "sourceType": "github-source-archive",
         "sourceUrl": "https://github.com/amano0406/TimelineForAudio",
         "version": "",
@@ -435,11 +435,52 @@ Timeline UI で表示できる機能です。
 ```json
 {
   "usesDocker": true,
-  "dockerManagedByTimeline": false
+  "dockerManagedByTimeline": false,
+  "docker": {
+    "composeProjectNames": [],
+    "containers": [],
+    "images": [],
+    "volumes": [],
+    "networks": []
+  },
+  "localPaths": []
 }
 ```
 
 Docker リソース削除の契約が固まっていない状態で `true` にしないでください。
+
+`dockerManagedByTimeline` を `true` にする場合は、Timeline が管理してよい実行環境データを明示します。
+Timeline は名前を推測しません。
+
+| 項目 | 意味 |
+|---|---|
+| `docker.composeProjectNames` | Docker Compose のプロジェクト名 |
+| `docker.containers` | 削除対象候補にしてよいコンテナ名 |
+| `docker.images` | 削除対象候補にしてよいイメージ名 |
+| `docker.volumes` | 削除対象候補にしてよいボリューム名 |
+| `docker.networks` | 削除対象候補にしてよいネットワーク名 |
+| `localPaths` | 実行時に作るローカル補助ディレクトリやファイル |
+
+各配列は、単純な文字列でも、`name` / `path` を持つオブジェクトでも扱えます。
+
+例:
+
+```json
+{
+  "docker": {
+    "volumes": [
+      { "name": "timeline-for-audio-cache" }
+    ]
+  },
+  "localPaths": [
+    { "name": "temporary-cache", "path": "data\\to_text\\audio\\runtime" }
+  ]
+}
+```
+
+現段階の Timeline は、Docker リソース名を表示できますが、Docker リソース容量はまだ正確に測らず、Docker リソース削除も実行しません。
+`localPaths` はローカルファイルシステム上の容量を測れます。
+`dockerManagedByTimeline` が `true` で、`localPaths` に存在するパスが明示されている場合、アンインストール時にそのローカル実行環境データを削除対象にします。
 
 ## サブ製品へ投げる依頼プロンプト
 

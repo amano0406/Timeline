@@ -4,17 +4,21 @@ param(
     [string]$JobId,
     [Parameter(Mandatory = $true)]
     [string]$AudioItemId,
-    [string]$TimelineProductPath = "C:\apps\Timeline",
-    [string]$AudioProductPath = "C:\apps\TimelineForAudio",
-    [string]$WindowsCodexProductPath = "C:\apps\TimelineForWindowsCodex",
-    [string]$ChatGptProductPath = "C:\apps\TimelineForChatGPT",
-    [string]$ImageProductPath = "C:\apps\TimelineForImage",
-    [string]$VideoProductPath = "C:\apps\TimelineForVideo",
-    [string]$PcProductPath = "C:\apps\TimelineForPC"
+    [string]$TimelineProductPath = "",
+    [string]$AudioProductPath = "",
+    [string]$WindowsCodexProductPath = "",
+    [string]$ChatGptProductPath = "",
+    [string]$ImageProductPath = "",
+    [string]$VideoProductPath = "",
+    [string]$PcProductPath = ""
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+
+if (-not $TimelineProductPath) {
+    $TimelineProductPath = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot ".."))
+}
 
 $helperScript = Join-Path $TimelineProductPath "scripts\timeline-helper-server.ps1"
 if (-not (Test-Path -LiteralPath $helperScript -PathType Leaf)) {

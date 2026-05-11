@@ -13,12 +13,14 @@ public sealed class RootRow
 public sealed class TimelineAppSettings
 {
     public int SchemaVersion { get; set; } = 1;
+    public string DataRoot { get; set; } = "data";
+    public string ResolvedDataRoot { get; set; } = "";
     public string DisplayLanguageId { get; set; } = "ja-JP";
     public List<TimelineDisplayLanguageOption> DisplayLanguages { get; set; } = [];
     public string TimeZoneId { get; set; } = "Asia/Tokyo";
     public List<TimelineTimeZoneOption> TimeZones { get; set; } = [];
-    public string WorkDirectory { get; set; } = @"C:\TimelineData\Timeline\work";
-    public string StoreDirectory { get; set; } = @"C:\TimelineData\Timeline\store";
+    public string WorkDirectory { get; set; } = "";
+    public string StoreDirectory { get; set; } = "";
     public TimelineCommonAiSettings CommonAi { get; set; } = new();
     public TimelineProductRegistry ProductRegistry { get; set; } = new();
     public TimelineAudioVerbalizationSettings AudioVerbalization { get; set; } = new();
@@ -26,10 +28,11 @@ public sealed class TimelineAppSettings
 
 public sealed class TimelineAppSettingsSaveRequest
 {
+    public string DataRoot { get; set; } = "data";
     public string DisplayLanguageId { get; set; } = "ja-JP";
     public string TimeZoneId { get; set; } = "Asia/Tokyo";
-    public string WorkDirectory { get; set; } = @"C:\TimelineData\Timeline\work";
-    public string StoreDirectory { get; set; } = @"C:\TimelineData\Timeline\store";
+    public string WorkDirectory { get; set; } = "";
+    public string StoreDirectory { get; set; } = "";
     public TimelineCommonAiSettings? CommonAi { get; set; }
     public TimelineProductRegistry? ProductRegistry { get; set; }
 }
@@ -229,6 +232,7 @@ public sealed class AudioTimelineTurn
     public string AbsoluteStartAt { get; set; } = "";
     public string AbsoluteEndAt { get; set; } = "";
     public string Speaker { get; set; } = "";
+    public string Text { get; set; } = "";
     public string PhoneTokens { get; set; } = "";
     public string UnitType { get; set; } = "";
     public double? Confidence { get; set; }
@@ -455,6 +459,9 @@ public sealed class ProductRuntimeRow
     public string LatestVersionStatus { get; set; } = "";
     public bool UpdateAvailable { get; set; }
     public string ReleaseArchiveUrl { get; set; } = "";
+    public bool SettingsBackupAvailable { get; set; }
+    public string SettingsBackupPath { get; set; } = "";
+    public string SettingsBackupAt { get; set; } = "";
     public bool Enabled { get; set; } = true;
     public bool ProductFound { get; set; }
     public bool ComposeFound { get; set; }
@@ -467,6 +474,11 @@ public sealed class ProductRuntimeRow
     public string StartedAt { get; set; } = "";
     public int ExitCode { get; set; }
     public string Message { get; set; } = "";
+}
+
+public sealed class ProductInstallRequest
+{
+    public bool RestoreSettingsBackup { get; set; } = true;
 }
 
 public sealed class ProductUninstallRequest
@@ -486,6 +498,7 @@ public sealed class ProductUninstallPlan
     public ProductUninstallPathPlan AppDirectory { get; set; } = new();
     public ProductUninstallSettingsPlan Settings { get; set; } = new();
     public List<ProductUninstallPathPlan> GeneratedData { get; set; } = [];
+    public ProductUninstallRuntimeDataPlan RuntimeData { get; set; } = new();
     public List<string> Warnings { get; set; } = [];
 }
 
@@ -505,6 +518,29 @@ public sealed class ProductUninstallSettingsPlan
     public bool WillBackup { get; set; }
     public string BackupPath { get; set; } = "";
     public bool WillDeleteBackup { get; set; }
+}
+
+public sealed class ProductUninstallRuntimeDataPlan
+{
+    public bool UsesDocker { get; set; }
+    public bool ManagedByTimeline { get; set; }
+    public bool Exists { get; set; }
+    public long SizeBytes { get; set; }
+    public bool WillDelete { get; set; }
+    public List<ProductRuntimeResourcePlan> Resources { get; set; } = [];
+    public string Message { get; set; } = "";
+}
+
+public sealed class ProductRuntimeResourcePlan
+{
+    public string Kind { get; set; } = "";
+    public string Name { get; set; } = "";
+    public string Path { get; set; } = "";
+    public bool Exists { get; set; }
+    public long SizeBytes { get; set; }
+    public bool WillDelete { get; set; }
+    public bool ManagedByTimeline { get; set; }
+    public string Message { get; set; } = "";
 }
 
 public sealed class TimelineExportDownloadResult

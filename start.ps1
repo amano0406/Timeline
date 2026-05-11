@@ -35,7 +35,82 @@ $composeArgs = Get-TimelineComposeArgs -RepoRoot $repoRoot
 $env:TIMELINE_HELPER_PORT = [string]$helperPort
 $ollamaModel = "qwen3.5:9b"
 
-foreach ($path in @("C:\TimelineData\Timeline\work", "C:\TimelineData\Timeline\store")) {
+function Get-TimelineStartParentForNamedChild {
+    param(
+        [string]$Path,
+        [string]$ChildName
+    )
+
+    if (-not $Path) {
+        return ""
+    }
+    $trimmed = $Path.TrimEnd([char[]]@('\', '/'))
+    if (-not $trimmed) {
+        return ""
+    }
+    $leaf = Split-Path -Path $trimmed -Leaf
+    if (-not $leaf.Equals($ChildName, [System.StringComparison]::OrdinalIgnoreCase)) {
+        return ""
+    }
+    return (Split-Path -Path $trimmed -Parent)
+}
+
+function Resolve-TimelineStartDataRoot {
+    param([string]$RepoRoot)
+
+    $dataRoot = "data"
+    $settingsPath = Join-Path $RepoRoot "settings.json"
+    if (Test-Path -LiteralPath $settingsPath -PathType Leaf) {
+        try {
+            $payload = Get-Content -LiteralPath $settingsPath -Raw -Encoding UTF8 | ConvertFrom-Json
+            $dataRootProperty = $payload.PSObject.Properties["dataRoot"]
+            $candidate = ""
+            if ($null -ne $dataRootProperty) {
+                $candidate = [string]$dataRootProperty.Value
+            }
+            if ($candidate) {
+                $dataRoot = $candidate
+            }
+            else {
+                $workDirectoryProperty = $payload.PSObject.Properties["workDirectory"]
+                $storeDirectoryProperty = $payload.PSObject.Properties["storeDirectory"]
+                $workDirectory = ""
+                $storeDirectory = ""
+                if ($null -ne $workDirectoryProperty) {
+                    $workDirectory = [string]$workDirectoryProperty.Value
+                }
+                if ($null -ne $storeDirectoryProperty) {
+                    $storeDirectory = [string]$storeDirectoryProperty.Value
+                }
+                $workParent = Get-TimelineStartParentForNamedChild -Path $workDirectory -ChildName "work"
+                $storeParent = Get-TimelineStartParentForNamedChild -Path $storeDirectory -ChildName "store"
+                $toTimelineParent = Get-TimelineStartParentForNamedChild -Path $storeDirectory -ChildName "to_timeline"
+                foreach ($legacy in @($toTimelineParent, $storeParent, $workParent)) {
+                    if ($legacy) {
+                        $dataRoot = $legacy
+                        break
+                    }
+                }
+            }
+        }
+        catch {
+            $dataRoot = "data"
+        }
+    }
+
+    if ([System.IO.Path]::IsPathRooted($dataRoot)) {
+        return [System.IO.Path]::GetFullPath($dataRoot)
+    }
+    return [System.IO.Path]::GetFullPath((Join-Path $RepoRoot $dataRoot))
+}
+
+$timelineDataRoot = Resolve-TimelineStartDataRoot -RepoRoot $repoRoot
+$timelineWorkSource = Join-Path $timelineDataRoot "work"
+$timelineStoreSource = Join-Path $timelineDataRoot "to_timeline"
+$env:TIMELINE_WORK_SOURCE = $timelineWorkSource
+$env:TIMELINE_STORE_SOURCE = $timelineStoreSource
+
+foreach ($path in @($timelineDataRoot, $timelineWorkSource, $timelineStoreSource)) {
     if (-not (Test-Path -LiteralPath $path)) {
         New-Item -ItemType Directory -Path $path | Out-Null
     }

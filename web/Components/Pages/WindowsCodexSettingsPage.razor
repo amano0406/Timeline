@@ -89,7 +89,7 @@ else
         try
         {
             _overview = await Timeline.GetWindowsCodexOverviewAsync();
-            _outputRoot = string.IsNullOrWhiteSpace(Settings.OutputsRoot) ? @"C:\TimelineData\windows-codex" : Settings.OutputsRoot;
+            _outputRoot = string.IsNullOrWhiteSpace(Settings.OutputsRoot) ? "" : Settings.OutputsRoot;
             _outputRootDisplay = string.IsNullOrWhiteSpace(Settings.OutputsRootDisplayPath) ? _outputRoot : Settings.OutputsRootDisplayPath;
         }
         finally

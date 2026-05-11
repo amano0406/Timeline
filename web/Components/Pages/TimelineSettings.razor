@@ -527,8 +527,8 @@ else
     private readonly List<ImageInputRoot> _imageInputRoots = [];
     private readonly List<VideoInputRoot> _videoInputRoots = [];
     private RootRow _audioOutputRoot = new() { Id = "master", DisplayName = "TimelineForAudio Master", Enabled = true };
-    private ImageDirectoryRoot _imageOutputRoot = new() { Id = "output", DisplayName = "Output", Path = @"C:\TimelineData\image" };
-    private VideoDirectoryRoot _videoOutputRoot = new() { Id = "output", DisplayName = "Output", Path = @"C:\TimelineData\video" };
+    private ImageDirectoryRoot _imageOutputRoot = new() { Id = "output", DisplayName = "Output" };
+    private VideoDirectoryRoot _videoOutputRoot = new() { Id = "output", DisplayName = "Output" };
     private bool _loading = true;
     private bool _saving;
     private bool _saved;
@@ -550,12 +550,12 @@ else
     private List<SettingsChangeRow> _pendingSaveChanges = [];
     private string _displayLanguageId = "ja-JP";
     private string _timeZoneId = "Asia/Tokyo";
-    private string _timelineDirectory = DefaultTimelineDirectory;
+    private string _timelineDirectory = DefaultDataRoot;
     private string _commonComputeMode = "auto";
     private string _audioComputeMode = "cpu";
     private string _selectedProductSettingsId = "audio";
 
-    private const string DefaultTimelineDirectory = @"C:\TimelineData\Timeline";
+    private const string DefaultDataRoot = "data";
 
     private IReadOnlyList<TimelineDisplayLanguageOption> DisplayLanguages => _settings?.DisplayLanguages ?? [];
     private IReadOnlyList<TimelineTimeZoneOption> TimeZones => _settings?.TimeZones ?? [];
@@ -666,7 +666,7 @@ else
 
             _displayLanguageId = string.IsNullOrWhiteSpace(_settings.DisplayLanguageId) ? "ja-JP" : _settings.DisplayLanguageId;
             _timeZoneId = string.IsNullOrWhiteSpace(_settings.TimeZoneId) ? "Asia/Tokyo" : _settings.TimeZoneId;
-            _timelineDirectory = TimelineDirectoryFromSettings(_settings.WorkDirectory, _settings.StoreDirectory);
+            _timelineDirectory = TimelineDirectoryFromSettings(_settings);
             _commonComputeMode = NormalizeCommonComputeMode(_settings.CommonAi.ComputeMode);
             _registry = CloneRegistry(_settings.ProductRegistry);
 
@@ -791,8 +791,13 @@ else
         {
             Id = "master",
             DisplayName = "TimelineForAudio Master",
+            Path = ManagedProductDataPath(_timelineDirectory, "audio"),
             Enabled = true,
         });
+        if (string.IsNullOrWhiteSpace(_audioOutputRoot.Path))
+        {
+            _audioOutputRoot.Path = ManagedProductDataPath(_timelineDirectory, "audio");
+        }
     }
 
     private void LoadImageState(ImageOverview? overview)
@@ -809,8 +814,6 @@ else
             {
                 Id = "input-1",
                 DisplayName = "Input",
-                Path = @"C:\TimelineData\input-image",
-                DisplayPath = @"C:\TimelineData\input-image",
                 Enabled = true,
             });
         }
@@ -819,9 +822,14 @@ else
         {
             Id = "output",
             DisplayName = "Output",
-            Path = @"C:\TimelineData\image",
-            DisplayPath = @"C:\TimelineData\image",
+            Path = ManagedProductDataPath(_timelineDirectory, "image"),
+            DisplayPath = ManagedProductDataPath(_timelineDirectory, "image"),
         });
+        if (string.IsNullOrWhiteSpace(_imageOutputRoot.Path))
+        {
+            _imageOutputRoot.Path = ManagedProductDataPath(_timelineDirectory, "image");
+            _imageOutputRoot.DisplayPath = _imageOutputRoot.Path;
+        }
     }
 
     private void LoadVideoState(VideoOverview? overview)
@@ -838,8 +846,6 @@ else
             {
                 Id = "input-1",
                 DisplayName = "Input",
-                Path = @"C:\TimelineData\input-video",
-                DisplayPath = @"C:\TimelineData\input-video",
                 Enabled = true,
             });
         }
@@ -848,9 +854,14 @@ else
         {
             Id = "output",
             DisplayName = "Output",
-            Path = @"C:\TimelineData\video",
-            DisplayPath = @"C:\TimelineData\video",
+            Path = ManagedProductDataPath(_timelineDirectory, "video"),
+            DisplayPath = ManagedProductDataPath(_timelineDirectory, "video"),
         });
+        if (string.IsNullOrWhiteSpace(_videoOutputRoot.Path))
+        {
+            _videoOutputRoot.Path = ManagedProductDataPath(_timelineDirectory, "video");
+            _videoOutputRoot.DisplayPath = _videoOutputRoot.Path;
+        }
     }
 
     private async Task SaveAsync()
@@ -874,8 +885,7 @@ else
             {
                 DisplayLanguageId = _displayLanguageId,
                 TimeZoneId = _timeZoneId,
-                WorkDirectory = CombineWindowsPath(timelineDirectory, "work"),
-                StoreDirectory = CombineWindowsPath(timelineDirectory, "store"),
+                DataRoot = timelineDirectory,
                 CommonAi = new TimelineCommonAiSettings { ComputeMode = _commonComputeMode },
                 ProductRegistry = _registry,
             });
@@ -922,7 +932,7 @@ else
 
             _displayLanguageId = _settings.DisplayLanguageId;
             _timeZoneId = _settings.TimeZoneId;
-            _timelineDirectory = TimelineDirectoryFromSettings(_settings.WorkDirectory, _settings.StoreDirectory);
+            _timelineDirectory = TimelineDirectoryFromSettings(_settings);
             _registry = CloneRegistry(_settings.ProductRegistry);
             _runtime = await Timeline.GetProductRuntimeOverviewAsync();
             _tokenToSave = null;
@@ -1198,8 +1208,8 @@ else
     {
         var changes = new List<SettingsChangeRow>();
         var currentTimelineDirectory = _settings is null
-            ? DefaultTimelineDirectory
-            : TimelineDirectoryFromSettings(_settings.WorkDirectory, _settings.StoreDirectory);
+            ? DefaultDataRoot
+            : TimelineDirectoryFromSettings(_settings);
         AddChange("データ保存先", currentTimelineDirectory, _timelineDirectory);
         AddChange("表示言語", LabelFor(DisplayLanguages, _settings?.DisplayLanguageId), LabelFor(DisplayLanguages, _displayLanguageId));
         AddChange("タイムゾーン", LabelFor(TimeZones, _settings?.TimeZoneId), LabelFor(TimeZones, _timeZoneId));
@@ -1298,22 +1308,25 @@ else
         var timelineDirectory = TrimTrailingDirectorySeparators(_timelineDirectory);
         if (string.IsNullOrWhiteSpace(timelineDirectory))
         {
-            timelineDirectory = DefaultTimelineDirectory;
+            timelineDirectory = DefaultDataRoot;
         }
 
-        _audioOutputRoot.Path = CombineWindowsPath(CombineWindowsPath(timelineDirectory, "products"), "audio");
+        _audioOutputRoot.Path = ManagedProductDataPath(timelineDirectory, "audio");
         _audioOutputRoot.DisplayName = string.IsNullOrWhiteSpace(_audioOutputRoot.DisplayName) ? "TimelineForAudio Master" : _audioOutputRoot.DisplayName;
         _audioOutputRoot.Enabled = true;
-        _imageOutputRoot.Path = CombineWindowsPath(CombineWindowsPath(timelineDirectory, "products"), "image");
+        _imageOutputRoot.Path = ManagedProductDataPath(timelineDirectory, "image");
         _imageOutputRoot.DisplayPath = _imageOutputRoot.Path;
         _imageOutputRoot.DisplayName = string.IsNullOrWhiteSpace(_imageOutputRoot.DisplayName) ? "Output" : _imageOutputRoot.DisplayName;
-        _videoOutputRoot.Path = CombineWindowsPath(CombineWindowsPath(timelineDirectory, "products"), "video");
+        _videoOutputRoot.Path = ManagedProductDataPath(timelineDirectory, "video");
         _videoOutputRoot.DisplayPath = _videoOutputRoot.Path;
         _videoOutputRoot.DisplayName = string.IsNullOrWhiteSpace(_videoOutputRoot.DisplayName) ? "Output" : _videoOutputRoot.DisplayName;
         _audioDirty = true;
         _imageDirty = true;
         _videoDirty = true;
     }
+
+    private static string ManagedProductDataPath(string timelineDirectory, string productId) =>
+        CombineWindowsPath(CombineWindowsPath(timelineDirectory, "to_text"), productId);
 
     private RenderFragment TimelineDisplayControls() => @<div class="grid gap-4">
         <div>
@@ -1485,10 +1498,29 @@ else
         _ => "box",
     };
 
-    private static string TimelineDirectoryFromSettings(string? workDirectory, string? storeDirectory)
+    private static string TimelineDirectoryFromSettings(TimelineAppSettings settings)
+    {
+        if (!string.IsNullOrWhiteSpace(settings.ResolvedDataRoot))
+        {
+            return settings.ResolvedDataRoot;
+        }
+
+        if (!string.IsNullOrWhiteSpace(settings.DataRoot))
+        {
+            return settings.DataRoot;
+        }
+
+        return TimelineDirectoryFromLegacySettings(settings.WorkDirectory, settings.StoreDirectory);
+    }
+
+    private static string TimelineDirectoryFromLegacySettings(string? workDirectory, string? storeDirectory)
     {
         var workParent = ParentForNamedChild(workDirectory, "work");
-        var storeParent = ParentForNamedChild(storeDirectory, "store");
+        var storeParent = ParentForNamedChild(storeDirectory, "to_timeline");
+        if (string.IsNullOrWhiteSpace(storeParent))
+        {
+            storeParent = ParentForNamedChild(storeDirectory, "store");
+        }
         if (!string.IsNullOrWhiteSpace(workParent)
             && !string.IsNullOrWhiteSpace(storeParent)
             && string.Equals(workParent, storeParent, StringComparison.OrdinalIgnoreCase))
@@ -1506,7 +1538,7 @@ else
             return workParent;
         }
 
-        return DefaultTimelineDirectory;
+        return DefaultDataRoot;
     }
 
     private static string ParentForNamedChild(string? path, string childName)
@@ -1592,15 +1624,15 @@ else
 
     private string LastAudioInputPath() =>
         _audioInputRoots.LastOrDefault(root => !string.IsNullOrWhiteSpace(root.Path))?.Path
-        ?? @"C:\TimelineData\input-audio";
+        ?? "";
 
     private string LastImageInputPath() =>
         _imageInputRoots.LastOrDefault(root => !string.IsNullOrWhiteSpace(root.Path))?.Path
-        ?? @"C:\TimelineData\input-image";
+        ?? "";
 
     private string LastVideoInputPath() =>
         _videoInputRoots.LastOrDefault(root => !string.IsNullOrWhiteSpace(root.Path))?.Path
-        ?? @"C:\TimelineData\input-video";
+        ?? "";
 
     private string NextAudioInputRootId()
     {

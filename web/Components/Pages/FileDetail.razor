@@ -100,7 +100,7 @@ else if (_file is not null)
             <section class="tfa-card tfa-card-pad">
                 <h2 class="flex items-center gap-2 text-lg font-semibold">
                     <FaIcon Name="language" Class="tfa-icon text-accent" />
-                    <span>音声の言語化</span>
+                    <span>音声の文字起こし補正</span>
                 </h2>
                 @if (_detail?.AudioVerbalization is { } verbalization)
                 {
@@ -139,22 +139,22 @@ else if (_file is not null)
 
                     @if (verbalization.State.Equals("not_implemented", StringComparison.OrdinalIgnoreCase))
                     {
-                        <p class="mt-3 text-sm text-amber-800">この音声はまだ言語化を開始できません。時間軸データを作成してから再度確認してください。</p>
+                        <p class="mt-3 text-sm text-amber-800">この音声はまだ文字起こしを確認できません。時間軸データを作成してから再度確認してください。</p>
                     }
-                    else if (verbalization.Available)
+                    else if (CanStartVerbalization(verbalization))
                     {
                         <button class="tfa-button-primary mt-4 gap-2"
                                 @onclick="StartVerbalizationAsync"
                                 disabled="@(_startingVerbalization || !file.HasTimeline)">
                             <FaIcon Name="@(_startingVerbalization ? "spinner" : "wand-magic-sparkles")"
                                     Class="@($"tfa-icon {(_startingVerbalization ? "fa-spin" : "")}")" />
-                            <span>@(_startingVerbalization ? "準備中" : "この音声を言語化")</span>
+                            <span>@(_startingVerbalization ? "準備中" : "この音声を補正")</span>
                         </button>
                     }
                 }
                 else
                 {
-                    <p class="mt-3 text-sm text-slate-600">言語化状態を取得できません。</p>
+                    <p class="mt-3 text-sm text-slate-600">文字起こし状態を取得できません。</p>
                 }
             </section>
 
@@ -198,7 +198,7 @@ else if (_file is not null)
                         <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                             <h2 class="flex items-center gap-2 text-lg font-semibold">
                                 <FaIcon Name="language" Class="tfa-icon text-accent" />
-                                <span>言語化結果</span>
+                                <span>文字起こし</span>
                             </h2>
                             <div class="flex flex-wrap gap-2 text-xs text-slate-500">
                                 <span class="tfa-status-pill border-teal-200 bg-teal-50 text-teal-800">@_verbalizationResult!.Turns.Count 区間</span>
@@ -257,10 +257,10 @@ else if (_file is not null)
                 <div class="tfa-card tfa-card-pad">
                     <h2 class="flex items-center gap-2 text-lg font-semibold">
                         <FaIcon Name="language" Class="tfa-icon text-accent" />
-                        <span>言語化結果</span>
+                        <span>文字起こし</span>
                     </h2>
                     <p class="mt-3 text-sm leading-6 text-slate-700">
-                        まだ読める文章は作成されていません。スキャンで言語化が完了すると、ここに表示されます。
+                        この音声には文字起こし結果がまだありません。スキャンで音声解析が完了すると、ここに表示されます。
                     </p>
                 </div>
             }
@@ -461,6 +461,19 @@ else if (_file is not null)
             || state.Equals("planned", StringComparison.OrdinalIgnoreCase);
     }
 
+    private static bool CanStartVerbalization(AudioVerbalizationStatus status)
+    {
+        if (!status.Available)
+        {
+            return false;
+        }
+
+        var state = status.State ?? "";
+        return !state.Equals("completed", StringComparison.OrdinalIgnoreCase)
+            && !state.Equals("running", StringComparison.OrdinalIgnoreCase)
+            && !state.Equals("queued", StringComparison.OrdinalIgnoreCase);
+    }
+
     private void CancelVerbalizationPolling()
     {
         _verbalizationPollingCts?.Cancel();
@@ -534,7 +547,7 @@ else if (_file is not null)
         string.IsNullOrWhiteSpace(value) ? "-" : value;
 
     private static string VerbalizedText(AudioVerbalizedTurn turn) =>
-        string.IsNullOrWhiteSpace(turn.Text) ? "言語化候補はありません。" : turn.Text;
+        string.IsNullOrWhiteSpace(turn.Text) ? "文字起こしはありません。" : turn.Text;
 
     private static bool HasUncertainTerms(AudioVerbalizedTurn turn) =>
         turn.UncertainTerms is { Count: > 0 };
@@ -556,23 +569,25 @@ else if (_file is not null)
     private static string VerbalizationLabel(string state) =>
         state.ToLowerInvariant() switch
         {
-            "completed" => "言語化済み",
-            "running" => "言語化中",
+            "completed" => "取得済み",
+            "source_transcript" => "補正前",
+            "running" => "取得中",
             "queued" => "待機中",
             "planned" => "準備済み",
             "needs_review" => "候補あり",
-            "stale" => "再言語化必要",
+            "stale" => "再取得必要",
             "failed" => "エラー",
             "unavailable" => "対象外",
             "unreadable" => "読込不可",
             "not_implemented" => "準備中",
-            _ => "未言語化",
+            _ => "未取得",
         };
 
     private static string VerbalizationPill(string state) =>
         state.ToLowerInvariant() switch
         {
             "completed" => "tfa-status-pill border-teal-200 bg-teal-50 text-teal-800",
+            "source_transcript" => "tfa-status-pill border-sky-200 bg-sky-50 text-sky-800",
             "running" or "queued" => "tfa-status-pill border-sky-200 bg-sky-50 text-sky-800",
             "planned" or "needs_review" or "stale" => "tfa-status-pill border-amber-200 bg-amber-50 text-amber-900",
             "failed" or "unreadable" => "tfa-status-pill border-red-200 bg-red-50 text-red-800",
@@ -585,6 +600,7 @@ else if (_file is not null)
         state.ToLowerInvariant() switch
         {
             "completed" => "circle-check",
+            "source_transcript" => "file-lines",
             "running" => "spinner",
             "queued" => "clock",
             "planned" => "list-check",
@@ -628,24 +644,29 @@ else if (_file is not null)
         }
         if (status.Message.Equals("Audio verbalization completed.", StringComparison.OrdinalIgnoreCase))
         {
-            return "言語化が完了しました。";
+            return "文字起こしを取得しました。";
         }
         if (status.Message.Equals("Audio verbalization completed with unresolved turns.", StringComparison.OrdinalIgnoreCase)
             || status.Message.Equals("Audio verbalization has unresolved turns.", StringComparison.OrdinalIgnoreCase))
         {
-            return "一部の区間を言語化できませんでした。再実行で改善する場合があります。";
+            return "一部の区間を確認できませんでした。再実行で改善する場合があります。";
         }
         if (status.Message.Equals("Audio verbalization input signature changed.", StringComparison.OrdinalIgnoreCase))
         {
-            return "元データまたは内部設定が変わったため、再言語化が必要です。";
+            return "元データまたは内部設定が変わったため、再取得が必要です。";
         }
         if (status.Message.Equals("Audio verbalization worker has been queued.", StringComparison.OrdinalIgnoreCase))
         {
-            return "言語化を開始しました。準備ができると処理が進みます。";
+            return "文字起こし処理を開始しました。準備ができると処理が進みます。";
         }
         if (status.Message.Equals("Audio verbalization is running.", StringComparison.OrdinalIgnoreCase))
         {
-            return "言語化中です。";
+            return "文字起こし処理中です。";
+        }
+        if (status.Message.Equals("Source transcript text is available.", StringComparison.OrdinalIgnoreCase)
+            || status.Message.Equals("Source transcript text is available for refinement.", StringComparison.OrdinalIgnoreCase))
+        {
+            return "サブ製品の文字起こし結果を表示しています。必要に応じて補正できます。";
         }
         return status.Message;
     }
@@ -657,15 +678,16 @@ else if (_file is not null)
 
     private static string VerbalizationStartMessage(AudioVerbalizationStatus status) =>
         status.State.Equals("planned", StringComparison.OrdinalIgnoreCase)
-            ? $"言語化のチャンク計画を作成しました。{status.TotalChunks} チャンクを順番に処理する予定です。"
+            ? $"文字起こし補正のチャンク計画を作成しました。{status.TotalChunks} チャンクを順番に処理する予定です。"
             : status.State.Equals("not_implemented", StringComparison.OrdinalIgnoreCase)
-                ? "この音声はまだ言語化を開始できません。時間軸データを作成してから再度確認してください。"
+                ? "この音声はまだ文字起こしを開始できません。時間軸データを作成してから再度確認してください。"
                 : string.IsNullOrWhiteSpace(VerbalizationDisplayMessage(status)) ? VerbalizationLabel(status.State) : VerbalizationDisplayMessage(status);
 
     private static string VerbalizedTurnLabel(string status) =>
         (status ?? "").ToLowerInvariant() switch
         {
             "confirmed" => "確認済み",
+            "source_transcript" => "補正前",
             "candidate" => "候補",
             "needs_review" => "候補",
             "unresolved" => "未解決",

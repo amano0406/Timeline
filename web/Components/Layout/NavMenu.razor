@@ -1,6 +1,4 @@
 @inject NavigationManager Navigation
-@inject TimelineSettingsDialogService SettingsDialog
-@inject TimelineProductsDialogService ProductsDialog
 @implements IDisposable
 @using Microsoft.AspNetCore.Components.Routing
 
@@ -31,18 +29,18 @@
         </nav>
 
         <div class="mt-auto border-t border-white/10 p-3 text-sm">
-            <button type="button"
-                    class="@ProductsLinkClass()"
-                    @onclick="OpenProductsAsync">
+            <a class="@ProductsLinkClass()"
+               href="timeline/products"
+               @onclick="NotifyNavigateAsync">
                 <FaIcon Name="boxes-stacked" Class="tfa-icon" />
                 <span>製品管理</span>
-            </button>
-            <button type="button"
-                    class="@SettingsLinkClass()"
-                    @onclick="OpenSettingsAsync">
+            </a>
+            <a class="@SettingsLinkClass()"
+               href="timeline/settings"
+               @onclick="NotifyNavigateAsync">
                 <FaIcon Name="sliders" Class="tfa-icon" />
                 <span>設定</span>
-            </button>
+            </a>
         </div>
     </div>
 </aside>
@@ -50,18 +48,6 @@
 @code {
     [Parameter]
     public EventCallback OnNavigate { get; set; }
-
-    [Parameter]
-    public bool SettingsOpen { get; set; }
-
-    [Parameter]
-    public bool ProductsOpen { get; set; }
-
-    [Parameter]
-    public EventCallback SettingsRequested { get; set; }
-
-    [Parameter]
-    public EventCallback ProductsRequested { get; set; }
 
     private const string NavItemClass = "flex w-full items-center gap-2 rounded-md px-3 py-2 text-left hover:bg-white/10 hover:text-white";
 
@@ -102,14 +88,17 @@
             "pc/*");
 
     private string SettingsLinkClass()
-        => SettingsOpen
-            ? $"{NavItemClass} bg-white/15 text-white"
-            : $"{NavItemClass} text-slate-200";
+        => LinkClass(
+            "timeline/settings",
+            "audio/settings",
+            "windows-codex/settings",
+            "chatgpt/settings",
+            "image/settings",
+            "video/settings",
+            "pc/settings");
 
     private string ProductsLinkClass()
-        => ProductsOpen
-            ? $"{NavItemClass} bg-white/15 text-white"
-            : $"{NavItemClass} text-slate-200";
+        => LinkClass("timeline/products");
 
     protected override void OnInitialized()
     {
@@ -139,28 +128,6 @@
     }
 
     private Task NotifyNavigateAsync() => OnNavigate.InvokeAsync();
-
-    private async Task OpenSettingsAsync()
-    {
-        if (SettingsRequested.HasDelegate) {
-            await SettingsRequested.InvokeAsync();
-        }
-        else {
-            SettingsDialog.Open();
-        }
-        await OnNavigate.InvokeAsync();
-    }
-
-    private async Task OpenProductsAsync()
-    {
-        if (ProductsRequested.HasDelegate) {
-            await ProductsRequested.InvokeAsync();
-        }
-        else {
-            ProductsDialog.Open();
-        }
-        await OnNavigate.InvokeAsync();
-    }
 
     private void HandleLocationChanged(object? sender, LocationChangedEventArgs args)
     {

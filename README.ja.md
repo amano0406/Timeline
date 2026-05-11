@@ -8,14 +8,14 @@ Timeline はサブ製品が生成済みのファイルを読むことはあり�
 
 ## 対応サブ製品
 
-既定の製品レジストリは、`C:\apps` 配下の次の製品を参照します。
+既定の製品レジストリは、Timeline のデータルートから導出します。既定設定では、サブ製品は次の場所に導入します。
 
-- `C:\apps\TimelineForAudio`
-- `C:\apps\TimelineForVideo`
-- `C:\apps\TimelineForImage`
-- `C:\apps\TimelineForWindowsCodex`
-- `C:\apps\TimelineForChatGPT`
-- `C:\apps\TimelineForPC`
+- `<Timeline>\data\products\TimelineForAudio`
+- `<Timeline>\data\products\TimelineForVideo`
+- `<Timeline>\data\products\TimelineForImage`
+- `<Timeline>\data\products\TimelineForWindowsCodex`
+- `<Timeline>\data\products\TimelineForChatGPT`
+- `<Timeline>\data\products\TimelineForPC`
 
 各製品は `cli.ps1` を公開入口として持つ前提です。新しい製品は `timeline-product.json` も持つことで、Timeline 側が製品 ID、リポジトリ、リリース ZIP、起動方式、アンインストール方針などを固定実装なしで理解できるようにします。
 
@@ -58,7 +58,7 @@ Timeline の実用上の役割は大きく4つです。
 PowerShell で実行します。
 
 ```powershell
-cd C:\apps\Timeline
+cd <Timeline>
 .\start.ps1
 ```
 
@@ -124,28 +124,34 @@ http://127.0.0.1:19000
 
 Timeline 自体は、各製品の成果物を時間軸で扱うためのストアを持ちます。
 
-既定のルート:
+既定のデータルート:
 
 ```text
-C:\TimelineData\Timeline
+<Timeline>\data
 ```
 
 Timeline は、その配下で次のディレクトリを管理します。
 
 ```text
-C:\TimelineData\Timeline\work
-C:\TimelineData\Timeline\store
-C:\TimelineData\Timeline\logs
+data\products\<sub-product>
+data\work
+data\to_text\<sub-product>
+data\to_timeline
+data\logs
+data\backups
+data\test
 ```
 
 ストアの主なファイル:
 
 ```text
-store\manifest.json
-store\items.jsonl
-store\events.jsonl
-store\rebuilds\<rebuild-id>\
+to_timeline\manifest.json
+to_timeline\items.jsonl
+to_timeline\events.jsonl
+to_timeline\rebuilds\<rebuild-id>\
 ```
+
+`settings.json` は Timeline 製品ディレクトリ直下に保存します。`dataRoot` が Timeline のデータルートです。空または相対パスは Timeline 製品ディレクトリ基準で解決し、ドライブから始まるパスや UNC パスは絶対パスとして扱います。
 
 スキャン画面では、各サブ製品の `cli.ps1` を通して Timeline の作業ディレクトリへデータを取得し、その後 Timeline 側で `items.jsonl` と `events.jsonl` に正規化します。
 
@@ -198,7 +204,7 @@ http://127.0.0.1:11434
 Timeline は、インシデント確認用の永続操作ログを次に保存します。
 
 ```text
-C:\TimelineData\Timeline\logs\operations\<operation-id>\
+data\logs\operations\<operation-id>\
 ```
 
 各操作ディレクトリには次が入ります。
