@@ -207,6 +207,8 @@ else
         </div>
     </section>
 
+    @if (HasInstalledProducts)
+    {
     <section id="timeline-ai-settings" class="tfa-card tfa-card-pad mt-5 scroll-mt-6">
         <h2 class="flex items-center gap-2 text-lg font-semibold">
             <FaIcon Name="microchip" Class="tfa-icon text-accent" />
@@ -357,6 +359,25 @@ else
             }
         </div>
     </section>
+    }
+    else
+    {
+    <section class="tfa-card tfa-card-pad mt-5">
+        <h2 class="flex items-center gap-2 text-lg font-semibold">
+            <FaIcon Name="boxes-stacked" Class="tfa-icon text-accent" />
+            <span>製品の追加</span>
+        </h2>
+        <div class="mt-3 rounded-md border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+            製品をインストールすると、AI設定や入力データの設定をここで扱えます。
+        </div>
+        <div class="mt-4">
+            <a class="tfa-button-primary gap-2" href="timeline/products">
+                <FaIcon Name="boxes-stacked" Class="tfa-icon" />
+                <span>製品管理を開く</span>
+            </a>
+        </div>
+    </section>
+    }
 
     @if (!Embedded)
     {
@@ -563,6 +584,7 @@ else
     private TimelineProductRegistryProduct? SelectedProductSettingsProduct =>
         Products.FirstOrDefault(product => string.Equals(product.Id, _selectedProductSettingsId, StringComparison.OrdinalIgnoreCase))
         ?? Products.FirstOrDefault();
+    private bool HasInstalledProducts => _runtime.Products.Any(product => product.ProductFound && product.ComposeFound);
     private bool HardwareDevicesLoaded => _audioOverview is not null;
     private string NormalModeAriaSelected => _proMode ? "false" : "true";
     private string ProModeAriaSelected => _proMode ? "true" : "false";
@@ -693,12 +715,20 @@ else
             await InvokeAsync(StateHasChanged);
         }
 
-        if (_settings is not null)
+        if (_settings is not null && HasInstalledProducts)
         {
             _ = LoadAudioOverviewLaterAsync();
             _ = LoadImageOverviewLaterAsync();
             _ = LoadVideoOverviewLaterAsync();
             _ = LoadModelInventoriesLaterAsync();
+        }
+        else
+        {
+            _modelsLoading = false;
+            _audioSettingsLoading = false;
+            _imageSettingsLoading = false;
+            _videoSettingsLoading = false;
+            await InvokeAsync(StateHasChanged);
         }
     }
 
