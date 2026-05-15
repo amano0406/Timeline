@@ -1,0 +1,614 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Timeline Detail Mock - Observation Overview</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f4f6f8;
+      --panel: #ffffff;
+      --line: #d8e0ea;
+      --text: #172033;
+      --muted: #667085;
+      --blue: #2563eb;
+      --teal: #0f766e;
+      --green: #15803d;
+      --amber: #b45309;
+      --red: #b42318;
+      --purple: #6d28d9;
+      font-family: "Segoe UI", "Meiryo", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-size: 14px;
+    }
+
+    header {
+      padding: 22px 28px;
+      background: #ffffff;
+      border-bottom: 1px solid var(--line);
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: 24px;
+      letter-spacing: 0;
+    }
+
+    h2 {
+      margin: 0 0 12px;
+      font-size: 17px;
+      letter-spacing: 0;
+    }
+
+    h3 {
+      margin: 0 0 6px;
+      font-size: 14px;
+      letter-spacing: 0;
+    }
+
+    .subhead {
+      color: var(--muted);
+      display: flex;
+      gap: 8px 14px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .shell {
+      max-width: 1480px;
+      margin: 0 auto;
+      padding: 20px 28px 40px;
+      display: grid;
+      gap: 18px;
+    }
+
+    section {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 16px;
+      box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
+    }
+
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .summary {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px;
+      background: #fafcff;
+      min-height: 118px;
+    }
+
+    .summary .name {
+      font-weight: 700;
+      margin-bottom: 10px;
+    }
+
+    .summary .count {
+      font-size: 22px;
+      font-weight: 800;
+      margin-bottom: 4px;
+      letter-spacing: 0;
+    }
+
+    .summary .small {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      padding: 4px 9px;
+      font-size: 12px;
+      color: #344054;
+      background: #fff;
+      white-space: nowrap;
+    }
+
+    .chip.good {
+      color: var(--green);
+      background: #eefbf1;
+      border-color: #b7e3c0;
+    }
+
+    .chip.warn {
+      color: var(--amber);
+      background: #fff8eb;
+      border-color: #f4d29f;
+    }
+
+    .chip.info {
+      color: var(--blue);
+      background: #eff6ff;
+      border-color: #bfdbfe;
+    }
+
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    th,
+    td {
+      border-bottom: 1px solid #edf1f5;
+      text-align: left;
+      vertical-align: top;
+      padding: 10px 9px;
+    }
+
+    th {
+      color: var(--muted);
+      background: #fafcff;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .product {
+      display: grid;
+      gap: 5px;
+      min-width: 150px;
+    }
+
+    .product strong {
+      font-size: 14px;
+    }
+
+    .mono {
+      font-family: Consolas, "Cascadia Mono", monospace;
+      font-size: 12px;
+    }
+
+    .evidence {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .bars {
+      display: grid;
+      gap: 8px;
+      min-width: 200px;
+    }
+
+    .bar-row {
+      display: grid;
+      grid-template-columns: 82px 1fr 48px;
+      gap: 8px;
+      align-items: center;
+      color: #344054;
+      font-size: 12px;
+    }
+
+    .bar {
+      height: 8px;
+      border-radius: 999px;
+      overflow: hidden;
+      background: #e7edf4;
+    }
+
+    .bar span {
+      display: block;
+      height: 100%;
+      border-radius: 999px;
+      background: var(--blue);
+    }
+
+    .detail-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .mini {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px;
+      background: #fbfcfe;
+      min-height: 180px;
+    }
+
+    .timeline-strip {
+      height: 86px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: linear-gradient(180deg, #ffffff, #f6f8fb);
+      position: relative;
+      overflow: hidden;
+      margin-top: 12px;
+    }
+
+    .segment {
+      position: absolute;
+      height: 18px;
+      border-radius: 999px;
+      top: 18px;
+      background: var(--teal);
+    }
+
+    .segment.text {
+      top: 48px;
+      background: var(--blue);
+    }
+
+    .thumbnail-row {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 6px;
+      margin-top: 12px;
+    }
+
+    .thumb {
+      height: 54px;
+      border-radius: 6px;
+      background:
+        linear-gradient(135deg, rgba(37, 99, 235, 0.35), transparent),
+        linear-gradient(45deg, #18202d, #303744);
+      border: 1px solid #273244;
+    }
+
+    .thread-list {
+      display: grid;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .message {
+      border-left: 3px solid var(--blue);
+      padding: 7px 8px;
+      background: #ffffff;
+      border-radius: 4px;
+    }
+
+    .message.user {
+      border-left-color: var(--teal);
+    }
+
+    .message .role {
+      color: var(--muted);
+      font-size: 11px;
+      margin-bottom: 3px;
+    }
+
+    .pc-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .pc-cell {
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 8px;
+      background: #ffffff;
+    }
+
+    .pc-cell .label {
+      color: var(--muted);
+      font-size: 11px;
+      margin-bottom: 3px;
+    }
+
+    .note {
+      color: var(--muted);
+      line-height: 1.7;
+    }
+
+    @media (max-width: 1180px) {
+      .summary-grid,
+      .detail-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 760px) {
+      header,
+      .shell {
+        padding-left: 14px;
+        padding-right: 14px;
+      }
+
+      .summary-grid,
+      .detail-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>取得データ観察ダッシュボード案</h1>
+    <div class="subhead">
+      <span>6製品の詳細画面を「取得できた証拠を見る場所」として統一するためのモック</span>
+      <span class="chip good">追加AIなし</span>
+      <span class="chip info">実データ由来の数値を直打ち</span>
+    </div>
+  </header>
+
+  <main class="shell">
+    <section>
+      <h2>製品別の取得量</h2>
+      <div class="summary-grid">
+        <div class="summary">
+          <div class="name">Audio</div>
+          <div class="count">1</div>
+          <div class="small">timeline / convert_info<br>音声発話を時刻付きで観察</div>
+        </div>
+        <div class="summary">
+          <div class="name">Image</div>
+          <div class="count">80</div>
+          <div class="small">OCR blocks<br>座標・品質・検索メタあり</div>
+        </div>
+        <div class="summary">
+          <div class="name">Video</div>
+          <div class="count">5</div>
+          <div class="small">frame samples<br>1,365 text / 64 audio sections</div>
+        </div>
+        <div class="summary">
+          <div class="name">ChatGPT</div>
+          <div class="count">3,299</div>
+          <div class="small">threads<br>message / attachment meta</div>
+        </div>
+        <div class="summary">
+          <div class="name">WindowsCodex</div>
+          <div class="count">108</div>
+          <div class="small">threads<br>mode / tool / session meta</div>
+        </div>
+        <div class="summary">
+          <div class="name">PC</div>
+          <div class="count">1</div>
+          <div class="small">snapshot<br>OS / CPU / GPU / storage</div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>詳細画面で見せるべき証拠レイヤー</h2>
+      <div class="legend">
+        <span class="chip good">表示優先</span>
+        <span class="chip info">折りたたみ可</span>
+        <span class="chip warn">品質確認</span>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>製品</th>
+            <th>保存されている主データ</th>
+            <th>詳細画面での見せ方</th>
+            <th>品質・欠損の見せ方</th>
+            <th>正式実装時の部品</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>
+              <div class="product">
+                <strong>TimelineForImage</strong>
+                <span class="mono">image_record.json</span>
+              </div>
+            </td>
+            <td>
+              <div class="evidence">
+                <span class="chip">元画像</span>
+                <span class="chip">OCR 80件</span>
+                <span class="chip">bbox_norm</span>
+                <span class="chip">3x3色グリッド</span>
+                <span class="chip">検索語</span>
+              </div>
+            </td>
+            <td>画像にOCR矩形を重ねる。検索語・品質・分類を右ペインに表示する。</td>
+            <td>低信頼度OCR、文字化け、撮影時刻なしを警告として出す。</td>
+            <td>MediaOverlay / QualityPanel / KeywordPanel</td>
+          </tr>
+          <tr>
+            <td>
+              <div class="product">
+                <strong>TimelineForVideo</strong>
+                <span class="mono">video_record.json</span>
+              </div>
+            </td>
+            <td>
+              <div class="evidence">
+                <span class="chip">動画</span>
+                <span class="chip">5フレーム</span>
+                <span class="chip">64音声区間</span>
+                <span class="chip">frame OCR</span>
+                <span class="chip">ffprobe</span>
+              </div>
+            </td>
+            <td>動画、フレームサムネイル、音声区間、フレームOCRを同じ時系列軸で並べる。</td>
+            <td>フレーム未取得区間、音声なし区間、OCRなしフレームを薄く表示する。</td>
+            <td>TemporalEvidenceStrip / FrameGallery / TranscriptPanel</td>
+          </tr>
+          <tr>
+            <td>
+              <div class="product">
+                <strong>TimelineForAudio</strong>
+                <span class="mono">timeline.json</span>
+              </div>
+            </td>
+            <td>
+              <div class="evidence">
+                <span class="chip">音声</span>
+                <span class="chip">発話turn</span>
+                <span class="chip">話者</span>
+                <span class="chip">時刻</span>
+              </div>
+            </td>
+            <td>音声プレイヤーと時刻付き発話を同期させ、発話密度を横棒で表示する。</td>
+            <td>低信頼度、無音、話者不明、補正前テキストを分ける。</td>
+            <td>AudioEvidenceStrip / TurnTable / SpeakerPanel</td>
+          </tr>
+          <tr>
+            <td>
+              <div class="product">
+                <strong>ChatGPT</strong>
+                <span class="mono">timeline.json</span>
+              </div>
+            </td>
+            <td>
+              <div class="evidence">
+                <span class="chip">本文</span>
+                <span class="chip">role</span>
+                <span class="chip">model_slug</span>
+                <span class="chip">parent ID</span>
+                <span class="chip">attachments</span>
+              </div>
+            </td>
+            <td>会話本文に加え、分岐構造・添付・モデル・期間を観察する。</td>
+            <td>添付欠損、本文空、parent不整合を構造警告にする。</td>
+            <td>ThreadInspector / AttachmentPanel / MessageStats</td>
+          </tr>
+          <tr>
+            <td>
+              <div class="product">
+                <strong>WindowsCodex</strong>
+                <span class="mono">timeline.json</span>
+              </div>
+            </td>
+            <td>
+              <div class="evidence">
+                <span class="chip">本文</span>
+                <span class="chip">mode</span>
+                <span class="chip">tool</span>
+                <span class="chip">session</span>
+              </div>
+            </td>
+            <td>スレッド本文、ツール実行、添付、セッション情報を時系列で観察する。</td>
+            <td>取得できないツール出力やredactionを明示する。</td>
+            <td>ThreadInspector / ToolEventPanel</td>
+          </tr>
+          <tr>
+            <td>
+              <div class="product">
+                <strong>TimelineForPC</strong>
+                <span class="mono">snapshot_redacted.json</span>
+              </div>
+            </td>
+            <td>
+              <div class="evidence">
+                <span class="chip">OS</span>
+                <span class="chip">CPU</span>
+                <span class="chip">GPU</span>
+                <span class="chip">Disk</span>
+                <span class="chip">Apps</span>
+              </div>
+            </td>
+            <td>PC環境をカテゴリ別に表示し、前回との差分があれば差分中心にする。</td>
+            <td>redacted項目、取得失敗、差分なしを分けて表示する。</td>
+            <td>SystemSnapshotPanel / DiffPanel / RedactionPanel</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>UI部品の見え方サンプル</h2>
+      <div class="detail-grid">
+        <div class="mini">
+          <h3>動画: 時系列証拠ストリップ</h3>
+          <p class="note">動画フレーム、音声区間、文字起こしを同じ時間軸に置く。</p>
+          <div class="timeline-strip">
+            <div class="segment" style="left:3%;width:15%;"></div>
+            <div class="segment" style="left:23%;width:28%;"></div>
+            <div class="segment" style="left:58%;width:22%;"></div>
+            <div class="segment text" style="left:8%;width:32%;"></div>
+            <div class="segment text" style="left:44%;width:18%;"></div>
+            <div class="segment text" style="left:70%;width:20%;"></div>
+          </div>
+          <div class="thumbnail-row">
+            <div class="thumb"></div>
+            <div class="thumb"></div>
+            <div class="thumb"></div>
+            <div class="thumb"></div>
+            <div class="thumb"></div>
+          </div>
+        </div>
+
+        <div class="mini">
+          <h3>スレッド: 構造観察</h3>
+          <p class="note">本文だけでなく、role、parent、添付、モデルを証拠として見る。</p>
+          <div class="thread-list">
+            <div class="message user">
+              <div class="role">user / parent: root</div>
+              <div>詳細画面のデータ観察について相談</div>
+            </div>
+            <div class="message">
+              <div class="role">assistant / model_slug</div>
+              <div>取得済みデータの証明ビューとして整理</div>
+            </div>
+            <div class="message user">
+              <div class="role">user / attachment: image</div>
+              <div>画面キャプチャを添付</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="mini">
+          <h3>PC: スナップショット観察</h3>
+          <p class="note">PC環境は分類済みの一覧として見せ、差分があれば差分を前面に出す。</p>
+          <div class="pc-grid">
+            <div class="pc-cell">
+              <div class="label">OS</div>
+              <div>Windows</div>
+            </div>
+            <div class="pc-cell">
+              <div class="label">CPU</div>
+              <div>Processor</div>
+            </div>
+            <div class="pc-cell">
+              <div class="label">GPU</div>
+              <div>Display Adapter</div>
+            </div>
+            <div class="pc-cell">
+              <div class="label">Storage</div>
+              <div>Volumes / Disks</div>
+            </div>
+          </div>
+          <div class="bars" style="margin-top:12px;">
+            <div class="bar-row">
+              <span>取得項目</span>
+              <div class="bar"><span style="width:82%;background:var(--green);"></span></div>
+              <span>82%</span>
+            </div>
+            <div class="bar-row">
+              <span>redacted</span>
+              <div class="bar"><span style="width:18%;background:var(--amber);"></span></div>
+              <span>18%</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

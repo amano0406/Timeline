@@ -1,0 +1,2287 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Timeline サブ製品 API 移行整理</title>
+  <style>
+    :root {
+      --bg: #f4f7fb;
+      --paper: #ffffff;
+      --ink: #142033;
+      --muted: #5e6c7d;
+      --line: #d9e2ef;
+      --soft: #eef7f5;
+      --soft-blue: #edf4fc;
+      --soft-warn: #fff7e8;
+      --soft-red: #fff1f2;
+      --accent: #287a73;
+      --accent-blue: #23669b;
+      --warn: #9a5b16;
+      --danger: #a13b4a;
+      --code: #162235;
+      --shadow: 0 14px 34px rgba(25, 42, 70, .09);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: "Segoe UI", "Yu Gothic", "Meiryo", sans-serif;
+      line-height: 1.72;
+    }
+
+    main {
+      max-width: 1220px;
+      margin: 0 auto;
+      padding: 32px 22px 64px;
+    }
+
+    h1, h2, h3, h4, p {
+      margin: 0;
+    }
+
+    h1 {
+      font-size: clamp(32px, 5vw, 56px);
+      line-height: 1.08;
+      letter-spacing: 0;
+    }
+
+    h2 {
+      font-size: 25px;
+      line-height: 1.3;
+      margin-bottom: 14px;
+    }
+
+    h3 {
+      font-size: 20px;
+      line-height: 1.35;
+    }
+
+    h4 {
+      font-size: 16px;
+      line-height: 1.35;
+    }
+
+    a {
+      color: var(--accent-blue);
+    }
+
+    code {
+      border-radius: 5px;
+      background: #edf2f7;
+      color: var(--code);
+      padding: 1px 6px;
+      font-family: Consolas, "Cascadia Mono", monospace;
+      font-size: .92em;
+    }
+
+    pre {
+      overflow: auto;
+      margin: 12px 0 0;
+      border-radius: 8px;
+      background: #101928;
+      color: #edf6ff;
+      padding: 14px 16px;
+      line-height: 1.55;
+      font-size: 13px;
+    }
+
+    .hero {
+      display: grid;
+      grid-template-columns: minmax(0, 1.15fr) minmax(320px, .85fr);
+      gap: 18px;
+      align-items: stretch;
+      margin-bottom: 22px;
+    }
+
+    .card {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--paper);
+      box-shadow: var(--shadow);
+    }
+
+    .hero-main {
+      padding: 32px;
+    }
+
+    .kicker {
+      margin-bottom: 12px;
+      color: var(--accent);
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+    }
+
+    .lead {
+      margin-top: 16px;
+      color: var(--muted);
+      font-size: 17px;
+    }
+
+    .hero-side {
+      padding: 24px;
+      display: grid;
+      gap: 12px;
+      background: linear-gradient(180deg, #ffffff, #f7fbfb);
+    }
+
+    .section {
+      margin-top: 22px;
+      padding: 26px;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .mini {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fbfdff;
+      padding: 15px;
+    }
+
+    .mini p,
+    .note,
+    .muted {
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .note {
+      border-left: 4px solid var(--accent);
+      background: var(--soft);
+      border-radius: 8px;
+      padding: 13px 14px;
+      margin-top: 14px;
+    }
+
+    .warning {
+      border-left-color: var(--warn);
+      background: var(--soft-warn);
+    }
+
+    .danger {
+      border-left-color: var(--danger);
+      background: var(--soft-red);
+    }
+
+    .tree {
+      display: grid;
+      gap: 14px;
+      margin-top: 16px;
+    }
+
+    details {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #ffffff;
+      overflow: hidden;
+    }
+
+    details > summary {
+      cursor: pointer;
+      list-style: none;
+      padding: 15px 18px;
+      background: #f8fbfe;
+      font-weight: 700;
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+    }
+
+    details > summary::-webkit-details-marker {
+      display: none;
+    }
+
+    details > summary::after {
+      content: "開く";
+      flex: 0 0 auto;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      color: var(--muted);
+      background: #ffffff;
+      padding: 2px 10px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    details[open] > summary::after {
+      content: "閉じる";
+    }
+
+    .detail-body {
+      display: grid;
+      gap: 14px;
+      padding: 18px;
+    }
+
+    .api-node {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fbfdff;
+      padding: 15px;
+    }
+
+    .api-head {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+      margin-bottom: 9px;
+    }
+
+    .method {
+      display: inline-flex;
+      align-items: center;
+      min-height: 25px;
+      border-radius: 6px;
+      padding: 2px 8px;
+      color: #ffffff;
+      background: var(--accent-blue);
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: .03em;
+    }
+
+    .method.post {
+      background: var(--accent);
+    }
+
+    .method.put {
+      background: #6b5ca5;
+    }
+
+    .method.delete {
+      background: var(--danger);
+    }
+
+    .url {
+      font-family: Consolas, "Cascadia Mono", monospace;
+      font-weight: 700;
+      color: var(--code);
+      overflow-wrap: anywhere;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      min-height: 25px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: #ffffff;
+      padding: 2px 9px;
+      color: #425266;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .badge.new {
+      border-color: #b9d8ff;
+      background: var(--soft-blue);
+      color: #1f5f8f;
+    }
+
+    .badge.change {
+      border-color: #f1d3a3;
+      background: var(--soft-warn);
+      color: #845014;
+    }
+
+    .badge.keep {
+      border-color: #bfe2db;
+      background: var(--soft);
+      color: #1d6f68;
+    }
+
+    .facts {
+      display: grid;
+      grid-template-columns: 170px minmax(0, 1fr);
+      gap: 7px 12px;
+      margin-top: 10px;
+      font-size: 14px;
+    }
+
+    .facts dt {
+      color: #35465c;
+      font-weight: 700;
+    }
+
+    .facts dd {
+      margin: 0;
+      color: var(--muted);
+    }
+
+    .stack {
+      display: grid;
+      gap: 10px;
+    }
+
+    .child {
+      margin-left: 20px;
+      padding-left: 16px;
+      border-left: 2px solid var(--line);
+      display: grid;
+      gap: 12px;
+    }
+
+    .compact-list {
+      margin: 8px 0 0;
+      padding-left: 20px;
+    }
+
+    .compact-list li {
+      margin-top: 4px;
+    }
+
+    .table-wrap {
+      overflow-x: auto;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #ffffff;
+      margin-top: 12px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 900px;
+      font-size: 14px;
+    }
+
+    th,
+    td {
+      border-bottom: 1px solid var(--line);
+      padding: 10px 12px;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      background: #f8fbfe;
+      color: #304156;
+      font-size: 13px;
+    }
+
+    tr:last-child td {
+      border-bottom: 0;
+    }
+
+    .toc {
+      display: grid;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .toc a {
+      display: block;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fbfdff;
+      padding: 9px 12px;
+      color: var(--ink);
+      text-decoration: none;
+      font-weight: 700;
+    }
+
+    .toc a span {
+      display: block;
+      color: var(--muted);
+      font-weight: 500;
+      font-size: 13px;
+      margin-top: 2px;
+    }
+
+    @media (max-width: 880px) {
+      main {
+        padding: 20px 14px 48px;
+      }
+
+      .hero,
+      .grid-2,
+      .grid-3 {
+        grid-template-columns: 1fr;
+      }
+
+      .hero-main,
+      .section {
+        padding: 20px;
+      }
+
+      .facts {
+        grid-template-columns: 1fr;
+      }
+
+      .child {
+        margin-left: 8px;
+        padding-left: 12px;
+      }
+    }
+  </style>
+</head>
+<body>
+<main>
+  <header class="hero">
+    <section class="card hero-main">
+      <div class="kicker">API transition map</div>
+      <h1>Timeline サブ製品 API 移行整理</h1>
+      <p class="lead">
+        CLI 中心の入口を、各サブ製品のローカル API 契約へ移すための設計メモです。
+        目的は API 名を増やすことではなく、現行 CLI の責務を確認したうえで、変えるものと維持するものを管理し、
+        ユーザーに見せる操作を「状態確認」「設定」「更新」「記録」「元データ」「ダウンロード」に揃えることです。
+      </p>
+    </section>
+    <aside class="card hero-side">
+      <h2>読み方</h2>
+      <p class="muted">
+        各 API は階層構造で整理しています。親の共通 API を全製品が持ち、製品ごとの差分は「ファイル」「会話」「PC記録」などの追加枝として扱います。
+        実装上の継承を強制する資料ではありませんが、Swagger と後続アプリケーションで契約が揺れないよう、概念上の親子関係を固定します。
+      </p>
+      <div class="note warning">
+        ここでの API は設計案です。現行実装は `cli.ps1` / `cli.bat` と Timeline helper の HTTP API が混在しており、本資料はその入口を整理するための移行管理表でもあります。
+      </div>
+      <div class="toc">
+        <a href="#principles">1. 基本判断<span>現行入口、クラス概念、変更/維持の管理</span></a>
+        <a href="#current-state">1.1 現状整理<span>CLI / helper / Docker / PC の責務境界</span></a>
+        <a href="#class-model">1.2 クラス概念<span>共通親、ファイル系、会話系、PC記録系</span></a>
+        <a href="#change-ledger">1.3 移行管理<span>変えるもの、維持するもの、理由</span></a>
+        <a href="#common">2. 全製品共通 API<span>ヘルス、状態、設定、更新、記録</span></a>
+        <a href="#groups">3. 製品グループ別 API<span>ファイル系、会話系、PC記録系</span></a>
+        <a href="#products">4. 製品別の現行対応<span>現在の CLI / UI との対応</span></a>
+        <a href="#long-running">5. 長時間処理の扱い<span>進捗、キュー、キャンセル、復旧</span></a>
+        <a href="#considerations">6. あるべき配慮<span>入れる、予約する、入れないを分ける</span></a>
+        <a href="#schemas">7. 返却形式<span>Swagger 化で共通化する形</span></a>
+      </div>
+    </aside>
+  </header>
+
+  <section id="principles" class="card section">
+    <h2>1. 基本判断</h2>
+    <div class="grid-3">
+      <div class="mini">
+        <h3>共通化するもの</h3>
+        <p>ユーザーの操作名は揃えます。状態確認、設定、更新、記録一覧、ダウンロード、処理履歴は全製品で同じ言葉にします。</p>
+      </div>
+      <div class="mini">
+        <h3>差分にするもの</h3>
+        <p>元データの形だけを差分にします。音声・画像・動画はファイル、ChatGPT と WindowsCodex は会話、PC は PC記録です。</p>
+      </div>
+      <div class="mini">
+        <h3>残すもの</h3>
+        <p>`start.ps1` / `stop.ps1` は Docker やローカル実行環境の起動停止として残します。CLI は API を叩く運用ラッパーに降格できます。</p>
+      </div>
+    </div>
+
+    <div class="note">
+      API の URL は開発者向けには英語ですが、画面表示では「records = 記録」「tasks = 処理」「sources = 元データ」「conversations = 会話」のように日本語名を併記します。
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>判断</th>
+            <th>採用する形</th>
+            <th>理由</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>製品別に `items refresh` を分けるか</td>
+            <td><code>POST /refresh</code> に統一</td>
+            <td>ユーザーにとっては全製品とも「最新状態に更新する」です。差分はリクエスト本文と内部処理に閉じ込めます。</td>
+          </tr>
+          <tr>
+            <td>`items` という語を前面に出すか</td>
+            <td><code>/records</code> を正面にし、内部で item と対応</td>
+            <td>一般ユーザーには「記録」の方が分かりやすいです。既存成果物の item id は互換情報として残せます。</td>
+          </tr>
+          <tr>
+            <td>ヘルスを分けるか</td>
+            <td><code>/health</code> と <code>/status</code> を分ける</td>
+            <td><code>/health</code> は機械監視用、<code>/status</code> は画面表示用です。用途が違うため返す情報も分けます。</td>
+          </tr>
+          <tr>
+            <td>ChatGPT と WindowsCodex を別概念にするか</td>
+            <td>両方 <code>/conversations</code> を持つ会話系にする</td>
+            <td>どちらも会話スレッドの一覧・詳細・メッセージ・タイムラインを扱うためです。ChatGPT の ZIP だけ <code>/imports</code> として追加します。</td>
+          </tr>
+          <tr>
+            <td>TimelineForPC をファイル系に寄せるか</td>
+            <td><code>/captures</code> を持つ PC記録系にする</td>
+            <td>PC は元ファイルを変換するのではなく、その時点のPC状態を記録します。ファイル一覧や会話一覧とは本質が違います。</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3 id="current-state" style="margin-top: 22px;">1.1 現状整理</h3>
+    <p class="muted">
+      現在は「単体製品の入口」と「Timeline Web からの入口」が分かれています。
+      単体製品では CLI が正式入口で、Timeline Web では C# Local API が HTTP を受けて CLI / 既存出力 / 設定ファイルを読んでいます。
+      API 化では、この二重構造をいきなり壊すのではなく、外部契約を Local API に固定し、内部実装として既存 CLI / PowerShell 関数を段階的に使い続けます。
+    </p>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>現行の入口</th>
+            <th>現在の責務</th>
+            <th>完成版での扱い</th>
+            <th>理由</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>start.ps1</code> / <code>stop.ps1</code></td>
+            <td>Docker worker、ローカル実行環境、補助サーバーの起動停止。</td>
+            <td><span class="badge keep">維持</span> 実行環境のライフサイクル操作として残す。</td>
+            <td>起動停止は API の業務操作ではなく、Docker / host runtime に対する運用操作だからです。</td>
+          </tr>
+          <tr>
+            <td><code>cli.ps1</code> / <code>cli.bat</code></td>
+            <td>単体製品の正面入口。Timeline helper からも呼ばれる。</td>
+            <td><span class="badge change">変更</span> UI の正面入口からは外し、互換・運用・検証用ラッパーへ降格する。</td>
+            <td>Web UI、ヘルスチェック、複数アクセス、進捗確認は CLI 標準出力より HTTP API の方が安定して扱えるためです。</td>
+          </tr>
+          <tr>
+            <td>Timeline helper の <code>/products/{id}/...</code></td>
+            <td>現行 Web UI 用の薄い HTTP API。裏側で CLI や既存出力を読む。</td>
+            <td><span class="badge change">変更</span> 将来のサブ製品 API の互換アダプター、または親製品の集約 API として整理する。</td>
+            <td>既に画面は HTTP を使っているため、ここを根拠に Swagger 契約へ移すのが最も現実的です。</td>
+          </tr>
+          <tr>
+            <td>Docker worker</td>
+            <td>Audio / Image / Video / ChatGPT / WindowsCodex の実処理を担当。</td>
+            <td><span class="badge keep">維持</span> 処理基盤として残し、API は worker の状態と処理受付を公開する。</td>
+            <td>重い処理や依存関係を Docker に閉じ込める設計は妥当です。API 化は入口の整理であり、処理基盤の否定ではありません。</td>
+          </tr>
+          <tr>
+            <td>TimelineForPC の host CLI</td>
+            <td>Windows host の実機情報を読む。Docker ではない。</td>
+            <td><span class="badge keep">維持</span> Docker 化せず、Windows host API または host CLI アダプターとして扱う。</td>
+            <td>PC 状態の取得はコンテナ内では正しくできないためです。PC はファイル系ではなく PC記録系として別枝にします。</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="note warning">
+      重要な前提: API 化は「全製品を同じ実装にする」ことではありません。揃えるのは契約、用語、状態管理、エラー、長時間処理の扱いです。
+      Docker worker、host 実行、ZIP 取り込み、ローカル履歴読み取りといった実装差は、製品ごとの派生責務として残します。
+    </div>
+
+    <h3 id="class-model" style="margin-top: 22px;">1.2 設計上のクラス概念</h3>
+    <p class="muted">
+      実際に C# の継承として実装する前提ではありません。Swagger、DTO、UI クライアント、設計レビューで使う概念上の親子関係です。
+      子製品は親の責務を勝手に再定義せず、必要な枝だけを追加します。
+    </p>
+
+    <div class="tree">
+      <details open>
+        <summary>BaseProductApi: 全サブ製品の親</summary>
+        <div class="detail-body">
+          <div class="api-node">
+            <h3>責務</h3>
+            <p>ヘルス、状態、設定、処理、記録、ダウンロード、エラー、データ鮮度、製品能力を共通化します。</p>
+            <dl class="facts">
+              <dt>対象製品</dt>
+              <dd>Audio / Image / Video / PC / ChatGPT / WindowsCodex</dd>
+              <dt>共通 API</dt>
+              <dd><code>/health</code>, <code>/status</code>, <code>/settings</code>, <code>/settings/check</code>, <code>/refresh</code>, <code>/tasks</code>, <code>/records</code>, <code>/records/download</code>, <code>/records/generated</code>, <code>/capabilities</code></dd>
+              <dt>守ること</dt>
+              <dd>共通レスポンス、ページング、長時間処理、ユーザー向けエラー、ログマスク、元データ保護。</dd>
+            </dl>
+          </div>
+        </div>
+      </details>
+
+      <details open>
+        <summary>FileSourceProductApi: ファイルを元データにする製品</summary>
+        <div class="detail-body">
+          <div class="api-node">
+            <h3>継承元</h3>
+            <p><code>BaseProductApi</code></p>
+            <dl class="facts">
+              <dt>対象製品</dt>
+              <dd>Audio / Image / Video</dd>
+              <dt>追加 API</dt>
+              <dd><code>/sources</code>, <code>/files</code>, <code>/files/{fileId}</code>, <code>/files/{fileId}/source</code></dd>
+              <dt>維持する思想</dt>
+              <dd>元ファイルは読み取り専用。ZIP には原則として元ファイルを含めず、生成物だけを扱う。</dd>
+              <dt>派生差分</dt>
+              <dd>Audio は音声モデルと話者/時間、Image は OCR と画像メタデータ、Video は ffprobe / フレーム / OCR / 音声 / 活動マップを持つ。</dd>
+            </dl>
+          </div>
+        </div>
+      </details>
+
+      <details open>
+        <summary>ConversationProductApi: 会話を元データにする製品</summary>
+        <div class="detail-body">
+          <div class="api-node">
+            <h3>継承元</h3>
+            <p><code>BaseProductApi</code></p>
+            <dl class="facts">
+              <dt>対象製品</dt>
+              <dd>ChatGPT / WindowsCodex</dd>
+              <dt>追加 API</dt>
+              <dd><code>/conversations</code>, <code>/conversations/{conversationId}</code>, <code>/conversations/{conversationId}/messages</code></dd>
+              <dt>共通点</dt>
+              <dd>会話タイトル、メッセージ列、時刻、生成済み timeline を扱う。</dd>
+              <dt>派生差分</dt>
+              <dd>ChatGPT は <code>/imports</code> でエクスポート ZIP を登録する。WindowsCodex はローカル履歴マウントを読むため import は持たない。</dd>
+            </dl>
+          </div>
+        </div>
+      </details>
+
+      <details open>
+        <summary>CaptureProductApi: その時点の状態を記録する製品</summary>
+        <div class="detail-body">
+          <div class="api-node">
+            <h3>継承元</h3>
+            <p><code>BaseProductApi</code></p>
+            <dl class="facts">
+              <dt>対象製品</dt>
+              <dd>TimelineForPC</dd>
+              <dt>追加 API</dt>
+              <dd><code>/captures</code>, <code>/captures/{captureId}</code>, <code>/captures/{captureId}/report</code>, <code>/captures/{captureId}/snapshot</code></dd>
+              <dt>別個にする理由</dt>
+              <dd>PC は「元ファイルを変換する」製品ではなく、「現在の Windows host 状態を記録する」製品です。ファイル系に寄せると責務がずれます。</dd>
+              <dt>維持する思想</dt>
+              <dd>Docker ではなく Windows host で動かす。通常表示は redacted / handoff 向け出力を優先する。</dd>
+            </dl>
+          </div>
+        </div>
+      </details>
+
+      <details open>
+        <summary>ProductManagementApi: 親 Timeline 側の別責務</summary>
+        <div class="detail-body">
+          <div class="api-node">
+            <h3>継承させないもの</h3>
+            <p>インストール、アンインストール、製品登録、起動停止、実行環境データの扱いは、サブ製品 API の親クラスには入れません。</p>
+            <dl class="facts">
+              <dt>対象</dt>
+              <dd>Timeline 本体の製品管理。<code>timeline-product.json</code>、製品カタログ、runtime status、uninstall plan。</dd>
+              <dt>理由</dt>
+              <dd>製品自身の記録操作と、親 Timeline が製品を管理する操作は危険度も責務も違うためです。</dd>
+              <dt>維持する境界</dt>
+              <dd>Timeline はサブ製品の Docker 名を推測で直接操作せず、製品が提供する launcher / manifest / 契約に従う。</dd>
+            </dl>
+          </div>
+        </div>
+      </details>
+    </div>
+
+    <h3 id="change-ledger" style="margin-top: 22px;">1.3 変更/維持の管理表</h3>
+    <p class="muted">
+      CLI の挙動を一気に変えると、後続アプリケーションが混乱します。
+      そのため、変更するところ、維持するところ、予約だけするところを以下の表で固定します。
+    </p>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>対象</th>
+            <th>現行</th>
+            <th>判断</th>
+            <th>完成版 API</th>
+            <th>理由</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>画面からの操作入口</td>
+            <td>Timeline helper または CLI 呼び出し。</td>
+            <td><span class="badge change">変更</span></td>
+            <td>Web UI は HTTP API を正面入口にする。</td>
+            <td>ヘルス、進捗、複数アクセス、エラー表示、再試行を統一するため。</td>
+          </tr>
+          <tr>
+            <td>単体運用の CLI</td>
+            <td><code>cli.ps1</code> / <code>cli.bat</code> が正式入口。</td>
+            <td><span class="badge keep">維持</span></td>
+            <td>互換・運用・テスト用に残す。将来は API クライアント化してもよい。</td>
+            <td>既存の検証スクリプト、単体製品利用、障害時の裏口として価値があるため。</td>
+          </tr>
+          <tr>
+            <td><code>overview</code></td>
+            <td>Timeline helper の製品別画面状態。</td>
+            <td><span class="badge change">変更</span></td>
+            <td><code>/status</code></td>
+            <td>一般語として「状態」に統一し、画面表示用であることを明確にするため。</td>
+          </tr>
+          <tr>
+            <td><code>items</code></td>
+            <td>生成済み成果物の内部単位。</td>
+            <td><span class="badge change">変更</span></td>
+            <td><code>/records</code></td>
+            <td>一般ユーザーには「記録」の方が理解しやすい。内部 item id は互換IDとして保持する。</td>
+          </tr>
+          <tr>
+            <td><code>runs</code></td>
+            <td>製品ごとの診断/処理履歴。</td>
+            <td><span class="badge change">変更</span></td>
+            <td><code>/tasks</code></td>
+            <td>Web UI では「いま走っている処理」と「過去の処理」を同じ概念で扱うため。</td>
+          </tr>
+          <tr>
+            <td>ファイルパス引数</td>
+            <td><code>--file</code>, <code>--to</code>, <code>--output</code> でローカルパスを渡す。</td>
+            <td><span class="badge change">変更</span></td>
+            <td><code>importId</code>, <code>downloadUrl</code>, 管理ダウンロード先。</td>
+            <td>ブラウザ UI から任意ローカルパスを書かせる設計は危険で、説明もしづらいため。</td>
+          </tr>
+          <tr>
+            <td>ページング</td>
+            <td><code>--page</code>, <code>--page-size</code> が複数 CLI で既存。</td>
+            <td><span class="badge keep">維持</span></td>
+            <td><code>page</code>, <code>pageSize</code>, <code>totalCount</code></td>
+            <td>大量ファイル・大量会話で必須。既存契約とも相性がよい。</td>
+          </tr>
+          <tr>
+            <td>削除 dry-run</td>
+            <td><code>items remove --dry-run</code>, cleanup dry-run。</td>
+            <td><span class="badge keep">維持</span></td>
+            <td><code>dryRun</code>, <code>deletePlan</code></td>
+            <td>削除されるもの/残るものを確認してから実行するため。</td>
+          </tr>
+          <tr>
+            <td>元データ削除</td>
+            <td>各READMEで元ファイル、元ZIP、Codex履歴を削除しない方針。</td>
+            <td><span class="badge keep">維持</span></td>
+            <td>このAPI設計には含めない。</td>
+            <td>破壊的であり、生成物削除とは責務が違うため。</td>
+          </tr>
+          <tr>
+            <td>診断用コマンド</td>
+            <td>Video の <code>probe</code>, <code>sample</code>, <code>ocr</code>, <code>audio analyze</code> など。</td>
+            <td><span class="badge keep">維持</span></td>
+            <td>通常 UI API には出さず、必要時だけ <code>/diagnostics</code> として予約。</td>
+            <td>通常ユーザー操作と開発/運用診断を混ぜるとUIが複雑になるため。</td>
+          </tr>
+          <tr>
+            <td>製品能力の推測</td>
+            <td>Timeline 側のコードが製品ごとの差分を知っている。</td>
+            <td><span class="badge change">変更</span></td>
+            <td><code>/capabilities</code> と <code>timeline-product.json</code> を正本にする。</td>
+            <td>後続製品を追加しても UI と API クライアントが推測を増やさずに済むため。</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="common" class="card section">
+    <h2>2. 全製品共通 API</h2>
+    <p class="muted">
+      ここは全サブ製品が同じ意味で持つ API です。現行 CLI の個別コマンドを、一般ユーザーに見える操作名へ寄せます。
+    </p>
+
+    <div class="tree">
+      <details open>
+        <summary>2.1 状態確認</summary>
+        <div class="detail-body">
+          <div class="api-node">
+            <div class="api-head">
+              <span class="method">GET</span>
+              <span class="url">/{product}/health</span>
+              <span class="badge new">全製品へ追加</span>
+            </div>
+            <p>API プロセス、常駐 worker、最低限の依存が生きているかを返します。Docker healthcheck や監視用の軽い確認です。</p>
+            <dl class="facts">
+              <dt>現行対応</dt>
+              <dd>Image / Video は <code>.\cli.ps1 health</code> が既存。PC は <code>doctor</code> / <code>smoke-test</code> の一部。Audio / ChatGPT / WindowsCodex は実質新規。</dd>
+              <dt>現行使用箇所</dt>
+              <dd>Docker healthcheck は Image / Video の worker Dockerfile。Timeline 本体は現状 <code>/products/runtime/status</code> や overview で代替確認しています。</dd>
+              <dt>変更点</dt>
+              <dd>CLI 実行の成否ではなく、HTTP 200 と短い JSON で稼働状態を返します。</dd>
+              <dt>主な返却</dt>
+              <dd><code>ok</code>, <code>state</code>, <code>productId</code>, <code>version</code>, <code>checks[]</code></dd>
+              <dt>理由</dt>
+              <dd>起動しているかどうかを、人間用の詳細表示や重い検査と分離するためです。</dd>
+            </dl>
+          </div>
+
+          <div class="api-node">
+            <div class="api-head">
+              <span class="method">GET</span>
+              <span class="url">/{product}/status</span>
+              <span class="badge change">既存 overview を統一</span>
+            </div>
+            <p>画面に表示する状態です。設定済みか、入力元が読めるか、出力先に書けるか、最後の処理が成功したか、次に何をすべきかを返します。</p>
+            <dl class="facts">
+              <dt>現行対応</dt>
+              <dd><code>settings status</code>, <code>doctor</code>, 各製品の <code>/products/{id}/overview</code>。</dd>
+              <dt>現行使用箇所</dt>
+              <dd>Timeline の各一覧ページ、設定画面、ダッシュボードが overview を参照しています。</dd>
+              <dt>変更点</dt>
+              <dd>製品別の overview 名を <code>/status</code> に統一し、ユーザー向け表示に必要な状態を共通フィールドに寄せます。</dd>
+              <dt>主な返却</dt>
+              <dd><code>displayState</code>, <code>nextAction</code>, <code>settingsReady</code>, <code>inputReady</code>, <code>outputReady</code>, <code>latestTask</code></dd>
+              <dt>理由</dt>
+              <dd>「製品が使えるか」を製品ごとの実装差ではなく、同じ画面部品で判断できるようにするためです。</dd>
+            </dl>
+          </div>
+        </div>
+      </details>
+
+      <details open>
+        <summary>2.2 設定</summary>
+        <div class="detail-body">
+          <div class="api-node">
+            <div class="api-head">
+              <span class="method">GET</span>
+              <span class="url">/{product}/settings</span>
+              <span class="badge change">既存</span>
+            </div>
+            <p>現在の設定を取得します。設定ファイルの場所、入力元、保存先、AI処理方法、トークン設定済みかどうかを返します。</p>
+            <dl class="facts">
+              <dt>現行対応</dt>
+              <dd><code>settings status</code>, <code>settings master show</code>, <code>settings output show</code>。</dd>
+              <dt>現行使用箇所</dt>
+              <dd>Timeline 設定画面、各製品設定ページ、初期設定案内。</dd>
+              <dt>変更点</dt>
+              <dd>Audio の <code>master</code>、ChatGPT の <code>output</code>、WindowsCodex の <code>master</code> を <code>outputRoot</code> として揃えます。</dd>
+              <dt>理由</dt>
+              <dd>同じ「生成データの保存先」を製品ごとに別名で扱うと、Swagger と UI の理解コストが上がるためです。</dd>
+            </dl>
+          </div>
+
+          <div class="api-node">
+            <div class="api-head">
+              <span class="method put">PUT</span>
+              <span class="url">/{product}/settings</span>
+              <span class="badge change">既存コマンドを統合</span>
+            </div>
+            <p>設定を保存します。入力元、保存先、処理方法、トークンなどを一つの設定更新として扱います。</p>
+            <dl class="facts">
+              <dt>現行対応</dt>
+              <dd><code>settings save</code>, <code>settings inputs add/remove/clear</code>, <code>settings master set</code>, <code>settings output set</code>。</dd>
+              <dt>パラメータ変更</dt>
+              <dd><code>--input-root</code> の繰り返しは <code>inputRoots: []</code>、<code>--output-root</code> / <code>--to</code> 系は <code>outputRoot</code>、<code>--compute-mode</code> は <code>computeMode</code> にします。</dd>
+              <dt>理由</dt>
+              <dd>Web UI では「現在の設定全体」を保存する操作になるため、CLI の追加・削除コマンド列より、設定オブジェクト更新の方が安全に差分確認できます。</dd>
+            </dl>
+          </div>
+
+          <div class="api-node">
+            <div class="api-head">
+              <span class="method post">POST</span>
+              <span class="url">/{product}/settings/check</span>
+              <span class="badge new">追加</span>
+            </div>
+            <p>保存前または実行前に、設定が有効かだけを確認します。ファイルや会話の取り込みは行いません。</p>
+            <dl class="facts">
+              <dt>現行対応</dt>
+              <dd><code>doctor</code>, <code>config-check</code>, <code>settings status</code> の検査部分。</dd>
+              <dt>変更点</dt>
+              <dd>検査結果を <code>checks[]</code> と <code>blockingProblems[]</code> に分けます。</dd>
+              <dt>理由</dt>
+              <dd>ユーザーに「何を直せば使えるか」を先に出すためです。処理開始後に失敗するより判断しやすくなります。</dd>
+            </dl>
+          </div>
+        </div>
+      </details>
+
+      <details open>
+        <summary>2.3 更新と処理</summary>
+        <div class="detail-body">
+          <div class="api-node">
+            <div class="api-head">
+              <span class="method post">POST</span>
+              <span class="url">/{product}/refresh</span>
+              <span class="badge change">items refresh を統一</span>
+            </div>
+            <p>元データを確認し、新規または変更されたものを記録へ変換します。長い処理は即時完了ではなく処理IDを返します。</p>
+            <dl class="facts">
+              <dt>現行対応</dt>
+              <dd><code>items refresh</code>、PC では <code>capture</code> と <code>items refresh</code> の意味を整理して対応。</dd>
+              <dt>現行使用箇所</dt>
+              <dd>Timeline の各製品ページの「更新」「再スキャン」「取り込み」ボタン、Timeline ストア再構築前の製品収集。</dd>
+              <dt>パラメータ変更</dt>
+              <dd><code>--max-items</code> は <code>limit</code>、<code>--item-id</code> は <code>recordIds</code>、ChatGPT の <code>--file</code> は <code>importId</code> に分離します。</dd>
+              <dt>理由</dt>
+              <dd>製品差分を URL 名に出さず、更新という共通操作として扱うためです。進捗は <code>/tasks/{taskId}</code> に分けます。</dd>
+            </dl>
+          </div>
+
+          <div class="child">
+            <div class="api-node">
+              <div class="api-head">
+                <span class="method">GET</span>
+                <span class="url">/{product}/tasks</span>
+                <span class="badge new">追加</span>
+              </div>
+              <p>進行中または最近の処理を一覧します。Web UI の進捗表示と操作ログの入口です。</p>
+              <dl class="facts">
+                <dt>現行対応</dt>
+                <dd><code>runs list</code>、Timeline helper の operation logs、各製品の status.json。</dd>
+                <dt>理由</dt>
+                <dd>「処理中」「完了」「失敗」を CLI 標準出力から読み取るのではなく、API として確認できるようにします。</dd>
+              </dl>
+            </div>
+
+            <div class="api-node">
+              <div class="api-head">
+                <span class="method">GET</span>
+                <span class="url">/{product}/tasks/{taskId}</span>
+                <span class="badge new">追加</span>
+              </div>
+              <p>一つの処理の進捗、現在の段階、完了結果、失敗理由を返します。</p>
+              <dl class="facts">
+                <dt>現行対応</dt>
+                <dd><code>runs show --run-id</code>、各 run/status ファイル。</dd>
+                <dt>主な返却</dt>
+                <dd><code>state</code>, <code>progressPercent</code>, <code>currentStage</code>, <code>message</code>, <code>result</code></dd>
+              </dl>
+            </div>
+
+            <div class="api-node">
+              <div class="api-head">
+                <span class="method post">POST</span>
+                <span class="url">/{product}/tasks/{taskId}/cancel</span>
+                <span class="badge new">追加候補</span>
+              </div>
+              <p>長時間処理のキャンセルです。初期実装では「受け付け不可」を返してもよいですが、URL は予約します。</p>
+              <dl class="facts">
+                <dt>現行対応</dt>
+                <dd>明確な CLI 対応なし。現状は停止スクリプトやプロセス終了に寄りがちです。</dd>
+                <dt>理由</dt>
+                <dd>API 化すると複数アクセスと長時間処理が見えるため、キャンセル可否を契約として返す必要があります。</dd>
+              </dl>
+            </div>
+          </div>
+        </div>
+      </details>
+
+      <details open>
+        <summary>2.4 記録と出力</summary>
+        <div class="detail-body">
+          <div class="api-node">
+            <div class="api-head">
+              <span class="method">GET</span>
+              <span class="url">/{product}/records</span>
+              <span class="badge change">items list を改名</span>
+            </div>
+            <p>生成済みの記録を一覧します。内部の item は、ユーザー向けには record と呼びます。</p>
+            <dl class="facts">
+              <dt>現行対応</dt>
+              <dd><code>items list --page --page-size --json</code></dd>
+              <dt>現行使用箇所</dt>
+              <dd>Audio / Image / Video / PC の一覧、ChatGPT / WindowsCodex の会話一覧、Timeline ストア再構築。</dd>
+              <dt>パラメータ変更</dt>
+              <dd><code>page</code> と <code>pageSize</code> は維持。製品固有の絞り込みは <code>filter</code> または製品別枝に置きます。</dd>
+              <dt>理由</dt>
+              <dd>Swagger 上で全製品の一覧操作を同じ型にするためです。</dd>
+            </dl>
+          </div>
+
+          <div class="api-node">
+            <div class="api-head">
+              <span class="method">GET</span>
+              <span class="url">/{product}/records/{recordId}</span>
+              <span class="badge new">整理して追加</span>
+            </div>
+            <p>一つの記録の詳細、タイムライン、生成物の参照を返します。</p>
+            <dl class="facts">
+              <dt>現行対応</dt>
+              <dd>製品ごとの detail API、生成済み <code>timeline.json</code> / <code>convert_info.json</code> の読み取り。</dd>
+              <dt>理由</dt>
+              <dd>詳細画面が、元ファイル詳細・会話詳細・PC記録詳細に分かれても、記録としての基礎情報は共通にできます。</dd>
+            </dl>
+          </div>
+
+          <div class="api-node">
+            <div class="api-head">
+              <span class="method post">POST</span>
+              <span class="url">/{product}/records/download</span>
+              <span class="badge change">items download を改名</span>
+            </div>
+            <p>選択した記録、または全記録の ZIP を作成します。実ファイルのダウンロード URL は別に返します。</p>
+            <dl class="facts">
+              <dt>現行対応</dt>
+              <dd><code>items download</code>, <code>items download --item-id</code>, <code>items download --to</code>, <code>--overwrite</code></dd>
+              <dt>パラメータ変更</dt>
+              <dd><code>--item-id</code> は <code>recordIds: []</code>、<code>--to</code> は API 内部の管理ダウンロード先へ移し、画面側は返却された <code>downloadUrl</code> を使います。</dd>
+              <dt>理由</dt>
+              <dd>ブラウザ保存とサーバー側 ZIP 作成を分け、任意のローカルパスを書き換えないようにするためです。</dd>
+            </dl>
+          </div>
+
+          <div class="api-node">
+            <div class="api-head">
+              <span class="method delete">DELETE</span>
+              <span class="url">/{product}/records/generated</span>
+              <span class="badge change">delete-generated/remove を統一</span>
+            </div>
+            <p>元データは残し、生成済みデータだけを削除します。</p>
+            <dl class="facts">
+              <dt>現行対応</dt>
+              <dd>Audio <code>files/delete-generated</code>、Image / ChatGPT / WindowsCodex の <code>items/delete-generated</code>、Video の <code>items remove</code>。</dd>
+              <dt>パラメータ変更</dt>
+              <dd><code>itemIds</code> / <code>sourceIds</code> を <code>recordIds</code> に寄せます。<code>dryRun</code> は残します。</dd>
+              <dt>理由</dt>
+              <dd>削除対象が「元データではなく生成物だけ」であることを API 名から明確にするためです。</dd>
+            </dl>
+          </div>
+        </div>
+      </details>
+    </div>
+  </section>
+
+  <section id="groups" class="card section">
+    <h2>3. 製品グループ別 API</h2>
+    <p class="muted">
+      製品差分はここに閉じ込めます。全製品に専用 API を増やすのではなく、元データの種類ごとに枝を足します。
+    </p>
+
+    <div class="tree">
+      <details open>
+        <summary>3.1 ファイル系: Audio / Image / Video</summary>
+        <div class="detail-body">
+          <div class="api-node">
+            <div class="api-head">
+              <span class="method">GET</span>
+              <span class="url">/{product}/sources</span>
+              <span class="badge change">settings inputs を整理</span>
+            </div>
+            <p>ユーザーが指定した入力フォルダーや入力ファイルを一覧します。</p>
+            <dl class="facts">
+              <dt>現行対応</dt>
+              <dd>Audio <code>settings inputs list</code>、Image / Video <code>settings status</code> 内の <code>inputRoots</code>。</dd>
+              <dt>理由</dt>
+              <dd>「元データの場所」と「処理済み記録」を分けることで、設定画面と一覧画面を整理できます。</dd>
+            </dl>
+          </div>
+
+          <div class="api-node">
+            <div class="api-head">
+              <span class="method put">PUT</span>
+              <span class="url">/{product}/sources</span>
+              <span class="badge change">add/remove をまとめる</span>
+            </div>
+            <p>入力元の一覧を保存します。追加・削除の個別コマンドではなく、現在の一覧を正として更新します。</p>
+            <dl class="facts">
+              <dt>現行対応</dt>
+              <dd><code>settings inputs add/remove/clear</code>、<code>settings save --input-root</code></dd>
+              <dt>パラメータ変更</dt>
+              <dd><code>inputRoots: [{ path, displayName, enabled }]</code> に統一します。</dd>
+              <dt>理由</dt>
+              <dd>Web UI の保存前確認で「追加されるもの / 外れるもの」を表示しやすくするためです。</dd>
+            </dl>
+          </div>
+
+          <div class="api-node">
+            <div class="api-head">
+              <span class="method">GET</span>
+              <span class="url">/{product}/files</span>
+              <span class="badge keep">既存</span>
+            </div>
+            <p>入力元にあるファイルを一覧します。まだ処理されていないファイルも含みます。</p>
+            <dl class="facts">
+              <dt>現行対応</dt>
+              <dd><code>files list --page --page-size --json</code></dd>
+              <dt>現行使用箇所</dt>
+              <dd>Audio の音声ファイル一覧、Image の画像一覧、Video の動画一覧。</dd>
+              <dt>変更点</dt>
+              <dd>URL は製品ごとに同じ。返却には <code>recordState</code> を入れ、未処理 / 処理済み / 変更ありを表します。</dd>
+            </dl>
+          </div>
+
+          <div class="child">
+            <div class="api-node">
+              <div class="api-head">
+                <span class="method">GET</span>
+                <span class="url">/{product}/files/{fileId}</span>
+                <span class="badge change">detail を整理</span>
+              </div>
+              <p>一つの元ファイルの詳細です。元ファイルの情報、対応する記録、生成物の有無を返します。</p>
+              <dl class="facts">
+                <dt>現行対応</dt>
+                <dd>Timeline helper の <code>files/detail</code> 系 API、Audio の詳細ページ、Image / Video の詳細ページ。</dd>
+              </dl>
+            </div>
+
+            <div class="api-node">
+              <div class="api-head">
+                <span class="method">GET</span>
+                <span class="url">/{product}/files/{fileId}/source</span>
+                <span class="badge keep">既存</span>
+              </div>
+              <p>ブラウザで再生・表示するため、元ファイルを読み取り専用で返します。</p>
+              <dl class="facts">
+                <dt>現行対応</dt>
+                <dd>Timeline helper の <code>files/source</code> 系。Audio 再生、Image プレビュー、Video プレビューで使用。</dd>
+                <dt>責務</dt>
+                <dd>元ファイルを削除・変更しない。Range リクエスト、Content-Type、アクセス可能なルート制限を持つ。</dd>
+              </dl>
+            </div>
+          </div>
+        </div>
+      </details>
+
+      <details open>
+        <summary>3.2 会話系: ChatGPT / WindowsCodex</summary>
+        <div class="detail-body">
+          <div class="api-node">
+            <div class="api-head">
+              <span class="method">GET</span>
+              <span class="url">/{product}/conversations</span>
+              <span class="badge change">threads/items を改名</span>
+            </div>
+            <p>会話の一覧です。ChatGPT と WindowsCodex は、同じ会話系 UI として扱います。</p>
+            <dl class="facts">
+              <dt>現行対応</dt>
+              <dd><code>items list --json</code>、Timeline helper の <code>/products/{id}/items</code>。</dd>
+              <dt>現行使用箇所</dt>
+              <dd>ChatGPT スレッド一覧、WindowsCodex スレッド一覧。</dd>
+              <dt>パラメータ変更</dt>
+              <dd><code>page</code> / <code>pageSize</code> は維持。表示語は <code>threads</code> から <code>conversations</code> へ寄せます。</dd>
+              <dt>理由</dt>
+              <dd>一般ユーザーには「スレッド」より「会話」の方が意味が伝わりやすいためです。</dd>
+            </dl>
+          </div>
+
+          <div class="api-node">
+            <div class="api-head">
+              <span class="method">GET</span>
+              <span class="url">/{product}/conversations/{conversationId}</span>
+              <span class="badge change">thread detail を改名</span>
+            </div>
+            <p>会話の詳細です。タイトル、時刻、メッセージ、タイムライン変換情報を返します。</p>
+            <dl class="facts">
+              <dt>現行対応</dt>
+              <dd>Timeline helper の <code>/products/chatgpt/threads/{id}</code> と <code>/products/windows-codex/threads/{id}</code>。</dd>
+              <dt>理由</dt>
+              <dd>ChatGPT と WindowsCodex の詳細画面を同じ型で持てるようにするためです。</dd>
+            </dl>
+          </div>
+
+          <div class="api-node">
+            <div class="api-head">
+              <span class="method post">POST</span>
+              <span class="url">/chatgpt/imports</span>
+              <span class="badge new">ChatGPT 専用</span>
+            </div>
+            <p>ChatGPT エクスポート ZIP を登録します。登録後、<code>/chatgpt/refresh</code> に <code>importId</code> を渡して処理します。</p>
+            <dl class="facts">
+              <dt>現行対応</dt>
+              <dd><code>items refresh --file C:\path\chatgpt-export.zip</code></dd>
+              <dt>パラメータ変更</dt>
+              <dd>ローカルファイルパスを直接 refresh に渡すのではなく、先に import として扱います。</dd>
+              <dt>理由</dt>
+              <dd>ブラウザ UI ではファイル選択、アップロード/登録、処理開始を分けた方が失敗時の説明と再実行がしやすいためです。</dd>
+            </dl>
+          </div>
+        </div>
+      </details>
+
+      <details open>
+        <summary>3.3 PC記録系: TimelineForPC</summary>
+        <div class="detail-body">
+          <div class="api-node">
+            <div class="api-head">
+              <span class="method post">POST</span>
+              <span class="url">/pc/captures</span>
+              <span class="badge change">capture を API 化</span>
+            </div>
+            <p>現在の PC 状態を記録します。これは元ファイルの変換ではなく、その時点の PC のスナップショット作成です。</p>
+            <dl class="facts">
+              <dt>現行対応</dt>
+              <dd><code>timeline-for-pc.ps1 capture</code></dd>
+              <dt>現行使用箇所</dt>
+              <dd>TimelineForPC 単体 CLI。Timeline 本体では <code>/products/pc/refresh</code> が <code>items refresh</code> を呼ぶ形で統合途中。</dd>
+              <dt>パラメータ変更</dt>
+              <dd><code>--output-root</code> は settings 側へ移し、実行時は <code>redactionProfile</code>, <code>mockProfile</code>, <code>force</code> 程度に絞ります。</dd>
+              <dt>理由</dt>
+              <dd>PC Web UI では「今のPCを記録する」という操作が主であり、ファイル系の <code>/files</code> とは別概念にすべきためです。</dd>
+            </dl>
+          </div>
+
+          <div class="child">
+            <div class="api-node">
+              <div class="api-head">
+                <span class="method">GET</span>
+                <span class="url">/pc/captures</span>
+                <span class="badge change">履歴一覧</span>
+              </div>
+              <p>過去の PC 記録の一覧です。現在の <code>items list</code> と capture run 履歴を統合して見せます。</p>
+              <dl class="facts">
+                <dt>現行対応</dt>
+                <dd><code>items list --json</code> と出力ディレクトリ内の run 履歴。</dd>
+              </dl>
+            </div>
+
+            <div class="api-node">
+              <div class="api-head">
+                <span class="method">GET</span>
+                <span class="url">/pc/captures/{captureId}/report</span>
+                <span class="badge keep">既存出力を公開</span>
+              </div>
+              <p>PC 記録の読みやすいレポートを返します。</p>
+              <dl class="facts">
+                <dt>現行対応</dt>
+                <dd><code>report.md</code>, <code>export/YYYYMMDDHHMM.md</code></dd>
+                <dt>理由</dt>
+                <dd>TimelineForPC を Web UI 化する場合、ユーザーに最初に見せる価値は JSON ではなくレポートだからです。</dd>
+              </dl>
+            </div>
+
+            <div class="api-node">
+              <div class="api-head">
+                <span class="method">GET</span>
+                <span class="url">/pc/captures/{captureId}/snapshot</span>
+                <span class="badge keep">既存出力を公開</span>
+              </div>
+              <p>機械処理向けの PC スナップショット JSON を返します。</p>
+              <dl class="facts">
+                <dt>現行対応</dt>
+                <dd><code>snapshot.json</code>, <code>snapshot_redacted.json</code></dd>
+                <dt>責務</dt>
+                <dd>通常表示では redacted を優先し、未マスク情報へのアクセスは明示的に分けます。</dd>
+              </dl>
+            </div>
+          </div>
+        </div>
+      </details>
+    </div>
+  </section>
+
+  <section id="products" class="card section">
+    <h2>4. 製品別の現行対応</h2>
+    <p class="muted">
+      ここでは製品ごとに、提案 API が現行 CLI のどこに対応するかを確認します。
+    </p>
+
+    <div class="tree">
+      <details open>
+        <summary>4.1 TimelineForAudio</summary>
+        <div class="detail-body">
+          <div class="api-node">
+            <h3>役割</h3>
+            <p>音声ファイルを読み取り、話者ラベル、時間範囲、音響単位を持つ記録を作るファイル系製品です。</p>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr><th>提案 API</th><th>現行 CLI</th><th>既存/新規</th><th>変更点と理由</th></tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>GET /audio/health</code></td>
+                  <td>明確な対応なし。worker daemon の稼働と Docker 状態で代替。</td>
+                  <td>新規</td>
+                  <td>Audio は長時間処理とモデル依存があるため、API と worker の生存確認を分けて返す必要があります。</td>
+                </tr>
+                <tr>
+                  <td><code>GET /audio/status</code></td>
+                  <td><code>settings status</code>, <code>settings inputs list</code>, <code>settings master show</code>, <code>runs list</code></td>
+                  <td>既存統合</td>
+                  <td>画面が必要とする「設定済みか」「実行中か」「最新処理はどうか」を一つにまとめます。</td>
+                </tr>
+                <tr>
+                  <td><code>PUT /audio/settings</code></td>
+                  <td><code>settings save --token --compute-mode</code>, <code>settings inputs add/remove/clear</code>, <code>settings master set</code></td>
+                  <td>既存統合</td>
+                  <td>複数 CLI 呼び出しを一つの設定保存にします。保存前確認と差分表示がしやすくなります。</td>
+                </tr>
+                <tr>
+                  <td><code>GET /audio/files</code></td>
+                  <td><code>files list --page --page-size --json</code></td>
+                  <td>既存</td>
+                  <td>URL と返却名を他ファイル系製品に合わせます。</td>
+                </tr>
+                <tr>
+                  <td><code>POST /audio/refresh</code></td>
+                  <td><code>items refresh --max-items --json</code></td>
+                  <td>既存改名</td>
+                  <td><code>maxItems</code> を <code>limit</code> に整理し、処理IDを返す形へ寄せます。</td>
+                </tr>
+                <tr>
+                  <td><code>GET /audio/records</code></td>
+                  <td><code>items list --page --page-size --json</code></td>
+                  <td>既存改名</td>
+                  <td>item は内部語、record は画面/API語として扱います。</td>
+                </tr>
+                <tr>
+                  <td><code>POST /audio/records/download</code></td>
+                  <td><code>items download --item-id --output --json</code></td>
+                  <td>既存改名</td>
+                  <td><code>output</code> の任意パス指定は管理ダウンロード先へ寄せ、ブラウザ保存で受け取ります。</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </details>
+
+      <details>
+        <summary>4.2 TimelineForImage</summary>
+        <div class="detail-body">
+          <div class="api-node">
+            <h3>役割</h3>
+            <p>画像ファイルを読み取り、OCR と画像メタデータを含む記録を作るファイル系製品です。</p>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr><th>提案 API</th><th>現行 CLI</th><th>既存/新規</th><th>変更点と理由</th></tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>GET /image/health</code></td>
+                  <td><code>health</code></td>
+                  <td>既存</td>
+                  <td>CLI health を HTTP 化します。Docker healthcheck と同じ軽量性を維持します。</td>
+                </tr>
+                <tr>
+                  <td><code>GET /image/status</code></td>
+                  <td><code>doctor</code>, <code>settings status</code>, <code>items list</code></td>
+                  <td>既存統合</td>
+                  <td>OCR 準備、入力元、出力先、記録件数を画面用にまとめます。</td>
+                </tr>
+                <tr>
+                  <td><code>PUT /image/settings</code></td>
+                  <td><code>settings save --input-root --output-root</code></td>
+                  <td>既存</td>
+                  <td>引数を <code>inputRoots</code> と <code>outputRoot</code> の設定オブジェクトへ変えます。</td>
+                </tr>
+                <tr>
+                  <td><code>GET /image/files</code></td>
+                  <td><code>files list --page --page-size</code></td>
+                  <td>既存</td>
+                  <td>Audio / Video と同じファイル一覧 API にします。</td>
+                </tr>
+                <tr>
+                  <td><code>POST /image/refresh</code></td>
+                  <td><code>items refresh --max-items --reprocess-duplicates</code></td>
+                  <td>既存改名</td>
+                  <td><code>maxItems</code> は <code>limit</code>、<code>reprocessDuplicates</code> は製品別オプションとして残します。</td>
+                </tr>
+                <tr>
+                  <td><code>DELETE /image/records/generated</code></td>
+                  <td><code>items remove --item-id --dry-run</code></td>
+                  <td>既存改名</td>
+                  <td>削除対象が生成物だけであることを明確にします。</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </details>
+
+      <details>
+        <summary>4.3 TimelineForVideo</summary>
+        <div class="detail-body">
+          <div class="api-node">
+            <h3>役割</h3>
+            <p>動画ファイルを読み取り、フレームサンプル、OCR、音声証跡、活動マップを含む記録を作るファイル系製品です。</p>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr><th>提案 API</th><th>現行 CLI</th><th>既存/新規</th><th>変更点と理由</th></tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>GET /video/health</code></td>
+                  <td><code>health --json</code></td>
+                  <td>既存</td>
+                  <td>Docker healthcheck と同じ軽量確認を HTTP 化します。</td>
+                </tr>
+                <tr>
+                  <td><code>GET /video/status</code></td>
+                  <td><code>doctor</code>, <code>models list</code>, <code>runs list</code>, <code>settings status</code></td>
+                  <td>既存統合</td>
+                  <td>GPU、ffmpeg、Tesseract、音声モデル、入力元、出力先をまとめて画面表示します。</td>
+                </tr>
+                <tr>
+                  <td><code>GET /video/files</code></td>
+                  <td><code>files list --page --page-size --json</code></td>
+                  <td>既存</td>
+                  <td>重い一覧なので <code>refresh=true</code> などの明示更新を残します。</td>
+                </tr>
+                <tr>
+                  <td><code>POST /video/refresh</code></td>
+                  <td><code>items refresh --max-items --samples-per-video --audio-model-mode</code></td>
+                  <td>既存改名</td>
+                  <td>通常処理は共通の refresh。診断用の <code>probe</code>, <code>sample</code>, <code>ocr</code>, <code>audio</code>, <code>activity</code> は詳細/開発 API に分けます。</td>
+                </tr>
+                <tr>
+                  <td><code>GET /video/records</code></td>
+                  <td><code>items list --page --page-size --json</code></td>
+                  <td>既存改名</td>
+                  <td>生成済み動画記録として扱います。</td>
+                </tr>
+                <tr>
+                  <td><code>DELETE /video/records/generated</code></td>
+                  <td><code>items remove --item-id --dry-run</code></td>
+                  <td>既存改名</td>
+                  <td>元動画を絶対に削除しないという責務を API 名と説明で固定します。</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </details>
+
+      <details>
+        <summary>4.4 TimelineForPC</summary>
+        <div class="detail-body">
+          <div class="api-node">
+            <h3>役割</h3>
+            <p>現在の Windows PC 状態を読み取り、レポートとタイムライン記録を作る PC記録系製品です。</p>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr><th>提案 API</th><th>現行 CLI</th><th>既存/新規</th><th>変更点と理由</th></tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>GET /pc/health</code></td>
+                  <td><code>doctor --json</code>, <code>smoke-test</code></td>
+                  <td>新規整理</td>
+                  <td>PC API プロセス、Python、PowerShell、CIM/WMI の最低限を軽く確認します。実際の capture はしません。</td>
+                </tr>
+                <tr>
+                  <td><code>GET /pc/status</code></td>
+                  <td><code>settings status --json</code>, <code>doctor --json</code>, <code>items list --json</code></td>
+                  <td>既存統合</td>
+                  <td>Web UI に「記録できる状態か」「最後の記録はいつか」を返します。</td>
+                </tr>
+                <tr>
+                  <td><code>POST /pc/captures</code></td>
+                  <td><code>capture --redaction-profile --mock --mock-profile</code></td>
+                  <td>既存改名</td>
+                  <td>「PC状態を記録する」操作として正面に出します。<code>/pc/refresh</code> は必要なら captures の別名にします。</td>
+                </tr>
+                <tr>
+                  <td><code>GET /pc/captures/{captureId}/report</code></td>
+                  <td><code>report.md</code>, <code>export/YYYYMMDDHHMM.md</code></td>
+                  <td>既存出力を公開</td>
+                  <td>PC Web UI の主表示。JSON より先に読みやすいレポートを見せます。</td>
+                </tr>
+                <tr>
+                  <td><code>POST /pc/records/download</code></td>
+                  <td><code>items download --output --overwrite --json</code></td>
+                  <td>既存改名</td>
+                  <td>ZIP 作成は他製品と同じ records/download に揃えます。</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </details>
+
+      <details>
+        <summary>4.5 TimelineForChatGPT</summary>
+        <div class="detail-body">
+          <div class="api-node">
+            <h3>役割</h3>
+            <p>ChatGPT エクスポート ZIP を読み取り、会話ごとの記録を作る会話系製品です。</p>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr><th>提案 API</th><th>現行 CLI</th><th>既存/新規</th><th>変更点と理由</th></tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>GET /chatgpt/health</code></td>
+                  <td>明確な対応なし。daemon / Docker 状態で代替。</td>
+                  <td>新規</td>
+                  <td>ZIP 処理前に worker と設定が使えるかを確認します。</td>
+                </tr>
+                <tr>
+                  <td><code>POST /chatgpt/imports</code></td>
+                  <td><code>items refresh --file C:\path\chatgpt-export.zip</code></td>
+                  <td>新規分離</td>
+                  <td>ファイル登録と処理開始を分けます。ブラウザ UI で失敗説明と再処理を扱いやすくします。</td>
+                </tr>
+                <tr>
+                  <td><code>POST /chatgpt/refresh</code></td>
+                  <td><code>items refresh --file --download-to --json</code></td>
+                  <td>既存改名</td>
+                  <td><code>file</code> は <code>importId</code> へ、<code>downloadTo</code> は refresh から分離し <code>records/download</code> へ寄せます。</td>
+                </tr>
+                <tr>
+                  <td><code>GET /chatgpt/conversations</code></td>
+                  <td><code>items list --page --page-size --json</code></td>
+                  <td>既存改名</td>
+                  <td>会話系共通の一覧にします。</td>
+                </tr>
+                <tr>
+                  <td><code>GET /chatgpt/conversations/{conversationId}</code></td>
+                  <td>Timeline helper の <code>threads/{id}</code> 詳細</td>
+                  <td>既存改名</td>
+                  <td>thread ではなく conversation として一般ユーザー向けに整理します。</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </details>
+
+      <details>
+        <summary>4.6 TimelineForWindowsCodex</summary>
+        <div class="detail-body">
+          <div class="api-node">
+            <h3>役割</h3>
+            <p>ローカルの Codex 履歴を読み取り、会話ごとの記録を作る会話系製品です。</p>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr><th>提案 API</th><th>現行 CLI</th><th>既存/新規</th><th>変更点と理由</th></tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>GET /windows-codex/health</code></td>
+                  <td>明確な対応なし。Docker コンテナは <code>sleep infinity</code>。</td>
+                  <td>新規</td>
+                  <td>履歴マウントと設定ファイルを読めるか、worker が実行可能かを確認します。</td>
+                </tr>
+                <tr>
+                  <td><code>GET /windows-codex/status</code></td>
+                  <td><code>settings status</code>, <code>settings master show</code>, <code>items list</code></td>
+                  <td>既存統合</td>
+                  <td>ローカル履歴の読み取り可能性、保存先、記録件数をまとめます。</td>
+                </tr>
+                <tr>
+                  <td><code>POST /windows-codex/refresh</code></td>
+                  <td><code>items refresh --json</code></td>
+                  <td>既存改名</td>
+                  <td>ChatGPT と違い import は不要です。既存ローカル履歴を読むだけなので refresh に集約します。</td>
+                </tr>
+                <tr>
+                  <td><code>GET /windows-codex/conversations</code></td>
+                  <td><code>items list --page --page-size --json</code></td>
+                  <td>既存改名</td>
+                  <td>会話系共通の一覧にします。</td>
+                </tr>
+                <tr>
+                  <td><code>POST /windows-codex/records/download</code></td>
+                  <td><code>items download --to --json</code></td>
+                  <td>既存改名</td>
+                  <td><code>--to</code> を API 管理ダウンロードに寄せ、ブラウザ保存と分離します。</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </details>
+    </div>
+  </section>
+
+  <section id="long-running" class="card section">
+    <h2>5. 長時間処理の扱い</h2>
+    <p class="muted">
+      API 化で一番重要なのは、時間がかかる処理を通常の同期 API として扱わないことです。
+      Web UI から見ると、更新、ZIP 作成、削除、PC 記録、ChatGPT ZIP 取り込みは「押したらすぐ終わるボタン」ではなく、進捗を持つ処理として扱うべきです。
+    </p>
+
+    <div class="grid-3">
+      <div class="mini">
+        <h3>短い API</h3>
+        <p><code>/health</code>、軽い <code>/settings</code>、キャッシュ済み <code>/status</code> は数秒以内に返します。画面の定期確認に使えます。</p>
+      </div>
+      <div class="mini">
+        <h3>重くなり得る API</h3>
+        <p><code>/files</code>、<code>/records</code>、<code>/status</code> の詳細検査は、件数や初回キャッシュで遅くなる可能性があります。ページングとキャッシュが必要です。</p>
+      </div>
+      <div class="mini">
+        <h3>長時間 API</h3>
+        <p><code>/refresh</code>、<code>/records/download</code>、<code>/records/generated</code>、<code>/pc/captures</code>、<code>/chatgpt/imports</code> は処理IDを返して非同期にします。</p>
+      </div>
+    </div>
+
+    <div class="tree">
+      <details open>
+        <summary>5.1 長時間 API の基本形</summary>
+        <div class="detail-body">
+          <div class="api-node">
+            <div class="api-head">
+              <span class="method post">POST</span>
+              <span class="url">/{product}/refresh</span>
+              <span class="badge change">同期完了から処理開始へ変更</span>
+            </div>
+            <p>更新処理を開始し、完了を待たずに <code>taskId</code> を返します。HTTP レスポンスは <code>202 Accepted</code> を基本にします。</p>
+            <dl class="facts">
+              <dt>現行の問題</dt>
+              <dd>CLI 実行中は呼び出し元が待ち続けます。動画、音声、ChatGPT ZIP、PC記録では数十秒から数十分になり得ます。</dd>
+              <dt>あるべき挙動</dt>
+              <dd>API は「処理を受け付けた」ことだけを返し、進捗は <code>GET /{product}/tasks/{taskId}</code> で確認します。</dd>
+              <dt>返却例</dt>
+              <dd><code>{ taskId, state: "queued", statusUrl, cancelUrl }</code></dd>
+              <dt>理由</dt>
+              <dd>ブラウザ、プロキシ、HTTP クライアントのタイムアウトに処理寿命を依存させないためです。</dd>
+            </dl>
+          </div>
+
+          <div class="api-node">
+            <div class="api-head">
+              <span class="method">GET</span>
+              <span class="url">/{product}/tasks/{taskId}</span>
+              <span class="badge new">進捗確認</span>
+            </div>
+            <p>現在の段階、進捗率、処理件数、現在処理中の対象、失敗理由、次の推奨操作を返します。</p>
+            <dl class="facts">
+              <dt>状態</dt>
+              <dd><code>queued</code>, <code>preparing</code>, <code>running</code>, <code>waiting</code>, <code>completed</code>, <code>failed</code>, <code>cancelRequested</code>, <code>cancelled</code>, <code>interrupted</code></dd>
+              <dt>途中経過</dt>
+              <dd><code>progressPercent</code>, <code>currentStage</code>, <code>itemsDone</code>, <code>itemsTotal</code>, <code>currentItemLabel</code>, <code>updatedAt</code></dd>
+              <dt>画面側</dt>
+              <dd>開始直後に処理カードを表示し、2〜5秒間隔で polling します。完了後は該当一覧を再読み込みします。</dd>
+            </dl>
+          </div>
+
+          <div class="api-node">
+            <div class="api-head">
+              <span class="method">GET</span>
+              <span class="url">/{product}/tasks/{taskId}/events</span>
+              <span class="badge new">任意追加</span>
+            </div>
+            <p>必要なら Server-Sent Events で進捗イベントを流します。初期実装は polling だけで十分です。</p>
+            <dl class="facts">
+              <dt>採用判断</dt>
+              <dd>まずは <code>GET /tasks/{taskId}</code> の polling を標準にします。SSE は動画や音声の細かい進捗が必要になった時だけ追加します。</dd>
+              <dt>理由</dt>
+              <dd>最初から WebSocket/SSE を必須にすると実装と復旧が複雑になります。状態ファイル/DB に進捗を残す polling の方が堅いです。</dd>
+            </dl>
+          </div>
+        </div>
+      </details>
+
+      <details open>
+        <summary>5.2 API ごとの同期/非同期判断</summary>
+        <div class="detail-body">
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>API</th>
+                  <th>想定時間</th>
+                  <th>推奨</th>
+                  <th>理由</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>GET /{product}/health</code></td>
+                  <td>1秒以内</td>
+                  <td>同期</td>
+                  <td>監視用です。重い検査、モデル確認、全件スキャンを含めません。</td>
+                </tr>
+                <tr>
+                  <td><code>GET /{product}/status</code></td>
+                  <td>通常 1〜3秒</td>
+                  <td>同期 + キャッシュ</td>
+                  <td>画面表示に必要ですが、詳細検査で遅くなる場合は前回結果と <code>stale</code> 表示を返します。</td>
+                </tr>
+                <tr>
+                  <td><code>GET /{product}/files</code></td>
+                  <td>件数次第</td>
+                  <td>同期 + ページング + キャッシュ</td>
+                  <td>動画や大量画像は初回が遅いです。<code>refresh=true</code> などで明示更新にします。</td>
+                </tr>
+                <tr>
+                  <td><code>POST /{product}/refresh</code></td>
+                  <td>長い</td>
+                  <td>非同期</td>
+                  <td>音声モデル、動画処理、ZIP展開、PC収集は長時間化します。<code>taskId</code> を返すべきです。</td>
+                </tr>
+                <tr>
+                  <td><code>POST /{product}/records/download</code></td>
+                  <td>中〜長</td>
+                  <td>非同期</td>
+                  <td>ZIP 作成は件数と容量に依存します。完了後に <code>downloadUrl</code> を返します。</td>
+                </tr>
+                <tr>
+                  <td><code>DELETE /{product}/records/generated</code></td>
+                  <td>中〜長</td>
+                  <td>非同期候補</td>
+                  <td>件数が少なければ同期でもよいですが、統一して task 化すると削除中表示と dry-run が扱いやすいです。</td>
+                </tr>
+                <tr>
+                  <td><code>POST /pc/captures</code></td>
+                  <td>中〜長</td>
+                  <td>非同期</td>
+                  <td>CIM/WMI、アプリ一覧、ディスク情報などで時間が変動します。進捗段階を出すべきです。</td>
+                </tr>
+                <tr>
+                  <td><code>POST /chatgpt/imports</code></td>
+                  <td>ファイル次第</td>
+                  <td>登録は同期、解析は非同期</td>
+                  <td>ZIP の受け取り/登録と、会話変換処理は分けます。大きい ZIP は処理だけ task 化します。</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </details>
+
+      <details open>
+        <summary>5.3 複数アクセスとキュー</summary>
+        <div class="detail-body">
+          <div class="api-node">
+            <h3>基本ルール</h3>
+            <p>重い処理は、製品ごとに原則 1 本だけ同時実行します。読み取り API は動かしてよいですが、同じ生成データを書き換える処理はキューまたは拒否にします。</p>
+            <dl class="facts">
+              <dt>同時実行可</dt>
+              <dd><code>/health</code>, <code>/status</code>, <code>/records</code>, <code>/files</code>, <code>/tasks/{taskId}</code></dd>
+              <dt>同時実行制限</dt>
+              <dd><code>/refresh</code>, <code>/records/download</code>, <code>/records/generated</code>, <code>/pc/captures</code></dd>
+              <dt>重複リクエスト</dt>
+              <dd>同じ条件の処理が実行中なら、新しい処理を作らず既存の <code>taskId</code> を返す選択肢を持ちます。</dd>
+              <dt>理由</dt>
+              <dd>同じ outputRoot に複数処理が同時書き込みすると、成果物、latest ZIP、status.json が壊れる可能性があるためです。</dd>
+            </dl>
+          </div>
+
+          <div class="api-node">
+            <h3>Idempotency-Key</h3>
+            <p>Web UI からの二重クリックや通信リトライに備えて、長時間 POST は <code>Idempotency-Key</code> を受け付けます。</p>
+            <dl class="facts">
+              <dt>あるべき挙動</dt>
+              <dd>同じ key と同じ本文なら同じ <code>taskId</code> を返します。違う本文なら <code>409 Conflict</code> を返します。</dd>
+              <dt>理由</dt>
+              <dd>ユーザーがボタンを連打しても、同じ処理が複数走らないようにするためです。</dd>
+            </dl>
+          </div>
+
+          <div class="api-node">
+            <h3>排他ロック</h3>
+            <p>API 層だけでなく、worker 側にもファイルロックまたは DB ロックを置きます。</p>
+            <dl class="facts">
+              <dt>必要な場所</dt>
+              <dd>outputRoot、latest ZIP、settings 書き込み、run/task 状態更新、Docker compose 起動。</dd>
+              <dt>理由</dt>
+              <dd>API サーバーが再起動しても、worker 側で成果物保護が効くようにするためです。</dd>
+            </dl>
+          </div>
+        </div>
+      </details>
+
+      <details open>
+        <summary>5.4 キャンセル、失敗、復旧</summary>
+        <div class="detail-body">
+          <div class="api-node">
+            <h3>キャンセル</h3>
+            <p>キャンセルは即時 kill ではなく、<code>cancelRequested</code> を保存し、worker が安全な区切りで停止します。</p>
+            <dl class="facts">
+              <dt>返却</dt>
+              <dd><code>canCancel</code>, <code>cancelRequested</code>, <code>cancelReason</code></dd>
+              <dt>できない場合</dt>
+              <dd>外部コマンドやモデル処理中で安全に止められない場合は <code>canCancel: false</code> を返します。</dd>
+              <dt>理由</dt>
+              <dd>生成途中のファイルやロックを壊さず、次回 refresh で復帰できる状態を保つためです。</dd>
+            </dl>
+          </div>
+
+          <div class="api-node">
+            <h3>失敗</h3>
+            <p>失敗は「ユーザーが次に何をすべきか」を返す形にします。</p>
+            <dl class="facts">
+              <dt>返却</dt>
+              <dd><code>userMessage</code>, <code>technicalMessage</code>, <code>retryable</code>, <code>nextAction</code>, <code>logsUrl</code></dd>
+              <dt>理由</dt>
+              <dd>CLI の stderr をそのまま見せると、一般ユーザーが安全に判断できないためです。</dd>
+            </dl>
+          </div>
+
+          <div class="api-node">
+            <h3>復旧</h3>
+            <p>API または worker が落ちた場合、次回起動時に古い <code>running</code> を <code>interrupted</code> にします。</p>
+            <dl class="facts">
+              <dt>必要な実装</dt>
+              <dd>task 状態の永続化、heartbeat 時刻、stale 判定、途中ファイルの cleanup または再利用判定。</dd>
+              <dt>理由</dt>
+              <dd>画面に「処理中」のまま残り続ける状態を避け、再実行できるかを明示するためです。</dd>
+            </dl>
+          </div>
+        </div>
+      </details>
+
+      <details open>
+        <summary>5.5 製品別の進捗ステージ案</summary>
+        <div class="detail-body">
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>製品</th>
+                  <th>長時間処理</th>
+                  <th>進捗ステージ</th>
+                  <th>画面に出すべき途中経過</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Audio</td>
+                  <td><code>/audio/refresh</code>, <code>/audio/records/download</code></td>
+                  <td>設定確認 → ファイル検出 → モデル準備 → 音声解析 → 記録作成 → ZIP 作成</td>
+                  <td>処理済みファイル数、対象ファイル名、処理済み音声時間、推定残り時間、モデル待ち状態。</td>
+                </tr>
+                <tr>
+                  <td>Image</td>
+                  <td><code>/image/refresh</code>, <code>/image/records/download</code>, 生成物削除</td>
+                  <td>設定確認 → ファイル検出 → 画像正規化 → OCR → 記録作成 → ZIP 作成</td>
+                  <td>処理済み画像数、現在の画像名、OCR 状態、スキップ数、失敗数。</td>
+                </tr>
+                <tr>
+                  <td>Video</td>
+                  <td><code>/video/refresh</code>, <code>/video/records/download</code></td>
+                  <td>設定確認 → ffprobe → フレーム抽出 → OCR → 音声解析 → 活動マップ → 記録作成 → ZIP 作成</td>
+                  <td>現在の動画名、現在ステージ、処理済み動画数、サンプル数、音声モデル待ち、失敗ステージ。</td>
+                </tr>
+                <tr>
+                  <td>PC</td>
+                  <td><code>/pc/captures</code>, <code>/pc/records/download</code></td>
+                  <td>事前確認 → OS情報 → ハードウェア → ディスク → ネットワーク → アプリ一覧 → マスク処理 → レポート作成</td>
+                  <td>現在収集中のカテゴリ、警告数、マスク済み/未マスクの状態、レポート作成完了。</td>
+                </tr>
+                <tr>
+                  <td>ChatGPT</td>
+                  <td><code>/chatgpt/imports</code>, <code>/chatgpt/refresh</code>, <code>/chatgpt/records/download</code></td>
+                  <td>ZIP確認 → 展開 → conversations 読み取り → 会話変換 → 記録作成 → ZIP 作成</td>
+                  <td>会話総数、変換済み会話数、失敗会話数、現在の会話タイトル、ZIP検証結果。</td>
+                </tr>
+                <tr>
+                  <td>WindowsCodex</td>
+                  <td><code>/windows-codex/refresh</code>, <code>/windows-codex/records/download</code></td>
+                  <td>マウント確認 → セッション探索 → 会話復元 → 記録作成 → ZIP 作成</td>
+                  <td>探索済みファイル数、会話数、スキップ数、現在の会話ID、読めない履歴の警告。</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </details>
+
+      <details open>
+        <summary>5.6 運用上あるべき実装</summary>
+        <div class="detail-body">
+          <div class="grid-2">
+            <div class="mini">
+              <h3>操作ログ</h3>
+              <p>全 task に <code>operationId</code> を持たせ、親 UI 操作、API リクエスト、worker 実行、旧 CLI 呼び出しをつなぎます。</p>
+            </div>
+            <div class="mini">
+              <h3>安全なログ表示</h3>
+              <p>トークン、パスワード、APIキー、個人情報になり得る値はログ保存前にマスクします。画面には短い説明を優先します。</p>
+            </div>
+            <div class="mini">
+              <h3>キャッシュ</h3>
+              <p>重い一覧や status は <code>cachedAt</code> と <code>stale</code> を返します。ユーザーが明示更新した時だけ再スキャンします。</p>
+            </div>
+            <div class="mini">
+              <h3>タイムアウト</h3>
+              <p>HTTP リクエストは短く、worker 処理は task として継続します。API タイムアウトと処理タイムアウトを混同しません。</p>
+            </div>
+            <div class="mini">
+              <h3>古い処理の扱い</h3>
+              <p>heartbeat が一定時間更新されない task は <code>interrupted</code> にします。次回 refresh で再開または再処理します。</p>
+            </div>
+            <div class="mini">
+              <h3>互換期間</h3>
+              <p>移行中は API 内部から現行 CLI を呼んでもよいですが、外部契約は API の task/records/status へ寄せます。</p>
+            </div>
+          </div>
+        </div>
+      </details>
+    </div>
+  </section>
+
+  <section id="considerations" class="card section">
+    <h2>6. あるべき配慮</h2>
+    <p class="muted">
+      「必要最低限」ではなく「あるべきものがある」状態にするための採否です。
+      ただし、初期 API を重くしすぎないよう、入れるもの、予約だけするもの、今は入れないものを分けます。
+    </p>
+
+    <div class="grid-3">
+      <div class="mini">
+        <h3>必ず入れる</h3>
+        <p>ヘルス、状態、進捗、データ鮮度、ユーザー向けエラー、元データ保護、部分失敗、製品能力 discovery。</p>
+      </div>
+      <div class="mini">
+        <h3>予約する</h3>
+        <p>SSE、診断 API、maintenance cleanup、詳細な認証、外部監視連携。URL と概念だけ先に置き、実装は後回しにします。</p>
+      </div>
+      <div class="mini">
+        <h3>入れない</h3>
+        <p>元データ削除、任意ローカルパスへの書き込み、複雑なユーザー管理、GraphQL、全製品共通の巨大ワークフローエンジン。</p>
+      </div>
+    </div>
+
+    <div class="tree">
+      <details open>
+        <summary>6.1 共通レスポンスに入れる配慮</summary>
+        <div class="detail-body">
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>配慮</th>
+                  <th>共通フィールド</th>
+                  <th>対象 API</th>
+                  <th>理由</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>契約バージョン</td>
+                  <td><code>contractVersion</code>, <code>schemaVersion</code></td>
+                  <td>全 API</td>
+                  <td>Swagger と実装のずれを検出しやすくするため。破壊的変更時の判断材料になります。</td>
+                </tr>
+                <tr>
+                  <td>データ鮮度</td>
+                  <td><code>dataFreshness.cachedAt</code>, <code>isStale</code>, <code>refreshAvailable</code></td>
+                  <td><code>/status</code>, <code>/files</code>, <code>/records</code>, <code>/conversations</code></td>
+                  <td>重い一覧を毎回スキャンせず、UI が「この情報は古い可能性があります」と説明できるようにします。</td>
+                </tr>
+                <tr>
+                  <td>ユーザー向けエラー</td>
+                  <td><code>errorCode</code>, <code>userMessage</code>, <code>technicalMessage</code>, <code>nextAction</code></td>
+                  <td>全 API</td>
+                  <td>CLI stderr や Python 例外をそのまま表示しないため。一般ユーザーが次の行動を選べます。</td>
+                </tr>
+                <tr>
+                  <td>部分失敗</td>
+                  <td><code>partial</code>, <code>warnings[]</code>, <code>failedItems[]</code></td>
+                  <td><code>/refresh</code>, <code>/records/download</code>, <code>/imports</code></td>
+                  <td>大量ファイルや大量会話では、一部失敗でも成果物が有効なケースがあるためです。</td>
+                </tr>
+                <tr>
+                  <td>元データ保護</td>
+                  <td><code>sourceSafety.readOnly</code>, <code>sourceIncludedInExport</code>, <code>deleteSourceData</code></td>
+                  <td><code>/files</code>, <code>/records/download</code>, 削除 API</td>
+                  <td>各製品の README が持つ「元データを消さない、ZIPに含めない」方針を API 契約に出します。</td>
+                </tr>
+                <tr>
+                  <td>伏字化</td>
+                  <td><code>redaction.redacted</code>, <code>redactionProfile</code>, <code>containsSensitiveData</code></td>
+                  <td>PC、会話系、ログ表示、エラー表示</td>
+                  <td>TimelineForPC の <code>llm_safe</code> と、会話履歴/ログ表示の安全性を同じ考え方で扱うためです。</td>
+                </tr>
+                <tr>
+                  <td>出所と再処理判断</td>
+                  <td><code>provenance.sourceFingerprint</code>, <code>settingsHash</code>, <code>modelVersions</code>, <code>sourceModifiedAt</code></td>
+                  <td><code>/records</code>, <code>/records/{id}</code></td>
+                  <td>変更検出、再処理、スキップ理由、成果物の信頼性を説明するためです。</td>
+                </tr>
+                <tr>
+                  <td>操作追跡</td>
+                  <td><code>operationId</code>, <code>taskId</code>, <code>logsUrl</code></td>
+                  <td>長時間処理、設定保存、削除、ダウンロード</td>
+                  <td>UI操作、API、worker、旧CLI呼び出しを一本の履歴として追えるようにするためです。</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </details>
+
+      <details open>
+        <summary>6.2 ユーザーに見せる言葉</summary>
+        <div class="detail-body">
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>内部語</th>
+                  <th>API語</th>
+                  <th>画面表示</th>
+                  <th>使い分け</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>item</code></td>
+                  <td><code>record</code></td>
+                  <td>記録</td>
+                  <td>既存ファイル名やIDでは item を残してよいが、API正面は record。</td>
+                </tr>
+                <tr>
+                  <td><code>run</code></td>
+                  <td><code>task</code></td>
+                  <td>処理</td>
+                  <td>現在実行中、待機中、失敗、完了をまとめて扱う。</td>
+                </tr>
+                <tr>
+                  <td><code>inputRoot</code></td>
+                  <td><code>source</code></td>
+                  <td>元データ</td>
+                  <td>ファイル系では入力フォルダー、ChatGPT ではインポートZIP、WindowsCodex では履歴ルート。</td>
+                </tr>
+                <tr>
+                  <td><code>thread</code></td>
+                  <td><code>conversation</code></td>
+                  <td>会話</td>
+                  <td>ChatGPT / WindowsCodex の共通UIでは conversation を使う。</td>
+                </tr>
+                <tr>
+                  <td><code>master</code> / <code>output</code></td>
+                  <td><code>outputRoot</code></td>
+                  <td>保存先</td>
+                  <td>製品ごとの差分名を API では統一する。</td>
+                </tr>
+                <tr>
+                  <td><code>doctor</code></td>
+                  <td><code>settings/check</code> または <code>status</code></td>
+                  <td>利用前チェック</td>
+                  <td>軽いヘルスとは分け、ユーザーが直すべき問題を返す。</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </details>
+
+      <details open>
+        <summary>6.3 削除・上書き・ダウンロードの安全設計</summary>
+        <div class="detail-body">
+          <div class="api-node">
+            <h3>削除</h3>
+            <p>削除 API は生成物だけを対象にします。元ファイル、ChatGPT の元 ZIP、Codex の元履歴、PC の実体情報は対象外です。</p>
+            <dl class="facts">
+              <dt>必須</dt>
+              <dd><code>dryRun</code>, <code>deletePlan</code>, <code>willDelete[]</code>, <code>willKeep[]</code>, <code>requiresConfirmation</code></dd>
+              <dt>理由</dt>
+              <dd>既存ドキュメントでは、元データを削除しない方針が繰り返し示されています。API でもこの境界を崩しません。</dd>
+            </dl>
+          </div>
+
+          <div class="api-node">
+            <h3>上書き</h3>
+            <p>ダウンロードやエクスポートは、API 管理下の保存先に作り、ブラウザには <code>downloadUrl</code> を返します。</p>
+            <dl class="facts">
+              <dt>変える点</dt>
+              <dd>CLI の <code>--to</code>, <code>--output</code>, <code>--overwrite</code> は、Web API の正面引数から外します。</dd>
+              <dt>理由</dt>
+              <dd>Web UI から任意の Windows パスを書き換える操作は、ユーザー説明と安全確認が難しいためです。</dd>
+            </dl>
+          </div>
+
+          <div class="api-node">
+            <h3>ダウンロード</h3>
+            <p>ZIP 作成とファイル取得は分けます。ZIP 作成は task、ファイル取得は読み取り専用の download URL です。</p>
+            <dl class="facts">
+              <dt>返却</dt>
+              <dd><code>downloadUrl</code>, <code>fileName</code>, <code>sizeBytes</code>, <code>sha256</code>, <code>expiresAt</code></dd>
+              <dt>理由</dt>
+              <dd>大きい ZIP、途中失敗、再取得、ブラウザ保存を安定して扱うためです。</dd>
+            </dl>
+          </div>
+        </div>
+      </details>
+
+      <details open>
+        <summary>6.4 予約するが初期実装しないもの</summary>
+        <div class="detail-body">
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>機能</th>
+                  <th>予約する形</th>
+                  <th>初期実装しない理由</th>
+                  <th>追加判断</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>リアルタイム進捗</td>
+                  <td><code>/tasks/{taskId}/events</code></td>
+                  <td>polling で十分始められる。SSE/WebSocket は復旧と接続管理が増える。</td>
+                  <td>動画・音声で細かい進捗が必要になったら追加。</td>
+                </tr>
+                <tr>
+                  <td>診断 API</td>
+                  <td><code>/{product}/diagnostics/*</code></td>
+                  <td>通常ユーザーの操作導線を複雑にする。</td>
+                  <td>管理画面や開発者モードが必要になったら追加。</td>
+                </tr>
+                <tr>
+                  <td>maintenance cleanup</td>
+                  <td><code>/{product}/maintenance/cleanup-plan</code></td>
+                  <td>削除対象の説明と確認 UI が必要で、refresh より危険度が高い。</td>
+                  <td>容量管理画面を作る段階で追加。</td>
+                </tr>
+                <tr>
+                  <td>強い認証</td>
+                  <td>ローカル token / allowlist</td>
+                  <td>現段階ではローカル API 前提。多ユーザー権限は過剰。</td>
+                  <td>LAN公開や外部連携が必要になった時だけ設計。</td>
+                </tr>
+                <tr>
+                  <td>外部監視連携</td>
+                  <td><code>/health</code> のみ先に対応</td>
+                  <td>OpenTelemetry などを最初から入れると運用前提が重くなる。</td>
+                  <td>長期常駐運用や複数端末監視が必要になったら追加。</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </details>
+    </div>
+  </section>
+
+  <section id="schemas" class="card section">
+    <h2>7. 返却形式</h2>
+    <p class="muted">
+      Swagger 化するときは、URL だけでなく返却形も共通化します。以下は最小の共通形です。
+    </p>
+
+    <div class="grid-2">
+      <div class="mini">
+        <h3>HealthResponse</h3>
+        <pre>{
+  "contractVersion": "2026-05",
+  "ok": true,
+  "state": "healthy",
+  "productId": "audio",
+  "productName": "TimelineForAudio",
+  "version": "0.4.3",
+  "checks": [
+    { "name": "worker", "ok": true, "message": "running" }
+  ]
+}</pre>
+      </div>
+      <div class="mini">
+        <h3>StatusResponse</h3>
+        <pre>{
+  "contractVersion": "2026-05",
+  "state": "ready",
+  "displayState": "利用できます",
+  "nextAction": "",
+  "settingsReady": true,
+  "inputReady": true,
+  "outputReady": true,
+  "latestTask": null,
+  "dataFreshness": {
+    "cachedAt": "2026-05-12T08:00:00Z",
+    "isStale": false,
+    "refreshAvailable": true
+  },
+  "warnings": []
+}</pre>
+      </div>
+      <div class="mini">
+        <h3>TaskResponse</h3>
+        <pre>{
+  "contractVersion": "2026-05",
+  "taskId": "task-...",
+  "operationId": "op-...",
+  "state": "running",
+  "progressPercent": 42.5,
+  "currentStage": "processing",
+  "message": "記録を作成しています",
+  "itemsDone": 17,
+  "itemsTotal": 40,
+  "currentItemLabel": "meeting-2026-05-12.mp4",
+  "canCancel": true,
+  "partial": false,
+  "warnings": [],
+  "failedItems": [],
+  "startedAt": "2026-05-12T08:00:00Z",
+  "updatedAt": "2026-05-12T08:01:20Z",
+  "links": {
+    "self": "/video/tasks/task-...",
+    "cancel": "/video/tasks/task-.../cancel"
+  }
+}</pre>
+      </div>
+      <div class="mini">
+        <h3>PagedResponse</h3>
+        <pre>{
+  "contractVersion": "2026-05",
+  "records": [],
+  "page": 1,
+  "pageSize": 100,
+  "totalCount": 1234,
+  "totalPages": 13,
+  "dataFreshness": {
+    "cachedAt": "2026-05-12T08:00:00Z",
+    "isStale": false
+  }
+}</pre>
+      </div>
+      <div class="mini">
+        <h3>ErrorResponse</h3>
+        <pre>{
+  "contractVersion": "2026-05",
+  "ok": false,
+  "errorCode": "worker_unavailable",
+  "userMessage": "処理用ワーカーが起動していません",
+  "technicalMessage": "Docker worker health check failed.",
+  "retryable": true,
+  "nextAction": "製品を起動してから再試行してください",
+  "operationId": "op-...",
+  "logsUrl": "/audio/tasks/task-.../logs"
+}</pre>
+      </div>
+      <div class="mini">
+        <h3>CapabilityResponse</h3>
+        <pre>{
+  "contractVersion": "2026-05",
+  "productId": "video",
+  "kind": "fileSource",
+  "capabilities": {
+    "records": true,
+    "files": true,
+    "conversations": false,
+    "captures": false,
+    "models": true,
+    "deleteGenerated": true
+  }
+}</pre>
+      </div>
+      <div class="mini">
+        <h3>DeletePlanResponse</h3>
+        <pre>{
+  "contractVersion": "2026-05",
+  "dryRun": true,
+  "scope": "generated",
+  "willDelete": [
+    { "pathLabel": "items/video-...", "sizeBytes": 123456 }
+  ],
+  "willKeep": [
+    { "kind": "source", "reason": "元動画は削除対象外です" }
+  ],
+  "requiresConfirmation": true
+}</pre>
+      </div>
+    </div>
+
+    <div class="note danger">
+      削除 API は、必ず「生成物だけ」か「設定も含む」かを URL と本文で分けます。元ファイル、元 ZIP、Codex 履歴、PC の実体情報を API 経由で削除する操作は、この設計には含めません。
+    </div>
+  </section>
+</main>
+</body>
+</html>

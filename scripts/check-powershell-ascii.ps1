@@ -24,7 +24,8 @@ function Test-TimelineIgnoredPath {
     return $normalized.Contains("\.git\") `
         -or $normalized.Contains("\bin\") `
         -or $normalized.Contains("\obj\") `
-        -or $normalized.Contains("\node_modules\")
+        -or $normalized.Contains("\node_modules\") `
+        -or $normalized.Contains("\data\products\")
 }
 
 function Get-TimelineLineColumn {

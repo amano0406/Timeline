@@ -30,6 +30,34 @@ Open:
 http://127.0.0.1:19000
 ```
 
+The first `start.ps1` run creates a stable local `runtime.instanceName` in
+`settings.json` when it is missing or empty. Docker project names, containers,
+networks, and local build image tags are derived from that instance name. Ports
+remain explicit settings so a developer can run multiple copies by assigning
+different ports.
+
+```json
+{
+  "runtime": {
+    "instanceName": "local-0123abcd89",
+    "imageTag": "",
+    "webPort": 19000,
+    "helperPortStart": 19001,
+    "helperPortEnd": 19010,
+    "ollamaPort": 11434,
+    "ollamaModel": "qwen3.5:9b",
+    "shareOllamaVolume": true,
+    "ollamaVolumeName": "timeline-ollama"
+  }
+}
+```
+
+External base images such as `ollama/ollama:latest` may be shared. Timeline's
+own containers, networks, and local build image tags are scoped from the
+configured instance. Published ports must be changed manually when running more
+than one copy at the same time. See
+[docs/docker-runtime-rulebook.md](docs/docker-runtime-rulebook.md).
+
 Stop:
 
 ```powershell
@@ -98,6 +126,8 @@ controls the data root.
 
 - Use each sub-product's public Windows-side launcher or CLI.
 - Do not call Docker directly for a sub-product from Timeline.
+- Do not start a sub-product as a side effect of a read API call. Stopped
+  products must stay stopped until the user runs an explicit start action.
 - Do not delete original user source files as part of product uninstall.
 - Product generated data is kept by default during uninstall unless the user
   explicitly selects generated-data removal.
@@ -126,5 +156,9 @@ docker compose build web
   sub-product manifest contract.
 - [docs/product-uninstall-design.md](docs/product-uninstall-design.md):
   product uninstall policy and safety model.
+- [docs/docker-runtime-rulebook.md](docs/docker-runtime-rulebook.md):
+  Docker project names, ports, images, volumes, and future API connection rules.
+- [docs/sub-product-docker-port-contract.md](docs/sub-product-docker-port-contract.md):
+  Docker project, image, volume, and future API port rules for sub-products.
 - [docs/timeline-llm-data-rules.html](docs/timeline-llm-data-rules.html):
   Timeline master data, LLM input data, and generated result separation.

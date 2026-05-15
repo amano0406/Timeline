@@ -9,6 +9,7 @@ $repoRoot = $PSScriptRoot
 . (Join-Path $repoRoot "scripts\docker-runtime.ps1")
 
 Initialize-TimelineDocker -RepoRoot $repoRoot
+$runtime = Get-TimelineRuntimeSettings -RepoRoot $repoRoot
 $docker = Get-TimelineDockerCommand
 $composeArgs = Get-TimelineComposeArgs -RepoRoot $repoRoot
 $composeExitCode = 0
@@ -36,13 +37,13 @@ try {
     }
 }
 finally {
-    Stop-TimelineHelperServer
+    Stop-TimelineLocalApiServer
 }
 
 if ($composeExitCode -ne 0) {
     $webStillRunning = $false
     try {
-        $response = Invoke-WebRequest -UseBasicParsing -TimeoutSec 1 "http://127.0.0.1:19000/api/health"
+        $response = Invoke-WebRequest -UseBasicParsing -TimeoutSec 1 "http://127.0.0.1:$($runtime.WebPort)/api/health"
         $webStillRunning = [int]$response.StatusCode -ge 200 -and [int]$response.StatusCode -lt 300
     }
     catch {

@@ -15,5 +15,7 @@ web/node_modules/
 web/wwwroot/vendor/
 settings.local.json
 /settings.json
+NUL
+data/
 *.user
 *.suo

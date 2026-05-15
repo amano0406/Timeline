@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace Timeline.Web.Services;
 
 public sealed class VideoOverview
@@ -50,7 +52,8 @@ public sealed class VideoSettingsSaveRequest
     public List<VideoInputRoot> InputRoots { get; set; } = [];
     public VideoDirectoryRoot OutputRoot { get; set; } = new();
     public string OutputRootPath { get; set; } = "";
-    public string Token { get; set; } = "";
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Token { get; set; }
     public string ComputeMode { get; set; } = "gpu";
 }
 

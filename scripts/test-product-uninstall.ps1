@@ -6,16 +6,22 @@ $ErrorActionPreference = "Stop"
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $settingsPath = Join-Path $repoRoot "settings.json"
-$serverScript = Join-Path $PSScriptRoot "timeline-helper-server.ps1"
+$runtimeScript = Join-Path $PSScriptRoot "docker-runtime.ps1"
 $originalSettings = if (Test-Path -LiteralPath $settingsPath -PathType Leaf) { Get-Content -LiteralPath $settingsPath -Raw -Encoding UTF8 } else { "" }
 $testId = "product-uninstall-" + (Get-Date -Format "yyyyMMdd-HHmmss") + "-" + ([guid]::NewGuid().ToString("N").Substring(0, 8))
 $testRoot = Join-Path (Join-Path (Join-Path $repoRoot "data") "test") $testId
-$productDir = Join-Path $testRoot "TimelineForAudio"
+$productDir = Join-Path (Join-Path $testRoot "products") "TimelineForAudio"
 $generatedDir = Join-Path $testRoot "generated-audio"
 $sourceDir = Join-Path $testRoot "source-audio"
 $runtimeDir = Join-Path $testRoot "runtime-audio"
 $port = 19111
-$server = $null
+$serverStarted = $false
+
+if (-not (Test-Path -LiteralPath $runtimeScript -PathType Leaf)) {
+    throw "Docker runtime script was not found: $runtimeScript"
+}
+
+. $runtimeScript
 
 function Write-Utf8Json {
     param(
@@ -118,16 +124,44 @@ function Invoke-JsonPost {
     )
 
     $body = ConvertTo-Json -InputObject $Payload -Compress -Depth 20
-    return Invoke-RestMethod -UseBasicParsing -Method Post -Uri "http://127.0.0.1:$port$Path" -ContentType "application/json" -Body $body
+    try {
+        return Invoke-RestMethod -UseBasicParsing -Method Post -Uri "http://127.0.0.1:$port$Path" -ContentType "application/json" -Body $body
+    }
+    catch {
+        $responseBody = ""
+        if ($_.Exception.Response) {
+            $stream = $_.Exception.Response.GetResponseStream()
+            if ($stream) {
+                $reader = [System.IO.StreamReader]::new($stream)
+                $responseBody = $reader.ReadToEnd()
+                $reader.Dispose()
+            }
+        }
+        throw "POST $Path failed. $responseBody"
+    }
 }
 
 function Invoke-JsonGet {
     param([string]$Path)
 
-    return Invoke-RestMethod -UseBasicParsing -Method Get -Uri "http://127.0.0.1:$port$Path"
+    try {
+        return Invoke-RestMethod -UseBasicParsing -Method Get -Uri "http://127.0.0.1:$port$Path"
+    }
+    catch {
+        $responseBody = ""
+        if ($_.Exception.Response) {
+            $stream = $_.Exception.Response.GetResponseStream()
+            if ($stream) {
+                $reader = [System.IO.StreamReader]::new($stream)
+                $responseBody = $reader.ReadToEnd()
+                $reader.Dispose()
+            }
+        }
+        throw "GET $Path failed. $responseBody"
+    }
 }
 
-function Wait-Helper {
+function Wait-LocalApi {
     for ($i = 0; $i -lt 60; $i += 1) {
         try {
             $health = Invoke-RestMethod -UseBasicParsing -TimeoutSec 1 -Uri "http://127.0.0.1:$port/health"
@@ -139,7 +173,7 @@ function Wait-Helper {
             Start-Sleep -Milliseconds 250
         }
     }
-    throw "Helper server did not become ready."
+    throw "Local API server did not become ready."
 }
 
 function Assert-OperationEvent {
@@ -218,12 +252,9 @@ try {
     }
     Write-Utf8Json -Path $settingsPath -Payload $settings
 
-    $server = Start-Process `
-        -FilePath "powershell.exe" `
-        -ArgumentList @("-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $serverScript, "-Port", "$port") `
-        -WindowStyle Hidden `
-        -PassThru
-    Wait-Helper
+    Start-TimelineLocalApiServer -RepoRoot $repoRoot -Port $port -WebPort 19000
+    $serverStarted = $true
+    Wait-LocalApi
 
     $plan = Invoke-JsonPost -Path "/products/runtime/audio/uninstall-plan" -Payload ([ordered]@{
         keepSettings = $true
@@ -305,8 +336,8 @@ try {
     Write-Host "Product uninstall smoke test passed."
 }
 finally {
-    if ($null -ne $server -and -not $server.HasExited) {
-        Stop-Process -Id $server.Id -Force -ErrorAction SilentlyContinue
+    if ($serverStarted) {
+        Stop-TimelineLocalApiServer -Port $port
     }
     $encoding = [System.Text.UTF8Encoding]::new($false)
     if ($originalSettings) {

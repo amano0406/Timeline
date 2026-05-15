@@ -19,6 +19,7 @@ public sealed class TimelineAppSettings
     public List<TimelineTimeZoneOption> TimeZones { get; set; } = [];
     public string WorkDirectory { get; set; } = "";
     public string StoreDirectory { get; set; } = "";
+    public TimelineRuntimeSettings Runtime { get; set; } = new();
     public TimelineCommonAiSettings CommonAi { get; set; } = new();
     public TimelineProductRegistry ProductRegistry { get; set; } = new();
     public TimelineAudioVerbalizationSettings AudioVerbalization { get; set; } = new();
@@ -31,13 +32,32 @@ public sealed class TimelineAppSettingsSaveRequest
     public string TimeZoneId { get; set; } = "Asia/Tokyo";
     public string WorkDirectory { get; set; } = "";
     public string StoreDirectory { get; set; } = "";
+    public TimelineRuntimeSettings? Runtime { get; set; }
     public TimelineCommonAiSettings? CommonAi { get; set; }
     public TimelineProductRegistry? ProductRegistry { get; set; }
+}
+
+public sealed class TimelineRuntimeSettings
+{
+    public string InstanceName { get; set; } = "";
+    public string ImageTag { get; set; } = "";
+    public int WebPort { get; set; } = 19000;
+    public int HelperPortStart { get; set; } = 19001;
+    public int HelperPortEnd { get; set; } = 19010;
+    public int OllamaPort { get; set; } = 11434;
+    public string OllamaModel { get; set; } = "qwen3.5:9b";
+    public bool ShareOllamaVolume { get; set; } = true;
+    public string OllamaVolumeName { get; set; } = "timeline-ollama";
 }
 
 public sealed class TimelineCommonAiSettings
 {
     public string ComputeMode { get; set; } = "auto";
+    public bool HasHuggingFaceToken { get; set; }
+    public string HuggingFaceTokenPreview { get; set; } = "";
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public string? HuggingFaceToken { get; set; }
+    public bool ApplyHuggingFaceTokenToProducts { get; set; }
 }
 
 public sealed class TimelineProductRegistry
@@ -107,4 +127,18 @@ public sealed class TimelinePagination
 public sealed class HelperHealth
 {
     public bool Ok { get; set; }
+}
+
+public sealed class PathStatusResult
+{
+    public bool Ok { get; set; }
+    public string Path { get; set; } = "";
+    public string LocalPath { get; set; } = "";
+    public string Kind { get; set; } = "";
+    public bool Exists { get; set; }
+    public bool IsDirectory { get; set; }
+    public bool IsFile { get; set; }
+    public bool Readable { get; set; }
+    public bool MatchesKind { get; set; }
+    public string Message { get; set; } = "";
 }

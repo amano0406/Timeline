@@ -18,6 +18,8 @@ public sealed class ProductRuntimeRow
     public string SourceType { get; set; } = "";
     public string SourceUrl { get; set; } = "";
     public string Version { get; set; } = "";
+    public bool AppManagedByTimeline { get; set; }
+    public bool DestructiveActionsDisabled { get; set; }
     public string InstalledVersion { get; set; } = "";
     public string LatestVersion { get; set; } = "";
     public string LatestVersionStatus { get; set; } = "";
@@ -26,6 +28,7 @@ public sealed class ProductRuntimeRow
     public bool SettingsBackupAvailable { get; set; }
     public string SettingsBackupPath { get; set; } = "";
     public string SettingsBackupAt { get; set; } = "";
+    public ProductManifestSummary Manifest { get; set; } = new();
     public bool Enabled { get; set; } = true;
     public bool ProductFound { get; set; }
     public bool ComposeFound { get; set; }
@@ -38,6 +41,30 @@ public sealed class ProductRuntimeRow
     public string StartedAt { get; set; } = "";
     public int ExitCode { get; set; }
     public string Message { get; set; } = "";
+}
+
+public sealed class ProductManifestSummary
+{
+    public bool Found { get; set; }
+    public int SchemaVersion { get; set; }
+    public string ProductId { get; set; } = "";
+    public string DisplayName { get; set; } = "";
+    public string ProductKind { get; set; } = "";
+    public string SettingsFile { get; set; } = "";
+    public bool SupportsBasicDefaults { get; set; }
+    public bool SupportsProductOverrides { get; set; }
+    public ProductCapabilitySummary Capabilities { get; set; } = new();
+}
+
+public sealed class ProductCapabilitySummary
+{
+    public bool FileList { get; set; }
+    public bool ItemList { get; set; }
+    public bool ItemRefresh { get; set; }
+    public bool ItemDownload { get; set; }
+    public bool ItemRemove { get; set; }
+    public bool ModelList { get; set; }
+    public bool Verbalization { get; set; }
 }
 
 public sealed class ProductInstallRequest

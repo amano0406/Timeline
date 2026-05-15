@@ -10,30 +10,39 @@ $repoRoot = $PSScriptRoot
 & (Join-Path $repoRoot "scripts\check-powershell-ascii.ps1") -RepoRoot $repoRoot
 . (Join-Path $repoRoot "scripts\docker-runtime.ps1")
 
+$runtime = Ensure-TimelineRuntimeSettings -RepoRoot $repoRoot
 Initialize-TimelineDocker -RepoRoot $repoRoot
 
 $helperPort = 0
 $helperStartError = $null
-foreach ($candidatePort in 19001..19010) {
+foreach ($candidatePort in ([int]$runtime.HelperPortStart)..([int]$runtime.HelperPortEnd)) {
     try {
-        Start-TimelineHelperServer -RepoRoot $repoRoot -Port $candidatePort
+        Start-TimelineLocalApiServer `
+            -RepoRoot $repoRoot `
+            -Port $candidatePort `
+            -WebPort $runtime.WebPort
         $helperPort = $candidatePort
         break
     }
     catch {
         $helperStartError = $_
-        Write-Warning "Timeline helper server did not start on port $candidatePort. Trying the next port."
+        Stop-TimelineLocalApiServer -Port $candidatePort
+        Write-Warning "Timeline local API server did not start on port $candidatePort. Trying the next port."
     }
 }
 
 if ($helperPort -le 0) {
-    throw "Timeline helper server did not start on any candidate port. $($helperStartError.Exception.Message)"
+    throw "Timeline local API server did not start on any candidate port. $($helperStartError.Exception.Message)"
 }
 
 $docker = Get-TimelineDockerCommand
 $composeArgs = Get-TimelineComposeArgs -RepoRoot $repoRoot
 $env:TIMELINE_HELPER_PORT = [string]$helperPort
-$ollamaModel = "qwen3.5:9b"
+$env:TIMELINE_WEB_PORT = [string]$runtime.WebPort
+$env:TIMELINE_OLLAMA_PORT = [string]$runtime.OllamaPort
+$env:TIMELINE_IMAGE_TAG = [string]$runtime.ImageTag
+$env:TIMELINE_OLLAMA_VOLUME_NAME = [string]$runtime.OllamaVolumeName
+$ollamaModel = [string]$runtime.OllamaModel
 
 function Get-TimelineStartParentForNamedChild {
     param(
@@ -117,6 +126,8 @@ foreach ($path in @($timelineDataRoot, $timelineWorkSource, $timelineStoreSource
 }
 
 Write-Host "Starting Timeline web, worker, and Ollama..."
+Write-Host ("Compose project: {0}" -f $runtime.ComposeProjectName)
+Write-Host ("Image tag: {0}" -f $runtime.ImageTag)
 Invoke-TimelineWithFileLock -RepoRoot $repoRoot -LockName "docker-compose.lock" -ScriptBlock {
     $logDir = Join-Path $repoRoot ".docker"
     if (-not (Test-Path -LiteralPath $logDir)) {
@@ -132,6 +143,35 @@ Invoke-TimelineWithFileLock -RepoRoot $repoRoot -LockName "docker-compose.lock" 
     }
     if (-not (Test-Path -LiteralPath $dockerConfigPath)) {
         Set-Content -LiteralPath $dockerConfigPath -Value "{}" -Encoding ASCII
+    }
+
+    $volumeInspectStdoutLog = Join-Path $logDir "volume-inspect.stdout.log"
+    $volumeInspectStderrLog = Join-Path $logDir "volume-inspect.stderr.log"
+    $volumeCreateStdoutLog = Join-Path $logDir "volume-create.stdout.log"
+    $volumeCreateStderrLog = Join-Path $logDir "volume-create.stderr.log"
+    Remove-Item -LiteralPath $volumeInspectStdoutLog, $volumeInspectStderrLog, $volumeCreateStdoutLog, $volumeCreateStderrLog -ErrorAction SilentlyContinue
+    $volumeInspectProcess = Start-Process `
+        -FilePath $docker `
+        -ArgumentList @("volume", "inspect", $runtime.OllamaVolumeName) `
+        -WorkingDirectory $repoRoot `
+        -NoNewWindow `
+        -PassThru `
+        -Wait `
+        -RedirectStandardOutput $volumeInspectStdoutLog `
+        -RedirectStandardError $volumeInspectStderrLog
+    if ([int]$volumeInspectProcess.ExitCode -ne 0) {
+        $volumeCreateProcess = Start-Process `
+            -FilePath $docker `
+            -ArgumentList @("volume", "create", $runtime.OllamaVolumeName) `
+            -WorkingDirectory $repoRoot `
+            -NoNewWindow `
+            -PassThru `
+            -Wait `
+            -RedirectStandardOutput $volumeCreateStdoutLog `
+            -RedirectStandardError $volumeCreateStderrLog
+        if ([int]$volumeCreateProcess.ExitCode -ne 0) {
+            throw "Failed to create Docker volume: $($runtime.OllamaVolumeName)"
+        }
     }
 
     Push-Location $repoRoot
@@ -168,9 +208,10 @@ Invoke-TimelineWithFileLock -RepoRoot $repoRoot -LockName "docker-compose.lock" 
 
 $ollamaReady = $false
 $ollamaModelReady = $false
+$ollamaBaseUrl = "http://127.0.0.1:$($runtime.OllamaPort)"
 for ($attempt = 1; $attempt -le 120; $attempt += 1) {
     try {
-        $tags = Invoke-RestMethod -UseBasicParsing -TimeoutSec 2 "http://127.0.0.1:11434/api/tags"
+        $tags = Invoke-RestMethod -UseBasicParsing -TimeoutSec 2 "$ollamaBaseUrl/api/tags"
         $ollamaReady = $true
         foreach ($model in @($tags.models)) {
             if ([string]$model.name -eq $ollamaModel) {
@@ -186,7 +227,7 @@ for ($attempt = 1; $attempt -le 120; $attempt += 1) {
 }
 
 if (-not $ollamaReady) {
-    throw "Ollama did not become ready at http://127.0.0.1:11434."
+    throw "Ollama did not become ready at $ollamaBaseUrl."
 }
 
 if (-not $ollamaModelReady) {
@@ -202,7 +243,7 @@ if (-not $ollamaModelReady) {
             -ContentType "application/json" `
             -Body $pullBody `
             -TimeoutSec 7200 `
-            -Uri "http://127.0.0.1:11434/api/pull" | Out-Null
+            -Uri "$ollamaBaseUrl/api/pull" | Out-Null
     }
     catch {
         throw "Ollama model pull failed. $($_.Exception.Message)"
@@ -211,9 +252,10 @@ if (-not $ollamaModelReady) {
 }
 
 $webReady = $false
+$webBaseUrl = "http://127.0.0.1:$($runtime.WebPort)"
 for ($attempt = 1; $attempt -le 60; $attempt += 1) {
     try {
-        $response = Invoke-WebRequest -UseBasicParsing -TimeoutSec 2 "http://127.0.0.1:19000/api/health"
+        $response = Invoke-WebRequest -UseBasicParsing -TimeoutSec 2 "$webBaseUrl/api/health"
         if ([int]$response.StatusCode -ge 200 -and [int]$response.StatusCode -lt 300) {
             $webReady = $true
             break
@@ -225,37 +267,26 @@ for ($attempt = 1; $attempt -le 60; $attempt += 1) {
 }
 
 if (-not $webReady) {
-    throw "Timeline web did not become ready at http://127.0.0.1:19000."
+    throw "Timeline web did not become ready at $webBaseUrl."
 }
 
 Write-Host ""
 Write-Host "Timeline is running."
 Write-Host "Web UI:"
-Write-Host "  http://127.0.0.1:19000"
+Write-Host "  $webBaseUrl"
 if (-not $NoOpen) {
-    Start-Process "http://127.0.0.1:19000" | Out-Null
+    Start-Process $webBaseUrl | Out-Null
 }
-Write-Host "Helper:"
+Write-Host "Local API:"
 Write-Host "  http://127.0.0.1:$helperPort"
-Write-Host ""
-Write-Host "Connected products:"
-try {
-    $runtime = Invoke-RestMethod -UseBasicParsing -TimeoutSec 2 "http://127.0.0.1:$helperPort/products/runtime/status"
-    foreach ($product in @($runtime.products)) {
-        Write-Host ("  {0}: {1} [{2}]" -f ([string]$product.displayName), ([string]$product.productPath), ([string]$product.state))
-    }
-}
-catch {
-    Write-Host "  Product runtime status is not available."
-}
 Write-Host ""
 Write-Host "Health:"
 Write-Host "  Web: OK"
 if (Test-TimelineHelperServer -Port $helperPort) {
-    Write-Host "  Helper: OK"
+    Write-Host "  Local API: OK"
 }
 else {
-    Write-Warning "Timeline helper server is not responding."
+    Write-Warning "Timeline local API server is not responding."
 }
 if ($ollamaReady) {
     Write-Host "  Ollama: OK"
@@ -268,5 +299,17 @@ if ($ollamaModelReady) {
 }
 else {
     Write-Warning "Ollama model $ollamaModel is not available."
+}
+
+Write-Host ""
+Write-Host "Connected products:"
+try {
+    $runtime = Invoke-RestMethod -UseBasicParsing -TimeoutSec 30 "http://127.0.0.1:$helperPort/products/runtime/status"
+    foreach ($product in @($runtime.products)) {
+        Write-Host ("  {0}: {1} [{2}]" -f ([string]$product.displayName), ([string]$product.productPath), ([string]$product.state))
+    }
+}
+catch {
+    Write-Host "  Product runtime status is not available."
 }
 exit 0

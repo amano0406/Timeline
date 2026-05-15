@@ -2,6 +2,295 @@ Set-StrictMode -Version Latest
 
 $script:TimelineDockerCommand = $null
 
+function Get-TimelineJsonProperty {
+    param(
+        [object]$Object,
+        [string]$Name,
+        [object]$Default = $null
+    )
+
+    if ($null -eq $Object) {
+        return $Default
+    }
+    $property = $Object.PSObject.Properties[$Name]
+    if ($null -ne $property) {
+        return $property.Value
+    }
+    return $Default
+}
+
+function Convert-TimelineRuntimeNamePart {
+    param(
+        [string]$Value,
+        [string]$Fallback = ""
+    )
+
+    $text = ""
+    if ($Value) {
+        $text = $Value.Trim().ToLowerInvariant()
+    }
+    $text = [regex]::Replace($text, "[^a-z0-9]+", "-").Trim("-")
+    if (-not $text) {
+        return $Fallback
+    }
+    return $text
+}
+
+function Convert-TimelineRuntimeResourceName {
+    param(
+        [string]$Value,
+        [string]$Fallback
+    )
+
+    $text = ""
+    if ($Value) {
+        $text = $Value.Trim().ToLowerInvariant()
+    }
+    $text = [regex]::Replace($text, "[^a-z0-9_.-]+", "-").Trim("-")
+    if (-not $text) {
+        return $Fallback
+    }
+    return $text
+}
+
+function Set-TimelineJsonProperty {
+    param(
+        [Parameter(Mandatory = $true)]
+        [object]$Object,
+        [Parameter(Mandatory = $true)]
+        [string]$Name,
+        [object]$Value
+    )
+
+    $property = $Object.PSObject.Properties[$Name]
+    if ($null -ne $property) {
+        $property.Value = $Value
+        return
+    }
+
+    Add-Member -InputObject $Object -NotePropertyName $Name -NotePropertyValue $Value
+}
+
+function Write-TimelineRuntimeJsonFile {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path,
+        [Parameter(Mandatory = $true)]
+        [object]$Payload
+    )
+
+    $directory = [System.IO.Path]::GetDirectoryName($Path)
+    if ($directory -and -not (Test-Path -LiteralPath $directory -PathType Container)) {
+        New-Item -ItemType Directory -Path $directory -Force | Out-Null
+    }
+
+    $json = ConvertTo-Json -InputObject $Payload -Depth 20
+    [System.IO.File]::WriteAllText($Path, $json + [Environment]::NewLine, [System.Text.UTF8Encoding]::new($false))
+}
+
+function New-TimelineRuntimeInstanceName {
+    $suffix = [Guid]::NewGuid().ToString("N").Substring(0, 10)
+    return "local-$suffix"
+}
+
+function Test-TimelineJsonPropertyMissingOrBlank {
+    param(
+        [object]$Object,
+        [string]$Name
+    )
+
+    if ($null -eq $Object) {
+        return $true
+    }
+    $property = $Object.PSObject.Properties[$Name]
+    if ($null -eq $property) {
+        return $true
+    }
+    return -not ([string]$property.Value)
+}
+
+function Ensure-TimelineRuntimeSettings {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$RepoRoot
+    )
+
+    $settingsPath = Join-Path $RepoRoot "settings.json"
+    $payload = $null
+    if (Test-Path -LiteralPath $settingsPath -PathType Leaf) {
+        try {
+            $payload = Get-Content -LiteralPath $settingsPath -Raw -Encoding UTF8 | ConvertFrom-Json
+        }
+        catch {
+            $payload = $null
+        }
+    }
+
+    if ($null -eq $payload) {
+        $payload = [pscustomobject][ordered]@{
+            schemaVersion = 1
+        }
+    }
+
+    $changed = $false
+    $runtime = Get-TimelineJsonProperty -Object $payload -Name "runtime" -Default $null
+    if ($null -eq $runtime -or $runtime -is [string] -or $runtime -is [ValueType]) {
+        $runtime = [pscustomobject][ordered]@{}
+        Set-TimelineJsonProperty -Object $payload -Name "runtime" -Value $runtime
+        $changed = $true
+    }
+
+    if (Test-TimelineJsonPropertyMissingOrBlank -Object $runtime -Name "instanceName") {
+        Set-TimelineJsonProperty -Object $runtime -Name "instanceName" -Value (New-TimelineRuntimeInstanceName)
+        $changed = $true
+    }
+    if ($null -eq $runtime.PSObject.Properties["imageTag"]) {
+        Set-TimelineJsonProperty -Object $runtime -Name "imageTag" -Value ""
+        $changed = $true
+    }
+    if ($null -eq $runtime.PSObject.Properties["webPort"]) {
+        Set-TimelineJsonProperty -Object $runtime -Name "webPort" -Value 19000
+        $changed = $true
+    }
+    if ($null -eq $runtime.PSObject.Properties["helperPortStart"]) {
+        Set-TimelineJsonProperty -Object $runtime -Name "helperPortStart" -Value 19001
+        $changed = $true
+    }
+    if ($null -eq $runtime.PSObject.Properties["helperPortEnd"]) {
+        Set-TimelineJsonProperty -Object $runtime -Name "helperPortEnd" -Value 19010
+        $changed = $true
+    }
+    if ($null -eq $runtime.PSObject.Properties["ollamaPort"]) {
+        Set-TimelineJsonProperty -Object $runtime -Name "ollamaPort" -Value 11434
+        $changed = $true
+    }
+    if (Test-TimelineJsonPropertyMissingOrBlank -Object $runtime -Name "ollamaModel") {
+        Set-TimelineJsonProperty -Object $runtime -Name "ollamaModel" -Value "qwen3.5:9b"
+        $changed = $true
+    }
+    if ($null -eq $runtime.PSObject.Properties["shareOllamaVolume"]) {
+        Set-TimelineJsonProperty -Object $runtime -Name "shareOllamaVolume" -Value $true
+        $changed = $true
+    }
+    if (Test-TimelineJsonPropertyMissingOrBlank -Object $runtime -Name "ollamaVolumeName") {
+        Set-TimelineJsonProperty -Object $runtime -Name "ollamaVolumeName" -Value "timeline-ollama"
+        $changed = $true
+    }
+
+    if ($changed) {
+        Write-TimelineRuntimeJsonFile -Path $settingsPath -Payload $payload
+    }
+
+    return Get-TimelineRuntimeSettings -RepoRoot $RepoRoot
+}
+
+function Convert-TimelineRuntimePort {
+    param(
+        [object]$Value,
+        [int]$Default,
+        [int]$Minimum = 1,
+        [int]$Maximum = 65535
+    )
+
+    $port = 0
+    if ($null -ne $Value -and [int]::TryParse(([string]$Value), [ref]$port)) {
+        if ($port -ge $Minimum -and $port -le $Maximum) {
+            return $port
+        }
+    }
+    return $Default
+}
+
+function Convert-TimelineRuntimeBoolean {
+    param(
+        [object]$Value,
+        [bool]$Default
+    )
+
+    if ($null -eq $Value) {
+        return $Default
+    }
+    if ($Value -is [bool]) {
+        return [bool]$Value
+    }
+    $text = ([string]$Value).Trim().ToLowerInvariant()
+    if (@("true", "1", "yes", "on") -contains $text) {
+        return $true
+    }
+    if (@("false", "0", "no", "off") -contains $text) {
+        return $false
+    }
+    return $Default
+}
+
+function Get-TimelineRuntimeSettings {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$RepoRoot
+    )
+
+    $runtime = $null
+    $settingsPath = Join-Path $RepoRoot "settings.json"
+    if (Test-Path -LiteralPath $settingsPath -PathType Leaf) {
+        try {
+            $payload = Get-Content -LiteralPath $settingsPath -Raw -Encoding UTF8 | ConvertFrom-Json
+            $runtime = Get-TimelineJsonProperty -Object $payload -Name "runtime" -Default $null
+        }
+        catch {
+            $runtime = $null
+        }
+    }
+
+    $instanceName = [string](Get-TimelineJsonProperty -Object $runtime -Name "instanceName" -Default "")
+    $instancePart = Convert-TimelineRuntimeNamePart -Value $instanceName
+    $projectName = "timeline"
+    if ($instancePart) {
+        $projectName = "timeline-$instancePart"
+    }
+
+    $imageTag = [string](Get-TimelineJsonProperty -Object $runtime -Name "imageTag" -Default "")
+    $imageTag = Convert-TimelineRuntimeResourceName -Value $imageTag -Fallback ""
+    if (-not $imageTag) {
+        if ($instancePart) {
+            $imageTag = $projectName
+        }
+        else {
+            $imageTag = "latest"
+        }
+    }
+
+    $webPort = Convert-TimelineRuntimePort -Value (Get-TimelineJsonProperty -Object $runtime -Name "webPort" -Default $null) -Default 19000
+    $helperPortStart = Convert-TimelineRuntimePort -Value (Get-TimelineJsonProperty -Object $runtime -Name "helperPortStart" -Default $null) -Default 19001
+    $helperPortEnd = Convert-TimelineRuntimePort -Value (Get-TimelineJsonProperty -Object $runtime -Name "helperPortEnd" -Default $null) -Default 19010
+    if ($helperPortEnd -lt $helperPortStart) {
+        $helperPortEnd = $helperPortStart
+    }
+    $ollamaPort = Convert-TimelineRuntimePort -Value (Get-TimelineJsonProperty -Object $runtime -Name "ollamaPort" -Default $null) -Default 11434
+
+    $ollamaModel = [string](Get-TimelineJsonProperty -Object $runtime -Name "ollamaModel" -Default "")
+    if (-not $ollamaModel) {
+        $ollamaModel = "qwen3.5:9b"
+    }
+
+    $shareOllamaVolume = Convert-TimelineRuntimeBoolean -Value (Get-TimelineJsonProperty -Object $runtime -Name "shareOllamaVolume" -Default $null) -Default $true
+    $defaultOllamaVolumeName = if ($shareOllamaVolume) { "timeline-ollama" } else { "$projectName-ollama" }
+    $ollamaVolumeName = [string](Get-TimelineJsonProperty -Object $runtime -Name "ollamaVolumeName" -Default "")
+    $ollamaVolumeName = Convert-TimelineRuntimeResourceName -Value $ollamaVolumeName -Fallback $defaultOllamaVolumeName
+
+    return [pscustomobject]@{
+        InstanceName = $instanceName
+        ComposeProjectName = $projectName
+        ImageTag = $imageTag
+        WebPort = $webPort
+        HelperPortStart = $helperPortStart
+        HelperPortEnd = $helperPortEnd
+        OllamaPort = $ollamaPort
+        OllamaModel = $ollamaModel
+        ShareOllamaVolume = $shareOllamaVolume
+        OllamaVolumeName = $ollamaVolumeName
+    }
+}
+
 function Get-TimelineLastExitCode {
     $variable = Get-Variable -Name LASTEXITCODE -Scope Global -ErrorAction SilentlyContinue
     if ($variable -and $null -ne $variable.Value) {
@@ -147,7 +436,8 @@ function Get-TimelineComposeArgs {
         [string]$RepoRoot
     )
 
-    return @("-f", (Join-Path $RepoRoot "docker-compose.yml"))
+    $runtime = Get-TimelineRuntimeSettings -RepoRoot $RepoRoot
+    return @("-f", (Join-Path $RepoRoot "docker-compose.yml"), "-p", $runtime.ComposeProjectName)
 }
 
 function Test-TimelineHelperServer {
@@ -162,76 +452,154 @@ function Test-TimelineHelperServer {
     }
 }
 
-function Start-TimelineHelperServer {
+function Start-TimelineLocalApiServer {
     param(
         [Parameter(Mandatory = $true)]
         [string]$RepoRoot,
-        [string]$AudioProductPath = "",
-        [string]$WindowsCodexProductPath = "",
-        [string]$ChatGptProductPath = "",
-        [string]$ImageProductPath = "",
-        [string]$VideoProductPath = "",
-        [string]$PcProductPath = "",
-        [int]$Port = 19001
+        [int]$Port = 19001,
+        [int]$WebPort = 19000
     )
 
     if (Test-TimelineHelperServer -Port $Port) {
-        Stop-TimelineHelperServer -Port $Port
+        Stop-TimelineLocalApiServer -Port $Port
         Start-Sleep -Milliseconds 300
         if (Test-TimelineHelperServer -Port $Port) {
-            throw "Timeline helper server is already running on port $Port and could not be stopped."
+            throw "Timeline local API server is already running on port $Port and could not be stopped."
         }
     }
 
-    $scriptPath = Join-Path $RepoRoot "scripts\timeline-helper-server.ps1"
-    if (-not (Test-Path -LiteralPath $scriptPath)) {
-        throw "Timeline helper server was not found: $scriptPath"
+    $projectPath = Join-Path $RepoRoot "local-api\Timeline.LocalApi.csproj"
+    if (-not (Test-Path -LiteralPath $projectPath)) {
+        throw "Timeline local API project was not found: $projectPath"
+    }
+
+    $logDir = Join-Path $RepoRoot ".docker"
+    if (-not (Test-Path -LiteralPath $logDir)) {
+        New-Item -ItemType Directory -Path $logDir | Out-Null
+    }
+    $stdoutLog = Join-Path $logDir "local-api-$Port.stdout.log"
+    $stderrLog = Join-Path $logDir "local-api-$Port.stderr.log"
+    $buildLog = Join-Path $logDir "local-api-$Port.build.log"
+    $buildDir = Join-Path $logDir "local-api-build-$Port"
+    Remove-Item -LiteralPath $stdoutLog, $stderrLog, $buildLog -ErrorAction SilentlyContinue
+
+    $logDirFull = [System.IO.Path]::GetFullPath($logDir).TrimEnd([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar)
+    $buildDirFull = [System.IO.Path]::GetFullPath($buildDir).TrimEnd([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar)
+    $expectedPrefix = $logDirFull + [System.IO.Path]::DirectorySeparatorChar
+    if ((Test-Path -LiteralPath $buildDirFull) -and $buildDirFull.StartsWith($expectedPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+        Remove-Item -LiteralPath $buildDirFull -Recurse -Force
+    }
+    New-Item -ItemType Directory -Path $buildDirFull | Out-Null
+
+    $buildArguments = @(
+        "build",
+        $projectPath,
+        "-o",
+        $buildDirFull
+    )
+    & dotnet.exe @buildArguments *> $buildLog
+    if (-not $?) {
+        throw "Timeline local API build failed. See $buildLog"
+    }
+
+    $dllPath = Join-Path $buildDirFull "Timeline.LocalApi.dll"
+    if (-not (Test-Path -LiteralPath $dllPath -PathType Leaf)) {
+        throw "Timeline local API build output was not found: $dllPath"
     }
 
     $arguments = @(
-        "-NoLogo",
-        "-NoProfile",
-        "-STA",
-        "-ExecutionPolicy",
-        "Bypass",
-        "-File",
-        "`"$scriptPath`"",
-        "-TimelineProductPath",
-        "`"$RepoRoot`"",
-        "-Port",
-        "$Port",
-        "-AudioProductPath",
-        "`"$AudioProductPath`"",
-        "-WindowsCodexProductPath",
-        "`"$WindowsCodexProductPath`"",
-        "-ChatGptProductPath",
-        "`"$ChatGptProductPath`"",
-        "-ImageProductPath",
-        "`"$ImageProductPath`"",
-        "-VideoProductPath",
-        "`"$VideoProductPath`"",
-        "-PcProductPath",
-        "`"$PcProductPath`""
+        "`"$dllPath`"",
+        "--urls",
+        "http://127.0.0.1:$Port",
+        "--Timeline:WebPort=$WebPort",
+        "--Timeline:ProductPath=`"$RepoRoot`""
     )
 
-    Start-Process -FilePath "powershell.exe" -ArgumentList $arguments -WindowStyle Hidden | Out-Null
+    Start-Process `
+        -FilePath "dotnet.exe" `
+        -ArgumentList $arguments `
+        -WorkingDirectory $RepoRoot `
+        -WindowStyle Hidden `
+        -RedirectStandardOutput $stdoutLog `
+        -RedirectStandardError $stderrLog | Out-Null
 
-    for ($attempt = 1; $attempt -le 120; $attempt += 1) {
+    for ($attempt = 1; $attempt -le 240; $attempt += 1) {
         if (Test-TimelineHelperServer -Port $Port) {
             return
         }
         Start-Sleep -Milliseconds 250
     }
 
-    throw "Timeline helper server did not start."
+    throw "Timeline local API server did not start."
 }
 
-function Stop-TimelineHelperServer {
-    param([int]$Port = 19001)
+function Stop-TimelineRuntimeProcessTree {
+    param([int]$ProcessId)
+
+    if ($ProcessId -le 0) {
+        return
+    }
+
+    $pending = @([int]$ProcessId)
+    $processIds = @()
+    $seen = @{}
+    while ($pending.Count -gt 0) {
+        $current = [int]$pending[0]
+        if ($pending.Count -eq 1) {
+            $pending = @()
+        }
+        else {
+            $pending = @($pending[1..($pending.Count - 1)])
+        }
+
+        $key = [string]$current
+        if ($seen.ContainsKey($key)) {
+            continue
+        }
+        $seen[$key] = $true
+        $processIds += $current
+
+        try {
+            $children = @(Get-CimInstance Win32_Process -Filter "ParentProcessId = $current" -ErrorAction Stop)
+            foreach ($child in $children) {
+                $pending += [int]$child.ProcessId
+            }
+        }
+        catch {
+        }
+    }
+
+    for ($index = $processIds.Count - 1; $index -ge 0; $index--) {
+        $targetProcessId = [int]$processIds[$index]
+        if ($targetProcessId -eq $PID) {
+            continue
+        }
+        try {
+            Stop-Process -Id $targetProcessId -Force -ErrorAction Stop
+        }
+        catch {
+        }
+    }
+}
+
+function Stop-TimelineLocalApiServer {
+    param([int]$Port = 0)
 
     $processIds = @()
     $processes = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
-        Where-Object { $_.CommandLine -like "*-File*timeline-helper-server.ps1*" }
+        Where-Object {
+            $commandLine = [string]$_.CommandLine
+            $executablePath = [string]$_.ExecutablePath
+            $isLocalApiHost = $executablePath -like "*\Timeline.LocalApi.exe" -or $commandLine -like "*Timeline.LocalApi.dll*"
+            $isLocalApiRun = $commandLine -like "*dotnet*run*--project*local-api*Timeline.LocalApi.csproj*"
+            if (-not ($isLocalApiHost -or $isLocalApiRun)) {
+                return $false
+            }
+            if ($Port -le 0) {
+                return $true
+            }
+            return ($commandLine -like "*:$Port*") -or ($commandLine -like "*local-api-build-$Port*")
+        }
 
     foreach ($process in @($processes)) {
         if ($process.ProcessId) {
@@ -239,20 +607,22 @@ function Stop-TimelineHelperServer {
         }
     }
 
-    try {
-        $listeners = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue
-        foreach ($listener in @($listeners)) {
-            if ($listener.OwningProcess) {
-                $processIds += [int]$listener.OwningProcess
+    if ($Port -gt 0) {
+        try {
+            $listeners = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue
+            foreach ($listener in @($listeners)) {
+                if ($listener.OwningProcess) {
+                    $processIds += [int]$listener.OwningProcess
+                }
             }
         }
-    }
-    catch {
+        catch {
+        }
     }
 
     foreach ($processId in @($processIds | Select-Object -Unique)) {
         if ($processId -ne $PID) {
-            Stop-Process -Id $processId -Force -ErrorAction SilentlyContinue
+            Stop-TimelineRuntimeProcessTree -ProcessId $processId
         }
     }
 }

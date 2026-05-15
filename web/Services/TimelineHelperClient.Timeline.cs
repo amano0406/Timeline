@@ -37,6 +37,49 @@ public sealed partial class TimelineHelperClient
             ?? new TimelineAppSettings();
     }
 
+    public async Task<PathStatusResult> GetPathStatusAsync(
+        string path,
+        string kind = "directory",
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return new PathStatusResult
+            {
+                Ok = false,
+                Path = path,
+                Kind = kind,
+                Message = "パスが未設定です。",
+            };
+        }
+
+        try
+        {
+            return await _http.GetFromJsonAsync<PathStatusResult>(
+                    $"path-status?path={Uri.EscapeDataString(path)}&kind={Uri.EscapeDataString(kind)}",
+                    JsonOptions,
+                    cancellationToken)
+                ?? new PathStatusResult
+                {
+                    Ok = false,
+                    Path = path,
+                    Kind = kind,
+                    Message = "ディレクトリの確認結果が空です。",
+                };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to validate path: {Path}", path);
+            return new PathStatusResult
+            {
+                Ok = false,
+                Path = path,
+                Kind = kind,
+                Message = "ディレクトリを確認できませんでした。",
+            };
+        }
+    }
+
     public async Task<TimelineStoreOverview> GetTimelineStoreOverviewAsync(CancellationToken cancellationToken = default)
     {
         try

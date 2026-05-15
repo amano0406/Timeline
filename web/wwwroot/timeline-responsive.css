@@ -85,6 +85,195 @@
   overflow-y: auto;
 }
 
+.tfa-settings-apply-dialog {
+  max-height: calc(100dvh - 2rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.tfa-scan-empty {
+  border-left: 4px solid rgb(15 118 110);
+}
+
+.tfa-scan-empty-action {
+  min-height: 3rem;
+  padding: 0.75rem 1.25rem;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.tfa-scan-running-panel {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgb(125 211 252);
+  border-radius: 0.5rem;
+  background: linear-gradient(180deg, rgb(240 249 255), rgb(224 242 254));
+  padding: 1rem;
+  color: rgb(12 74 110);
+  box-shadow: 0 10px 24px rgba(14, 116, 144, 0.08);
+}
+
+.tfa-scan-running-spinner,
+.tfa-scan-current-phase-icon {
+  display: inline-flex;
+  height: 2.5rem;
+  width: 2.5rem;
+  flex: 0 0 2.5rem;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgb(125 211 252);
+  border-radius: 9999px;
+  background: rgb(255 255 255);
+  color: rgb(3 105 161);
+}
+
+.tfa-scan-running-meter {
+  position: relative;
+  height: 0.375rem;
+  margin-top: 1rem;
+  overflow: hidden;
+  border-radius: 9999px;
+  background: rgb(186 230 253);
+}
+
+.tfa-scan-running-meter > span {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 42%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, rgb(14 165 233), rgb(15 118 110));
+  animation: tfa-scan-running-meter 1.35s ease-in-out infinite;
+}
+
+.tfa-scan-remaining {
+  margin-top: 1rem;
+  border-top: 1px solid rgba(14, 165, 233, 0.25);
+  padding-top: 1rem;
+}
+
+.tfa-scan-remaining-title {
+  margin-bottom: 0.625rem;
+  color: rgb(12 74 110);
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
+
+.tfa-scan-remaining-list {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.tfa-scan-remaining-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.75rem;
+  align-items: start;
+  border: 1px solid rgb(186 230 253);
+  border-radius: 0.5rem;
+  background: rgba(255, 255, 255, 0.72);
+  padding: 0.75rem;
+}
+
+.tfa-scan-remaining-item-current {
+  border-color: rgb(14 165 233);
+  background: rgb(255 255 255);
+}
+
+.tfa-scan-remaining-icon {
+  display: inline-flex;
+  height: 2rem;
+  width: 2rem;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgb(186 230 253);
+  border-radius: 9999px;
+  background: rgb(240 249 255);
+  color: rgb(3 105 161);
+}
+
+.tfa-scan-current-phase {
+  border: 1px solid rgb(125 211 252);
+  border-left: 4px solid rgb(3 105 161);
+  border-radius: 0.5rem;
+  background: rgb(240 249 255);
+  padding: 1rem;
+  color: rgb(12 74 110);
+}
+
+.tfa-scan-failed-panel {
+  border: 1px solid rgb(254 202 202);
+  border-left: 4px solid rgb(220 38 38);
+  border-radius: 0.5rem;
+  background: rgb(254 242 242);
+  padding: 1rem;
+  color: rgb(127 29 29);
+  box-shadow: 0 10px 24px rgba(185, 28, 28, 0.08);
+}
+
+.tfa-scan-failed-icon {
+  display: inline-flex;
+  height: 2.5rem;
+  width: 2.5rem;
+  flex: 0 0 2.5rem;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgb(254 202 202);
+  border-radius: 9999px;
+  background: rgb(255 255 255);
+  color: rgb(185 28 28);
+}
+
+.tfa-scan-failure-details {
+  display: grid;
+  gap: 0.625rem;
+  margin-top: 1rem;
+  border-top: 1px solid rgb(254 202 202);
+  padding-top: 1rem;
+}
+
+.tfa-scan-failure-row {
+  display: grid;
+  grid-template-columns: 8rem minmax(0, 1fr);
+  gap: 0.75rem;
+  align-items: start;
+  font-size: 0.875rem;
+}
+
+.tfa-scan-failure-row span {
+  color: rgb(153 27 27);
+  font-weight: 600;
+}
+
+.tfa-scan-failure-row strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: rgb(69 10 10);
+  font-weight: 600;
+}
+
+.tfa-scan-failure-help {
+  border-radius: 0.5rem;
+  background: rgba(255, 255, 255, 0.72);
+  padding: 0.75rem;
+  color: rgb(127 29 29);
+  font-size: 0.875rem;
+  line-height: 1.5rem;
+}
+
+@keyframes tfa-scan-running-meter {
+  0% {
+    transform: translateX(-110%);
+  }
+
+  50% {
+    transform: translateX(80%);
+  }
+
+  100% {
+    transform: translateX(250%);
+  }
+}
+
 .tfa-shell-sidebar-open .tfa-sidebar {
   transform: translateX(0);
 }
