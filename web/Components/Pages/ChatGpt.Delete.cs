@@ -31,7 +31,7 @@ public partial class ChatGpt
 
         if (!SupportsGeneratedDelete)
         {
-            _error = "TimelineForChatGPT does not support generated item removal in the current product CLI contract.";
+            _error = "TimelineForChatGPT does not support generated item removal in the current product API contract.";
             return;
         }
 

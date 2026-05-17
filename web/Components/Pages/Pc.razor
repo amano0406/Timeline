@@ -1,5 +1,6 @@
 @page "/pc"
 @inject TimelineHelperClient Timeline
+@inject IJSRuntime Js
 
 <PageTitle>PC状態一覧 - Timeline</PageTitle>
 
@@ -21,6 +22,14 @@
             <FaIcon Name="rotate" Class="@($"tfa-icon {(_loading ? "fa-spin" : "")}")" />
             <span>一覧更新</span>
         </button>
+        <button class="tfa-button-primary gap-2" @onclick="RefreshPcAsync" disabled="@Busy">
+            <FaIcon Name="@(_refreshing ? "spinner" : "arrows-rotate")" Class="@($"tfa-icon {(_refreshing ? "fa-spin" : "")}")" />
+            <span>@(_refreshing ? "記録中" : "PC状態を記録")</span>
+        </button>
+        <button class="tfa-button-secondary gap-2" @onclick="DownloadAsync" disabled="@(!CanDownload || Busy)">
+            <FaIcon Name="@(_downloading ? "spinner" : "download")" Class="@($"tfa-icon {(_downloading ? "fa-spin" : "")}")" />
+            <span>@(_downloading ? "作成中" : "ダウンロード")</span>
+        </button>
     </div>
 </div>
 
@@ -29,6 +38,14 @@
     <div class="tfa-alert-danger mb-5 flex items-start gap-2">
         <FaIcon Name="triangle-exclamation" Class="tfa-icon mt-0.5" />
         <span>@_error</span>
+    </div>
+}
+
+@if (!string.IsNullOrWhiteSpace(_operationMessage))
+{
+    <div class="tfa-alert-info mb-5 flex items-start gap-2">
+        <FaIcon Name="circle-info" Class="tfa-icon mt-0.5" />
+        <span>@_operationMessage</span>
     </div>
 }
 

@@ -8,7 +8,7 @@ public partial class ChatGpt
     {
         if (!SupportsSelectedDownload)
         {
-            _error = "TimelineForChatGPT does not support selected item download in the current product CLI contract.";
+            _error = "TimelineForChatGPT does not support selected item download in the current product API contract.";
             return;
         }
 

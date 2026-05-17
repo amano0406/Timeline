@@ -301,8 +301,8 @@
         <strong>「複数のローカル解析プロダクトを、Timeline という親 UI で束ねる構成を作っています。」</strong>
       </p>
       <p>
-        各サブ製品は CLI と Docker worker を持ち、Timeline 側は直接 Docker に入らず、
-        公開された <code>cli.ps1</code> / <code>start.ps1</code> / <code>stop.ps1</code> を呼び出します。
+        各サブ製品はローカル API と Docker worker を持ち、Timeline 側は直接 Docker に入らず、
+        公開された API と <code>start.ps1</code> / <code>stop.ps1</code> を呼び出します。
       </p>
       <p>
         UI は Blazor、実行環境は Docker Compose、データ連携は JSON 契約を中心にしています。
@@ -349,8 +349,8 @@
 
         <g filter="url(#boxShadow)">
           <rect x="884" y="112" width="170" height="118" rx="10" fill="#ffffff" stroke="#d8e1ec"></rect>
-          <text x="910" y="146" font-size="18" font-weight="700" fill="#102033">Sub CLI</text>
-          <text x="910" y="171" font-size="13" fill="#5f6f83">cli.ps1</text>
+          <text x="910" y="146" font-size="18" font-weight="700" fill="#102033">Sub API</text>
+          <text x="910" y="171" font-size="13" fill="#5f6f83">local HTTP</text>
           <text x="910" y="194" font-size="13" fill="#5f6f83">start / stop</text>
         </g>
 
@@ -429,8 +429,8 @@
       </article>
       <article class="mini-card">
         <span class="tag">Integration</span>
-        <h3>PowerShell CLI 契約</h3>
-        <p>各サブ製品は <code>cli.ps1</code>、<code>start.ps1</code>、<code>stop.ps1</code> を公開し、Timeline はそれを呼ぶ。</p>
+        <h3>Local API 契約</h3>
+        <p>各サブ製品はローカル API、<code>start.ps1</code>、<code>stop.ps1</code> を公開し、Timeline はそれを呼ぶ。</p>
       </article>
       <article class="mini-card">
         <span class="tag">Data</span>

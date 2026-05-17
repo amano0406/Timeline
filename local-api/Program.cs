@@ -48,9 +48,10 @@ builder.Services.AddSingleton<TimelinePcSnapshotService>();
 builder.Services.AddSingleton<TimelinePickerService>();
 builder.Services.AddTransient<TimelineThreadProductOverviewService>();
 builder.Services.AddTransient<TimelineProductActionService>();
-builder.Services.AddHttpClient<TimelineProductCliService>(client =>
+builder.Services.AddHttpClient<TimelineProductApiClient>(client =>
 {
-    client.DefaultRequestHeaders.UserAgent.ParseAdd("Timeline-local-product-cli");
+    client.DefaultRequestHeaders.UserAgent.ParseAdd("Timeline-local-product-api");
+    client.Timeout = Timeout.InfiniteTimeSpan;
 });
 builder.Services.AddHttpClient<TimelineProductRuntimeService>(client =>
 {
@@ -732,11 +733,13 @@ app.MapPost("/products/video/refresh", async (
     }
 });
 
-app.MapGet("/products/pc/overview", (TimelinePcSnapshotService pcSnapshots) =>
+app.MapGet("/products/pc/overview", async (
+    TimelinePcSnapshotService pcSnapshots,
+    CancellationToken cancellationToken) =>
 {
     try
     {
-        return Results.Json(pcSnapshots.GetOverview());
+        return Results.Json(await pcSnapshots.GetOverviewAsync(cancellationToken));
     }
     catch (Exception ex)
     {
@@ -755,8 +758,8 @@ app.MapPost("/products/pc/settings", async (
     try
     {
         var request = await context.Request.ReadFromJsonAsync<JsonObject>(cancellationToken);
-        productSettings.SavePcSettings(request);
-        return Results.Json(pcSnapshots.GetOverview());
+        await productSettings.SavePcSettingsAsync(request, cancellationToken);
+        return Results.Json(await pcSnapshots.GetOverviewAsync(cancellationToken));
     }
     catch (Exception ex)
     {
@@ -766,15 +769,17 @@ app.MapPost("/products/pc/settings", async (
     }
 });
 
-app.MapGet("/products/pc/items", (
+app.MapGet("/products/pc/items", async (
     HttpContext context,
-    TimelinePcSnapshotService pcSnapshots) =>
+    TimelinePcSnapshotService pcSnapshots,
+    CancellationToken cancellationToken) =>
 {
     try
     {
-        return Results.Json(pcSnapshots.GetItems(
+        return Results.Json(await pcSnapshots.GetItemsAsync(
             Math.Max(1, GetQueryInt(context, "page", 1)),
-            GetQueryPageSize(context)));
+            GetQueryPageSize(context),
+            cancellationToken));
     }
     catch (Exception ex)
     {
@@ -832,13 +837,16 @@ app.MapGet("/products/windows-codex/overview", (TimelineThreadProductOverviewSer
     }
 });
 
-app.MapGet("/products/windows-codex/items", (HttpContext context, TimelineThreadProductOverviewService threadProducts) =>
+app.MapGet("/products/windows-codex/items", async (
+    HttpContext context,
+    TimelineThreadProductOverviewService threadProducts,
+    CancellationToken cancellationToken) =>
 {
     try
     {
         var page = GetQueryInt(context, "page", 1);
         var pageSize = GetQueryPageSize(context);
-        return Results.Json(threadProducts.GetWindowsCodexThreads(page, pageSize));
+        return Results.Json(await threadProducts.GetWindowsCodexThreadsAsync(page, pageSize, cancellationToken));
     }
     catch (Exception ex)
     {
@@ -848,11 +856,14 @@ app.MapGet("/products/windows-codex/items", (HttpContext context, TimelineThread
     }
 });
 
-app.MapGet("/products/windows-codex/threads/{itemId}", (string itemId, TimelineThreadProductOverviewService threadProducts) =>
+app.MapGet("/products/windows-codex/threads/{itemId}", async (
+    string itemId,
+    TimelineThreadProductOverviewService threadProducts,
+    CancellationToken cancellationToken) =>
 {
     try
     {
-        return Results.Json(threadProducts.GetWindowsCodexThreadDetail(itemId));
+        return Results.Json(await threadProducts.GetWindowsCodexThreadDetailAsync(itemId, cancellationToken));
     }
     catch (Exception ex)
     {
@@ -886,7 +897,7 @@ app.MapPost("/products/windows-codex/items/download", async (
     try
     {
         var request = await context.Request.ReadFromJsonAsync<JsonObject>(cancellationToken);
-        return Results.Json(threadProducts.DownloadWindowsCodexItems(request));
+        return Results.Json(await threadProducts.DownloadWindowsCodexItemsAsync(request, cancellationToken));
     }
     catch (Exception ex)
     {
@@ -904,7 +915,7 @@ app.MapPost("/products/windows-codex/items/delete-generated", async (
     try
     {
         var request = await context.Request.ReadFromJsonAsync<JsonObject>(cancellationToken);
-        return Results.Json(threadProducts.DeleteWindowsCodexItems(request));
+        return Results.Json(await threadProducts.DeleteWindowsCodexItemsAsync(request, cancellationToken));
     }
     catch (Exception ex)
     {
@@ -948,13 +959,16 @@ app.MapGet("/products/chatgpt/overview", (TimelineThreadProductOverviewService t
     }
 });
 
-app.MapGet("/products/chatgpt/items", (HttpContext context, TimelineThreadProductOverviewService threadProducts) =>
+app.MapGet("/products/chatgpt/items", async (
+    HttpContext context,
+    TimelineThreadProductOverviewService threadProducts,
+    CancellationToken cancellationToken) =>
 {
     try
     {
         var page = GetQueryInt(context, "page", 1);
         var pageSize = GetQueryPageSize(context);
-        return Results.Json(threadProducts.GetChatGptThreads(page, pageSize));
+        return Results.Json(await threadProducts.GetChatGptThreadsAsync(page, pageSize, cancellationToken));
     }
     catch (Exception ex)
     {
@@ -964,11 +978,14 @@ app.MapGet("/products/chatgpt/items", (HttpContext context, TimelineThreadProduc
     }
 });
 
-app.MapGet("/products/chatgpt/threads/{itemId}", (string itemId, TimelineThreadProductOverviewService threadProducts) =>
+app.MapGet("/products/chatgpt/threads/{itemId}", async (
+    string itemId,
+    TimelineThreadProductOverviewService threadProducts,
+    CancellationToken cancellationToken) =>
 {
     try
     {
-        return Results.Json(threadProducts.GetChatGptThreadDetail(itemId));
+        return Results.Json(await threadProducts.GetChatGptThreadDetailAsync(itemId, cancellationToken));
     }
     catch (Exception ex)
     {
@@ -1004,7 +1021,7 @@ app.MapPost("/products/chatgpt/items/download", async (
     try
     {
         var request = await context.Request.ReadFromJsonAsync<JsonObject>(cancellationToken);
-        return Results.Json(threadProducts.DownloadChatGptItems(request));
+        return Results.Json(await threadProducts.DownloadChatGptItemsAsync(request, cancellationToken));
     }
     catch (Exception ex)
     {

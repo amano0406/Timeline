@@ -63,7 +63,6 @@ function Reset-TestProduct {
     [System.IO.Directory]::CreateDirectory($sourceDir) | Out-Null
     [System.IO.Directory]::CreateDirectory($runtimeDir) | Out-Null
 
-    Write-Utf8Text -Path (Join-Path $productDir "cli.ps1") -Text "param()`nexit 0`n"
     Write-Utf8Text -Path (Join-Path $productDir "start.ps1") -Text "param()`nexit 0`n"
     Write-Utf8Text -Path (Join-Path $productDir "stop.ps1") -Text "param()`nexit 0`n"
     Write-Utf8Text -Path (Join-Path $productDir "README.md") -Text "# Test product`n"

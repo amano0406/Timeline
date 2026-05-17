@@ -454,7 +454,7 @@
         実装上の継承を強制する資料ではありませんが、Swagger と後続アプリケーションで契約が揺れないよう、概念上の親子関係を固定します。
       </p>
       <div class="note warning">
-        ここでの API は設計案です。現行実装は `cli.ps1` / `cli.bat` と Timeline helper の HTTP API が混在しており、本資料はその入口を整理するための移行管理表でもあります。
+        ここでの API は設計案から実装方針へ移行しています。現行実装は各サブ製品のローカル API と Timeline helper の HTTP API を中心に整理しています。
       </div>
       <div class="toc">
         <a href="#principles">1. 基本判断<span>現行入口、クラス概念、変更/維持の管理</span></a>
@@ -556,9 +556,9 @@
             <td>起動停止は API の業務操作ではなく、Docker / host runtime に対する運用操作だからです。</td>
           </tr>
           <tr>
-            <td><code>cli.ps1</code> / <code>cli.bat</code></td>
-            <td>単体製品の正面入口。Timeline helper からも呼ばれる。</td>
-            <td><span class="badge change">変更</span> UI の正面入口からは外し、互換・運用・検証用ラッパーへ降格する。</td>
+            <td>ホストCLIランチャー</td>
+            <td>旧単体製品の正面入口。</td>
+            <td><span class="badge change">変更</span> UI の正面入口から外し、ローカル API に置き換える。</td>
             <td>Web UI、ヘルスチェック、複数アクセス、進捗確認は CLI 標準出力より HTTP API の方が安定して扱えるためです。</td>
           </tr>
           <tr>
@@ -719,10 +719,10 @@
           </tr>
           <tr>
             <td>単体運用の CLI</td>
-            <td><code>cli.ps1</code> / <code>cli.bat</code> が正式入口。</td>
-            <td><span class="badge keep">維持</span></td>
-            <td>互換・運用・テスト用に残す。将来は API クライアント化してもよい。</td>
-            <td>既存の検証スクリプト、単体製品利用、障害時の裏口として価値があるため。</td>
+            <td>ローカル API が正式入口。</td>
+            <td><span class="badge change">変更</span></td>
+            <td>ホストCLIランチャーは廃止し、検証スクリプトも API を直接確認する。</td>
+            <td>複数アクセス、進捗確認、エラー表示、UI 統合を安定させるため。</td>
           </tr>
           <tr>
             <td><code>overview</code></td>
@@ -811,7 +811,7 @@
             <p>API プロセス、常駐 worker、最低限の依存が生きているかを返します。Docker healthcheck や監視用の軽い確認です。</p>
             <dl class="facts">
               <dt>現行対応</dt>
-              <dd>Image / Video は <code>.\cli.ps1 health</code> が既存。PC は <code>doctor</code> / <code>smoke-test</code> の一部。Audio / ChatGPT / WindowsCodex は実質新規。</dd>
+              <dd>各製品のローカル API が <code>/health</code> を提供する。</dd>
               <dt>現行使用箇所</dt>
               <dd>Docker healthcheck は Image / Video の worker Dockerfile。Timeline 本体は現状 <code>/products/runtime/status</code> や overview で代替確認しています。</dd>
               <dt>変更点</dt>
@@ -1209,7 +1209,7 @@
             <p>現在の PC 状態を記録します。これは元ファイルの変換ではなく、その時点の PC のスナップショット作成です。</p>
             <dl class="facts">
               <dt>現行対応</dt>
-              <dd><code>timeline-for-pc.ps1 capture</code></dd>
+              <dd><code>POST /capture</code></dd>
               <dt>現行使用箇所</dt>
               <dd>TimelineForPC 単体 CLI。Timeline 本体では <code>/products/pc/refresh</code> が <code>items refresh</code> を呼ぶ形で統合途中。</dd>
               <dt>パラメータ変更</dt>

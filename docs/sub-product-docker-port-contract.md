@@ -17,15 +17,15 @@ It is based on the current README and Docker Compose files in:
 
 As of this check:
 
-| Product | Runtime shape | Docker Compose | Published port | Ollama dependency |
+| Product | Runtime shape | Docker Compose | Local API port | Ollama dependency |
 | --- | --- | --- | --- | --- |
 | Timeline | parent web, helper, worker, optional Ollama | yes | yes | yes |
-| TimelineForAudio | resident Docker worker | yes | no | no |
-| TimelineForWindowsCodex | Docker Compose CLI worker | yes | no | no |
-| TimelineForChatGPT | Docker Compose worker | yes | no | no |
-| TimelineForImage | resident Docker worker | yes | no | no |
-| TimelineForVideo | resident Docker worker | yes | no | no |
-| TimelineForPC | Windows host CLI | no | no | no |
+| TimelineForAudio | resident Docker worker + Windows host API | yes | yes | no |
+| TimelineForWindowsCodex | Docker Compose worker + Windows host API | yes | yes | no |
+| TimelineForChatGPT | Docker Compose worker + Windows host API | yes | yes | no |
+| TimelineForImage | resident Docker worker with API | yes | yes | no |
+| TimelineForVideo | resident Docker worker + Windows host API | yes | yes | no |
+| TimelineForPC | Windows host API | no | yes | no |
 
 Current Timeline defaults:
 
@@ -35,7 +35,8 @@ Timeline Helper:           19001-19010
 Timeline-owned Ollama:     11434 when using the Ollama ecosystem default
 ```
 
-Current sub-product Compose files use fixed project names such as:
+Sub-product Compose project names are derived from `runtime.instanceName`, with
+base names such as:
 
 ```text
 timeline-for-audio
@@ -45,8 +46,8 @@ timeline-for-chatgpt
 timeline-for-windows-codex
 ```
 
-This is acceptable for a single installed copy, but it collides when two copies
-of the same sub-product are run on one PC.
+This keeps Docker resources separate when two copies of the same sub-product are
+run on one PC. Local API ports must still be assigned explicitly per copy.
 
 ## Goal
 
@@ -58,7 +59,7 @@ This matters for:
 - development copy plus verification copy
 - copied product directories
 - different product versions running on the same machine
-- future API servers with published host ports
+- Windows-hosted local API servers with configurable ports
 
 ## Portfolio port design
 
@@ -90,7 +91,7 @@ Parent Timeline reservation:
 
 Default sub-product blocks:
 
-| Product | Reserved range | Default future API port |
+| Product | Reserved range | Default API port |
 | --- | --- | --- |
 | TimelineForAudio | `19100-19199` | `19100` |
 | TimelineForWindowsCodex | `19200-19299` | `19200` |
@@ -287,12 +288,14 @@ safe to share. Do not assume sharing is safe just because the volume is called
 
 ## Ports
 
-The currently inspected sub-products do not publish host ports in Compose.
+The currently inspected Docker-based sub-products do not publish host ports from
+Compose. Their Timeline-facing APIs run on the Windows host and connect to the
+resident worker or generated output as needed.
 
-Port rules apply when a sub-product introduces an API server or any other
-published service.
+Port rules apply to every sub-product local API and to any other published
+service.
 
-Rules for future ports:
+Rules:
 
 - Every host port must be configurable.
 - Bind local APIs to `127.0.0.1` by default.
@@ -322,12 +325,10 @@ Recommended future settings shape:
 }
 ```
 
-The default future API ports are the `+00` ports from the portfolio port map.
-They are not current behavior for sub-products.
+The default API ports are the `+00` ports from the portfolio port map.
 
-TimelineForPC currently runs on the Windows host and does not need Docker or a
-published API port unless its product design changes later. If it introduces an
-API, use `19600` as the default primary API port.
+TimelineForPC runs on the Windows host and uses `19600` as its default primary
+API port.
 
 ## Ollama
 
@@ -368,23 +369,45 @@ TIMELINE_FOR_IMAGE_IMAGE_TAG=timeline-for-image-local-0123abcd89
 TIMELINE_FOR_IMAGE_API_PORT=19400
 ```
 
-Do not require API port settings until the product actually exposes an API.
+Require API port settings for Timeline-managed sub-products that expose the local API.
 
 ## Parent connection
 
 Current parent-to-sub-product boundary:
 
 ```text
-cli.ps1 or cli.bat
-```
-
-Future API boundary:
-
-```text
 http://127.0.0.1:<apiPort>
 ```
 
-Future product registry shape:
+The parent Timeline product must use the local API for product operations. The
+host CLI launchers are deprecated and should not be invoked for normal refresh,
+list, download, remove, detail, model, or settings operations.
+
+Minimum API shape expected by Timeline:
+
+```text
+GET  /health
+POST /items/list
+POST /items/refresh
+POST /items/download
+POST /settings/status
+POST /settings/init
+```
+
+Optional API routes are product-specific, but the currently used optional
+routes are:
+
+```text
+POST /items/remove
+POST /items/detail
+POST /models/list
+```
+
+`GET /health` is the running-state boundary. If it does not return a healthy
+value, Timeline should report the product as stopped or unavailable instead of
+starting Docker implicitly.
+
+Product registry shape:
 
 ```json
 {
@@ -420,14 +443,14 @@ For Docker-based sub-products:
 7. Avoid fixed ordinary network names.
 8. Scope product-owned volumes by instance name.
 9. Scope product-specific local build image tags by instance name.
-10. Make future published host ports configurable.
+10. Make local API and any published host ports configurable.
 11. Do not add Ollama settings unless the product actually uses Ollama.
 
 For host-only sub-products such as TimelineForPC:
 
 1. Do not add Docker settings just for consistency.
 2. Keep host execution explicit.
-3. Add API port settings only if an API server is actually introduced.
+3. Keep API port settings configurable.
 
 ## Acceptance tests
 
@@ -455,7 +478,7 @@ Expected result:
 - Different local build image tags
 - No published port conflict
 
-If a future API is introduced, also verify:
+For products with a local API, also verify:
 
 - Copy A and Copy B use different configured host ports.
 - Both API base URLs are visible in settings or product registry.

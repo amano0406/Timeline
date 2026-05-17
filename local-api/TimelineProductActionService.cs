@@ -7,18 +7,18 @@ public sealed class TimelineProductActionService
     private readonly TimelineSettingsService _settings;
     private readonly TimelineOperationLogService _operations;
     private readonly TimelineLocalApiOptions _options;
-    private readonly TimelineProductCliService _cli;
+    private readonly TimelineProductApiClient _api;
 
     public TimelineProductActionService(
         TimelineSettingsService settings,
         TimelineOperationLogService operations,
         TimelineLocalApiOptions options,
-        TimelineProductCliService cli)
+        TimelineProductApiClient api)
     {
         _settings = settings;
         _operations = operations;
         _options = options;
-        _cli = cli;
+        _api = api;
     }
 
     public Task<JsonObject> RefreshAudioAsync(JsonObject? request, CancellationToken cancellationToken)
@@ -109,56 +109,27 @@ public sealed class TimelineProductActionService
         var queueOnly = GetBool(request, "queueOnly", true);
         var timeoutSeconds = queueOnly ? 120 : 900;
         var maxItems = GetNullableInt(request, "maxItems");
-        var args = BuildAudioRefreshArgs(request, queueOnly, maxItems, "items");
-
-        try
+        var requestBody = new JsonObject
         {
-            var payload = await _cli.InvokeJsonAsync(
-                "audio",
-                "TimelineForAudio",
-                args,
-                timeoutSeconds,
-                operationId,
-                cancellationToken);
-            var result = ConvertAudioRefreshResult(payload as JsonObject);
-            result["queueOnly"] = queueOnly;
-            return result;
-        }
-        catch (InvalidOperationException ex)
+            ["queueOnly"] = queueOnly,
+            ["reprocessDuplicates"] = GetBool(request, "reprocessDuplicates", false),
+        };
+        if (maxItems is > 0)
         {
-            var message = ex.Message;
-            if (queueOnly && message.Contains("unrecognized arguments: --queue-only", StringComparison.OrdinalIgnoreCase))
-            {
-                var fallbackArgs = BuildAudioRefreshArgs(request, false, maxItems, "items");
-                var payload = await _cli.InvokeJsonAsync(
-                    "audio",
-                    "TimelineForAudio",
-                    fallbackArgs,
-                    timeoutSeconds,
-                    operationId,
-                    cancellationToken);
-                var result = ConvertAudioRefreshResult(payload as JsonObject);
-                result["queueOnly"] = false;
-                return result;
-            }
-
-            if (!TestAudioMissingCommand(message, "items") && !TestAudioMissingCommand(message, "refresh"))
-            {
-                throw;
-            }
+            requestBody["maxItems"] = maxItems.Value;
         }
 
-        var legacyArgs = BuildAudioRefreshArgs(request, queueOnly, maxItems, "refresh");
-        var legacyPayload = await _cli.InvokeJsonAsync(
+        var payload = await _api.PostJsonAsync(
             "audio",
             "TimelineForAudio",
-            legacyArgs,
+            "/items/refresh",
+            requestBody,
             timeoutSeconds,
             operationId,
             cancellationToken);
-        var legacyResult = ConvertAudioRefreshResult(legacyPayload as JsonObject);
-        legacyResult["queueOnly"] = queueOnly;
-        return legacyResult;
+        var result = ConvertAudioRefreshResult(payload as JsonObject);
+        result["queueOnly"] = queueOnly;
+        return result;
     }
 
     private async Task<JsonObject> DownloadAudioItemsCoreAsync(
@@ -175,24 +146,15 @@ public sealed class TimelineProductActionService
             "TimelineForAudio-items",
             GetString(request, "outputPath", string.Empty));
 
-        var args = new List<string>
-        {
-            "items",
-            "download",
-            "--output",
-            outputPath,
-            "--json",
-        };
-        if (itemIds.Count > 0)
-        {
-            args.Add("--item-id");
-            args.Add(string.Join(",", itemIds));
-        }
-
-        var payload = await _cli.InvokeJsonAsync(
+        var payload = await _api.PostJsonAsync(
             "audio",
             "TimelineForAudio",
-            args,
+            "/items/download",
+            new JsonObject
+            {
+                ["outputPath"] = outputPath,
+                ["itemIds"] = NewStringArray(itemIds),
+            },
             900,
             operationId,
             cancellationToken);
@@ -200,21 +162,21 @@ public sealed class TimelineProductActionService
         var returnedArchivePath = GetString(result, "archivePath", string.Empty);
         if (TestContainerPrefixedWindowsPath(returnedArchivePath))
         {
-            throw new InvalidOperationException("TimelineForAudio CLI returned a container-prefixed Windows path. The product must write to the requested host path and return that host path. Returned path: " + returnedArchivePath);
+            throw new InvalidOperationException("TimelineForAudio API returned a container-prefixed Windows path. The product must write to the requested host path and return that host path. Returned path: " + returnedArchivePath);
         }
 
         var archivePath = ResolveDownloadLocalPath(returnedArchivePath);
         if (string.IsNullOrEmpty(archivePath) || !File.Exists(archivePath))
         {
-            throw new InvalidOperationException("TimelineForAudio CLI did not create a downloadable ZIP. Returned path: " + returnedArchivePath);
+            throw new InvalidOperationException("TimelineForAudio API did not create a downloadable ZIP. Returned path: " + returnedArchivePath);
         }
         if (!Path.GetExtension(archivePath).Equals(".zip", StringComparison.OrdinalIgnoreCase))
         {
-            throw new InvalidOperationException("TimelineForAudio CLI created an unexpected download file type.");
+            throw new InvalidOperationException("TimelineForAudio API created an unexpected download file type.");
         }
         if (!IsDownloadFileAllowed(archivePath))
         {
-            throw new InvalidOperationException("TimelineForAudio CLI did not create the ZIP in the Timeline work directory. Returned path: " + returnedArchivePath);
+            throw new InvalidOperationException("TimelineForAudio API did not create the ZIP in the Timeline work directory. Returned path: " + returnedArchivePath);
         }
 
         return new JsonObject
@@ -269,23 +231,15 @@ public sealed class TimelineProductActionService
                 requestedSourceFileIdentities);
         }
 
-        var args = new List<string>
-        {
-            "items",
-            "remove",
-            "--item-id",
-            string.Join(",", uniqueItemIds),
-            "--json",
-        };
-        if (GetBool(request, "dryRun", false))
-        {
-            args.Add("--dry-run");
-        }
-
-        var payload = await _cli.InvokeJsonAsync(
+        var payload = await _api.PostJsonAsync(
             "audio",
             "TimelineForAudio",
-            args,
+            "/items/remove",
+            new JsonObject
+            {
+                ["itemIds"] = NewStringArray(uniqueItemIds),
+                ["dryRun"] = GetBool(request, "dryRun", false),
+            },
             900,
             operationId,
             cancellationToken);
@@ -297,27 +251,21 @@ public sealed class TimelineProductActionService
         string operationId,
         CancellationToken cancellationToken)
     {
-        var args = new List<string>
+        var requestBody = new JsonObject
         {
-            "--json",
-            "items",
-            "refresh",
+            ["reprocessDuplicates"] = GetBool(request, "reprocessDuplicates", false),
         };
         var maxItems = GetNullableInt(request, "maxItems");
         if (maxItems is > 0)
         {
-            args.Add("--max-items");
-            args.Add(maxItems.Value.ToString());
-        }
-        if (GetBool(request, "reprocessDuplicates", false))
-        {
-            args.Add("--reprocess-duplicates");
+            requestBody["maxItems"] = maxItems.Value;
         }
 
-        var payload = await _cli.InvokeJsonAsync(
+        var payload = await _api.PostJsonAsync(
             "image",
             "TimelineForImage",
-            args,
+            "/items/refresh",
+            requestBody,
             900,
             operationId,
             cancellationToken);
@@ -342,25 +290,16 @@ public sealed class TimelineProductActionService
         var destination = ResolveManagedDownloadDirectory(
             "image",
             GetStringAny(request, ["destinationPath", "downloadPath", "to"], string.Empty));
-        var args = new List<string>
-        {
-            "--json",
-            "items",
-            "download",
-        };
-        foreach (var itemId in itemIds)
-        {
-            args.Add("--item-id");
-            args.Add(itemId);
-        }
-        args.Add("--to");
-        args.Add(destination);
-        args.Add("--overwrite");
-
-        var payload = await _cli.InvokeJsonAsync(
+        var payload = await _api.PostJsonAsync(
             "image",
             "TimelineForImage",
-            args,
+            "/items/download",
+            new JsonObject
+            {
+                ["itemIds"] = NewStringArray(itemIds),
+                ["to"] = destination,
+                ["overwrite"] = true,
+            },
             900,
             operationId,
             cancellationToken);
@@ -369,11 +308,11 @@ public sealed class TimelineProductActionService
             GetStringAny(payload as JsonObject, ["archive_path", "archivePath", "download_path", "downloadPath"], string.Empty));
         if (string.IsNullOrEmpty(archivePath) || !File.Exists(archivePath))
         {
-            throw new InvalidOperationException("TimelineForImage CLI did not create a download ZIP.");
+            throw new InvalidOperationException("TimelineForImage API did not create a download ZIP.");
         }
         if (!IsDownloadFileAllowed(archivePath))
         {
-            throw new InvalidOperationException("TimelineForImage CLI does not support Timeline-managed download destination yet.");
+            throw new InvalidOperationException("TimelineForImage API does not support Timeline-managed download destination yet.");
         }
 
         return new JsonObject
@@ -389,26 +328,15 @@ public sealed class TimelineProductActionService
         CancellationToken cancellationToken)
     {
         var itemIds = GetRequestItemIds(request);
-        var args = new List<string>
-        {
-            "--json",
-            "items",
-            "remove",
-        };
-        foreach (var itemId in itemIds)
-        {
-            args.Add("--item-id");
-            args.Add(itemId);
-        }
-        if (GetBool(request, "dryRun", false))
-        {
-            args.Add("--dry-run");
-        }
-
-        var payload = await _cli.InvokeJsonAsync(
+        var payload = await _api.PostJsonAsync(
             "image",
             "TimelineForImage",
-            args,
+            "/items/remove",
+            new JsonObject
+            {
+                ["itemIds"] = NewStringArray(itemIds),
+                ["dryRun"] = GetBool(request, "dryRun", false),
+            },
             900,
             operationId,
             cancellationToken);
@@ -425,35 +353,28 @@ public sealed class TimelineProductActionService
         string operationId,
         CancellationToken cancellationToken)
     {
-        var args = new List<string>
+        var requestBody = new JsonObject
         {
-            "items",
-            "refresh",
-            "--json",
+            ["reprocessDuplicates"] = GetBool(request, "reprocessDuplicates", false),
         };
         var maxItems = GetNullableInt(request, "maxItems");
         if (maxItems is > 0)
         {
-            args.Add("--max-items");
-            args.Add(maxItems.Value.ToString());
+            requestBody["maxItems"] = maxItems.Value;
         }
         var samplesPerVideo = GetNullableInt(request, "samplesPerVideo");
         if (samplesPerVideo is > 0)
         {
-            args.Add("--samples-per-video");
-            args.Add(samplesPerVideo.Value.ToString());
-        }
-        if (GetBool(request, "reprocessDuplicates", false))
-        {
-            args.Add("--reprocess-duplicates");
+            requestBody["samplesPerVideo"] = samplesPerVideo.Value;
         }
 
         try
         {
-            var payload = await _cli.InvokeJsonAsync(
+            var payload = await _api.PostJsonAsync(
                 "video",
                 "TimelineForVideo",
-                args,
+                "/items/refresh",
+                requestBody,
                 900,
                 operationId,
                 cancellationToken);
@@ -491,22 +412,14 @@ public sealed class TimelineProductActionService
         CancellationToken cancellationToken)
     {
         var itemIds = GetRequestItemIds(request);
-        var args = new List<string>
-        {
-            "items",
-            "download",
-            "--json",
-        };
-        foreach (var itemId in itemIds)
-        {
-            args.Add("--item-id");
-            args.Add(itemId);
-        }
-
-        var payload = await _cli.InvokeJsonAsync(
+        var payload = await _api.PostJsonAsync(
             "video",
             "TimelineForVideo",
-            args,
+            "/items/download",
+            new JsonObject
+            {
+                ["itemIds"] = NewStringArray(itemIds),
+            },
             900,
             operationId,
             cancellationToken);
@@ -518,11 +431,11 @@ public sealed class TimelineProductActionService
                 string.Empty));
         if (string.IsNullOrEmpty(archivePath) || !File.Exists(archivePath))
         {
-            throw new InvalidOperationException("TimelineForVideo CLI did not create a download ZIP.");
+            throw new InvalidOperationException("TimelineForVideo API did not create a download ZIP.");
         }
         if (!Path.GetExtension(archivePath).Equals(".zip", StringComparison.OrdinalIgnoreCase))
         {
-            throw new InvalidOperationException("TimelineForVideo CLI created an unexpected download file type.");
+            throw new InvalidOperationException("TimelineForVideo API created an unexpected download file type.");
         }
 
         var counts = GetObject(payload as JsonObject, "counts");
@@ -538,10 +451,11 @@ public sealed class TimelineProductActionService
         string operationId,
         CancellationToken cancellationToken)
     {
-        var payload = await _cli.InvokeJsonAsync(
+        var payload = await _api.PostJsonAsync(
             "pc",
             "TimelineForPC",
-            ["items", "refresh", "--json"],
+            "/items/refresh",
+            new JsonObject(),
             900,
             operationId,
             cancellationToken);
@@ -566,25 +480,17 @@ public sealed class TimelineProductActionService
         var destination = ResolveManagedDownloadDirectory(
             "pc",
             GetStringAny(request, ["destinationPath", "downloadPath", "to", "outputPath"], string.Empty));
-        var args = new List<string>
-        {
-            "items",
-            "download",
-            "--to",
-            destination,
-            "--overwrite",
-            "--json",
-        };
-        foreach (var itemId in itemIds)
-        {
-            args.Add("--item-id");
-            args.Add(itemId);
-        }
 
-        var payload = await _cli.InvokeJsonAsync(
+        var payload = await _api.PostJsonAsync(
             "pc",
             "TimelineForPC",
-            args,
+            "/items/download",
+            new JsonObject
+            {
+                ["to"] = destination,
+                ["overwrite"] = true,
+                ["itemIds"] = NewStringArray(itemIds),
+            },
             900,
             operationId,
             cancellationToken);
@@ -592,11 +498,11 @@ public sealed class TimelineProductActionService
             GetStringAny(payload as JsonObject, ["archive_path", "archivePath", "download_path", "downloadPath", "destination_path", "destinationPath"], string.Empty));
         if (string.IsNullOrEmpty(archivePath) || !File.Exists(archivePath))
         {
-            throw new InvalidOperationException("TimelineForPC CLI did not create a download ZIP.");
+            throw new InvalidOperationException("TimelineForPC API did not create a download ZIP.");
         }
         if (!IsDownloadFileAllowed(archivePath))
         {
-            throw new InvalidOperationException("TimelineForPC CLI does not support Timeline-managed download destination yet.");
+            throw new InvalidOperationException("TimelineForPC API does not support Timeline-managed download destination yet.");
         }
 
         return new JsonObject

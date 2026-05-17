@@ -47,7 +47,7 @@ public sealed class TimelineStoreRebuildService
     {
         var startedAt = DateTimeOffset.Now.ToString("o");
         var lastStage = "collecting";
-        var lastMessage = "Collecting product data through product CLI scripts one product at a time.";
+        var lastMessage = "Collecting product data through product APIs one product at a time.";
         void WriteProgress(string stage, string message)
         {
             lastStage = stage;
@@ -130,10 +130,10 @@ public sealed class TimelineStoreRebuildService
                 {
                     cancellationToken.ThrowIfCancellationRequested();
 
-                    progress("refreshing", "Refreshing " + product.DisplayName + " data through its CLI.");
+                    progress("refreshing", "Refreshing " + product.DisplayName + " data through its API.");
                     refreshResults.Add(await RefreshProductForScanAsync(product, cancellationToken));
 
-                    progress("downloading", "Downloading " + product.DisplayName + " data through its CLI.");
+                    progress("downloading", "Downloading " + product.DisplayName + " data through its API.");
                     var download = await DownloadProductForExportAsync(product, cancellationToken);
 
                     progress("importing", "Importing " + product.DisplayName + " data into the Timeline store.");
@@ -204,7 +204,7 @@ public sealed class TimelineStoreRebuildService
                 "- timeline/items.jsonl: one row per managed item.",
                 "- timeline/events.jsonl: one row per timeline event, sorted for Timeline browsing.",
                 "- products/: product download contents expanded for inspection.",
-                "- source-downloads/: raw product CLI download ZIPs.",
+                "- source-downloads/: raw product API download ZIPs.",
             ],
             new UTF8Encoding(false));
 
@@ -311,11 +311,11 @@ public sealed class TimelineStoreRebuildService
         }
         if (product.ProductId.Equals("windows-codex", StringComparison.OrdinalIgnoreCase))
         {
-            return NewDownloadResult(product, _threadProducts.DownloadWindowsCodexItems(new JsonObject()));
+            return NewDownloadResult(product, await _threadProducts.DownloadWindowsCodexItemsAsync(new JsonObject(), cancellationToken));
         }
         if (product.ProductId.Equals("chatgpt", StringComparison.OrdinalIgnoreCase))
         {
-            return NewDownloadResult(product, _threadProducts.DownloadChatGptItems(new JsonObject()));
+            return NewDownloadResult(product, await _threadProducts.DownloadChatGptItemsAsync(new JsonObject(), cancellationToken));
         }
         if (product.ProductId.Equals("image", StringComparison.OrdinalIgnoreCase))
         {
@@ -337,7 +337,7 @@ public sealed class TimelineStoreRebuildService
         }
         if (product.ProductId.Equals("pc", StringComparison.OrdinalIgnoreCase))
         {
-            if (GetInt(_pcSnapshots.GetOverview(), "itemCount", 0) <= 0)
+            if (GetInt(await _pcSnapshots.GetOverviewAsync(cancellationToken), "itemCount", 0) <= 0)
             {
                 return new ProductDownloadResult(product.ProductId, product.DisplayName, string.Empty);
             }

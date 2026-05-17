@@ -714,7 +714,7 @@ public sealed class TimelineProductRuntimeService
             "-File",
             scriptPath,
         };
-        var operationId = _operations.NewOperationId("cli");
+        var operationId = _operations.NewOperationId("launcher");
         var commandLine = BuildCommandLine(powershell, arguments);
         var startedAt = DateTimeOffset.Now;
 
@@ -722,9 +722,9 @@ public sealed class TimelineProductRuntimeService
             operationId,
             "command",
             definition.DisplayName,
-            "cli",
+            "launcher",
             "info",
-            "CLI start.",
+            "Product launcher started.",
             commandLine: commandLine,
             parentOperationId: parentOperationId);
 
@@ -743,9 +743,9 @@ public sealed class TimelineProductRuntimeService
                 operationId,
                 "result",
                 definition.DisplayName,
-                "cli",
+                "launcher",
                 result.ExitCode == 0 ? "success" : "error",
-                result.ExitCode == 0 ? "CLI completed." : "CLI failed.",
+                result.ExitCode == 0 ? "Product launcher completed." : "Product launcher failed.",
                 commandLine: commandLine,
                 exitCode: result.ExitCode,
                 durationMs: durationMs,
@@ -761,9 +761,9 @@ public sealed class TimelineProductRuntimeService
                 operationId,
                 "result",
                 definition.DisplayName,
-                "cli",
+                "launcher",
                 "error",
-                "CLI execution error.",
+                "Product launcher execution error.",
                 commandLine: commandLine,
                 durationMs: durationMs,
                 stderr: ex.Message,
@@ -1308,9 +1308,9 @@ public sealed class TimelineProductRuntimeService
             throw new InvalidOperationException($"Product directory was not found: {fullPath}");
         }
 
-        var hasKnownLauncher = File.Exists(Path.Combine(fullPath, "cli.ps1"))
-            || File.Exists(Path.Combine(fullPath, "timeline-for-pc.ps1"))
-            || File.Exists(Path.Combine(fullPath, "start.ps1"));
+        var hasKnownLauncher = File.Exists(Path.Combine(fullPath, "start.ps1"))
+            || File.Exists(Path.Combine(fullPath, "stop.ps1"))
+            || File.Exists(Path.Combine(fullPath, "timeline-product.json"));
         var hasGit = Directory.Exists(Path.Combine(fullPath, ".git"));
         if (!hasKnownLauncher && !hasGit)
         {
@@ -1949,7 +1949,6 @@ public sealed class TimelineProductRuntimeService
                 product?.SourceUrl ?? string.Empty,
                 product?.Version ?? string.Empty,
                 product?.Enabled ?? true,
-                string.IsNullOrEmpty(productPath) ? string.Empty : Path.Combine(productPath, "cli.ps1"),
                 string.IsNullOrEmpty(productPath) ? string.Empty : Path.Combine(productPath, "start.ps1"),
                 string.IsNullOrEmpty(productPath) ? string.Empty : Path.Combine(productPath, "stop.ps1")));
         }
@@ -1977,9 +1976,9 @@ public sealed class TimelineProductRuntimeService
         var productPath = definition.ProductPath;
         var appManagedByTimeline = IsProductAppManagedByTimeline(productPath);
         var productFound = Directory.Exists(productPath);
-        var cliFound = File.Exists(definition.CliPath);
         var startFound = !string.IsNullOrEmpty(definition.StartPath) && File.Exists(definition.StartPath);
         var stopFound = !string.IsNullOrEmpty(definition.StopPath) && File.Exists(definition.StopPath);
+        var launcherFound = startFound || stopFound;
 
         var state = "not-created";
         var status = string.Empty;
@@ -1988,7 +1987,7 @@ public sealed class TimelineProductRuntimeService
         var message = string.Empty;
         JsonObject? stored = null;
 
-        if (productFound && cliFound)
+        if (productFound && launcherFound)
         {
             state = "ready";
             status = "ready";
@@ -2039,7 +2038,7 @@ public sealed class TimelineProductRuntimeService
         }
         else
         {
-            message = "CLI launcher was not found.";
+            message = "Product launcher was not found.";
         }
 
         var versionInfo = await GetProductVersionInfoAsync(definition, productFound, cancellationToken);
@@ -2069,10 +2068,14 @@ public sealed class TimelineProductRuntimeService
             SettingsBackupAt = settingsBackup.BackedUpAt,
             Enabled = definition.Enabled,
             ProductFound = productFound,
-            ComposeFound = cliFound,
+            ComposeFound = launcherFound,
             StartFound = startFound,
             StopFound = stopFound,
-            ContainerName = cliFound ? Path.GetFileName(definition.CliPath) : string.Empty,
+            ContainerName = startFound
+                ? Path.GetFileName(definition.StartPath)
+                : stopFound
+                    ? Path.GetFileName(definition.StopPath)
+                    : string.Empty,
             State = state,
             Status = status,
             Running = running,
@@ -2794,7 +2797,6 @@ public sealed class TimelineProductRuntimeService
         string SourceUrl,
         string Version,
         bool Enabled,
-        string CliPath,
         string StartPath,
         string StopPath);
 

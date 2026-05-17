@@ -119,6 +119,40 @@ function Assert-ContractEqualIgnoringDynamic {
     Write-Host "OK: $Name"
 }
 
+function Assert-ThreadDetailContract {
+    param(
+        [string]$Name,
+        [string]$Path,
+        [string]$ExpectedItemId
+    )
+
+    $localBaseUrl = "http://127.0.0.1:$LocalApiPort"
+    $detail = Invoke-ContractGet -BaseUrl $localBaseUrl -Path $Path
+    if ($null -eq $detail) {
+        throw "Thread detail response was empty: $Name"
+    }
+    if ($detail.available -ne $true) {
+        throw "Thread detail was not available: $Name"
+    }
+    if ([string]::IsNullOrWhiteSpace([string]$detail.itemId)) {
+        throw "Thread detail itemId was empty: $Name"
+    }
+    if (-not [string]::Equals([string]$detail.itemId, $ExpectedItemId, [StringComparison]::OrdinalIgnoreCase)) {
+        throw "Thread detail itemId mismatch: $Name expected=$ExpectedItemId actual=$($detail.itemId)"
+    }
+    if ([string]::IsNullOrWhiteSpace([string]$detail.title)) {
+        throw "Thread detail title was empty: $Name"
+    }
+    if ($null -eq $detail.PSObject.Properties["messages"]) {
+        throw "Thread detail messages property was missing: $Name"
+    }
+    if ($detail.messageCount -lt 0) {
+        throw "Thread detail messageCount was negative: $Name"
+    }
+
+    Write-Host "OK: $Name"
+}
+
 $readmePath = Join-Path $repoRoot "README.md"
 $missingPath = Join-Path $repoRoot "__missing_contract_smoke__"
 
@@ -154,7 +188,7 @@ $localBaseUrl = "http://127.0.0.1:$LocalApiPort"
 $windowsCodexRows = Invoke-ContractGet -BaseUrl $localBaseUrl -Path "/products/windows-codex/items?page=1&pageSize=1"
 $windowsCodexItemId = @($windowsCodexRows.threads | Select-Object -First 1 -ExpandProperty itemId)
 if ($windowsCodexItemId) {
-    Assert-ContractEqual -Name "windows codex thread detail" -Path ("/products/windows-codex/threads/{0}" -f [uri]::EscapeDataString([string]$windowsCodexItemId[0]))
+    Assert-ThreadDetailContract -Name "windows codex thread detail" -Path ("/products/windows-codex/threads/{0}" -f [uri]::EscapeDataString([string]$windowsCodexItemId[0])) -ExpectedItemId ([string]$windowsCodexItemId[0])
 }
 else {
     Write-Host "SKIP: windows codex thread detail (no generated item found)"
@@ -163,7 +197,7 @@ else {
 $chatGptRows = Invoke-ContractGet -BaseUrl $localBaseUrl -Path "/products/chatgpt/items?page=1&pageSize=1"
 $chatGptItemId = @($chatGptRows.threads | Select-Object -First 1 -ExpandProperty itemId)
 if ($chatGptItemId) {
-    Assert-ContractEqual -Name "chatgpt thread detail" -Path ("/products/chatgpt/threads/{0}" -f [uri]::EscapeDataString([string]$chatGptItemId[0]))
+    Assert-ThreadDetailContract -Name "chatgpt thread detail" -Path ("/products/chatgpt/threads/{0}" -f [uri]::EscapeDataString([string]$chatGptItemId[0])) -ExpectedItemId ([string]$chatGptItemId[0])
 }
 else {
     Write-Host "SKIP: chatgpt thread detail (no generated item found)"

@@ -69,6 +69,40 @@ function Assert-NoUnicodeReplacementCharacter {
     }
 }
 
+function Assert-ThreadDetailShape {
+    param(
+        [object]$Payload,
+        [string]$Label,
+        [string]$ExpectedItemId
+    )
+
+    if ($null -eq $Payload) {
+        throw "$Label response was empty."
+    }
+    $availableProperty = $Payload.PSObject.Properties["available"]
+    if ($null -eq $availableProperty -or -not [bool]$availableProperty.Value) {
+        throw "$Label did not report available=true."
+    }
+    $itemIdProperty = $Payload.PSObject.Properties["itemId"]
+    if ($null -eq $itemIdProperty -or [string]::IsNullOrWhiteSpace([string]$itemIdProperty.Value)) {
+        throw "$Label did not include itemId."
+    }
+    if (-not [string]::Equals([string]$itemIdProperty.Value, $ExpectedItemId, [StringComparison]::OrdinalIgnoreCase)) {
+        throw "$Label itemId mismatch. Expected=$ExpectedItemId Actual=$($itemIdProperty.Value)"
+    }
+    $titleProperty = $Payload.PSObject.Properties["title"]
+    if ($null -eq $titleProperty -or [string]::IsNullOrWhiteSpace([string]$titleProperty.Value)) {
+        throw "$Label did not include title."
+    }
+    if ($null -eq $Payload.PSObject.Properties["messages"]) {
+        throw "$Label did not include messages."
+    }
+    $messageCountProperty = $Payload.PSObject.Properties["messageCount"]
+    if ($null -eq $messageCountProperty -or [int]$messageCountProperty.Value -lt 0) {
+        throw "$Label did not include a valid messageCount."
+    }
+}
+
 $paths = @(
     "/",
     "/timeline",
@@ -164,6 +198,47 @@ function Invoke-TimelineSmokeHelperPathIfRunning {
     Write-Host "PASS helper $Path $($response.RawContentLength) bytes ${elapsed}s"
 }
 
+function Invoke-TimelineSmokeThreadDetailIfRunning {
+    param(
+        [object]$RuntimeStatus,
+        [string]$ProductId,
+        [string]$ItemsPath,
+        [string]$DetailPathPrefix,
+        [string]$Label,
+        [int]$TimeoutSeconds
+    )
+
+    if (-not (Test-TimelineSmokeProductRunning -RuntimeStatus $RuntimeStatus -ProductId $ProductId)) {
+        Write-Host "SKIP helper $DetailPathPrefix product is not running"
+        return
+    }
+
+    $itemsPayload = Invoke-RestMethod -Uri "$HelperBaseUrl$ItemsPath" -TimeoutSec $TimeoutSeconds
+    Assert-NoUnicodeReplacementCharacter -Payload $itemsPayload -Label "$Label items response"
+    $threadsProperty = $itemsPayload.PSObject.Properties["threads"]
+    if ($null -eq $threadsProperty) {
+        throw "$Label items response did not include threads."
+    }
+
+    $threads = @($threadsProperty.Value)
+    if ($threads.Count -eq 0) {
+        Write-Host "SKIP helper $DetailPathPrefix no generated items"
+        return
+    }
+
+    $firstThread = $threads[0]
+    $itemIdProperty = $firstThread.PSObject.Properties["itemId"]
+    if ($null -eq $itemIdProperty -or [string]::IsNullOrWhiteSpace([string]$itemIdProperty.Value)) {
+        throw "$Label thread row did not include itemId."
+    }
+
+    $itemId = [string]$itemIdProperty.Value
+    $detailPayload = Invoke-RestMethod -Uri ("$HelperBaseUrl$DetailPathPrefix/{0}" -f [uri]::EscapeDataString($itemId)) -TimeoutSec $TimeoutSeconds
+    Assert-NoUnicodeReplacementCharacter -Payload $detailPayload -Label "$Label thread detail response"
+    Assert-ThreadDetailShape -Payload $detailPayload -Label "$Label thread detail" -ExpectedItemId $itemId
+    Write-Host "PASS helper $DetailPathPrefix thread detail"
+}
+
 $runtimeStatusPayload = Invoke-RestMethod -Uri "$HelperBaseUrl/products/runtime/status" -TimeoutSec $TimeoutSeconds
 
 Invoke-TimelineSmokeHelperPathIfRunning -RuntimeStatus $runtimeStatusPayload -ProductId "audio" -Path "/products/audio/overview" -TimeoutSeconds $TimeoutSeconds
@@ -174,6 +249,8 @@ Invoke-TimelineSmokeHelperPathIfRunning -RuntimeStatus $runtimeStatusPayload -Pr
 Invoke-TimelineSmokeHelperPathIfRunning -RuntimeStatus $runtimeStatusPayload -ProductId "image" -Path "/products/image/models" -TimeoutSeconds $TimeoutSeconds
 Invoke-TimelineSmokeHelperPathIfRunning -RuntimeStatus $runtimeStatusPayload -ProductId "video" -Path "/products/video/overview" -TimeoutSeconds $TimeoutSeconds
 Invoke-TimelineSmokeHelperPathIfRunning -RuntimeStatus $runtimeStatusPayload -ProductId "pc" -Path "/products/pc/overview" -TimeoutSeconds $TimeoutSeconds
+Invoke-TimelineSmokeThreadDetailIfRunning -RuntimeStatus $runtimeStatusPayload -ProductId "windows-codex" -ItemsPath "/products/windows-codex/items?page=1&pageSize=1" -DetailPathPrefix "/products/windows-codex/threads" -Label "WindowsCodex" -TimeoutSeconds $TimeoutSeconds
+Invoke-TimelineSmokeThreadDetailIfRunning -RuntimeStatus $runtimeStatusPayload -ProductId "chatgpt" -ItemsPath "/products/chatgpt/items?page=1&pageSize=1" -DetailPathPrefix "/products/chatgpt/threads" -Label "ChatGPT" -TimeoutSeconds $TimeoutSeconds
 
 $audioFilesTimeoutSeconds = [Math]::Max($TimeoutSeconds, 120)
 if (Test-TimelineSmokeProductRunning -RuntimeStatus $runtimeStatusPayload -ProductId "audio") {

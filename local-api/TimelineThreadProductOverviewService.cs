@@ -1,5 +1,4 @@
 using System.Globalization;
-using System.IO.Compression;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
@@ -8,18 +7,18 @@ public sealed class TimelineThreadProductOverviewService
     private readonly TimelineSettingsService _settings;
     private readonly TimelineOperationLogService _operations;
     private readonly TimelineLocalApiOptions _options;
-    private readonly TimelineProductCliService _cli;
+    private readonly TimelineProductApiClient _api;
 
     public TimelineThreadProductOverviewService(
         TimelineSettingsService settings,
         TimelineOperationLogService operations,
         TimelineLocalApiOptions options,
-        TimelineProductCliService cli)
+        TimelineProductApiClient api)
     {
         _settings = settings;
         _operations = operations;
         _options = options;
-        _cli = cli;
+        _api = api;
     }
 
     public JsonObject GetWindowsCodexOverview()
@@ -117,18 +116,32 @@ public sealed class TimelineThreadProductOverviewService
             });
     }
 
-    public JsonObject GetWindowsCodexThreads(int page, int pageSize)
+    public Task<JsonObject> GetWindowsCodexThreadsAsync(int page, int pageSize, CancellationToken cancellationToken)
     {
-        return InvokeWebOperation(
+        return InvokeWebOperationAsync(
             "TimelineForWindowsCodex",
             "windows_codex_items_list",
-            () => GetThreadRowsPageFromRoot(GetWindowsCodexOutputLocalPath(), page, pageSize));
+            operationId => ListThreadItemsViaApiAsync(
+                "windows-codex",
+                "TimelineForWindowsCodex",
+                GetWindowsCodexOutputLocalPath(),
+                page,
+                pageSize,
+                operationId,
+                cancellationToken));
     }
 
-    public JsonObject GetWindowsCodexThreadDetail(string itemId)
+    public Task<JsonObject> GetWindowsCodexThreadDetailAsync(string itemId, CancellationToken cancellationToken)
     {
-        var rootPath = GetWindowsCodexOutputLocalPath();
-        return GetThreadDetailFromRoot(rootPath, itemId, ["thread_id", "conversation_id", "item_id", "id"]);
+        return InvokeWebOperationAsync(
+            "TimelineForWindowsCodex",
+            "windows_codex_items_detail",
+            operationId => ReadThreadDetailViaApiAsync(
+                "windows-codex",
+                "TimelineForWindowsCodex",
+                itemId,
+                operationId,
+                cancellationToken));
     }
 
     public Task<JsonObject> RefreshWindowsCodexAsync(CancellationToken cancellationToken)
@@ -138,10 +151,11 @@ public sealed class TimelineThreadProductOverviewService
             "windows_codex_refresh",
             async operationId =>
             {
-                var payload = await _cli.InvokeJsonAsync(
+                var payload = await _api.PostJsonAsync(
                     "windows-codex",
                     "TimelineForWindowsCodex",
-                    ["items", "refresh", "--format", "json"],
+                    "/items/refresh",
+                    new JsonObject(),
                     900,
                     operationId,
                     cancellationToken);
@@ -149,47 +163,81 @@ public sealed class TimelineThreadProductOverviewService
             });
     }
 
-    public JsonObject DownloadWindowsCodexItems(JsonObject? request)
+    public Task<JsonObject> DownloadWindowsCodexItemsAsync(JsonObject? request, CancellationToken cancellationToken)
     {
-        return InvokeWebOperation(
+        return InvokeWebOperationAsync(
             "TimelineForWindowsCodex",
             "windows_codex_items_download",
-            () =>
+            async operationId =>
             {
                 var itemIds = GetRequestItemIds(request);
-                var archivePath = CreateThreadItemsArchive(
-                    productId: "windows-codex",
-                    rootPath: GetWindowsCodexOutputLocalPath(),
-                    itemIds: itemIds,
-                    requestedOutputPath: GetString(request, "outputPath", string.Empty));
-                return new JsonObject
-                {
-                    ["archivePath"] = archivePath,
-                    ["itemIds"] = NewStringArray(itemIds),
-                };
+                var destination = ResolveManagedDownloadDirectory("windows-codex", GetString(request, "outputPath", string.Empty));
+                var payload = await _api.PostJsonAsync(
+                    "windows-codex",
+                    "TimelineForWindowsCodex",
+                    "/items/download",
+                    new JsonObject
+                    {
+                        ["to"] = destination,
+                        ["overwrite"] = true,
+                        ["itemIds"] = NewStringArray(itemIds),
+                    },
+                    900,
+                    operationId,
+                    cancellationToken);
+                return ConvertThreadDownloadResult(payload as JsonObject, itemIds, "TimelineForWindowsCodex");
             });
     }
 
-    public JsonObject DeleteWindowsCodexItems(JsonObject? request)
+    public Task<JsonObject> DeleteWindowsCodexItemsAsync(JsonObject? request, CancellationToken cancellationToken)
     {
-        return InvokeWebOperation(
+        return InvokeWebOperationAsync(
             "TimelineForWindowsCodex",
             "windows_codex_items_delete_generated",
-            () => RemoveThreadItems(GetWindowsCodexOutputLocalPath(), GetRequestItemIds(request)));
+            async operationId =>
+            {
+                var itemIds = GetRequestItemIds(request);
+                var payload = await _api.PostJsonAsync(
+                    "windows-codex",
+                    "TimelineForWindowsCodex",
+                    "/items/remove",
+                    new JsonObject
+                    {
+                        ["itemIds"] = NewStringArray(itemIds),
+                    },
+                    900,
+                    operationId,
+                    cancellationToken);
+                return ConvertThreadRemoveResult(payload as JsonObject, itemIds);
+            });
     }
 
-    public JsonObject GetChatGptThreads(int page, int pageSize)
+    public Task<JsonObject> GetChatGptThreadsAsync(int page, int pageSize, CancellationToken cancellationToken)
     {
-        return InvokeWebOperation(
+        return InvokeWebOperationAsync(
             "TimelineForChatGPT",
             "chatgpt_items_list",
-            () => GetThreadRowsPageFromRoot(GetChatGptOutputLocalPath(), page, pageSize));
+            operationId => ListThreadItemsViaApiAsync(
+                "chatgpt",
+                "TimelineForChatGPT",
+                GetChatGptOutputLocalPath(),
+                page,
+                pageSize,
+                operationId,
+                cancellationToken));
     }
 
-    public JsonObject GetChatGptThreadDetail(string itemId)
+    public Task<JsonObject> GetChatGptThreadDetailAsync(string itemId, CancellationToken cancellationToken)
     {
-        var rootPath = GetChatGptOutputLocalPath();
-        return GetThreadDetailFromRoot(rootPath, itemId, ["conversation_id", "thread_id", "item_id", "id"]);
+        return InvokeWebOperationAsync(
+            "TimelineForChatGPT",
+            "chatgpt_items_detail",
+            operationId => ReadThreadDetailViaApiAsync(
+                "chatgpt",
+                "TimelineForChatGPT",
+                itemId,
+                operationId,
+                cancellationToken));
     }
 
     public Task<JsonObject> RefreshChatGptAsync(JsonObject? request, CancellationToken cancellationToken)
@@ -205,29 +253,25 @@ public sealed class TimelineThreadProductOverviewService
                     throw new InvalidOperationException("ChatGPT export ZIP is required.");
                 }
 
-                var args = new List<string>
+                var requestBody = new JsonObject
                 {
-                    "items",
-                    "refresh",
-                    "--file",
-                    filePath,
-                    "--json",
+                    ["filePath"] = filePath,
                 };
                 var downloadTo = GetString(request, "downloadTo", string.Empty);
                 if (!string.IsNullOrEmpty(downloadTo))
                 {
-                    args.Add("--download-to");
-                    args.Add(downloadTo);
+                    requestBody["downloadTo"] = downloadTo;
                 }
                 if (GetBool(request, "overwrite", false))
                 {
-                    args.Add("--overwrite");
+                    requestBody["overwrite"] = true;
                 }
 
-                var payload = await _cli.InvokeJsonAsync(
+                var payload = await _api.PostJsonAsync(
                     "chatgpt",
                     "TimelineForChatGPT",
-                    args,
+                    "/items/refresh",
+                    requestBody,
                     1800,
                     operationId,
                     cancellationToken);
@@ -235,29 +279,33 @@ public sealed class TimelineThreadProductOverviewService
             });
     }
 
-    public JsonObject DownloadChatGptItems(JsonObject? request)
+    public Task<JsonObject> DownloadChatGptItemsAsync(JsonObject? request, CancellationToken cancellationToken)
     {
-        return InvokeWebOperation(
+        return InvokeWebOperationAsync(
             "TimelineForChatGPT",
             "chatgpt_items_download",
-            () =>
+            async operationId =>
             {
                 var itemIds = GetRequestItemIds(request);
                 if (itemIds.Count > 0)
                 {
-                    throw new InvalidOperationException("TimelineForChatGPT CLI does not support selected item download yet.");
+                    throw new InvalidOperationException("TimelineForChatGPT API does not support selected item download yet.");
                 }
 
-                var archivePath = CreateThreadItemsArchive(
-                    productId: "chatgpt",
-                    rootPath: GetChatGptOutputLocalPath(),
-                    itemIds: itemIds,
-                    requestedOutputPath: GetString(request, "outputPath", string.Empty));
-                return new JsonObject
-                {
-                    ["archivePath"] = archivePath,
-                    ["itemIds"] = new JsonArray(),
-                };
+                var destination = ResolveManagedDownloadDirectory("chatgpt", GetString(request, "outputPath", string.Empty));
+                var payload = await _api.PostJsonAsync(
+                    "chatgpt",
+                    "TimelineForChatGPT",
+                    "/items/download",
+                    new JsonObject
+                    {
+                        ["to"] = destination,
+                        ["overwrite"] = true,
+                    },
+                    900,
+                    operationId,
+                    cancellationToken);
+                return ConvertThreadDownloadResult(payload as JsonObject, itemIds, "TimelineForChatGPT");
             });
     }
 
@@ -266,7 +314,7 @@ public sealed class TimelineThreadProductOverviewService
         return InvokeWebOperation(
             "TimelineForChatGPT",
             "chatgpt_items_delete_generated",
-            () => throw new InvalidOperationException("TimelineForChatGPT does not support generated item removal in the current product CLI contract."));
+            () => throw new InvalidOperationException("TimelineForChatGPT does not support generated item removal in the current product API contract."));
     }
 
     private JsonObject InvokeWebOperation(string productName, string action, Func<JsonObject> operation)
@@ -364,6 +412,218 @@ public sealed class TimelineThreadProductOverviewService
                 stderr: ex.Message);
             throw;
         }
+    }
+
+    private async Task<JsonObject> ListThreadItemsViaApiAsync(
+        string productId,
+        string productName,
+        string rootPath,
+        int page,
+        int pageSize,
+        string operationId,
+        CancellationToken cancellationToken)
+    {
+        var effectivePage = Math.Max(1, page);
+        var effectivePageSize = Math.Max(1, pageSize);
+        var payload = await _api.PostJsonAsync(
+            productId,
+            productName,
+            "/items/list",
+            new JsonObject
+            {
+                ["page"] = effectivePage,
+                ["pageSize"] = effectivePageSize,
+            },
+            120,
+            operationId,
+            cancellationToken);
+
+        return ConvertThreadListResult(payload as JsonObject, rootPath, effectivePage, effectivePageSize);
+    }
+
+    private JsonObject ConvertThreadListResult(JsonObject? payload, string rootPath, int page, int pageSize)
+    {
+        var items = GetArray(payload, "items")
+            .OfType<JsonObject>()
+            .ToList();
+        var threads = new JsonArray();
+        foreach (var item in items)
+        {
+            threads.Add(ConvertThreadItemRow(item, rootPath));
+        }
+
+        var total = GetIntAny(
+            payload,
+            ["total", "total_items", "totalItems", "item_count", "itemCount"],
+            threads.Count);
+        if (total < threads.Count)
+        {
+            total = threads.Count;
+        }
+
+        var pagination = ConvertThreadPagination(
+            GetObject(payload, "pagination"),
+            page,
+            pageSize,
+            total,
+            threads.Count);
+
+        return NewThreadListResult(threads, pagination, total);
+    }
+
+    private async Task<JsonObject> ReadThreadDetailViaApiAsync(
+        string productId,
+        string productName,
+        string itemId,
+        string operationId,
+        CancellationToken cancellationToken)
+    {
+        var payload = await _api.PostJsonAsync(
+            productId,
+            productName,
+            "/items/detail",
+            new JsonObject
+            {
+                ["itemId"] = itemId,
+            },
+            120,
+            operationId,
+            cancellationToken);
+
+        return ConvertThreadDetailResult(payload as JsonObject, itemId);
+    }
+
+    private JsonObject ConvertThreadDetailResult(JsonObject? payload, string fallbackItemId)
+    {
+        var itemId = GetStringAny(
+            payload,
+            ["itemId", "item_id", "threadId", "thread_id", "conversationId", "conversation_id", "id"],
+            fallbackItemId);
+        if (payload is null)
+        {
+            return NewUnavailableThreadDetail(
+                itemId,
+                string.Empty,
+                string.Empty,
+                string.Empty,
+                "Thread could not be read.");
+        }
+
+        var messages = new JsonArray();
+        foreach (var messageNode in GetArray(payload, "messages"))
+        {
+            messages.Add(CloneValueOrNull(messageNode));
+        }
+
+        var messageCount = GetIntAny(payload, ["messageCount", "message_count"], messages.Count);
+        if (messageCount < messages.Count)
+        {
+            messageCount = messages.Count;
+        }
+
+        var title = GetStringAny(payload, ["title", "preferredTitle", "preferred_title", "name"], itemId);
+        return new JsonObject
+        {
+            ["available"] = GetBool(payload, "available", false),
+            ["itemId"] = itemId,
+            ["title"] = title,
+            ["createdAt"] = GetStringAny(payload, ["createdAt", "created_at"], string.Empty),
+            ["updatedAt"] = GetStringAny(payload, ["updatedAt", "updated_at"], string.Empty),
+            ["messageCount"] = messageCount,
+            ["messages"] = messages,
+            ["directoryPath"] = ConvertWindowsPath(GetStringAny(payload, ["directoryPath", "directory_path", "itemDir", "item_dir"], string.Empty)),
+            ["timelinePath"] = ConvertWindowsPath(GetStringAny(payload, ["timelinePath", "timeline_path"], string.Empty)),
+            ["convertInfoPath"] = ConvertWindowsPath(GetStringAny(payload, ["convertInfoPath", "convert_info_path"], string.Empty)),
+            ["message"] = GetString(payload, "message", string.Empty),
+        };
+    }
+
+    private static JsonObject ConvertThreadPagination(
+        JsonObject? source,
+        int fallbackPage,
+        int fallbackPageSize,
+        int fallbackTotal,
+        int returnedItems)
+    {
+        var page = GetIntAny(source, ["page"], fallbackPage);
+        var pageSize = GetIntAny(source, ["pageSize", "page_size"], fallbackPageSize);
+        var total = GetIntAny(source, ["totalItems", "total_items", "total"], fallbackTotal);
+        var returned = GetIntAny(source, ["returnedItems", "returned_items"], returnedItems);
+        return NewPagination(page, pageSize, total, returned);
+    }
+
+    private JsonObject ConvertThreadDownloadResult(
+        JsonObject? payload,
+        IReadOnlyCollection<string> requestedItemIds,
+        string productName)
+    {
+        var archivePath = ConvertWindowsPath(GetStringAny(
+            payload,
+            [
+                "archivePath",
+                "archive_path",
+                "downloadPath",
+                "download_path",
+                "destinationPath",
+                "destination_path",
+                "downloadZipPath",
+                "download_zip_path",
+                "zipPath",
+                "zip_path",
+            ],
+            string.Empty));
+        if (string.IsNullOrEmpty(archivePath) || !File.Exists(archivePath))
+        {
+            throw new InvalidOperationException(productName + " API did not create a download ZIP.");
+        }
+
+        var itemIds = requestedItemIds.Count > 0
+            ? requestedItemIds
+            : GetPayloadItemIds(payload);
+        return new JsonObject
+        {
+            ["archivePath"] = archivePath,
+            ["itemIds"] = NewStringArray(itemIds),
+        };
+    }
+
+    private static JsonObject ConvertThreadRemoveResult(JsonObject? payload, IReadOnlyCollection<string> requestedItemIds)
+    {
+        if (requestedItemIds.Count == 0)
+        {
+            throw new InvalidOperationException("No items were selected.");
+        }
+
+        return new JsonObject
+        {
+            ["itemIds"] = NewStringArray(requestedItemIds),
+            ["deletedCount"] = GetIntAny(payload, ["deletedCount", "deleted_count", "removedCount", "removed_count"], 0),
+            ["missingItemIds"] = NewStringArray(GetStringArrayAny(payload, ["missingItemIds", "missing_item_ids"])),
+        };
+    }
+
+    private static IReadOnlyList<string> GetPayloadItemIds(JsonObject? payload)
+    {
+        var values = GetStringArrayAny(payload, ["itemIds", "item_ids"]);
+        if (values.Count > 0)
+        {
+            return values;
+        }
+
+        var itemIds = new List<string>();
+        foreach (var item in GetArray(payload, "items").OfType<JsonObject>())
+        {
+            var itemId = GetStringAny(
+                item,
+                ["item_id", "itemId", "thread_id", "threadId", "conversation_id", "conversationId", "id"],
+                string.Empty);
+            if (!string.IsNullOrEmpty(itemId) && !itemIds.Contains(itemId, StringComparer.OrdinalIgnoreCase))
+            {
+                itemIds.Add(itemId);
+            }
+        }
+
+        return itemIds;
     }
 
     private JsonObject ReadWindowsCodexSettings(string productPath)
@@ -715,194 +975,6 @@ public sealed class TimelineThreadProductOverviewService
         return GetString(outputRoot, "displayPath", string.Empty);
     }
 
-    private JsonObject GetThreadRowsPageFromRoot(string rootPath, int page, int pageSize)
-    {
-        if (string.IsNullOrEmpty(rootPath) || !Directory.Exists(rootPath))
-        {
-            return NewThreadListResult([], NewPagination(Math.Max(1, page), Math.Max(1, pageSize), 0, 0), 0);
-        }
-
-        var effectivePage = Math.Max(1, page);
-        var effectivePageSize = Math.Max(1, pageSize);
-        var offset = (effectivePage - 1) * effectivePageSize;
-        var manifest = ReadJsonFile(Path.Combine(rootPath, "manifest.json"));
-        var manifestItems = GetArray(manifest, "items").OfType<JsonObject>().ToList();
-        if (manifestItems.Count > 0)
-        {
-            var sortedItems = manifestItems
-                .OrderByDescending(GetThreadSortDateFromItem)
-                .ToList();
-            var total = GetIntAny(
-                manifest,
-                ["item_count", "itemCount", "total_items", "totalItems", "total"],
-                sortedItems.Count);
-            if (total <= 0)
-            {
-                total = sortedItems.Count;
-            }
-
-            var threads = new JsonArray();
-            foreach (var item in sortedItems.Skip(offset).Take(effectivePageSize))
-            {
-                threads.Add(ConvertThreadItemRow(item, rootPath));
-            }
-
-            return NewThreadListResult(threads, NewPagination(effectivePage, effectivePageSize, total, threads.Count), total);
-        }
-
-        var candidates = SafeEnumerateFiles(rootPath, "timeline.json", SearchOption.AllDirectories)
-            .Select(path => new ThreadFileCandidate(path, GetDirectoryName(path), SafeGetLastWriteTimeUtc(path)))
-            .OrderByDescending(candidate => candidate.SortDate)
-            .ToList();
-        var totalItems = candidates.Count;
-        var pageCandidates = candidates.Skip(offset).Take(effectivePageSize).ToList();
-        var pageRows = new JsonArray();
-        foreach (var candidate in pageCandidates)
-        {
-            var timeline = ReadJsonFile(candidate.TimelinePath);
-            if (timeline is null)
-            {
-                continue;
-            }
-
-            var messages = GetArray(timeline, "messages");
-            var itemId = GetStringAny(
-                timeline,
-                ["thread_id", "conversation_id", "item_id", "id"],
-                Path.GetFileName(candidate.DirectoryPath));
-            var title = GetString(timeline, "title", string.Empty);
-            if (string.IsNullOrEmpty(title))
-            {
-                title = itemId;
-            }
-
-            pageRows.Add(new JsonObject
-            {
-                ["itemId"] = itemId,
-                ["title"] = title,
-                ["createdAt"] = GetString(timeline, "created_at", string.Empty),
-                ["updatedAt"] = GetString(timeline, "updated_at", string.Empty),
-                ["messageCount"] = messages.Count,
-                ["directoryPath"] = candidate.DirectoryPath,
-                ["timelinePath"] = candidate.TimelinePath,
-                ["convertInfoPath"] = Path.Combine(candidate.DirectoryPath, "convert_info.json"),
-            });
-        }
-
-        return NewThreadListResult(pageRows, NewPagination(effectivePage, effectivePageSize, totalItems, pageRows.Count), totalItems);
-    }
-
-    private JsonObject RemoveThreadItems(string rootPath, IReadOnlyCollection<string> itemIds)
-    {
-        if (string.IsNullOrEmpty(rootPath) || !Directory.Exists(rootPath))
-        {
-            throw new InvalidOperationException("Output directory is not configured.");
-        }
-        if (itemIds.Count == 0)
-        {
-            throw new InvalidOperationException("No items were selected.");
-        }
-
-        var deleted = 0;
-        var missing = new JsonArray();
-        foreach (var itemId in itemIds)
-        {
-            var itemRoot = GetSafeChildDirectory(rootPath, itemId);
-            if (Directory.Exists(itemRoot))
-            {
-                Directory.Delete(itemRoot, recursive: true);
-                deleted++;
-            }
-            else
-            {
-                missing.Add(itemId);
-            }
-        }
-
-        return new JsonObject
-        {
-            ["itemIds"] = NewStringArray(itemIds),
-            ["deletedCount"] = deleted,
-            ["missingItemIds"] = missing,
-        };
-    }
-
-    private string CreateThreadItemsArchive(
-        string productId,
-        string rootPath,
-        IReadOnlyCollection<string> itemIds,
-        string requestedOutputPath)
-    {
-        if (string.IsNullOrEmpty(rootPath) || !Directory.Exists(rootPath))
-        {
-            throw new InvalidOperationException("Output directory is not configured.");
-        }
-
-        var sourceDirectories = itemIds.Count > 0
-            ? ResolveSelectedThreadDirectories(rootPath, itemIds)
-            : GetThreadDirectories(rootPath);
-        if (sourceDirectories.Count == 0)
-        {
-            throw new InvalidOperationException("No generated items were found.");
-        }
-
-        var destination = ResolveManagedDownloadDirectory(productId, requestedOutputPath);
-        var archiveName = productId + "-items-" + DateTime.Now.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture) + ".zip";
-        var archivePath = Path.Combine(destination, archiveName);
-        if (File.Exists(archivePath))
-        {
-            File.Delete(archivePath);
-        }
-
-        using (var archive = ZipFile.Open(archivePath, ZipArchiveMode.Create))
-        {
-            var manifestPath = Path.Combine(rootPath, "manifest.json");
-            if (itemIds.Count == 0 && File.Exists(manifestPath))
-            {
-                AddFileToArchive(archive, manifestPath, "manifest.json");
-            }
-
-            foreach (var directory in sourceDirectories)
-            {
-                var itemSegment = Path.GetFileName(directory.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
-                foreach (var file in SafeEnumerateFiles(directory, "*", SearchOption.AllDirectories))
-                {
-                    var relativePath = Path.GetRelativePath(directory, file);
-                    AddFileToArchive(archive, file, Path.Combine(itemSegment, relativePath));
-                }
-            }
-        }
-
-        return archivePath;
-    }
-
-    private List<string> ResolveSelectedThreadDirectories(string rootPath, IReadOnlyCollection<string> itemIds)
-    {
-        var directories = new List<string>();
-        foreach (var itemId in itemIds)
-        {
-            var directory = GetSafeChildDirectory(rootPath, itemId);
-            if (!Directory.Exists(directory))
-            {
-                throw new InvalidOperationException("Thread was not found.");
-            }
-
-            directories.Add(directory);
-        }
-
-        return directories;
-    }
-
-    private static List<string> GetThreadDirectories(string rootPath)
-    {
-        var itemsRoot = Path.Combine(rootPath, "items");
-        var candidateRoot = Directory.Exists(itemsRoot) ? itemsRoot : rootPath;
-        return SafeEnumerateDirectories(candidateRoot)
-            .Where(path => File.Exists(Path.Combine(path, "timeline.json")) || File.Exists(Path.Combine(path, "convert_info.json")))
-            .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
-            .ToList();
-    }
-
     private string ResolveManagedDownloadDirectory(string productId, string requestedPath)
     {
         var downloadRoot = Path.Combine(_settings.GetWorkDirectory(), "downloads");
@@ -929,85 +1001,6 @@ public sealed class TimelineThreadProductOverviewService
 
         Directory.CreateDirectory(localPath);
         return Path.GetFullPath(localPath);
-    }
-
-    private static void AddFileToArchive(ZipArchive archive, string filePath, string entryName)
-    {
-        var normalizedEntry = entryName.Replace('\\', '/');
-        archive.CreateEntryFromFile(filePath, normalizedEntry, CompressionLevel.Fastest);
-    }
-
-    private JsonObject GetThreadDetailFromRoot(string rootPath, string itemId, string[] itemIdNames)
-    {
-        var safeItemId = ConvertTimelineText(itemId);
-        if (string.IsNullOrEmpty(rootPath) || !Directory.Exists(rootPath))
-        {
-            return NewUnavailableThreadDetail(
-                safeItemId,
-                string.Empty,
-                string.Empty,
-                string.Empty,
-                "Output directory is not configured.");
-        }
-
-        var threadDirectory = GetSafeChildDirectory(rootPath, safeItemId);
-        var timelinePath = Path.Combine(threadDirectory, "timeline.json");
-        var convertInfoPath = Path.Combine(threadDirectory, "convert_info.json");
-        if (!File.Exists(timelinePath))
-        {
-            return NewUnavailableThreadDetail(
-                safeItemId,
-                threadDirectory,
-                timelinePath,
-                convertInfoPath,
-                "Thread was not found.");
-        }
-
-        var timeline = ReadJsonFile(timelinePath);
-        if (timeline is null)
-        {
-            return NewUnavailableThreadDetail(
-                safeItemId,
-                threadDirectory,
-                timelinePath,
-                convertInfoPath,
-                "Thread could not be read.",
-                title: safeItemId);
-        }
-
-        var messages = new JsonArray();
-        var index = 0;
-        foreach (var messageNode in GetArray(timeline, "messages"))
-        {
-            if (messageNode is JsonObject message)
-            {
-                messages.Add(ConvertThreadMessage(message, index));
-            }
-
-            index++;
-        }
-
-        var resolvedItemId = GetStringAny(timeline, itemIdNames, safeItemId);
-        var titleText = GetString(timeline, "title", string.Empty);
-        if (string.IsNullOrEmpty(titleText))
-        {
-            titleText = resolvedItemId;
-        }
-
-        return new JsonObject
-        {
-            ["available"] = true,
-            ["itemId"] = resolvedItemId,
-            ["title"] = titleText,
-            ["createdAt"] = GetString(timeline, "created_at", string.Empty),
-            ["updatedAt"] = GetString(timeline, "updated_at", string.Empty),
-            ["messageCount"] = messages.Count,
-            ["messages"] = messages,
-            ["directoryPath"] = threadDirectory,
-            ["timelinePath"] = timelinePath,
-            ["convertInfoPath"] = convertInfoPath,
-            ["message"] = string.Empty,
-        };
     }
 
     private JsonObject ConvertThreadItemRow(JsonObject item, string rootPath)
@@ -1049,27 +1042,6 @@ public sealed class TimelineThreadProductOverviewService
         var createdAt = GetStringAny(item, ["created_at", "createdAt", "started_at_utc", "startedAtUtc"], string.Empty);
         var updatedAt = GetStringAny(item, ["updated_at", "updatedAt", "ended_at_utc", "endedAtUtc"], string.Empty);
         var messageCount = GetIntAny(item, ["message_count", "messageCount", "event_count", "eventCount"], 0);
-        var timeline = ReadJsonFile(timelinePath);
-        if (timeline is not null)
-        {
-            var timelineTitle = GetString(timeline, "title", string.Empty);
-            if (!string.IsNullOrEmpty(timelineTitle))
-            {
-                title = timelineTitle;
-            }
-            if (string.IsNullOrEmpty(createdAt))
-            {
-                createdAt = GetString(timeline, "created_at", string.Empty);
-            }
-            if (string.IsNullOrEmpty(updatedAt))
-            {
-                updatedAt = GetString(timeline, "updated_at", string.Empty);
-            }
-            if (messageCount <= 0)
-            {
-                messageCount = GetArray(timeline, "messages").Count;
-            }
-        }
 
         return new JsonObject
         {
@@ -1183,33 +1155,6 @@ public sealed class TimelineThreadProductOverviewService
         return fullCandidate;
     }
 
-    private static DateTimeOffset GetThreadSortDateFromItem(JsonObject item)
-    {
-        var dateText = GetStringAny(
-            item,
-            ["updated_at", "updatedAt", "ended_at_utc", "endedAtUtc", "created_at", "createdAt", "started_at_utc", "startedAtUtc"],
-            string.Empty);
-        return DateTimeOffset.TryParse(
-            dateText,
-            CultureInfo.InvariantCulture,
-            DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal,
-            out var parsed)
-            ? parsed
-            : DateTimeOffset.MinValue;
-    }
-
-    private static DateTimeOffset SafeGetLastWriteTimeUtc(string path)
-    {
-        try
-        {
-            return File.GetLastWriteTimeUtc(path);
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            return DateTimeOffset.MinValue;
-        }
-    }
-
     private static string GetDirectoryName(string path)
         => Path.GetDirectoryName(path) ?? string.Empty;
 
@@ -1298,6 +1243,20 @@ public sealed class TimelineThreadProductOverviewService
         return node is JsonArray array
             ? array.Select(ConvertTimelineText).Where(value => !string.IsNullOrEmpty(value))
             : [];
+    }
+
+    private static IReadOnlyList<string> GetStringArrayAny(JsonObject? source, string[] names)
+    {
+        foreach (var name in names)
+        {
+            var values = GetStringArray(source, name).ToList();
+            if (values.Count > 0)
+            {
+                return values;
+            }
+        }
+
+        return [];
     }
 
     private static List<string> GetRequestItemIds(JsonObject? request)
@@ -1424,5 +1383,4 @@ public sealed class TimelineThreadProductOverviewService
         return value.ToString()?.Trim() ?? string.Empty;
     }
 
-    private sealed record ThreadFileCandidate(string TimelinePath, string DirectoryPath, DateTimeOffset SortDate);
 }

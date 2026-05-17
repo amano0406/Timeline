@@ -205,7 +205,7 @@ Timeline 本体で Git が必要になる箇所は、現時点では限定的で
 | サブ製品を Git clone でインストールする | 必須 | source archive ZIP 方式にすれば不要 |
 | `.git` がある製品のアンインストール前に作業ツリーを確認する | 条件付き | `.git` がなければ確認しない |
 | Timeline 本体の通常利用 | 不要 | Git は不要 |
-| サブ製品の通常起動 / 停止 / CLI 実行 | 不要 | `start.ps1` / `stop.ps1` / `cli.ps1` を使う |
+| サブ製品の通常起動 / 停止 / API 実行 | 不要 | `start.ps1` / `stop.ps1` / ローカル API を使う |
 
 つまり、一般ユーザー向けに Git を必須にしないためには、インストール方式を GitHub の source archive ZIP に寄せます。
 
@@ -226,10 +226,6 @@ Timeline 本体で Git が必要になる箇所は、現時点では限定的で
     "stop": {
       "type": "powershell",
       "path": "stop.ps1"
-    },
-    "cli": {
-      "type": "powershell",
-      "path": "cli.ps1"
     }
   },
   "settings": {
@@ -338,9 +334,10 @@ Timeline から呼ぶ操作面です。
 
 - 起動は `start.ps1`
 - 停止は `stop.ps1`
-- CLI は `cli.ps1`
+- 通常操作はローカル API
+- ホスト CLI ランチャーは廃止対象
 - Timeline は Docker コンテナへ直接入らない
-- Timeline はサブ製品を操作するとき、CLI がある場合は `cli.ps1` を優先する
+- Timeline はサブ製品を操作するとき、API がある場合は API を優先する
 
 ### settings
 
@@ -511,7 +508,8 @@ timeline-product.json
 - Timeline は Docker コンテナへ直接入らない前提にする
 - 起動は `start.ps1`
 - 停止は `stop.ps1`
-- CLI がある場合は `cli.ps1`
+- API のポートまたは `apiBaseUrl` を settings/runtime から解決できるようにする
+- ホスト CLI ランチャーを通常操作面に含めない
 - ユーザーの元ファイルはアンインストール削除対象にしない
 - 生成データは、ユーザーが明示的に選んだ場合だけ削除対象にする
 - Docker 関連リソース削除の契約が未確定なら `dockerManagedByTimeline` は `false` にする
@@ -520,7 +518,7 @@ timeline-product.json
 
 1. 現在の README と settings.json を確認する
 2. この製品の productId を決める
-3. 起動、停止、CLI の相対パスを書く
+3. 起動、停止、API の相対パスやポート解決方法を書く
 4. settings.json の相対パスを書く
 5. 入力元ディレクトリを settings.json のどの項目から読めるかを書く
 6. 生成データ / マスター / 出力ディレクトリを settings.json のどの項目から読めるかを書く
@@ -546,10 +544,6 @@ timeline-product.json
     "stop": {
       "type": "powershell",
       "path": "stop.ps1"
-    },
-    "cli": {
-      "type": "powershell",
-      "path": "cli.ps1"
     }
   },
   "settings": {

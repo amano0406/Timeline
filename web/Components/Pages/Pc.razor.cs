@@ -12,13 +12,17 @@ public partial class Pc
     private PcItemListResult? _items;
     private bool _loading = true;
     private bool _loadingPage;
+    private bool _refreshing;
+    private bool _downloading;
     private DateTime? _lastLoadedAt;
     private int _currentPage = 1;
     private string? _error;
+    private string? _operationMessage;
 
     private IReadOnlyList<PcItemRow> Items => _items?.Items ?? [];
-    private bool Busy => _loading || _loadingPage;
+    private bool Busy => _loading || _loadingPage || _refreshing || _downloading;
     private bool ListBusy => Busy;
+    private bool CanDownload => (_overview?.ItemCount ?? 0) > 0 || Items.Count > 0;
     private int ItemCount => _items?.Total > 0 ? _items.Total : _overview?.ItemCount ?? Items.Count;
     private string ItemCountLabel => $"{ItemCount:N0} 件";
     private int ListTotalItems => _items?.Pagination.TotalItems > 0 ? _items.Pagination.TotalItems : ItemCount;
@@ -69,6 +73,64 @@ public partial class Pc
         finally
         {
             _loading = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task RefreshPcAsync()
+    {
+        _refreshing = true;
+        _error = null;
+        _operationMessage = "PC状態を取得しています。";
+        try
+        {
+            var result = await Timeline.RefreshPcAsync();
+            var state = string.IsNullOrWhiteSpace(result.State) ? "completed" : result.State;
+            _operationMessage = $"PC状態を記録しました。状態: {state}";
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            _operationMessage = null;
+            _error = ex.Message;
+        }
+        finally
+        {
+            _refreshing = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task DownloadAsync()
+    {
+        var suggestedName = $"TimelineForPC-items-{DateTime.Now:yyyyMMdd-HHmmss}.zip";
+        var save = await BrowserDownload.BeginSaveAsync(Js, suggestedName);
+        if (!save.Accepted)
+        {
+            if (!string.IsNullOrWhiteSpace(save.Message))
+            {
+                _error = save.Message;
+            }
+            return;
+        }
+
+        _downloading = true;
+        _error = null;
+        _operationMessage = "PC状態のZIPを作成しています。";
+        try
+        {
+            var result = await Timeline.DownloadPcItemsAsync(new PcItemsRequest());
+            await BrowserDownload.SaveArchiveAsync(Js, save, result.ArchivePath, suggestedName);
+            _operationMessage = "PC状態のZIPを作成しました。";
+        }
+        catch (Exception ex)
+        {
+            _operationMessage = null;
+            _error = ex.Message;
+        }
+        finally
+        {
+            _downloading = false;
             await InvokeAsync(StateHasChanged);
         }
     }

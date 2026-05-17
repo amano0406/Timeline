@@ -1,7 +1,7 @@
 # Docker runtime rulebook
 
 This rulebook defines how Timeline-family products should name Docker resources,
-publish ports, and prepare for future API-based product connections.
+publish ports, and connect through local product APIs.
 
 ## Goals
 
@@ -9,8 +9,8 @@ publish ports, and prepare for future API-based product connections.
 - A developer can run more than one copy when ports are configured explicitly.
 - Product data is not mixed by accident.
 - Shared base images and model caches can be reused when that is operationally safe.
-- Sub-products can later move from `cli.ps1` integration to API integration without
-  changing the parent product boundary.
+- Sub-products can change their internal CLI or worker implementation without
+  changing the parent product API boundary.
 
 ## Resource classes
 
@@ -121,7 +121,9 @@ uses Ollama.
 
 ## Sub-product connection model
 
-The current parent-to-sub-product integration is `cli.ps1`.
+The current parent-to-sub-product integration is the sub-product's local API.
+Host CLI launchers are deprecated and must not be used for normal product
+operations.
 
 Timeline must not start a sub-product as a side effect of reading data or
 serving an API request. Only explicit runtime actions such as
@@ -135,18 +137,20 @@ If a sub-product is stopped:
 - Timeline must not call a sub-product CLI just to discover whether data is
   available.
 
-The future target is API integration:
+The API integration contract is:
 
-- Each sub-product may expose its own local API server.
+- Each sub-product exposes its own local API server.
 - Each sub-product should define a default API port.
 - Timeline should allow users to override the sub-product API base URL or port.
 - Timeline should keep using a connector boundary instead of directly touching a
   sub-product's Docker containers or internal files.
+- `GET /health` is the running-state check. A read or status call must not start
+  Docker implicitly when health is unavailable.
+- Item operations should use `/items/*` API routes. A sub-product may delegate
+  those routes to its own CLI internally, but that delegation remains hidden
+  behind the local API boundary.
 
-Until a sub-product API contract is defined, do not implement API calls in
-Timeline. Keep the existing `cli.ps1` integration as the operational path.
-
-Future setting shape:
+Setting shape:
 
 ```json
 {
@@ -156,7 +160,7 @@ Future setting shape:
         "id": "audio",
         "displayName": "TimelineForAudio",
         "path": "C:\\apps\\TimelineForAudio",
-        "connectionMode": "cli",
+        "connectionMode": "api",
         "apiBaseUrl": "http://127.0.0.1:19101"
       }
     ]
@@ -164,13 +168,13 @@ Future setting shape:
 }
 ```
 
-`connectionMode` and `apiBaseUrl` are design placeholders until the API contract
-is finalized.
+`apiBaseUrl` is optional when the product's `settings.json` contains
+`runtime.apiPort`; Timeline can derive `http://127.0.0.1:<apiPort>`.
 
 See also
 [sub-product-docker-port-contract.md](sub-product-docker-port-contract.md) for
-the Docker project, image, volume, and future API port rules that sub-products
-should follow.
+the Docker project, image, volume, and API port rules that sub-products should
+follow.
 
 ## Operational guidance
 

@@ -15,10 +15,12 @@ user-visible behavior during refactoring.
 - Treat visible screen changes as out of scope for refactor-only work. Do not
   change labels, layout, navigation, loading states, or displayed data unless a
   user-facing behavior change is explicitly requested.
-- Keep sub-product operations behind public launchers and `cli.ps1`.
+- Keep sub-product operations behind public product APIs and start/stop launchers.
 - Do not enter sub-product Docker containers from Timeline.
 - Keep PowerShell files ASCII-only.
 - Run `scripts/check-powershell-ascii.ps1` after editing PowerShell.
+- Run `scripts/smoke-thread-detail-api-bridge.ps1` after changing ChatGPT or
+  WindowsCodex thread-detail API bridging.
 - Run a web build or smoke check after non-document code changes.
 
 ## Current Internal Risks

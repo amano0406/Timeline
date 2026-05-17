@@ -88,9 +88,10 @@ public partial class TimelineIndex
                 return "対象のサブ製品が起動していない可能性があります。製品管理画面で起動状態を確認してください。";
             }
 
-            if (cause.Contains("CLI failed", StringComparison.OrdinalIgnoreCase))
+            if (cause.Contains("Product API failed", StringComparison.OrdinalIgnoreCase)
+                || cause.Contains("API failed", StringComparison.OrdinalIgnoreCase))
             {
-                return "サブ製品がエラーを返しました。サブ製品側の CLI が error または message を返していれば、ここに表示されます。";
+                return "サブ製品がエラーを返しました。サブ製品側の API が error または message を返していれば、ここに表示されます。";
             }
 
             return "詳細が必要な場合は、対象サブ製品のログまたは Timeline の操作ログを確認してください。";
@@ -262,7 +263,7 @@ public partial class TimelineIndex
             "queued" => "開始待ちです。",
             "preparing" => "作業場所を準備しています。",
             "refreshing" => $"サブ製品の最新データを取り込んでいます{ProductNameSuffix(status.Message)}。",
-            "collecting" => "各プロダクトの CLI からデータを取得しています。",
+            "collecting" => "各プロダクトの API からデータを取得しています。",
             "downloading" => $"サブ製品の出力データを取得しています{ProductNameSuffix(status.Message)}。",
             "importing" => $"取得したデータを Timeline 形式へ整えています{ProductNameSuffix(status.Message)}。",
             "sorting" => "時間順に並べています。",

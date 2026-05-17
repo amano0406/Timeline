@@ -4,7 +4,7 @@ public sealed class TimelineModelInventoryService
 {
     private readonly TimelineSettingsService _settings;
     private readonly TimelineOperationLogService _operations;
-    private readonly TimelineProductCliService _cli;
+    private readonly TimelineProductApiClient _api;
     private JsonObject? _audioModelCache;
     private DateTimeOffset _audioModelCacheAt;
     private JsonObject? _imageModelCache;
@@ -13,11 +13,11 @@ public sealed class TimelineModelInventoryService
     public TimelineModelInventoryService(
         TimelineSettingsService settings,
         TimelineOperationLogService operations,
-        TimelineProductCliService cli)
+        TimelineProductApiClient api)
     {
         _settings = settings;
         _operations = operations;
-        _cli = cli;
+        _api = api;
     }
 
     public JsonObject GetAudioModels()
@@ -195,10 +195,11 @@ public sealed class TimelineModelInventoryService
 
         try
         {
-            var payload = await _cli.InvokeJsonAsync(
+            var payload = await _api.PostJsonAsync(
                 "image",
                 "TimelineForImage",
-                ["--json", "models", "list"],
+                "/models/list",
+                new JsonObject(),
                 120,
                 parentOperationId,
                 cancellationToken);

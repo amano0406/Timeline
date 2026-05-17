@@ -31,6 +31,7 @@ if (!app.Environment.IsDevelopment())
 }
 
 app.UseStaticFiles();
+app.MapStaticAssets();
 app.UseAntiforgery();
 
 app.MapGet("/api/health", () => Results.Ok(new { ok = true, product = "Timeline" }));

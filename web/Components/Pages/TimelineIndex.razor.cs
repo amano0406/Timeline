@@ -219,7 +219,7 @@ public partial class TimelineIndex
     {
         _rebuilding = true;
         _error = null;
-        SetOperationMessage("各プロダクトの CLI からデータを取得し、時間軸で使える状態に整えています。");
+        SetOperationMessage("各プロダクトの API からデータを取得し、時間軸で使える状態に整えています。");
         try
         {
             _workerStatus = await Timeline.RebuildTimelineStoreAsync();

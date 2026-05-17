@@ -6,20 +6,23 @@ public sealed class TimelinePcSnapshotService
 {
     private readonly TimelineSettingsService _settings;
     private readonly TimelineOperationLogService _operations;
+    private readonly TimelineProductApiClient _api;
 
     public TimelinePcSnapshotService(
         TimelineSettingsService settings,
-        TimelineOperationLogService operations)
+        TimelineOperationLogService operations,
+        TimelineProductApiClient api)
     {
         _settings = settings;
         _operations = operations;
+        _api = api;
     }
 
-    public JsonObject GetOverview()
+    public Task<JsonObject> GetOverviewAsync(CancellationToken cancellationToken)
     {
-        return InvokeWebOperation(
+        return InvokeWebOperationAsync(
             "pc_overview",
-            () =>
+            async operationId =>
             {
                 var productPath = GetProductPath();
                 if (string.IsNullOrEmpty(productPath) || !Directory.Exists(productPath))
@@ -37,8 +40,8 @@ public sealed class TimelinePcSnapshotService
 
                 try
                 {
-                    var settingsPayload = GetSettingsPayload();
-                    var itemsPayload = GetItemsCore(1, 1);
+                    var settingsPayload = await GetSettingsPayloadAsync(operationId, cancellationToken);
+                    var itemsPayload = await GetItemsCoreAsync(1, 1, operationId, cancellationToken);
                     return new JsonObject
                     {
                         ["productFound"] = true,
@@ -64,12 +67,14 @@ public sealed class TimelinePcSnapshotService
             });
     }
 
-    public JsonObject GetItems(int page, int pageSize)
+    public Task<JsonObject> GetItemsAsync(int page, int pageSize, CancellationToken cancellationToken)
     {
-        return InvokeWebOperation("pc_items_list", () => GetItemsCore(page, pageSize));
+        return InvokeWebOperationAsync(
+            "pc_items_list",
+            operationId => GetItemsCoreAsync(page, pageSize, operationId, cancellationToken));
     }
 
-    private JsonObject InvokeWebOperation(string action, Func<JsonObject> operation)
+    private async Task<JsonObject> InvokeWebOperationAsync(string action, Func<string, Task<JsonObject>> operation)
     {
         var operationId = _operations.NewOperationId("web");
         var startedAt = DateTimeOffset.Now;
@@ -83,7 +88,7 @@ public sealed class TimelinePcSnapshotService
 
         try
         {
-            var result = operation();
+            var result = await operation(operationId);
             var durationMs = (int)(DateTimeOffset.Now - startedAt).TotalMilliseconds;
             _operations.WriteOperationEvent(
                 operationId,
@@ -117,49 +122,52 @@ public sealed class TimelinePcSnapshotService
         }
     }
 
-    private JsonObject GetItemsCore(int page, int pageSize)
+    private async Task<JsonObject> GetItemsCoreAsync(
+        int page,
+        int pageSize,
+        string operationId,
+        CancellationToken cancellationToken)
     {
-        var settingsPayload = GetSettingsPayload();
-        var outputRoot = ConvertPcLocalPath(GetString(settingsPayload, "outputRoot", string.Empty));
-        var rows = DiscoverItems(outputRoot);
         var effectivePage = Math.Max(1, page);
         var effectivePageSize = Math.Max(1, pageSize);
-        var offset = (effectivePage - 1) * effectivePageSize;
+        var payload = await _api.PostJsonAsync(
+            "pc",
+            "TimelineForPC",
+            "/items/list",
+            new JsonObject
+            {
+                ["page"] = effectivePage,
+                ["pageSize"] = effectivePageSize,
+            },
+            120,
+            operationId,
+            cancellationToken) as JsonObject ?? new JsonObject();
+
         var items = new JsonArray();
-        foreach (var row in rows.Skip(offset).Take(effectivePageSize))
+        foreach (var row in GetArray(payload, "items").OfType<JsonObject>())
         {
             items.Add(ConvertItemRow(row));
         }
+        var totalItems = GetIntAny(payload, ["total", "item_count", "itemCount"], items.Count);
 
         return new JsonObject
         {
-            ["total"] = rows.Count,
-            ["pagination"] = NewPagination(effectivePage, effectivePageSize, rows.Count, items.Count),
+            ["total"] = totalItems,
+            ["pagination"] = NewPagination(effectivePage, effectivePageSize, totalItems, items.Count),
             ["items"] = items,
         };
     }
 
-    private JsonObject GetSettingsPayload()
+    private async Task<JsonObject> GetSettingsPayloadAsync(string operationId, CancellationToken cancellationToken)
     {
-        var settings = ReadPcSettingsFile();
-        var outputRoot = GetStringAny(settings, ["outputRoot", "output_root"], GetManagedPcDataDirectory());
-        var runtime = GetObject(settings, "runtime");
-        var instanceName = GetStringAny(runtime, ["instance_name", "instanceName"], "7d3f91ab4e");
-        var apiPort = GetPort(GetNode(runtime, "api_port") ?? GetNode(runtime, "apiPort"), 19600);
-
-        return new JsonObject
-        {
-            ["schemaVersion"] = 1,
-            ["ok"] = true,
-            ["settings_path"] = GetPcSettingsPath(),
-            ["outputRoot"] = outputRoot,
-            ["runtime"] = new JsonObject
-            {
-                ["instanceName"] = instanceName,
-                ["api_port"] = apiPort,
-                ["apiPort"] = apiPort,
-            },
-        };
+        return await _api.PostJsonAsync(
+            "pc",
+            "TimelineForPC",
+            "/settings/status",
+            new JsonObject(),
+            60,
+            operationId,
+            cancellationToken) as JsonObject ?? new JsonObject();
     }
 
     private JsonObject? ReadPcSettingsFile()

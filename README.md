@@ -5,8 +5,8 @@ store for Timeline sub-products.
 
 Timeline does not contain the conversion engines. Each sub-product remains a
 separate local product with its own public Windows-side entry points such as
-`cli.ps1`, `start.ps1`, and `stop.ps1`. Timeline coordinates those entry points
-and builds Timeline-owned data for review, scan, download, and later LLM
+`start.ps1`, `stop.ps1`, and a local product API. Timeline coordinates
+the public product API and launchers, then builds Timeline-owned data for review, scan, download, and later LLM
 workflows.
 
 Timeline must not enter or operate a sub-product Docker container directly.
@@ -75,7 +75,7 @@ Default sub-products:
 - TimelineForChatGPT
 - TimelineForPC
 
-Sub-products are expected to expose a stable launcher/CLI contract. Newer
+Sub-products are expected to expose a stable local API plus start/stop launchers. Newer
 products should also ship `timeline-product.json` so Timeline can avoid
 hard-coded assumptions about product identity, launchers, settings, generated
 data, and uninstall policy.
@@ -115,7 +115,7 @@ controls the data root.
 ## Main Operations
 
 - Dashboard: current state, warnings, next actions, and Timeline growth.
-- Scan: refresh product data through product CLIs and rebuild Timeline data.
+- Scan: refresh product data through product APIs and rebuild Timeline data.
 - Settings: Timeline settings and product-specific settings.
 - Product management: install, uninstall, start, stop, restart, and runtime
   status through product launchers.
@@ -124,7 +124,7 @@ controls the data root.
 
 ## Operation Rules
 
-- Use each sub-product's public Windows-side launcher or CLI.
+- Use each sub-product's public Windows-side API and start/stop launchers.
 - Do not call Docker directly for a sub-product from Timeline.
 - Do not start a sub-product as a side effect of a read API call. Stopped
   products must stay stopped until the user runs an explicit start action.
@@ -138,6 +138,7 @@ controls the data root.
 
 ```powershell
 .\scripts\check-powershell-ascii.ps1
+.\scripts\smoke-thread-detail-api-bridge.ps1
 .\scripts\smoke-web.ps1
 .\scripts\test-product-uninstall.ps1
 ```
@@ -157,8 +158,8 @@ docker compose build web
 - [docs/product-uninstall-design.md](docs/product-uninstall-design.md):
   product uninstall policy and safety model.
 - [docs/docker-runtime-rulebook.md](docs/docker-runtime-rulebook.md):
-  Docker project names, ports, images, volumes, and future API connection rules.
+  Docker project names, ports, images, volumes, and API connection rules.
 - [docs/sub-product-docker-port-contract.md](docs/sub-product-docker-port-contract.md):
-  Docker project, image, volume, and future API port rules for sub-products.
+  Docker project, image, volume, and API port rules for sub-products.
 - [docs/timeline-llm-data-rules.html](docs/timeline-llm-data-rules.html):
   Timeline master data, LLM input data, and generated result separation.

@@ -299,7 +299,7 @@ public sealed class TimelineOperationLogService
                 ["level"] = ConvertOperationStateToConsoleLevel(state),
                 ["kind"] = kind,
                 ["productName"] = productName,
-                ["action"] = string.IsNullOrEmpty(action) && (kind == "command" || kind == "result") ? "cli" : action,
+                ["action"] = string.IsNullOrEmpty(action) && (kind == "command" || kind == "result") ? "process" : action,
                 ["commandLine"] = commandLine,
                 ["operationId"] = operationId,
                 ["parentOperationId"] = parentOperationId,

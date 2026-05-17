@@ -1,6 +1,7 @@
 [CmdletBinding()]
 param(
     [string]$AudioProductPath = "",
+    [string]$AudioApiBaseUrl = "",
     [string]$HelperBaseUrl = "http://127.0.0.1:19001",
     [string]$TimelineBaseUrl = "http://127.0.0.1:19000"
 )
@@ -34,6 +35,35 @@ function ConvertFrom-TimelineSmokeJson {
         throw "Command did not return JSON. Output: $jsonText"
     }
     return $jsonText.Substring($startIndex, $endIndex - $startIndex + 1) | ConvertFrom-Json
+}
+
+function Resolve-TimelineAudioApiBaseUrl {
+    param(
+        [string]$ProductPath,
+        [string]$PreferredBaseUrl
+    )
+
+    if ($PreferredBaseUrl) {
+        return $PreferredBaseUrl.TrimEnd("/")
+    }
+
+    $manifestPath = Join-Path $ProductPath "timeline-product.json"
+    if (Test-Path -LiteralPath $manifestPath -PathType Leaf) {
+        try {
+            $manifest = Get-Content -LiteralPath $manifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
+            $defaultBaseUrl = [string]$manifest.api.defaultBaseUrl
+            if ($defaultBaseUrl) {
+                return $defaultBaseUrl.TrimEnd("/")
+            }
+            if ($null -ne $manifest.api.defaultPort) {
+                return "http://127.0.0.1:$([int]$manifest.api.defaultPort)"
+            }
+        }
+        catch {
+        }
+    }
+
+    return "http://127.0.0.1:19100"
 }
 
 function Convert-TimelineAudioSmokePath {
@@ -74,18 +104,16 @@ function Assert-ZipReadable {
     }
 }
 
-$cliPath = Join-Path $AudioProductPath "cli.ps1"
-Assert-TimelineSmoke -Condition (Test-Path -LiteralPath $cliPath -PathType Leaf) -Message "TimelineForAudio cli.ps1 was not found: $cliPath"
-
-$directOutput = & powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File $cliPath items download --json 2>&1
-$directExitCode = $LASTEXITCODE
-$directText = ($directOutput | Out-String).Trim()
-Assert-TimelineSmoke -Condition ($directExitCode -eq 0) -Message "TimelineForAudio cli.ps1 items download failed. ExitCode=$directExitCode Output=$directText"
-
-$directPayload = ConvertFrom-TimelineSmokeJson -Text $directText
+$AudioApiBaseUrl = Resolve-TimelineAudioApiBaseUrl -ProductPath $AudioProductPath -PreferredBaseUrl $AudioApiBaseUrl
+$directPayload = Invoke-RestMethod `
+    -Uri "$AudioApiBaseUrl/items/download" `
+    -Method Post `
+    -Body "{}" `
+    -ContentType "application/json" `
+    -TimeoutSec 120
 $directArchivePath = Convert-TimelineAudioSmokePath -Path ([string]$directPayload.archive_path) -ProductPath $AudioProductPath
 Assert-ZipReadable -Path $directArchivePath
-Write-Host "PASS direct cli.ps1 items download -> $directArchivePath"
+Write-Host "PASS direct TimelineForAudio API items download -> $directArchivePath"
 
 $helperPayload = Invoke-RestMethod `
     -Uri "$HelperBaseUrl/products/audio/items/download" `
@@ -107,4 +135,4 @@ finally {
     Remove-Item -LiteralPath $downloadPath -Force -ErrorAction SilentlyContinue
 }
 
-Write-Host "TimelineForAudio PS1 download smoke check passed."
+Write-Host "TimelineForAudio API download smoke check passed."

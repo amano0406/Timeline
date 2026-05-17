@@ -17,7 +17,7 @@ public sealed partial class TimelineHelperClient
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Failed to load TimelineForImage model inventory.");
-            return OfflineModels("TimelineForImage CLI からモデル一覧を取得できませんでした。");
+            return OfflineModels("TimelineForImage API からモデル一覧を取得できませんでした。");
         }
     }
 

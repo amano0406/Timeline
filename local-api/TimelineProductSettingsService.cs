@@ -5,13 +5,16 @@ public sealed class TimelineProductSettingsService
 {
     private readonly TimelineSettingsService _settings;
     private readonly TimelineOperationLogService _operations;
+    private readonly TimelineProductApiClient _api;
 
     public TimelineProductSettingsService(
         TimelineSettingsService settings,
-        TimelineOperationLogService operations)
+        TimelineOperationLogService operations,
+        TimelineProductApiClient api)
     {
         _settings = settings;
         _operations = operations;
+        _api = api;
     }
 
     public void SaveAudioSettings(JsonObject? request)
@@ -151,6 +154,14 @@ public sealed class TimelineProductSettingsService
             });
     }
 
+    public Task<JsonObject> SavePcSettingsAsync(JsonObject? request, CancellationToken cancellationToken)
+    {
+        return InvokeSaveOperationAsync(
+            "TimelineForPC",
+            "pc_settings_save",
+            operationId => SavePcSettingsCoreAsync(request, operationId, cancellationToken));
+    }
+
     public void SaveWindowsCodexSettings(JsonObject? request)
     {
         InvokeSaveOperation(
@@ -244,6 +255,92 @@ public sealed class TimelineProductSettingsService
                 stderr: ex.Message);
             throw;
         }
+    }
+
+    private async Task<JsonObject> InvokeSaveOperationAsync(
+        string productName,
+        string action,
+        Func<string, Task<JsonObject>> operation)
+    {
+        var operationId = _operations.NewOperationId("web");
+        var startedAt = DateTimeOffset.Now;
+        _operations.WriteOperationEvent(
+            operationId,
+            "web",
+            productName,
+            action,
+            "started",
+            "Web operation started.");
+
+        try
+        {
+            var result = await operation(operationId);
+            var durationMs = (int)(DateTimeOffset.Now - startedAt).TotalMilliseconds;
+            _operations.WriteOperationEvent(
+                operationId,
+                "web",
+                productName,
+                action,
+                "completed",
+                "Web operation completed.",
+                durationMs: durationMs);
+            return result;
+        }
+        catch (Exception ex)
+        {
+            var durationMs = (int)(DateTimeOffset.Now - startedAt).TotalMilliseconds;
+            _operations.WriteOperationEvent(
+                operationId,
+                "web",
+                productName,
+                action,
+                "failed",
+                ex.Message,
+                durationMs: durationMs,
+                stderr: ex.Message);
+            throw;
+        }
+    }
+
+    private async Task<JsonObject> SavePcSettingsCoreAsync(
+        JsonObject? request,
+        string operationId,
+        CancellationToken cancellationToken)
+    {
+        var body = new JsonObject();
+        var outputRoot = GetOutputPath(
+            request,
+            new JsonObject(),
+            ["outputRoot"],
+            ["outputRootPath"],
+            string.Empty);
+        if (!string.IsNullOrWhiteSpace(outputRoot))
+        {
+            body["outputRoot"] = outputRoot;
+        }
+
+        var instanceName = GetStringAny(request, ["instanceName", "instance_name"], string.Empty);
+        if (!string.IsNullOrWhiteSpace(instanceName))
+        {
+            body["instanceName"] = instanceName;
+        }
+
+        var apiPort = GetStringAny(request, ["apiPort", "api_port"], string.Empty);
+        if (!string.IsNullOrWhiteSpace(apiPort))
+        {
+            body["apiPort"] = apiPort;
+        }
+
+        var payload = await _api.PostJsonAsync(
+            "pc",
+            "TimelineForPC",
+            "/settings/save",
+            body,
+            60,
+            operationId,
+            cancellationToken) as JsonObject ?? new JsonObject();
+        CreateDirectoryIfPath(payload["outputRoot"]);
+        return payload;
     }
 
     private string GetRequiredProductPath(string productId, string displayName)
@@ -453,6 +550,20 @@ public sealed class TimelineProductSettingsService
     {
         var node = GetNode(source, name);
         return node is null ? fallback : ConvertTimelineText(node);
+    }
+
+    private static string GetStringAny(JsonObject? source, string[] names, string fallback)
+    {
+        foreach (var name in names)
+        {
+            var value = GetString(source, name, string.Empty);
+            if (!string.IsNullOrWhiteSpace(value))
+            {
+                return value;
+            }
+        }
+
+        return fallback;
     }
 
     private static string ConvertTimelineText(object? value)
