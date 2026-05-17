@@ -1,4 +1,4 @@
-# Sub-product command launcher removal
+# Sub-product API Integration
 
 ## Goal
 
@@ -24,8 +24,7 @@ product command launchers are not part of the normal integration contract.
     already running
   - does not start or stop products
   - skips products whose API is not reachable unless `-RequireRunning` is used
-- `scripts/smoke-audio-ps1-download.ps1`
-  - kept only as a compatibility filename
+- `scripts/smoke-audio-api-download.ps1`
   - uses the TimelineForAudio API for direct product download checks
 
 ## Completed follow-up
