@@ -4,12 +4,12 @@ This file keeps stable internal maintenance notes that are still useful after
 completed TODO and progress-log documents were removed.
 
 These notes are not an external product contract. They must not be used to
-change CLI/API inputs, outputs, generated file layouts, Docker names, ports, or
+change API inputs, outputs, generated file layouts, Docker names, ports, or
 user-visible behavior during refactoring.
 
 ## Refactor Rules
 
-- Preserve external behavior: UI behavior, CLI/API contracts, output files,
+- Preserve external behavior: UI behavior, API contracts, output files,
   default paths, Docker Compose names, ports, and volume semantics must not
   change during internal refactors.
 - Treat visible screen changes as out of scope for refactor-only work. Do not

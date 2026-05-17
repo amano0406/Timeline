@@ -122,7 +122,7 @@ uses Ollama.
 ## Sub-product connection model
 
 The current parent-to-sub-product integration is the sub-product's local API.
-Host CLI launchers are deprecated and must not be used for normal product
+Host API launchers are deprecated and must not be used for normal product
 operations.
 
 Timeline must not start a sub-product as a side effect of reading data or
