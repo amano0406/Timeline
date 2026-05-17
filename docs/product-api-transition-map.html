@@ -1135,7 +1135,7 @@
             <p>闔ｨ螟奇ｽｩ・ｱ邵ｺ・ｮ闕ｳﾂ髫包ｽｧ邵ｺ・ｧ邵ｺ蜷ｶﾂ繝ｻhatGPT 邵ｺ・ｨ WindowsCodex 邵ｺ・ｯ邵ｲ竏晞・邵ｺ蛟・ｽｼ螟奇ｽｩ・ｱ驍会ｽｻ UI 邵ｺ・ｨ邵ｺ蜉ｱ窶ｻ隰・ｽｱ邵ｺ繝ｻ竏ｪ邵ｺ蜷ｶﾂ繝ｻ/p>
             <dl class="facts">
               <dt>霑ｴ・ｾ髯ｦ謔滂ｽｯ・ｾ陟｢繝ｻ/dt>
-              <dd><code>items list --json</code>邵ｲ繧拱meline helper 邵ｺ・ｮ <code>/products/{id}/items</code>邵ｲ繝ｻ/dd>
+              <dd><code>POST /items/list</code>邵ｲ繧拱meline helper 邵ｺ・ｮ <code>/products/{id}/items</code>邵ｲ繝ｻ/dd>
               <dt>霑ｴ・ｾ髯ｦ蠕｡・ｽ・ｿ騾包ｽｨ驍ゅ・蝨・/dt>
               <dd>ChatGPT 郢ｧ・ｹ郢晢ｽｬ郢昴・繝ｩ闕ｳﾂ髫包ｽｧ邵ｲ莉拱ndowsCodex 郢ｧ・ｹ郢晢ｽｬ郢昴・繝ｩ闕ｳﾂ髫包ｽｧ邵ｲ繝ｻ/dd>
               <dt>郢昜ｻ｣ﾎ帷ｹ晢ｽ｡郢晢ｽｼ郢ｧ・ｿ陞溽判蟲ｩ</dt>
@@ -1211,7 +1211,7 @@
               <p>鬩穂ｸｻ謔臥ｸｺ・ｮ PC 髫ｪ蛟ｬ鮖ｸ邵ｺ・ｮ闕ｳﾂ髫包ｽｧ邵ｺ・ｧ邵ｺ蜷ｶﾂ繧画ｨ溯舉・ｨ邵ｺ・ｮ <code>items list</code> 邵ｺ・ｨ capture run 陞ｻ・･雎・ｽｴ郢ｧ蝣､・ｵ・ｱ陷ｷ蛹ｻ・邵ｺ・ｦ髫穂ｹ昶雷邵ｺ・ｾ邵ｺ蜷ｶﾂ繝ｻ/p>
               <dl class="facts">
                 <dt>霑ｴ・ｾ髯ｦ謔滂ｽｯ・ｾ陟｢繝ｻ/dt>
-                <dd><code>items list --json</code> 邵ｺ・ｨ陷・ｽｺ陷牙ｸ吶Ι郢ｧ・｣郢晢ｽｬ郢ｧ・ｯ郢晏現ﾎ懆怙繝ｻ繝ｻ run 陞ｻ・･雎・ｽｴ邵ｲ繝ｻ/dd>
+                <dd><code>POST /items/list</code> 邵ｺ・ｨ陷・ｽｺ陷牙ｸ吶Ι郢ｧ・｣郢晢ｽｬ郢ｧ・ｯ郢晏現ﾎ懆怙繝ｻ繝ｻ run 陞ｻ・･雎・ｽｴ邵ｲ繝ｻ/dd>
               </dl>
             </div>
 
@@ -1442,13 +1442,13 @@
               <tbody>
                 <tr>
                   <td><code>GET /pc/health</code></td>
-                  <td><code>doctor --json</code>, <code>smoke-test</code></td>
+                  <td><code>POST /doctor</code>, <code>POST /smoke-test</code></td>
                   <td>隴・ｽｰ髫穂ｹ礼ｴ幃・・/td>
                   <td>PC API 郢晏干ﾎ溽ｹｧ・ｻ郢ｧ・ｹ邵ｲ・｣ython邵ｲ・｣owerShell邵ｲ・栗M/WMI 邵ｺ・ｮ隴崢闖ｴ譛ｱ蜑樒ｹｧ螳夲ｽｻ・ｽ邵ｺ蜀暦ｽ｢・ｺ髫ｱ髦ｪ・邵ｺ・ｾ邵ｺ蜷ｶﾂ繧・ｽｮ貊・怙邵ｺ・ｮ capture 邵ｺ・ｯ邵ｺ蜉ｱ竏ｪ邵ｺ蟶呻ｽ鍋ｸｲ繝ｻ/td>
                 </tr>
                 <tr>
                   <td><code>GET /pc/status</code></td>
-                  <td><code>settings status --json</code>, <code>doctor --json</code>, <code>items list --json</code></td>
+                  <td><code>POST /settings/status</code>, <code>POST /doctor</code>, <code>POST /items/list</code></td>
                   <td>隴鯉ｽ｢陝・｡・ｵ・ｱ陷ｷ繝ｻ/td>
                   <td>Web UI 邵ｺ・ｫ邵ｲ迹夲ｽｨ蛟ｬ鮖ｸ邵ｺ・ｧ邵ｺ髦ｪ・玖ｿ･・ｶ隲ｷ荵敖ｰ邵ｲ髦ｪﾂ譴ｧ諤呵募ｾ後・髫ｪ蛟ｬ鮖ｸ邵ｺ・ｯ邵ｺ繝ｻ笆ｽ邵ｺ荵敖髦ｪ・帝恆譁撰ｼ邵ｺ・ｾ邵ｺ蜷ｶﾂ繝ｻ/td>
                 </tr>

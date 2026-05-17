@@ -138,6 +138,7 @@ controls the data root.
 
 ```powershell
 .\scripts\check-powershell-ascii.ps1
+.\scripts\check-sub-product-cli-removal.ps1
 .\scripts\smoke-thread-detail-api-bridge.ps1
 .\scripts\smoke-web.ps1
 .\scripts\test-product-uninstall.ps1
