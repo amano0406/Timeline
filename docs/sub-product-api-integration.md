@@ -24,6 +24,11 @@ product command launchers are not part of the normal integration contract.
     already running
   - does not start or stop products
   - skips products whose API is not reachable unless `-RequireRunning` is used
+- `scripts/check-sub-product-cli-removal.ps1`
+  - verifies sub-product manifests expose only runtime launchers
+  - rejects legacy CLI entrypoint filenames and old operation module names
+  - scans source files for retired Timeline-to-product command dispatch names
+  - does not start or stop products
 - `scripts/smoke-audio-api-download.ps1`
   - uses the TimelineForAudio API for direct product download checks
 

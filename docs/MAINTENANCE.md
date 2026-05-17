@@ -17,6 +17,7 @@ user-visible behavior during refactoring.
   user-facing behavior change is explicitly requested.
 - Keep sub-product operations behind public product APIs and start/stop launchers.
 - Do not enter sub-product Docker containers from Timeline.
+- Run `scripts/check-sub-product-cli-removal.ps1` after changing bundled sub-products or product manifests.
 - Keep PowerShell files ASCII-only.
 - Run `scripts/check-powershell-ascii.ps1` after editing PowerShell.
 - Run `scripts/smoke-thread-detail-api-bridge.ps1` after changing ChatGPT or
