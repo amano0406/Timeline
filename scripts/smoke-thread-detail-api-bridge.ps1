@@ -13,8 +13,8 @@ $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $chatGptRoot = "C:\apps\TimelineForChatGPT"
 $windowsCodexRoot = "C:\apps\TimelineForWindowsCodex"
-$chatGptProject = Join-Path $chatGptRoot "api\TimelineForChatGPT.HealthApi.csproj"
-$windowsCodexProject = Join-Path $windowsCodexRoot "api\TimelineForWindowsCodex.HealthApi\TimelineForWindowsCodex.HealthApi.csproj"
+$chatGptWorkerSrc = Join-Path $chatGptRoot "worker\src"
+$windowsCodexWorkerSrc = Join-Path $windowsCodexRoot "worker\src"
 $localApiProject = Join-Path $repoRoot "local-api\Timeline.LocalApi.csproj"
 
 function Assert-Smoke {
@@ -41,6 +41,50 @@ function Quote-Arg {
     param([string]$Value)
 
     return '"' + $Value.Replace('"', '\"') + '"'
+}
+
+function Start-PythonApi {
+    param(
+        [string]$Module,
+        [string]$WorkingDirectory,
+        [string]$PythonPath,
+        [hashtable]$Environment
+    )
+
+    $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
+    $python = (Get-Command python.exe -ErrorAction SilentlyContinue)
+    if ($null -eq $python) {
+        $python = Get-Command python -ErrorAction Stop
+    }
+    $startInfo.FileName = $python.Source
+    $startInfo.WorkingDirectory = $WorkingDirectory
+    $startInfo.UseShellExecute = $false
+    $startInfo.RedirectStandardOutput = $true
+    $startInfo.RedirectStandardError = $true
+    $startInfo.CreateNoWindow = $true
+    foreach ($key in $Environment.Keys) {
+        $startInfo.EnvironmentVariables[$key] = [string]$Environment[$key]
+    }
+    $currentPythonPath = $startInfo.EnvironmentVariables["PYTHONPATH"]
+    if ([string]::IsNullOrWhiteSpace($currentPythonPath)) {
+        $startInfo.EnvironmentVariables["PYTHONPATH"] = $PythonPath
+    }
+    else {
+        $startInfo.EnvironmentVariables["PYTHONPATH"] = $PythonPath + [System.IO.Path]::PathSeparator + $currentPythonPath
+    }
+
+    $startInfo.Arguments = "-m " + $Module
+    $process = [System.Diagnostics.Process]::Start($startInfo)
+    if ($null -eq $process) {
+        throw "Failed to start Python API process for $Module"
+    }
+
+    return [pscustomobject]@{
+        Process = $process
+        StdoutTask = $process.StandardOutput.ReadToEndAsync()
+        StderrTask = $process.StandardError.ReadToEndAsync()
+        Project = $Module
+    }
 }
 
 function Start-DotnetApi {
@@ -123,8 +167,8 @@ function Assert-ThreadDetail {
     Assert-Smoke -Condition ($null -ne $Detail.PSObject.Properties["messages"]) -Message "$Name messages property was missing."
 }
 
-Assert-Smoke -Condition (Test-Path -LiteralPath $chatGptProject -PathType Leaf) -Message "TimelineForChatGPT API project was not found: $chatGptProject"
-Assert-Smoke -Condition (Test-Path -LiteralPath $windowsCodexProject -PathType Leaf) -Message "TimelineForWindowsCodex API project was not found: $windowsCodexProject"
+Assert-Smoke -Condition (Test-Path -LiteralPath (Join-Path $chatGptWorkerSrc "timeline_for_chatgpt_worker\api_server.py") -PathType Leaf) -Message "TimelineForChatGPT worker API was not found."
+Assert-Smoke -Condition (Test-Path -LiteralPath (Join-Path $windowsCodexWorkerSrc "timeline_for_windows_codex_worker\api_server.py") -PathType Leaf) -Message "TimelineForWindowsCodex worker API was not found."
 Assert-Smoke -Condition (Test-Path -LiteralPath $localApiProject -PathType Leaf) -Message "Timeline Local API project was not found: $localApiProject"
 
 Assert-PortFree -Port $ChatGptApiPort
@@ -183,17 +227,25 @@ try {
     }
     Write-JsonFile -Path (Join-Path $windowsCodexItem "convert_info.json") -Value @{ ok = $true }
 
-    $processes += Start-DotnetApi `
-        -Project $chatGptProject `
+    $processes += Start-PythonApi `
+        -Module "timeline_for_chatgpt_worker.api_server" `
         -WorkingDirectory $chatGptRoot `
-        -Arguments ("-- --product-root " + (Quote-Arg $chatGptRoot) + " --port " + $ChatGptApiPort) `
-        -Environment @{ TIMELINE_FOR_CHATGPT_SETTINGS = $chatGptSettings }
+        -PythonPath $chatGptWorkerSrc `
+        -Environment @{
+            TIMELINE_FOR_CHATGPT_API_BIND_HOST = "127.0.0.1"
+            TIMELINE_FOR_CHATGPT_API_BIND_PORT = $ChatGptApiPort
+            TIMELINE_FOR_CHATGPT_SETTINGS = $chatGptSettings
+        }
 
-    $processes += Start-DotnetApi `
-        -Project $windowsCodexProject `
+    $processes += Start-PythonApi `
+        -Module "timeline_for_windows_codex_worker.api_server" `
         -WorkingDirectory $windowsCodexRoot `
-        -Arguments ("-- --product-root " + (Quote-Arg $windowsCodexRoot) + " --port " + $WindowsCodexApiPort) `
-        -Environment @{ TIMELINE_FOR_WINDOWS_CODEX_SETTINGS_PATH = $windowsCodexSettings }
+        -PythonPath $windowsCodexWorkerSrc `
+        -Environment @{
+            TIMELINE_FOR_WINDOWS_CODEX_API_BIND_HOST = "127.0.0.1"
+            TIMELINE_FOR_WINDOWS_CODEX_API_BIND_PORT = $WindowsCodexApiPort
+            TIMELINE_FOR_WINDOWS_CODEX_SETTINGS_PATH = $windowsCodexSettings
+        }
 
     Wait-Healthy -Url "http://127.0.0.1:$ChatGptApiPort/health" -TimeoutSeconds $TimeoutSeconds
     Wait-Healthy -Url "http://127.0.0.1:$WindowsCodexApiPort/health" -TimeoutSeconds $TimeoutSeconds

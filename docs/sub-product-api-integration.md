@@ -37,3 +37,8 @@ Python operation process per API request. TimelineForPC serves its normal local
 API from a resident Python process on the Windows host and calls the capture /
 item functions in-process. The normal Timeline integration path no longer uses
 product CLI command runners; start / stop remains the manifest launcher surface.
+
+Legacy host-side C# API projects, Dockerfiles for those APIs, and package-level
+`__main__.py` CLI entrypoints have been removed from the sub-products. Remaining
+process execution inside products is domain work such as ffmpeg probing or
+Windows PC collection, not Timeline-to-product command dispatch.

@@ -20,12 +20,12 @@ As of this check:
 | Product | Runtime shape | Docker Compose | Local API port | Ollama dependency |
 | --- | --- | --- | --- | --- |
 | Timeline | parent web, helper, worker, optional Ollama | yes | yes | yes |
-| TimelineForAudio | resident Docker worker + Windows host API | yes | yes | no |
-| TimelineForWindowsCodex | Docker Compose worker + Windows host API | yes | yes | no |
-| TimelineForChatGPT | Docker Compose worker + Windows host API | yes | yes | no |
+| TimelineForAudio | resident Docker worker with worker-hosted API | yes | yes | no |
+| TimelineForWindowsCodex | Docker Compose worker with worker-hosted API | yes | yes | no |
+| TimelineForChatGPT | Docker Compose worker with worker-hosted API | yes | yes | no |
 | TimelineForImage | resident Docker worker with API | yes | yes | no |
-| TimelineForVideo | resident Docker worker + Windows host API | yes | yes | no |
-| TimelineForPC | Windows host API | no | yes | no |
+| TimelineForVideo | resident Docker worker with worker-hosted API | yes | yes | no |
+| TimelineForPC | Windows host Python API | no | yes | no |
 
 Current Timeline defaults:
 
