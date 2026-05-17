@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Timeline サブ製品 API 移行整理</title>
+  <title>Timeline 郢ｧ・ｵ郢晏・・｣・ｽ陷ｩ繝ｻAPI 驕假ｽｻ髯ｦ譴ｧ邏幃・・/title>
   <style>
     :root {
       --bg: #f4f7fb;
@@ -211,7 +211,7 @@
     }
 
     details > summary::after {
-      content: "開く";
+      content: "鬮｢荵晢ｿ･";
       flex: 0 0 auto;
       border: 1px solid var(--line);
       border-radius: 999px;
@@ -223,7 +223,7 @@
     }
 
     details[open] > summary::after {
-      content: "閉じる";
+      content: "鬮｢蟲ｨﾂｧ郢ｧ繝ｻ;
     }
 
     .detail-body {
@@ -440,352 +440,336 @@
   <header class="hero">
     <section class="card hero-main">
       <div class="kicker">API transition map</div>
-      <h1>Timeline サブ製品 API 移行整理</h1>
+      <h1>Timeline 郢ｧ・ｵ郢晏・・｣・ｽ陷ｩ繝ｻAPI 驕假ｽｻ髯ｦ譴ｧ邏幃・・/h1>
       <p class="lead">
-        CLI 中心の入口を、各サブ製品のローカル API 契約へ移すための設計メモです。
-        目的は API 名を増やすことではなく、現行 CLI の責務を確認したうえで、変えるものと維持するものを管理し、
-        ユーザーに見せる操作を「状態確認」「設定」「更新」「記録」「元データ」「ダウンロード」に揃えることです。
-      </p>
+        command 闕ｳ・ｭ陟｢繝ｻ繝ｻ陷茨ｽ･陷ｿ・｣郢ｧ蛛ｵﾂ竏晄耳郢ｧ・ｵ郢晏・・｣・ｽ陷ｩ竏壹・郢晢ｽｭ郢晢ｽｼ郢ｧ・ｫ郢晢ｽｫ API 陞る・・ｴ繝ｻ竏磯§・ｻ邵ｺ蜷ｶ笳・ｹｧ竏壹・髫ｪ・ｭ髫ｪ蛹ｻﾎ鍋ｹ晢ｽ｢邵ｺ・ｧ邵ｺ蜷ｶﾂ繝ｻ        騾ｶ・ｮ騾ｧ繝ｻ繝ｻ API 陷ｷ髦ｪ・定・干・・ｸｺ蜷ｶ・・ｸｺ・ｨ邵ｺ・ｧ邵ｺ・ｯ邵ｺ・ｪ邵ｺ荳環竏ｫ讓滄勗繝ｻCLI 邵ｺ・ｮ髮具ｽｬ陷榊生・帝￡・ｺ髫ｱ髦ｪ・邵ｺ貅倪鴬邵ｺ蛹ｻ縲堤ｸｲ竏晢ｽ､蟲ｨ竏ｴ郢ｧ荵晢ｽらｸｺ・ｮ邵ｺ・ｨ驍ｯ・ｭ隰問・笘・ｹｧ荵晢ｽらｸｺ・ｮ郢ｧ蝣､・ｮ・｡騾・・・邵ｲ繝ｻ        郢晢ｽｦ郢晢ｽｼ郢ｧ・ｶ郢晢ｽｼ邵ｺ・ｫ髫穂ｹ昶雷郢ｧ蛹ｺ譯・抄諛奇ｽ堤ｸｲ讙取・隲ｷ迢暦ｽ｢・ｺ髫ｱ髦ｪﾂ髦ｪﾂ迹夲ｽｨ・ｭ陞ｳ螢ｹﾂ髦ｪﾂ譴ｧ蟲ｩ隴・ｽｰ邵ｲ髦ｪﾂ迹夲ｽｨ蛟ｬ鮖ｸ邵ｲ髦ｪﾂ謔溘・郢昴・繝ｻ郢ｧ・ｿ邵ｲ髦ｪﾂ蠕後Β郢ｧ・ｦ郢晢ｽｳ郢晢ｽｭ郢晢ｽｼ郢晏ｳｨﾂ髦ｪ竊楢ｬ繝ｻ竏ｴ郢ｧ荵晢ｼ・ｸｺ・ｨ邵ｺ・ｧ邵ｺ蜷ｶﾂ繝ｻ      </p>
     </section>
     <aside class="card hero-side">
-      <h2>読み方</h2>
+      <h2>髫ｱ・ｭ邵ｺ・ｿ隴・ｽｹ</h2>
       <p class="muted">
-        各 API は階層構造で整理しています。親の共通 API を全製品が持ち、製品ごとの差分は「ファイル」「会話」「PC記録」などの追加枝として扱います。
-        実装上の継承を強制する資料ではありませんが、Swagger と後続アプリケーションで契約が揺れないよう、概念上の親子関係を固定します。
-      </p>
+        陷ｷ繝ｻAPI 邵ｺ・ｯ鬮ｫ荳ｻ・ｱ・､隶堤洸ﾂ・ｰ邵ｺ・ｧ隰ｨ・ｴ騾・・・邵ｺ・ｦ邵ｺ繝ｻ竏ｪ邵ｺ蜷ｶﾂ繧奇ｽｦ・ｪ邵ｺ・ｮ陷茨ｽｱ鬨ｾ繝ｻAPI 郢ｧ雋槭・髯ｬ・ｽ陷ｩ竏壺ｲ隰問・笆邵ｲ竏ｬ・｣・ｽ陷ｩ竏夲ｼ・ｸｺ・ｨ邵ｺ・ｮ陝ｾ・ｮ陋ｻ繝ｻ繝ｻ邵ｲ蠕後Ψ郢ｧ・｡郢ｧ・､郢晢ｽｫ邵ｲ髦ｪﾂ蠕｡・ｼ螟奇ｽｩ・ｱ邵ｲ髦ｪﾂ險鼎髫ｪ蛟ｬ鮖ｸ邵ｲ髦ｪ竊醍ｸｺ・ｩ邵ｺ・ｮ髴托ｽｽ陷会｣ｰ隴ｫ譏ｴ竊堤ｸｺ蜉ｱ窶ｻ隰・ｽｱ邵ｺ繝ｻ竏ｪ邵ｺ蜷ｶﾂ繝ｻ        陞ｳ貅ｯ・｣繝ｻ・ｸ鄙ｫ繝ｻ驍ｯ蜻惹ｾ｡郢ｧ雋橸ｽｼ・ｷ陋ｻ・ｶ邵ｺ蜷ｶ・矩實繝ｻ萓ｭ邵ｺ・ｧ邵ｺ・ｯ邵ｺ繧・ｽ顔ｸｺ・ｾ邵ｺ蟶呻ｽ鍋ｸｺ蠕個繝ｾwagger 邵ｺ・ｨ陟墓ｪ趣ｽｶ螢ｹ縺・ｹ晏干ﾎ懃ｹｧ・ｱ郢晢ｽｼ郢ｧ・ｷ郢晢ｽｧ郢晢ｽｳ邵ｺ・ｧ陞る・・ｴ繝ｻ窶ｲ隰・ｺ郢ｧ蠕娯・邵ｺ繝ｻ・育ｸｺ繝ｻﾂ竏ｵ・ｦ繧・ｽｿ・ｵ闕ｳ鄙ｫ繝ｻ髫包ｽｪ陝・ｮ｣譛ｪ闖ｫ繧・ｽ定摎・ｺ陞ｳ螢ｹ・邵ｺ・ｾ邵ｺ蜷ｶﾂ繝ｻ      </p>
       <div class="note warning">
-        ここでの API は設計案から実装方針へ移行しています。現行実装は各サブ製品のローカル API と Timeline helper の HTTP API を中心に整理しています。
-      </div>
+        邵ｺ阮呻ｼ・ｸｺ・ｧ邵ｺ・ｮ API 邵ｺ・ｯ髫ｪ・ｭ髫ｪ蝓滂ｽ｡蛹ｻﾂｰ郢ｧ迚呻ｽｮ貅ｯ・｣繝ｻ蟀ｿ鬩･譏ｴ竏磯§・ｻ髯ｦ蠕鯉ｼ邵ｺ・ｦ邵ｺ繝ｻ竏ｪ邵ｺ蜷ｶﾂ繧画ｨ滄勗謔滂ｽｮ貅ｯ・｣繝ｻ繝ｻ陷ｷ繝ｻ縺礼ｹ晏・・｣・ｽ陷ｩ竏壹・郢晢ｽｭ郢晢ｽｼ郢ｧ・ｫ郢晢ｽｫ API 邵ｺ・ｨ Timeline helper 邵ｺ・ｮ HTTP API 郢ｧ蜑・ｽｸ・ｭ陟｢繝ｻ竊楢ｬｨ・ｴ騾・・・邵ｺ・ｦ邵ｺ繝ｻ竏ｪ邵ｺ蜷ｶﾂ繝ｻ      </div>
       <div class="toc">
-        <a href="#principles">1. 基本判断<span>現行入口、クラス概念、変更/維持の管理</span></a>
-        <a href="#current-state">1.1 現状整理<span>CLI / helper / Docker / PC の責務境界</span></a>
-        <a href="#class-model">1.2 クラス概念<span>共通親、ファイル系、会話系、PC記録系</span></a>
-        <a href="#change-ledger">1.3 移行管理<span>変えるもの、維持するもの、理由</span></a>
-        <a href="#common">2. 全製品共通 API<span>ヘルス、状態、設定、更新、記録</span></a>
-        <a href="#groups">3. 製品グループ別 API<span>ファイル系、会話系、PC記録系</span></a>
-        <a href="#products">4. 製品別の現行対応<span>現在の CLI / UI との対応</span></a>
-        <a href="#long-running">5. 長時間処理の扱い<span>進捗、キュー、キャンセル、復旧</span></a>
-        <a href="#considerations">6. あるべき配慮<span>入れる、予約する、入れないを分ける</span></a>
-        <a href="#schemas">7. 返却形式<span>Swagger 化で共通化する形</span></a>
+        <a href="#principles">1. 陜難ｽｺ隴幢ｽｬ陋ｻ・､隴・ｽｭ<span>霑ｴ・ｾ髯ｦ謔溘・陷ｿ・｣邵ｲ竏壹￠郢晢ｽｩ郢ｧ・ｹ隶弱ｇ・ｿ・ｵ邵ｲ竏晢ｽ､逕ｻ蟲ｩ/驍ｯ・ｭ隰問・繝ｻ驍ゑｽ｡騾・・/span></a>
+        <a href="#current-state">1.1 霑ｴ・ｾ霑･・ｶ隰ｨ・ｴ騾・・span>API / helper / Docker / PC 邵ｺ・ｮ髮具ｽｬ陷榊雀・｢繝ｻ髦・/span></a>
+        <a href="#class-model">1.2 郢ｧ・ｯ郢晢ｽｩ郢ｧ・ｹ隶弱ｇ・ｿ・ｵ<span>陷茨ｽｱ鬨ｾ螟奇ｽｦ・ｪ邵ｲ竏壹Ψ郢ｧ・｡郢ｧ・､郢晢ｽｫ驍会ｽｻ邵ｲ竏ｽ・ｼ螟奇ｽｩ・ｱ驍会ｽｻ邵ｲ・｣C髫ｪ蛟ｬ鮖ｸ驍会ｽｻ</span></a>
+        <a href="#change-ledger">1.3 驕假ｽｻ髯ｦ讙趣ｽｮ・｡騾・・span>陞溷ｳｨ竏ｴ郢ｧ荵晢ｽらｸｺ・ｮ邵ｲ竏ｫ・ｶ・ｭ隰問・笘・ｹｧ荵晢ｽらｸｺ・ｮ邵ｲ竏ｫ轤企包ｽｱ</span></a>
+        <a href="#common">2. 陷茨ｽｨ髯ｬ・ｽ陷ｩ竏昴・鬨ｾ繝ｻAPI<span>郢晏･ﾎ晉ｹｧ・ｹ邵ｲ竏ｫ諞ｾ隲ｷ荵敖竏ｬ・ｨ・ｭ陞ｳ螢ｹﾂ竏ｵ蟲ｩ隴・ｽｰ邵ｲ竏ｬ・ｨ蛟ｬ鮖ｸ</span></a>
+        <a href="#groups">3. 髯ｬ・ｽ陷ｩ竏壹￡郢晢ｽｫ郢晢ｽｼ郢晄懈肩 API<span>郢晁ｼ斐＜郢ｧ・､郢晢ｽｫ驍会ｽｻ邵ｲ竏ｽ・ｼ螟奇ｽｩ・ｱ驍会ｽｻ邵ｲ・｣C髫ｪ蛟ｬ鮖ｸ驍会ｽｻ</span></a>
+        <a href="#products">4. 髯ｬ・ｽ陷ｩ竏晄肩邵ｺ・ｮ霑ｴ・ｾ髯ｦ謔滂ｽｯ・ｾ陟｢繝ｻspan>霑ｴ・ｾ陜ｨ・ｨ邵ｺ・ｮ command / UI 邵ｺ・ｨ邵ｺ・ｮ陝・ｽｾ陟｢繝ｻ/span></a>
+        <a href="#long-running">5. 鬮滂ｽｷ隴弱ｋ菫｣陷・ｽｦ騾・・繝ｻ隰・ｽｱ邵ｺ繝ｻspan>鬨ｾ・ｲ隰仙干ﾂ竏壹￥郢晢ｽ･郢晢ｽｼ邵ｲ竏壹￥郢晢ｽ｣郢晢ｽｳ郢ｧ・ｻ郢晢ｽｫ邵ｲ竏晢ｽｾ・ｩ隴鯉ｽｧ</span></a>
+        <a href="#considerations">6. 邵ｺ繧・ｽ狗ｸｺ・ｹ邵ｺ蝓ｼ繝ｻ隲ｷ・ｮ<span>陷茨ｽ･郢ｧ蠕鯉ｽ狗ｸｲ竏ｽ・ｺ閧ｲ・ｴ繝ｻ笘・ｹｧ荵敖竏昴・郢ｧ蠕娯・邵ｺ繝ｻ・定崕繝ｻ・郢ｧ繝ｻ/span></a>
+        <a href="#schemas">7. 髴第ｳ悟陪陟厄ｽ｢陟代・span>Swagger 陋ｹ謔ｶ縲定怦・ｱ鬨ｾ螢ｼ蝟ｧ邵ｺ蜷ｶ・玖厄ｽ｢</span></a>
       </div>
     </aside>
   </header>
 
   <section id="principles" class="card section">
-    <h2>1. 基本判断</h2>
+    <h2>1. 陜難ｽｺ隴幢ｽｬ陋ｻ・､隴・ｽｭ</h2>
     <div class="grid-3">
       <div class="mini">
-        <h3>共通化するもの</h3>
-        <p>ユーザーの操作名は揃えます。状態確認、設定、更新、記録一覧、ダウンロード、処理履歴は全製品で同じ言葉にします。</p>
+        <h3>陷茨ｽｱ鬨ｾ螢ｼ蝟ｧ邵ｺ蜷ｶ・狗ｹｧ繧・・</h3>
+        <p>郢晢ｽｦ郢晢ｽｼ郢ｧ・ｶ郢晢ｽｼ邵ｺ・ｮ隰ｫ蝣ｺ・ｽ諛ｷ骭千ｸｺ・ｯ隰繝ｻ竏ｴ邵ｺ・ｾ邵ｺ蜷ｶﾂ繧画・隲ｷ迢暦ｽ｢・ｺ髫ｱ髦ｪﾂ竏ｬ・ｨ・ｭ陞ｳ螢ｹﾂ竏ｵ蟲ｩ隴・ｽｰ邵ｲ竏ｬ・ｨ蛟ｬ鮖ｸ闕ｳﾂ髫包ｽｧ邵ｲ竏壹Β郢ｧ・ｦ郢晢ｽｳ郢晢ｽｭ郢晢ｽｼ郢晏ｳｨﾂ竏昴・騾・・・ｱ・･雎・ｽｴ邵ｺ・ｯ陷茨ｽｨ髯ｬ・ｽ陷ｩ竏壹定惺蠕個ｧ髫ｪﾂ髣｡蟲ｨ竊鍋ｸｺ蜉ｱ竏ｪ邵ｺ蜷ｶﾂ繝ｻ/p>
       </div>
       <div class="mini">
-        <h3>差分にするもの</h3>
-        <p>元データの形だけを差分にします。音声・画像・動画はファイル、ChatGPT と WindowsCodex は会話、PC は PC記録です。</p>
+        <h3>陝ｾ・ｮ陋ｻ繝ｻ竊鍋ｸｺ蜷ｶ・狗ｹｧ繧・・</h3>
+        <p>陷医・繝ｧ郢晢ｽｼ郢ｧ・ｿ邵ｺ・ｮ陟厄ｽ｢邵ｺ・ｰ邵ｺ莉｣・定淦・ｮ陋ｻ繝ｻ竊鍋ｸｺ蜉ｱ竏ｪ邵ｺ蜷ｶﾂ繧区ｵｹ陞｢・ｰ郢晢ｽｻ騾包ｽｻ陷剃ｸ翫・陷肴・蛻､邵ｺ・ｯ郢晁ｼ斐＜郢ｧ・､郢晢ｽｫ邵ｲ・敬atGPT 邵ｺ・ｨ WindowsCodex 邵ｺ・ｯ闔ｨ螟奇ｽｩ・ｱ邵ｲ・｣C 邵ｺ・ｯ PC髫ｪ蛟ｬ鮖ｸ邵ｺ・ｧ邵ｺ蜷ｶﾂ繝ｻ/p>
       </div>
       <div class="mini">
-        <h3>残すもの</h3>
-        <p>`start.ps1` / `stop.ps1` は Docker やローカル実行環境の起動停止として残します。CLI は API を叩く運用ラッパーに降格できます。</p>
+        <h3>隹ｿ荵昶・郢ｧ繧・・</h3>
+        <p>`start.ps1` / `stop.ps1` 邵ｺ・ｯ Docker 郢ｧ繝ｻﾎ溽ｹ晢ｽｼ郢ｧ・ｫ郢晢ｽｫ陞ｳ貅ｯ・｡讙手・陟・・繝ｻ隘搾ｽｷ陷榊供笳剰ｱ・ｽ｢邵ｺ・ｨ邵ｺ蜉ｱ窶ｻ隹ｿ荵晢ｼ邵ｺ・ｾ邵ｺ蜷ｶﾂ繝ｻLI 邵ｺ・ｯ API 郢ｧ雋槫ｨｼ邵ｺ蝓篠ｰ騾包ｽｨ郢晢ｽｩ郢昴・繝ｱ郢晢ｽｼ邵ｺ・ｫ鬮ｯ閧ｴ・ｰ・ｼ邵ｺ・ｧ邵ｺ髦ｪ竏ｪ邵ｺ蜷ｶﾂ繝ｻ/p>
       </div>
     </div>
 
     <div class="note">
-      API の URL は開発者向けには英語ですが、画面表示では「records = 記録」「tasks = 処理」「sources = 元データ」「conversations = 会話」のように日本語名を併記します。
-    </div>
+      API 邵ｺ・ｮ URL 邵ｺ・ｯ鬮｢迢怜験髢繝ｻ鬮・ｸｺ莉｣竊鍋ｸｺ・ｯ髣搾ｽｱ髫ｱ讒ｭ縲堤ｸｺ蜷ｶ窶ｲ邵ｲ竏ｫ蛻､鬮ｱ・｢髯ｦ・ｨ驕会ｽｺ邵ｺ・ｧ邵ｺ・ｯ邵ｲ鄂ｫecords = 髫ｪ蛟ｬ鮖ｸ邵ｲ髦ｪﾂ闕蛎sks = 陷・ｽｦ騾・・ﾂ髦ｪﾂ闌姉urces = 陷医・繝ｧ郢晢ｽｼ郢ｧ・ｿ邵ｲ髦ｪﾂ諷ｶonversations = 闔ｨ螟奇ｽｩ・ｱ邵ｲ髦ｪ繝ｻ郢ｧ蛹ｻ竕ｧ邵ｺ・ｫ隴鯉ｽ･隴幢ｽｬ髫ｱ讒ｫ骭千ｹｧ蜑・ｽｽ・ｵ髫ｪ蛟･・邵ｺ・ｾ邵ｺ蜷ｶﾂ繝ｻ    </div>
 
     <div class="table-wrap">
       <table>
         <thead>
           <tr>
-            <th>判断</th>
-            <th>採用する形</th>
-            <th>理由</th>
+            <th>陋ｻ・､隴・ｽｭ</th>
+            <th>隰暦ｽ｡騾包ｽｨ邵ｺ蜷ｶ・玖厄ｽ｢</th>
+            <th>騾・・鄂ｰ</th>
           </tr>
         </thead>
         <tbody>
           <tr>
-            <td>製品別に `items refresh` を分けるか</td>
-            <td><code>POST /refresh</code> に統一</td>
-            <td>ユーザーにとっては全製品とも「最新状態に更新する」です。差分はリクエスト本文と内部処理に閉じ込めます。</td>
+            <td>髯ｬ・ｽ陷ｩ竏晄肩邵ｺ・ｫ `items refresh` 郢ｧ雋槭・邵ｺ莉｣・狗ｸｺ繝ｻ/td>
+            <td><code>POST /refresh</code> 邵ｺ・ｫ驍ｨ・ｱ闕ｳﾂ</td>
+            <td>郢晢ｽｦ郢晢ｽｼ郢ｧ・ｶ郢晢ｽｼ邵ｺ・ｫ邵ｺ・ｨ邵ｺ・｣邵ｺ・ｦ邵ｺ・ｯ陷茨ｽｨ髯ｬ・ｽ陷ｩ竏壺・郢ｧ繧・譴ｧ諤呵ｭ・ｽｰ霑･・ｶ隲ｷ荵昶・隴厄ｽｴ隴・ｽｰ邵ｺ蜷ｶ・狗ｸｲ髦ｪ縲堤ｸｺ蜷ｶﾂ繧・ｽｷ・ｮ陋ｻ繝ｻ繝ｻ郢晢ｽｪ郢ｧ・ｯ郢ｧ・ｨ郢ｧ・ｹ郢晏沺謔ｽ隴√・竊定怙繝ｻﾎ夊怎・ｦ騾・・竊馴ｫ｢蟲ｨﾂｧ髴趣ｽｼ郢ｧ竏壺穐邵ｺ蜷ｶﾂ繝ｻ/td>
           </tr>
           <tr>
-            <td>`items` という語を前面に出すか</td>
-            <td><code>/records</code> を正面にし、内部で item と対応</td>
-            <td>一般ユーザーには「記録」の方が分かりやすいです。既存成果物の item id は互換情報として残せます。</td>
+            <td>`items` 邵ｺ・ｨ邵ｺ繝ｻ竕ｧ髫ｱ讒ｭ・定恆蝓ｼ謫・ｸｺ・ｫ陷・ｽｺ邵ｺ蜷ｶﾂｰ</td>
+            <td><code>/records</code> 郢ｧ蜻茨ｽｭ・｣鬮ｱ・｢邵ｺ・ｫ邵ｺ蜉ｱﾂ竏昴・鬩幢ｽｨ邵ｺ・ｧ item 邵ｺ・ｨ陝・ｽｾ陟｢繝ｻ/td>
+            <td>闕ｳﾂ髣奇ｽｬ郢晢ｽｦ郢晢ｽｼ郢ｧ・ｶ郢晢ｽｼ邵ｺ・ｫ邵ｺ・ｯ邵ｲ迹夲ｽｨ蛟ｬ鮖ｸ邵ｲ髦ｪ繝ｻ隴・ｽｹ邵ｺ謔溘・邵ｺ荵晢ｽ顔ｹｧ繝ｻ笘・ｸｺ繝ｻ縲堤ｸｺ蜷ｶﾂ繧磯㈹陝・ｿｶ繝ｻ隴ｫ諛・ｻ・ｸｺ・ｮ item id 邵ｺ・ｯ闔蜻磯共隲繝ｻ・ｰ・ｱ邵ｺ・ｨ邵ｺ蜉ｱ窶ｻ隹ｿ荵昶雷邵ｺ・ｾ邵ｺ蜷ｶﾂ繝ｻ/td>
           </tr>
           <tr>
-            <td>ヘルスを分けるか</td>
-            <td><code>/health</code> と <code>/status</code> を分ける</td>
-            <td><code>/health</code> は機械監視用、<code>/status</code> は画面表示用です。用途が違うため返す情報も分けます。</td>
+            <td>郢晏･ﾎ晉ｹｧ・ｹ郢ｧ雋槭・邵ｺ莉｣・狗ｸｺ繝ｻ/td>
+            <td><code>/health</code> 邵ｺ・ｨ <code>/status</code> 郢ｧ雋槭・邵ｺ莉｣・・/td>
+            <td><code>/health</code> 邵ｺ・ｯ隶匁ｻ難ｽ｢・ｰ騾ｶ・｣髫穂ｹ溽舞邵ｲ繝ｻcode>/status</code> 邵ｺ・ｯ騾包ｽｻ鬮ｱ・｢髯ｦ・ｨ驕会ｽｺ騾包ｽｨ邵ｺ・ｧ邵ｺ蜷ｶﾂ繧臥舞鬨ｾ譁絶ｲ鬩戊ｼ披鴬邵ｺ貅假ｽ・恆譁絶・隲繝ｻ・ｰ・ｱ郢ｧ繧・・邵ｺ莉｣竏ｪ邵ｺ蜷ｶﾂ繝ｻ/td>
           </tr>
           <tr>
-            <td>ChatGPT と WindowsCodex を別概念にするか</td>
-            <td>両方 <code>/conversations</code> を持つ会話系にする</td>
-            <td>どちらも会話スレッドの一覧・詳細・メッセージ・タイムラインを扱うためです。ChatGPT の ZIP だけ <code>/imports</code> として追加します。</td>
+            <td>ChatGPT 邵ｺ・ｨ WindowsCodex 郢ｧ雋樊肩隶弱ｇ・ｿ・ｵ邵ｺ・ｫ邵ｺ蜷ｶ・狗ｸｺ繝ｻ/td>
+            <td>闕ｳ・｡隴・ｽｹ <code>/conversations</code> 郢ｧ蜻域亜邵ｺ・､闔ｨ螟奇ｽｩ・ｱ驍会ｽｻ邵ｺ・ｫ邵ｺ蜷ｶ・・/td>
+            <td>邵ｺ・ｩ邵ｺ・｡郢ｧ蟲ｨ・り耳螟奇ｽｩ・ｱ郢ｧ・ｹ郢晢ｽｬ郢昴・繝ｩ邵ｺ・ｮ闕ｳﾂ髫包ｽｧ郢晢ｽｻ髫ｧ・ｳ驍擾ｽｰ郢晢ｽｻ郢晢ｽ｡郢昴・縺晉ｹ晢ｽｼ郢ｧ・ｸ郢晢ｽｻ郢ｧ・ｿ郢ｧ・､郢晢｣ｰ郢晢ｽｩ郢ｧ・､郢晢ｽｳ郢ｧ蜻域｡ｶ邵ｺ繝ｻ笳・ｹｧ竏壹堤ｸｺ蜷ｶﾂ繝ｻhatGPT 邵ｺ・ｮ ZIP 邵ｺ・ｰ邵ｺ繝ｻ<code>/imports</code> 邵ｺ・ｨ邵ｺ蜉ｱ窶ｻ髴托ｽｽ陷会｣ｰ邵ｺ蜉ｱ竏ｪ邵ｺ蜷ｶﾂ繝ｻ/td>
           </tr>
           <tr>
-            <td>TimelineForPC をファイル系に寄せるか</td>
-            <td><code>/captures</code> を持つ PC記録系にする</td>
-            <td>PC は元ファイルを変換するのではなく、その時点のPC状態を記録します。ファイル一覧や会話一覧とは本質が違います。</td>
+            <td>TimelineForPC 郢ｧ蛛ｵ繝ｵ郢ｧ・｡郢ｧ・､郢晢ｽｫ驍会ｽｻ邵ｺ・ｫ陝・・笳狗ｹｧ荵敖ｰ</td>
+            <td><code>/captures</code> 郢ｧ蜻域亜邵ｺ・､ PC髫ｪ蛟ｬ鮖ｸ驍会ｽｻ邵ｺ・ｫ邵ｺ蜷ｶ・・/td>
+            <td>PC 邵ｺ・ｯ陷医・繝ｵ郢ｧ・｡郢ｧ・､郢晢ｽｫ郢ｧ雋橸ｽ､逕ｻ驪､邵ｺ蜷ｶ・狗ｸｺ・ｮ邵ｺ・ｧ邵ｺ・ｯ邵ｺ・ｪ邵ｺ荳環竏壺落邵ｺ・ｮ隴弱ｉ縺帷ｸｺ・ｮPC霑･・ｶ隲ｷ荵晢ｽ帝坎蛟ｬ鮖ｸ邵ｺ蜉ｱ竏ｪ邵ｺ蜷ｶﾂ繧・Ψ郢ｧ・｡郢ｧ・､郢晢ｽｫ闕ｳﾂ髫包ｽｧ郢ｧ繝ｻ・ｼ螟奇ｽｩ・ｱ闕ｳﾂ髫包ｽｧ邵ｺ・ｨ邵ｺ・ｯ隴幢ｽｬ髮会ｽｪ邵ｺ遒・ｼ・ｸｺ繝ｻ竏ｪ邵ｺ蜷ｶﾂ繝ｻ/td>
           </tr>
         </tbody>
       </table>
     </div>
 
-    <h3 id="current-state" style="margin-top: 22px;">1.1 現状整理</h3>
+    <h3 id="current-state" style="margin-top: 22px;">1.1 霑ｴ・ｾ霑･・ｶ隰ｨ・ｴ騾・・/h3>
     <p class="muted">
-      現在は「単体製品の入口」と「Timeline Web からの入口」が分かれています。
-      単体製品では CLI が正式入口で、Timeline Web では C# Local API が HTTP を受けて CLI / 既存出力 / 設定ファイルを読んでいます。
-      API 化では、この二重構造をいきなり壊すのではなく、外部契約を Local API に固定し、内部実装として既存 CLI / PowerShell 関数を段階的に使い続けます。
-    </p>
+      霑ｴ・ｾ陜ｨ・ｨ邵ｺ・ｯ邵ｲ謔溯・闖ｴ讌｢・｣・ｽ陷ｩ竏壹・陷茨ｽ･陷ｿ・｣邵ｲ髦ｪ竊堤ｸｲ蜊ｦimeline Web 邵ｺ荵晢ｽ臥ｸｺ・ｮ陷茨ｽ･陷ｿ・｣邵ｲ髦ｪ窶ｲ陋ｻ繝ｻﾂｰ郢ｧ蠕娯ｻ邵ｺ繝ｻ竏ｪ邵ｺ蜷ｶﾂ繝ｻ      陷雁・ｽｽ讌｢・｣・ｽ陷ｩ竏壹堤ｸｺ・ｯ command 邵ｺ譴ｧ・ｭ・｣陟台ｸ槭・陷ｿ・｣邵ｺ・ｧ邵ｲ繧拱meline Web 邵ｺ・ｧ邵ｺ・ｯ C# Local API 邵ｺ繝ｻHTTP 郢ｧ雋槫･ｳ邵ｺ莉｣窶ｻ command / 隴鯉ｽ｢陝・ｼ懊・陷峨・/ 髫ｪ・ｭ陞ｳ螢ｹ繝ｵ郢ｧ・｡郢ｧ・､郢晢ｽｫ郢ｧ螳夲ｽｪ・ｭ郢ｧ阮吶堤ｸｺ繝ｻ竏ｪ邵ｺ蜷ｶﾂ繝ｻ      API 陋ｹ謔ｶ縲堤ｸｺ・ｯ邵ｲ竏夲ｼ・ｸｺ・ｮ闔遒√裟隶堤洸ﾂ・ｰ郢ｧ蛛ｵ・樒ｸｺ髦ｪ竊醍ｹｧ髮・ｽ｣鄙ｫ笘・ｸｺ・ｮ邵ｺ・ｧ邵ｺ・ｯ邵ｺ・ｪ邵ｺ荳環竏晢ｽ､螟慚夊桙驢搾ｽｴ繝ｻ・・Local API 邵ｺ・ｫ陜暦ｽｺ陞ｳ螢ｹ・邵ｲ竏昴・鬩幢ｽｨ陞ｳ貅ｯ・｣繝ｻ竊堤ｸｺ蜉ｱ窶ｻ隴鯉ｽ｢陝・・API / PowerShell 鬮｢・｢隰ｨ・ｰ郢ｧ蜻茨ｽｮ・ｵ鬮ｫ螳亥飭邵ｺ・ｫ闖ｴ・ｿ邵ｺ繝ｻ・ｶ螢ｹ・邵ｺ・ｾ邵ｺ蜷ｶﾂ繝ｻ    </p>
 
     <div class="table-wrap">
       <table>
         <thead>
           <tr>
-            <th>現行の入口</th>
-            <th>現在の責務</th>
-            <th>完成版での扱い</th>
-            <th>理由</th>
+            <th>霑ｴ・ｾ髯ｦ蠕後・陷茨ｽ･陷ｿ・｣</th>
+            <th>霑ｴ・ｾ陜ｨ・ｨ邵ｺ・ｮ髮具ｽｬ陷阪・/th>
+            <th>陞ｳ譴ｧ繝ｻ霑壼現縲堤ｸｺ・ｮ隰・ｽｱ邵ｺ繝ｻ/th>
+            <th>騾・・鄂ｰ</th>
           </tr>
         </thead>
         <tbody>
           <tr>
             <td><code>start.ps1</code> / <code>stop.ps1</code></td>
-            <td>Docker worker、ローカル実行環境、補助サーバーの起動停止。</td>
-            <td><span class="badge keep">維持</span> 実行環境のライフサイクル操作として残す。</td>
-            <td>起動停止は API の業務操作ではなく、Docker / host runtime に対する運用操作だからです。</td>
+            <td>Docker worker邵ｲ竏墅溽ｹ晢ｽｼ郢ｧ・ｫ郢晢ｽｫ陞ｳ貅ｯ・｡讙手・陟・・ﾂ竏ｬ・｣諛ｷ蜍ｧ郢ｧ・ｵ郢晢ｽｼ郢晁・繝ｻ邵ｺ・ｮ隘搾ｽｷ陷榊供笳剰ｱ・ｽ｢邵ｲ繝ｻ/td>
+            <td><span class="badge keep">驍ｯ・ｭ隰悶・/span> 陞ｳ貅ｯ・｡讙手・陟・・繝ｻ郢晢ｽｩ郢ｧ・､郢晁ｼ斐＠郢ｧ・､郢ｧ・ｯ郢晢ｽｫ隰ｫ蝣ｺ・ｽ諛岩・邵ｺ蜉ｱ窶ｻ隹ｿ荵昶・邵ｲ繝ｻ/td>
+            <td>隘搾ｽｷ陷榊供笳剰ｱ・ｽ｢邵ｺ・ｯ API 邵ｺ・ｮ隶鯉ｽｭ陷榊綜譯・抄諛翫堤ｸｺ・ｯ邵ｺ・ｪ邵ｺ荳環・姉cker / host runtime 邵ｺ・ｫ陝・ｽｾ邵ｺ蜷ｶ・矩ｩ慕距逡題ｬｫ蝣ｺ・ｽ諛岩味邵ｺ荵晢ｽ臥ｸｺ・ｧ邵ｺ蜷ｶﾂ繝ｻ/td>
           </tr>
           <tr>
-            <td>ホストCLIランチャー</td>
-            <td>旧単体製品の正面入口。</td>
-            <td><span class="badge change">変更</span> UI の正面入口から外し、ローカル API に置き換える。</td>
-            <td>Web UI、ヘルスチェック、複数アクセス、進捗確認は CLI 標準出力より HTTP API の方が安定して扱えるためです。</td>
+            <td>郢晏ｸ吶○郢昴・LI郢晢ｽｩ郢晢ｽｳ郢昶・ﾎ慕ｹ晢ｽｼ</td>
+            <td>隴鯉ｽｧ陷雁・ｽｽ讌｢・｣・ｽ陷ｩ竏壹・雎・ｽ｣鬮ｱ・｢陷茨ｽ･陷ｿ・｣邵ｲ繝ｻ/td>
+            <td><span class="badge change">陞溽判蟲ｩ</span> UI 邵ｺ・ｮ雎・ｽ｣鬮ｱ・｢陷茨ｽ･陷ｿ・｣邵ｺ荵晢ｽ芽棔謔ｶ・邵ｲ竏墅溽ｹ晢ｽｼ郢ｧ・ｫ郢晢ｽｫ API 邵ｺ・ｫ驗ゑｽｮ邵ｺ閧ｴ驪､邵ｺ蛹ｻ・狗ｸｲ繝ｻ/td>
+            <td>Web UI邵ｲ竏壹・郢晢ｽｫ郢ｧ・ｹ郢昶・縺臥ｹ昴・縺醍ｸｲ竏ｬ・､繝ｻ辟夂ｹｧ・｢郢ｧ・ｯ郢ｧ・ｻ郢ｧ・ｹ邵ｲ繝ｻﾂ・ｲ隰千､ｼ・｢・ｺ髫ｱ髦ｪ繝ｻ command 隶灘綜・ｺ髢繝ｻ陷牙ｸ呻ｽ育ｹｧ繝ｻHTTP API 邵ｺ・ｮ隴・ｽｹ邵ｺ謔滂ｽｮ迚呻ｽｮ螢ｹ・邵ｺ・ｦ隰・ｽｱ邵ｺ蛹ｻ・狗ｸｺ貅假ｽ∫ｸｺ・ｧ邵ｺ蜷ｶﾂ繝ｻ/td>
           </tr>
           <tr>
-            <td>Timeline helper の <code>/products/{id}/...</code></td>
-            <td>現行 Web UI 用の薄い HTTP API。裏側で CLI や既存出力を読む。</td>
-            <td><span class="badge change">変更</span> 将来のサブ製品 API の互換アダプター、または親製品の集約 API として整理する。</td>
-            <td>既に画面は HTTP を使っているため、ここを根拠に Swagger 契約へ移すのが最も現実的です。</td>
+            <td>Timeline helper 邵ｺ・ｮ <code>/products/{id}/...</code></td>
+            <td>霑ｴ・ｾ髯ｦ繝ｻWeb UI 騾包ｽｨ邵ｺ・ｮ髦ｮ繝ｻ・・HTTP API邵ｲ繧奇ｽ｣荳槭・邵ｺ・ｧ command 郢ｧ繝ｻ驥瑚氛莨懊・陷牙ｸ呻ｽ帝坡・ｭ郢ｧﾂ邵ｲ繝ｻ/td>
+            <td><span class="badge change">陞溽判蟲ｩ</span> 陝・・謫らｸｺ・ｮ郢ｧ・ｵ郢晏・・｣・ｽ陷ｩ繝ｻAPI 邵ｺ・ｮ闔蜻磯共郢ｧ・｢郢敖郢晏干縺｡郢晢ｽｼ邵ｲ竏壺穐邵ｺ貅倥・髫包ｽｪ髯ｬ・ｽ陷ｩ竏壹・鬮ｮ繝ｻ・ｴ繝ｻAPI 邵ｺ・ｨ邵ｺ蜉ｱ窶ｻ隰ｨ・ｴ騾・・笘・ｹｧ荵敖繝ｻ/td>
+            <td>隴鯉ｽ｢邵ｺ・ｫ騾包ｽｻ鬮ｱ・｢邵ｺ・ｯ HTTP 郢ｧ蜑・ｽｽ・ｿ邵ｺ・｣邵ｺ・ｦ邵ｺ繝ｻ・狗ｸｺ貅假ｽ∫ｸｲ竏夲ｼ・ｸｺ阮呻ｽ定ｭｬ・ｹ隲｡・ｰ邵ｺ・ｫ Swagger 陞る・・ｴ繝ｻ竏磯§・ｻ邵ｺ蜷ｶ繝ｻ邵ｺ譴ｧ諤咏ｹｧ繧画ｨ溯楜貅ｽ蝎ｪ邵ｺ・ｧ邵ｺ蜷ｶﾂ繝ｻ/td>
           </tr>
           <tr>
             <td>Docker worker</td>
-            <td>Audio / Image / Video / ChatGPT / WindowsCodex の実処理を担当。</td>
-            <td><span class="badge keep">維持</span> 処理基盤として残し、API は worker の状態と処理受付を公開する。</td>
-            <td>重い処理や依存関係を Docker に閉じ込める設計は妥当です。API 化は入口の整理であり、処理基盤の否定ではありません。</td>
+            <td>Audio / Image / Video / ChatGPT / WindowsCodex 邵ｺ・ｮ陞ｳ貅ｷ繝ｻ騾・・・定ｫ｡繝ｻ・ｽ阮卍繝ｻ/td>
+            <td><span class="badge keep">驍ｯ・ｭ隰悶・/span> 陷・ｽｦ騾・・貂暮ｶ・､邵ｺ・ｨ邵ｺ蜉ｱ窶ｻ隹ｿ荵晢ｼ邵ｲ縲￣I 邵ｺ・ｯ worker 邵ｺ・ｮ霑･・ｶ隲ｷ荵昶・陷・ｽｦ騾・・螂ｳ闔牙･・定怦・ｬ鬮｢荵昶・郢ｧ荵敖繝ｻ/td>
+            <td>鬩･髦ｪ・櫁怎・ｦ騾・・・・嵩譎擾ｽｭ蛟ｬ譛ｪ闖ｫ繧・ｽ・Docker 邵ｺ・ｫ鬮｢蟲ｨﾂｧ髴趣ｽｼ郢ｧ竏夲ｽ矩坎・ｭ髫ｪ蛹ｻ繝ｻ陞ｯ・･陟冶侭縲堤ｸｺ蜷ｶﾂ繝ｻPI 陋ｹ謔ｶ繝ｻ陷茨ｽ･陷ｿ・｣邵ｺ・ｮ隰ｨ・ｴ騾・・縲堤ｸｺ繧・ｽ顔ｸｲ竏昴・騾・・貂暮ｶ・､邵ｺ・ｮ陷ｷ・ｦ陞ｳ螢ｹ縲堤ｸｺ・ｯ邵ｺ繧・ｽ顔ｸｺ・ｾ邵ｺ蟶呻ｽ鍋ｸｲ繝ｻ/td>
           </tr>
           <tr>
-            <td>TimelineForPC の host CLI</td>
-            <td>Windows host の実機情報を読む。Docker ではない。</td>
-            <td><span class="badge keep">維持</span> Docker 化せず、Windows host API または host CLI アダプターとして扱う。</td>
-            <td>PC 状態の取得はコンテナ内では正しくできないためです。PC はファイル系ではなく PC記録系として別枝にします。</td>
+            <td>TimelineForPC 邵ｺ・ｮ host API</td>
+            <td>Windows host 邵ｺ・ｮ陞ｳ貊難ｽｩ貊薙Η陜｣・ｱ郢ｧ螳夲ｽｪ・ｭ郢ｧﾂ邵ｲ繝ｻocker 邵ｺ・ｧ邵ｺ・ｯ邵ｺ・ｪ邵ｺ繝ｻﾂ繝ｻ/td>
+            <td><span class="badge keep">驍ｯ・ｭ隰悶・/span> Docker 陋ｹ謔ｶ笳狗ｸｺ螢ｹﾂ莉拱ndows host API 邵ｺ・ｾ邵ｺ貅倥・ host command 郢ｧ・｢郢敖郢晏干縺｡郢晢ｽｼ邵ｺ・ｨ邵ｺ蜉ｱ窶ｻ隰・ｽｱ邵ｺ繝ｻﾂ繝ｻ/td>
+            <td>PC 霑･・ｶ隲ｷ荵昴・陷ｿ髢・ｾ蜉ｱ繝ｻ郢ｧ・ｳ郢晢ｽｳ郢昴・繝ｪ陷繝ｻ縲堤ｸｺ・ｯ雎・ｽ｣邵ｺ蜉ｱ・･邵ｺ・ｧ邵ｺ髦ｪ竊醍ｸｺ繝ｻ笳・ｹｧ竏壹堤ｸｺ蜷ｶﾂ・舛 邵ｺ・ｯ郢晁ｼ斐＜郢ｧ・､郢晢ｽｫ驍会ｽｻ邵ｺ・ｧ邵ｺ・ｯ邵ｺ・ｪ邵ｺ繝ｻPC髫ｪ蛟ｬ鮖ｸ驍会ｽｻ邵ｺ・ｨ邵ｺ蜉ｱ窶ｻ陋ｻ・･隴ｫ譏ｴ竊鍋ｸｺ蜉ｱ竏ｪ邵ｺ蜷ｶﾂ繝ｻ/td>
           </tr>
         </tbody>
       </table>
     </div>
 
     <div class="note warning">
-      重要な前提: API 化は「全製品を同じ実装にする」ことではありません。揃えるのは契約、用語、状態管理、エラー、長時間処理の扱いです。
-      Docker worker、host 実行、ZIP 取り込み、ローカル履歴読み取りといった実装差は、製品ごとの派生責務として残します。
-    </div>
+      鬩･蟠趣ｽｦ竏壺・陷題ざ鄂ｲ: API 陋ｹ謔ｶ繝ｻ邵ｲ謔溘・髯ｬ・ｽ陷ｩ竏夲ｽ定惺蠕個ｧ陞ｳ貅ｯ・｣繝ｻ竊鍋ｸｺ蜷ｶ・狗ｸｲ髦ｪ・・ｸｺ・ｨ邵ｺ・ｧ邵ｺ・ｯ邵ｺ繧・ｽ顔ｸｺ・ｾ邵ｺ蟶呻ｽ鍋ｸｲ繧育ｴ皮ｸｺ蛹ｻ・狗ｸｺ・ｮ邵ｺ・ｯ陞る・・ｴ繝ｻﾂ竏ｫ逡鷹坡讒ｭﾂ竏ｫ諞ｾ隲ｷ迢暦ｽｮ・｡騾・・ﾂ竏壹♀郢晢ｽｩ郢晢ｽｼ邵ｲ繝ｻ閨櫁ｭ弱ｋ菫｣陷・ｽｦ騾・・繝ｻ隰・ｽｱ邵ｺ繝ｻ縲堤ｸｺ蜷ｶﾂ繝ｻ      Docker worker邵ｲ窶捐st 陞ｳ貅ｯ・｡蠕個縲⑩P 陷ｿ謔ｶ・企恷・ｼ邵ｺ・ｿ邵ｲ竏墅溽ｹ晢ｽｼ郢ｧ・ｫ郢晢ｽｫ陞ｻ・･雎・ｽｴ髫ｱ・ｭ邵ｺ・ｿ陷ｿ謔ｶ・顔ｸｺ・ｨ邵ｺ繝ｻ笆ｲ邵ｺ貅ｷ・ｮ貅ｯ・｣繝ｻ・ｷ・ｮ邵ｺ・ｯ邵ｲ竏ｬ・｣・ｽ陷ｩ竏夲ｼ・ｸｺ・ｨ邵ｺ・ｮ雎｢・ｾ騾墓ｺｯ・ｲ・ｬ陷榊生竊堤ｸｺ蜉ｱ窶ｻ隹ｿ荵晢ｼ邵ｺ・ｾ邵ｺ蜷ｶﾂ繝ｻ    </div>
 
-    <h3 id="class-model" style="margin-top: 22px;">1.2 設計上のクラス概念</h3>
+    <h3 id="class-model" style="margin-top: 22px;">1.2 髫ｪ・ｭ髫ｪ莠包ｽｸ鄙ｫ繝ｻ郢ｧ・ｯ郢晢ｽｩ郢ｧ・ｹ隶弱ｇ・ｿ・ｵ</h3>
     <p class="muted">
-      実際に C# の継承として実装する前提ではありません。Swagger、DTO、UI クライアント、設計レビューで使う概念上の親子関係です。
-      子製品は親の責務を勝手に再定義せず、必要な枝だけを追加します。
-    </p>
+      陞ｳ貊・怙邵ｺ・ｫ C# 邵ｺ・ｮ驍ｯ蜻惹ｾ｡邵ｺ・ｨ邵ｺ蜉ｱ窶ｻ陞ｳ貅ｯ・｣繝ｻ笘・ｹｧ蜿･辯戊ｬ闊後堤ｸｺ・ｯ邵ｺ繧・ｽ顔ｸｺ・ｾ邵ｺ蟶呻ｽ鍋ｸｲ・背agger邵ｲ・撒O邵ｲ繧曵 郢ｧ・ｯ郢晢ｽｩ郢ｧ・､郢ｧ・｢郢晢ｽｳ郢晏現ﾂ竏ｬ・ｨ・ｭ髫ｪ蛹ｻﾎ樒ｹ晁侭ﾎ礼ｹ晢ｽｼ邵ｺ・ｧ闖ｴ・ｿ邵ｺ繝ｻ・ｦ繧・ｽｿ・ｵ闕ｳ鄙ｫ繝ｻ髫包ｽｪ陝・ｮ｣譛ｪ闖ｫ繧・堤ｸｺ蜷ｶﾂ繝ｻ      陝・頃・｣・ｽ陷ｩ竏壹・髫包ｽｪ邵ｺ・ｮ髮具ｽｬ陷榊生・定恪譎・・邵ｺ・ｫ陷讎奇ｽｮ螟ゑｽｾ・ｩ邵ｺ蟶吮・邵ｲ竏晢ｽｿ繝ｻ・ｦ竏壺・隴ｫ譏ｴ笆｡邵ｺ莉｣・帝恆・ｽ陷会｣ｰ邵ｺ蜉ｱ竏ｪ邵ｺ蜷ｶﾂ繝ｻ    </p>
 
     <div class="tree">
       <details open>
-        <summary>BaseProductApi: 全サブ製品の親</summary>
+        <summary>BaseProductApi: 陷茨ｽｨ郢ｧ・ｵ郢晏・・｣・ｽ陷ｩ竏壹・髫包ｽｪ</summary>
         <div class="detail-body">
           <div class="api-node">
-            <h3>責務</h3>
-            <p>ヘルス、状態、設定、処理、記録、ダウンロード、エラー、データ鮮度、製品能力を共通化します。</p>
+            <h3>髮具ｽｬ陷阪・/h3>
+            <p>郢晏･ﾎ晉ｹｧ・ｹ邵ｲ竏ｫ諞ｾ隲ｷ荵敖竏ｬ・ｨ・ｭ陞ｳ螢ｹﾂ竏昴・騾・・ﾂ竏ｬ・ｨ蛟ｬ鮖ｸ邵ｲ竏壹Β郢ｧ・ｦ郢晢ｽｳ郢晢ｽｭ郢晢ｽｼ郢晏ｳｨﾂ竏壹♀郢晢ｽｩ郢晢ｽｼ邵ｲ竏壹Ι郢晢ｽｼ郢ｧ・ｿ鬲・ｽｮ陟趣ｽｦ邵ｲ竏ｬ・｣・ｽ陷ｩ竏ｬ繝ｻ陷牙ｸ呻ｽ定怦・ｱ鬨ｾ螢ｼ蝟ｧ邵ｺ蜉ｱ竏ｪ邵ｺ蜷ｶﾂ繝ｻ/p>
             <dl class="facts">
-              <dt>対象製品</dt>
+              <dt>陝・ｽｾ髮趣ｽ｡髯ｬ・ｽ陷ｩ繝ｻ/dt>
               <dd>Audio / Image / Video / PC / ChatGPT / WindowsCodex</dd>
-              <dt>共通 API</dt>
+              <dt>陷茨ｽｱ鬨ｾ繝ｻAPI</dt>
               <dd><code>/health</code>, <code>/status</code>, <code>/settings</code>, <code>/settings/check</code>, <code>/refresh</code>, <code>/tasks</code>, <code>/records</code>, <code>/records/download</code>, <code>/records/generated</code>, <code>/capabilities</code></dd>
-              <dt>守ること</dt>
-              <dd>共通レスポンス、ページング、長時間処理、ユーザー向けエラー、ログマスク、元データ保護。</dd>
+              <dt>陞ｳ蛹ｻ・狗ｸｺ阮吮・</dt>
+              <dd>陷茨ｽｱ鬨ｾ螢ｹﾎ樒ｹｧ・ｹ郢晄亢ﾎｦ郢ｧ・ｹ邵ｲ竏壹・郢晢ｽｼ郢ｧ・ｸ郢晢ｽｳ郢ｧ・ｰ邵ｲ繝ｻ閨櫁ｭ弱ｋ菫｣陷・ｽｦ騾・・ﾂ竏墅倡ｹ晢ｽｼ郢ｧ・ｶ郢晢ｽｼ陷ｷ莉｣・郢ｧ・ｨ郢晢ｽｩ郢晢ｽｼ邵ｲ竏墅溽ｹｧ・ｰ郢晄ｧｭ縺帷ｹｧ・ｯ邵ｲ竏昴・郢昴・繝ｻ郢ｧ・ｿ闖ｫ譎・ｽｭ・ｷ邵ｲ繝ｻ/dd>
             </dl>
           </div>
         </div>
       </details>
 
       <details open>
-        <summary>FileSourceProductApi: ファイルを元データにする製品</summary>
+        <summary>FileSourceProductApi: 郢晁ｼ斐＜郢ｧ・､郢晢ｽｫ郢ｧ雋槭・郢昴・繝ｻ郢ｧ・ｿ邵ｺ・ｫ邵ｺ蜷ｶ・矩勳・ｽ陷ｩ繝ｻ/summary>
         <div class="detail-body">
           <div class="api-node">
-            <h3>継承元</h3>
+            <h3>驍ｯ蜻惹ｾ｡陷医・/h3>
             <p><code>BaseProductApi</code></p>
             <dl class="facts">
-              <dt>対象製品</dt>
+              <dt>陝・ｽｾ髮趣ｽ｡髯ｬ・ｽ陷ｩ繝ｻ/dt>
               <dd>Audio / Image / Video</dd>
-              <dt>追加 API</dt>
+              <dt>髴托ｽｽ陷会｣ｰ API</dt>
               <dd><code>/sources</code>, <code>/files</code>, <code>/files/{fileId}</code>, <code>/files/{fileId}/source</code></dd>
-              <dt>維持する思想</dt>
-              <dd>元ファイルは読み取り専用。ZIP には原則として元ファイルを含めず、生成物だけを扱う。</dd>
-              <dt>派生差分</dt>
-              <dd>Audio は音声モデルと話者/時間、Image は OCR と画像メタデータ、Video は ffprobe / フレーム / OCR / 音声 / 活動マップを持つ。</dd>
+              <dt>驍ｯ・ｭ隰問・笘・ｹｧ蛹ｺﾂ譎・ｦ</dt>
+              <dd>陷医・繝ｵ郢ｧ・｡郢ｧ・､郢晢ｽｫ邵ｺ・ｯ髫ｱ・ｭ邵ｺ・ｿ陷ｿ謔ｶ・願氣繧臥舞邵ｲ繝ｻIP 邵ｺ・ｫ邵ｺ・ｯ陷ｴ貅ｷ謠ｴ邵ｺ・ｨ邵ｺ蜉ｱ窶ｻ陷医・繝ｵ郢ｧ・｡郢ｧ・､郢晢ｽｫ郢ｧ雋樊ｧ郢ｧ竏壺・邵ｲ竏ｫ蜃ｽ隰悟鴻鮟・ｸｺ・ｰ邵ｺ莉｣・定ｬ・ｽｱ邵ｺ繝ｻﾂ繝ｻ/dd>
+              <dt>雎｢・ｾ騾墓ｺｷ・ｷ・ｮ陋ｻ繝ｻ/dt>
+              <dd>Audio 邵ｺ・ｯ鬮ｻ・ｳ陞｢・ｰ郢晢ｽ｢郢昴・ﾎ晉ｸｺ・ｨ髫ｧ・ｱ髢繝ｻ隴弱ｋ菫｣邵ｲ・［age 邵ｺ・ｯ OCR 邵ｺ・ｨ騾包ｽｻ陷剃ｸ莞鍋ｹｧ・ｿ郢昴・繝ｻ郢ｧ・ｿ邵ｲ縲ナdeo 邵ｺ・ｯ ffprobe / 郢晁ｼ釆樒ｹ晢ｽｼ郢晢｣ｰ / OCR / 鬮ｻ・ｳ陞｢・ｰ / 雎｢・ｻ陷崎ｼ斐・郢昴・繝ｻ郢ｧ蜻域亜邵ｺ・､邵ｲ繝ｻ/dd>
             </dl>
           </div>
         </div>
       </details>
 
       <details open>
-        <summary>ConversationProductApi: 会話を元データにする製品</summary>
+        <summary>ConversationProductApi: 闔ｨ螟奇ｽｩ・ｱ郢ｧ雋槭・郢昴・繝ｻ郢ｧ・ｿ邵ｺ・ｫ邵ｺ蜷ｶ・矩勳・ｽ陷ｩ繝ｻ/summary>
         <div class="detail-body">
           <div class="api-node">
-            <h3>継承元</h3>
+            <h3>驍ｯ蜻惹ｾ｡陷医・/h3>
             <p><code>BaseProductApi</code></p>
             <dl class="facts">
-              <dt>対象製品</dt>
+              <dt>陝・ｽｾ髮趣ｽ｡髯ｬ・ｽ陷ｩ繝ｻ/dt>
               <dd>ChatGPT / WindowsCodex</dd>
-              <dt>追加 API</dt>
+              <dt>髴托ｽｽ陷会｣ｰ API</dt>
               <dd><code>/conversations</code>, <code>/conversations/{conversationId}</code>, <code>/conversations/{conversationId}/messages</code></dd>
-              <dt>共通点</dt>
-              <dd>会話タイトル、メッセージ列、時刻、生成済み timeline を扱う。</dd>
-              <dt>派生差分</dt>
-              <dd>ChatGPT は <code>/imports</code> でエクスポート ZIP を登録する。WindowsCodex はローカル履歴マウントを読むため import は持たない。</dd>
+              <dt>陷茨ｽｱ鬨ｾ螟ゅ○</dt>
+              <dd>闔ｨ螟奇ｽｩ・ｱ郢ｧ・ｿ郢ｧ・､郢晏現ﾎ晉ｸｲ竏墅鍋ｹ昴・縺晉ｹ晢ｽｼ郢ｧ・ｸ陋ｻ蜉ｱﾂ竏ｵ蜃ｾ陋ｻ・ｻ邵ｲ竏ｫ蜃ｽ隰悟・・ｸ蛹ｻ竏ｩ timeline 郢ｧ蜻域｡ｶ邵ｺ繝ｻﾂ繝ｻ/dd>
+              <dt>雎｢・ｾ騾墓ｺｷ・ｷ・ｮ陋ｻ繝ｻ/dt>
+              <dd>ChatGPT 邵ｺ・ｯ <code>/imports</code> 邵ｺ・ｧ郢ｧ・ｨ郢ｧ・ｯ郢ｧ・ｹ郢晄亢繝ｻ郢昴・ZIP 郢ｧ蝣､蛹ｳ鬪ｭ・ｲ邵ｺ蜷ｶ・狗ｸｲ・亙ndowsCodex 邵ｺ・ｯ郢晢ｽｭ郢晢ｽｼ郢ｧ・ｫ郢晢ｽｫ陞ｻ・･雎・ｽｴ郢晄ｧｭ縺育ｹ晢ｽｳ郢晏現・帝坡・ｭ郢ｧﾂ邵ｺ貅假ｽ・import 邵ｺ・ｯ隰問・笳・ｸｺ・ｪ邵ｺ繝ｻﾂ繝ｻ/dd>
             </dl>
           </div>
         </div>
       </details>
 
       <details open>
-        <summary>CaptureProductApi: その時点の状態を記録する製品</summary>
+        <summary>CaptureProductApi: 邵ｺ譏ｴ繝ｻ隴弱ｉ縺帷ｸｺ・ｮ霑･・ｶ隲ｷ荵晢ｽ帝坎蛟ｬ鮖ｸ邵ｺ蜷ｶ・矩勳・ｽ陷ｩ繝ｻ/summary>
         <div class="detail-body">
           <div class="api-node">
-            <h3>継承元</h3>
+            <h3>驍ｯ蜻惹ｾ｡陷医・/h3>
             <p><code>BaseProductApi</code></p>
             <dl class="facts">
-              <dt>対象製品</dt>
+              <dt>陝・ｽｾ髮趣ｽ｡髯ｬ・ｽ陷ｩ繝ｻ/dt>
               <dd>TimelineForPC</dd>
-              <dt>追加 API</dt>
+              <dt>髴托ｽｽ陷会｣ｰ API</dt>
               <dd><code>/captures</code>, <code>/captures/{captureId}</code>, <code>/captures/{captureId}/report</code>, <code>/captures/{captureId}/snapshot</code></dd>
-              <dt>別個にする理由</dt>
-              <dd>PC は「元ファイルを変換する」製品ではなく、「現在の Windows host 状態を記録する」製品です。ファイル系に寄せると責務がずれます。</dd>
-              <dt>維持する思想</dt>
-              <dd>Docker ではなく Windows host で動かす。通常表示は redacted / handoff 向け出力を優先する。</dd>
+              <dt>陋ｻ・･陋滉ｹ昶・邵ｺ蜷ｶ・矩・・鄂ｰ</dt>
+              <dd>PC 邵ｺ・ｯ邵ｲ謔溘・郢晁ｼ斐＜郢ｧ・､郢晢ｽｫ郢ｧ雋橸ｽ､逕ｻ驪､邵ｺ蜷ｶ・狗ｸｲ蟠趣ｽ｣・ｽ陷ｩ竏壹堤ｸｺ・ｯ邵ｺ・ｪ邵ｺ荳環竏堋讙取ｨ溯舉・ｨ邵ｺ・ｮ Windows host 霑･・ｶ隲ｷ荵晢ｽ帝坎蛟ｬ鮖ｸ邵ｺ蜷ｶ・狗ｸｲ蟠趣ｽ｣・ｽ陷ｩ竏壹堤ｸｺ蜷ｶﾂ繧・Ψ郢ｧ・｡郢ｧ・､郢晢ｽｫ驍会ｽｻ邵ｺ・ｫ陝・・笳狗ｹｧ荵昶・髮具ｽｬ陷榊生窶ｲ邵ｺ螢ｹ・檎ｸｺ・ｾ邵ｺ蜷ｶﾂ繝ｻ/dd>
+              <dt>驍ｯ・ｭ隰問・笘・ｹｧ蛹ｺﾂ譎・ｦ</dt>
+              <dd>Docker 邵ｺ・ｧ邵ｺ・ｯ邵ｺ・ｪ邵ｺ繝ｻWindows host 邵ｺ・ｧ陷崎ｼ板ｰ邵ｺ蜷ｶﾂ繧仰螢ｼ・ｸ・ｸ髯ｦ・ｨ驕会ｽｺ邵ｺ・ｯ redacted / handoff 陷ｷ莉｣・陷・ｽｺ陷牙ｸ呻ｽ定怕・ｪ陷亥現笘・ｹｧ荵敖繝ｻ/dd>
             </dl>
           </div>
         </div>
       </details>
 
       <details open>
-        <summary>ProductManagementApi: 親 Timeline 側の別責務</summary>
+        <summary>ProductManagementApi: 髫包ｽｪ Timeline 陋幢ｽｴ邵ｺ・ｮ陋ｻ・･髮具ｽｬ陷阪・/summary>
         <div class="detail-body">
           <div class="api-node">
-            <h3>継承させないもの</h3>
-            <p>インストール、アンインストール、製品登録、起動停止、実行環境データの扱いは、サブ製品 API の親クラスには入れません。</p>
+            <h3>驍ｯ蜻惹ｾ｡邵ｺ霈披雷邵ｺ・ｪ邵ｺ繝ｻ・らｸｺ・ｮ</h3>
+            <p>郢ｧ・､郢晢ｽｳ郢ｧ・ｹ郢晏現繝ｻ郢晢ｽｫ邵ｲ竏壹＞郢晢ｽｳ郢ｧ・､郢晢ｽｳ郢ｧ・ｹ郢晏現繝ｻ郢晢ｽｫ邵ｲ竏ｬ・｣・ｽ陷ｩ竏ｫ蛹ｳ鬪ｭ・ｲ邵ｲ竏ｬ・ｵ・ｷ陷榊供笳剰ｱ・ｽ｢邵ｲ竏晢ｽｮ貅ｯ・｡讙手・陟・・繝ｧ郢晢ｽｼ郢ｧ・ｿ邵ｺ・ｮ隰・ｽｱ邵ｺ繝ｻ繝ｻ邵ｲ竏壹＠郢晏・・｣・ｽ陷ｩ繝ｻAPI 邵ｺ・ｮ髫包ｽｪ郢ｧ・ｯ郢晢ｽｩ郢ｧ・ｹ邵ｺ・ｫ邵ｺ・ｯ陷茨ｽ･郢ｧ蠕娯穐邵ｺ蟶呻ｽ鍋ｸｲ繝ｻ/p>
             <dl class="facts">
-              <dt>対象</dt>
-              <dd>Timeline 本体の製品管理。<code>timeline-product.json</code>、製品カタログ、runtime status、uninstall plan。</dd>
-              <dt>理由</dt>
-              <dd>製品自身の記録操作と、親 Timeline が製品を管理する操作は危険度も責務も違うためです。</dd>
-              <dt>維持する境界</dt>
-              <dd>Timeline はサブ製品の Docker 名を推測で直接操作せず、製品が提供する launcher / manifest / 契約に従う。</dd>
+              <dt>陝・ｽｾ髮趣ｽ｡</dt>
+              <dd>Timeline 隴幢ｽｬ闖ｴ阮吶・髯ｬ・ｽ陷ｩ竏ｫ・ｮ・｡騾・・ﾂ繝ｻcode>timeline-product.json</code>邵ｲ竏ｬ・｣・ｽ陷ｩ竏壹″郢ｧ・ｿ郢晢ｽｭ郢ｧ・ｰ邵ｲ縲疫ntime status邵ｲ縲系install plan邵ｲ繝ｻ/dd>
+              <dt>騾・・鄂ｰ</dt>
+              <dd>髯ｬ・ｽ陷ｩ竏ｬ繝ｻ髴・ｽｫ邵ｺ・ｮ髫ｪ蛟ｬ鮖ｸ隰ｫ蝣ｺ・ｽ諛岩・邵ｲ竏ｬ・ｦ・ｪ Timeline 邵ｺ迹夲ｽ｣・ｽ陷ｩ竏夲ｽ帝ｂ・｡騾・・笘・ｹｧ蛹ｺ譯・抄諛翫・陷奇ｽｱ鬮ｯ・ｺ陟趣ｽｦ郢ｧ繧奇ｽｲ・ｬ陷榊生・るｩ戊ｼ披鴬邵ｺ貅假ｽ∫ｸｺ・ｧ邵ｺ蜷ｶﾂ繝ｻ/dd>
+              <dt>驍ｯ・ｭ隰問・笘・ｹｧ蜿･・｢繝ｻ髦・/dt>
+              <dd>Timeline 邵ｺ・ｯ郢ｧ・ｵ郢晏・・｣・ｽ陷ｩ竏壹・ Docker 陷ｷ髦ｪ・定ｬ暦ｽｨ雋ゑｽｬ邵ｺ・ｧ騾ｶ・ｴ隰暦ｽ･隰ｫ蝣ｺ・ｽ諛岩雷邵ｺ螢ｹﾂ竏ｬ・｣・ｽ陷ｩ竏壺ｲ隰陜会ｽｾ蟶吮・郢ｧ繝ｻlauncher / manifest / 陞る・・ｴ繝ｻ竊楢戊侭竕ｧ邵ｲ繝ｻ/dd>
             </dl>
           </div>
         </div>
       </details>
     </div>
 
-    <h3 id="change-ledger" style="margin-top: 22px;">1.3 変更/維持の管理表</h3>
+    <h3 id="change-ledger" style="margin-top: 22px;">1.3 陞溽判蟲ｩ/驍ｯ・ｭ隰問・繝ｻ驍ゑｽ｡騾・・・｡・ｨ</h3>
     <p class="muted">
-      CLI の挙動を一気に変えると、後続アプリケーションが混乱します。
-      そのため、変更するところ、維持するところ、予約だけするところを以下の表で固定します。
-    </p>
+      command 邵ｺ・ｮ隰門雀陌夂ｹｧ蜑・ｽｸﾂ雎悟干竊楢棔蟲ｨ竏ｴ郢ｧ荵昶・邵ｲ竏晢ｽｾ讙趣ｽｶ螢ｹ縺・ｹ晏干ﾎ懃ｹｧ・ｱ郢晢ｽｼ郢ｧ・ｷ郢晢ｽｧ郢晢ｽｳ邵ｺ譴ｧ・ｷ・ｷ闕ｵ・ｱ邵ｺ蜉ｱ竏ｪ邵ｺ蜷ｶﾂ繝ｻ      邵ｺ譏ｴ繝ｻ邵ｺ貅假ｽ∫ｸｲ竏晢ｽ､逕ｻ蟲ｩ邵ｺ蜷ｶ・狗ｸｺ・ｨ邵ｺ阮呻ｽ咲ｸｲ竏ｫ・ｶ・ｭ隰問・笘・ｹｧ荵昶・邵ｺ阮呻ｽ咲ｸｲ竏ｽ・ｺ閧ｲ・ｴ繝ｻ笆｡邵ｺ莉｣笘・ｹｧ荵昶・邵ｺ阮呻ｽ咲ｹｧ蜑・ｽｻ・･闕ｳ荵昴・髯ｦ・ｨ邵ｺ・ｧ陜暦ｽｺ陞ｳ螢ｹ・邵ｺ・ｾ邵ｺ蜷ｶﾂ繝ｻ    </p>
 
     <div class="table-wrap">
       <table>
         <thead>
           <tr>
-            <th>対象</th>
-            <th>現行</th>
-            <th>判断</th>
-            <th>完成版 API</th>
-            <th>理由</th>
+            <th>陝・ｽｾ髮趣ｽ｡</th>
+            <th>霑ｴ・ｾ髯ｦ繝ｻ/th>
+            <th>陋ｻ・､隴・ｽｭ</th>
+            <th>陞ｳ譴ｧ繝ｻ霑壹・API</th>
+            <th>騾・・鄂ｰ</th>
           </tr>
         </thead>
         <tbody>
           <tr>
-            <td>画面からの操作入口</td>
-            <td>Timeline helper または CLI 呼び出し。</td>
-            <td><span class="badge change">変更</span></td>
-            <td>Web UI は HTTP API を正面入口にする。</td>
-            <td>ヘルス、進捗、複数アクセス、エラー表示、再試行を統一するため。</td>
+            <td>騾包ｽｻ鬮ｱ・｢邵ｺ荵晢ｽ臥ｸｺ・ｮ隰ｫ蝣ｺ・ｽ諛ｷ繝ｻ陷ｿ・｣</td>
+            <td>Timeline helper 邵ｺ・ｾ邵ｺ貅倥・ command 陷ｻ・ｼ邵ｺ・ｳ陷・ｽｺ邵ｺ蜉ｱﾂ繝ｻ/td>
+            <td><span class="badge change">陞溽判蟲ｩ</span></td>
+            <td>Web UI 邵ｺ・ｯ HTTP API 郢ｧ蜻茨ｽｭ・｣鬮ｱ・｢陷茨ｽ･陷ｿ・｣邵ｺ・ｫ邵ｺ蜷ｶ・狗ｸｲ繝ｻ/td>
+            <td>郢晏･ﾎ晉ｹｧ・ｹ邵ｲ繝ｻﾂ・ｲ隰仙干ﾂ竏ｬ・､繝ｻ辟夂ｹｧ・｢郢ｧ・ｯ郢ｧ・ｻ郢ｧ・ｹ邵ｲ竏壹♀郢晢ｽｩ郢晢ｽｼ髯ｦ・ｨ驕会ｽｺ邵ｲ竏昴・髫ｧ・ｦ髯ｦ蠕鯉ｽ帝お・ｱ闕ｳﾂ邵ｺ蜷ｶ・狗ｸｺ貅假ｽ∫ｸｲ繝ｻ/td>
           </tr>
           <tr>
-            <td>単体運用の CLI</td>
-            <td>ローカル API が正式入口。</td>
-            <td><span class="badge change">変更</span></td>
-            <td>ホストCLIランチャーは廃止し、検証スクリプトも API を直接確認する。</td>
-            <td>複数アクセス、進捗確認、エラー表示、UI 統合を安定させるため。</td>
+            <td>陷雁・ｽｽ鬥ｴﾂｰ騾包ｽｨ邵ｺ・ｮ CLI</td>
+            <td>郢晢ｽｭ郢晢ｽｼ郢ｧ・ｫ郢晢ｽｫ API 邵ｺ譴ｧ・ｭ・｣陟台ｸ槭・陷ｿ・｣邵ｲ繝ｻ/td>
+            <td><span class="badge change">陞溽判蟲ｩ</span></td>
+            <td>郢晏ｸ吶○郢昴・LI郢晢ｽｩ郢晢ｽｳ郢昶・ﾎ慕ｹ晢ｽｼ邵ｺ・ｯ陝偵・・ｭ・｢邵ｺ蜉ｱﾂ竏ｵ・､諛・ｽｨ・ｼ郢ｧ・ｹ郢ｧ・ｯ郢晢ｽｪ郢晏干繝ｨ郢ｧ繝ｻAPI 郢ｧ蝣､蟲ｩ隰暦ｽ･驕抵ｽｺ髫ｱ髦ｪ笘・ｹｧ荵敖繝ｻ/td>
+            <td>髫阪・辟夂ｹｧ・｢郢ｧ・ｯ郢ｧ・ｻ郢ｧ・ｹ邵ｲ繝ｻﾂ・ｲ隰千､ｼ・｢・ｺ髫ｱ髦ｪﾂ竏壹♀郢晢ｽｩ郢晢ｽｼ髯ｦ・ｨ驕会ｽｺ邵ｲ繧曵 驍ｨ・ｱ陷ｷ蛹ｻ・定楜迚呻ｽｮ螢ｹ・・ｸｺ蟶呻ｽ狗ｸｺ貅假ｽ∫ｸｲ繝ｻ/td>
           </tr>
           <tr>
             <td><code>overview</code></td>
-            <td>Timeline helper の製品別画面状態。</td>
-            <td><span class="badge change">変更</span></td>
+            <td>Timeline helper 邵ｺ・ｮ髯ｬ・ｽ陷ｩ竏晄肩騾包ｽｻ鬮ｱ・｢霑･・ｶ隲ｷ荵敖繝ｻ/td>
+            <td><span class="badge change">陞溽判蟲ｩ</span></td>
             <td><code>/status</code></td>
-            <td>一般語として「状態」に統一し、画面表示用であることを明確にするため。</td>
+            <td>闕ｳﾂ髣奇ｽｬ髫ｱ讒ｭ竊堤ｸｺ蜉ｱ窶ｻ邵ｲ讙取・隲ｷ荵敖髦ｪ竊馴お・ｱ闕ｳﾂ邵ｺ蜉ｱﾂ竏ｫ蛻､鬮ｱ・｢髯ｦ・ｨ驕会ｽｺ騾包ｽｨ邵ｺ・ｧ邵ｺ繧・ｽ狗ｸｺ阮吮・郢ｧ蜻医・驕抵ｽｺ邵ｺ・ｫ邵ｺ蜷ｶ・狗ｸｺ貅假ｽ∫ｸｲ繝ｻ/td>
           </tr>
           <tr>
             <td><code>items</code></td>
-            <td>生成済み成果物の内部単位。</td>
-            <td><span class="badge change">変更</span></td>
+            <td>騾墓ｻ薙・雋ょ現竏ｩ隰悟・譽｡霑夲ｽｩ邵ｺ・ｮ陷繝ｻﾎ夊怺蛟・ｽｽ髦ｪﾂ繝ｻ/td>
+            <td><span class="badge change">陞溽判蟲ｩ</span></td>
             <td><code>/records</code></td>
-            <td>一般ユーザーには「記録」の方が理解しやすい。内部 item id は互換IDとして保持する。</td>
+            <td>闕ｳﾂ髣奇ｽｬ郢晢ｽｦ郢晢ｽｼ郢ｧ・ｶ郢晢ｽｼ邵ｺ・ｫ邵ｺ・ｯ邵ｲ迹夲ｽｨ蛟ｬ鮖ｸ邵ｲ髦ｪ繝ｻ隴・ｽｹ邵ｺ讙守ｊ髫暦ｽ｣邵ｺ蜉ｱ・・ｸｺ蜷ｶ・樒ｸｲ繧・・鬩幢ｽｨ item id 邵ｺ・ｯ闔蜻磯共ID邵ｺ・ｨ邵ｺ蜉ｱ窶ｻ闖ｫ譎・亜邵ｺ蜷ｶ・狗ｸｲ繝ｻ/td>
           </tr>
           <tr>
             <td><code>runs</code></td>
-            <td>製品ごとの診断/処理履歴。</td>
-            <td><span class="badge change">変更</span></td>
+            <td>髯ｬ・ｽ陷ｩ竏夲ｼ・ｸｺ・ｨ邵ｺ・ｮ髫ｪ・ｺ隴・ｽｭ/陷・ｽｦ騾・・・ｱ・･雎・ｽｴ邵ｲ繝ｻ/td>
+            <td><span class="badge change">陞溽判蟲ｩ</span></td>
             <td><code>/tasks</code></td>
-            <td>Web UI では「いま走っている処理」と「過去の処理」を同じ概念で扱うため。</td>
+            <td>Web UI 邵ｺ・ｧ邵ｺ・ｯ邵ｲ蠕鯉ｼ樒ｸｺ・ｾ隘搾ｽｰ邵ｺ・｣邵ｺ・ｦ邵ｺ繝ｻ・玖怎・ｦ騾・・ﾂ髦ｪ竊堤ｸｲ遒≫с陷ｴ・ｻ邵ｺ・ｮ陷・ｽｦ騾・・ﾂ髦ｪ・定惺蠕個ｧ隶弱ｇ・ｿ・ｵ邵ｺ・ｧ隰・ｽｱ邵ｺ繝ｻ笳・ｹｧ竏堋繝ｻ/td>
           </tr>
           <tr>
-            <td>ファイルパス引数</td>
-            <td><code>--file</code>, <code>--to</code>, <code>--output</code> でローカルパスを渡す。</td>
-            <td><span class="badge change">変更</span></td>
-            <td><code>importId</code>, <code>downloadUrl</code>, 管理ダウンロード先。</td>
-            <td>ブラウザ UI から任意ローカルパスを書かせる設計は危険で、説明もしづらいため。</td>
+            <td>郢晁ｼ斐＜郢ｧ・､郢晢ｽｫ郢昜ｻ｣縺幄大｢鍋・</td>
+            <td><code>--file</code>, <code>--to</code>, <code>--output</code> 邵ｺ・ｧ郢晢ｽｭ郢晢ｽｼ郢ｧ・ｫ郢晢ｽｫ郢昜ｻ｣縺帷ｹｧ蜻茨ｽｸ・｡邵ｺ蜷ｶﾂ繝ｻ/td>
+            <td><span class="badge change">陞溽判蟲ｩ</span></td>
+            <td><code>importId</code>, <code>downloadUrl</code>, 驍ゑｽ｡騾・・繝郢ｧ・ｦ郢晢ｽｳ郢晢ｽｭ郢晢ｽｼ郢晉甥繝ｻ邵ｲ繝ｻ/td>
+            <td>郢晄じﾎ帷ｹｧ・ｦ郢ｧ・ｶ UI 邵ｺ荵晢ｽ芽脂・ｻ隲｢荳莞溽ｹ晢ｽｼ郢ｧ・ｫ郢晢ｽｫ郢昜ｻ｣縺帷ｹｧ蜻亥ｶ檎ｸｺ荵昶雷郢ｧ邇厄ｽｨ・ｭ髫ｪ蛹ｻ繝ｻ陷奇ｽｱ鬮ｯ・ｺ邵ｺ・ｧ邵ｲ竏ｬ・ｪ・ｬ隴丞ｼｱ・らｸｺ蜉ｱ笆ｼ郢ｧ蟲ｨ・樒ｸｺ貅假ｽ∫ｸｲ繝ｻ/td>
           </tr>
           <tr>
-            <td>ページング</td>
-            <td><code>--page</code>, <code>--page-size</code> が複数 CLI で既存。</td>
-            <td><span class="badge keep">維持</span></td>
+            <td>郢晏｣ｹ繝ｻ郢ｧ・ｸ郢晢ｽｳ郢ｧ・ｰ</td>
+            <td><code>--page</code>, <code>--page-size</code> 邵ｺ迹夲ｽ､繝ｻ辟・command 邵ｺ・ｧ隴鯉ｽ｢陝・･ﾂ繝ｻ/td>
+            <td><span class="badge keep">驍ｯ・ｭ隰悶・/span></td>
             <td><code>page</code>, <code>pageSize</code>, <code>totalCount</code></td>
-            <td>大量ファイル・大量会話で必須。既存契約とも相性がよい。</td>
+            <td>陞滂ｽｧ鬩･荳翫Ψ郢ｧ・｡郢ｧ・､郢晢ｽｫ郢晢ｽｻ陞滂ｽｧ鬩･荳茨ｽｼ螟奇ｽｩ・ｱ邵ｺ・ｧ陟｢繝ｻ・ｰ蛹ｻﾂ繧磯㈹陝・ｼ懶ｽ･驢搾ｽｴ繝ｻ竊堤ｹｧ繧牙ｶ瑚ｫ､・ｧ邵ｺ蠕鯉ｽ育ｸｺ繝ｻﾂ繝ｻ/td>
           </tr>
           <tr>
-            <td>削除 dry-run</td>
-            <td><code>items remove --dry-run</code>, cleanup dry-run。</td>
-            <td><span class="badge keep">維持</span></td>
+            <td>陷台ｼ∝求 dry-run</td>
+            <td><code>items remove --dry-run</code>, cleanup dry-run邵ｲ繝ｻ/td>
+            <td><span class="badge keep">驍ｯ・ｭ隰悶・/span></td>
             <td><code>dryRun</code>, <code>deletePlan</code></td>
-            <td>削除されるもの/残るものを確認してから実行するため。</td>
+            <td>陷台ｼ∝求邵ｺ霈費ｽ檎ｹｧ荵晢ｽらｸｺ・ｮ/隹ｿ荵晢ｽ狗ｹｧ繧・・郢ｧ蝣､・｢・ｺ髫ｱ髦ｪ・邵ｺ・ｦ邵ｺ荵晢ｽ芽楜貅ｯ・｡蠕娯・郢ｧ荵昶螺郢ｧ竏堋繝ｻ/td>
           </tr>
           <tr>
-            <td>元データ削除</td>
-            <td>各READMEで元ファイル、元ZIP、Codex履歴を削除しない方針。</td>
-            <td><span class="badge keep">維持</span></td>
-            <td>このAPI設計には含めない。</td>
-            <td>破壊的であり、生成物削除とは責務が違うため。</td>
+            <td>陷医・繝ｧ郢晢ｽｼ郢ｧ・ｿ陷台ｼ∝求</td>
+            <td>陷ｷﾐ｡EADME邵ｺ・ｧ陷医・繝ｵ郢ｧ・｡郢ｧ・､郢晢ｽｫ邵ｲ竏昴・ZIP邵ｲ・経dex陞ｻ・･雎・ｽｴ郢ｧ雋樒ｎ鬮ｯ・､邵ｺ蜉ｱ竊醍ｸｺ繝ｻ蟀ｿ鬩･譏ｴﾂ繝ｻ/td>
+            <td><span class="badge keep">驍ｯ・ｭ隰悶・/span></td>
+            <td>邵ｺ阮吶・API髫ｪ・ｭ髫ｪ蛹ｻ竊鍋ｸｺ・ｯ陷ｷ・ｫ郢ｧ竏壺・邵ｺ繝ｻﾂ繝ｻ/td>
+            <td>驕撰ｽｴ陞｢鬘泌飭邵ｺ・ｧ邵ｺ繧・ｽ顔ｸｲ竏ｫ蜃ｽ隰悟鴻鮟・恆莨∝求邵ｺ・ｨ邵ｺ・ｯ髮具ｽｬ陷榊生窶ｲ鬩戊ｼ披鴬邵ｺ貅假ｽ∫ｸｲ繝ｻ/td>
           </tr>
           <tr>
-            <td>診断用コマンド</td>
-            <td>Video の <code>probe</code>, <code>sample</code>, <code>ocr</code>, <code>audio analyze</code> など。</td>
-            <td><span class="badge keep">維持</span></td>
-            <td>通常 UI API には出さず、必要時だけ <code>/diagnostics</code> として予約。</td>
-            <td>通常ユーザー操作と開発/運用診断を混ぜるとUIが複雑になるため。</td>
+            <td>髫ｪ・ｺ隴・ｽｭ騾包ｽｨ郢ｧ・ｳ郢晄ｧｭﾎｦ郢昴・/td>
+            <td>Video 邵ｺ・ｮ <code>probe</code>, <code>sample</code>, <code>ocr</code>, <code>audio analyze</code> 邵ｺ・ｪ邵ｺ・ｩ邵ｲ繝ｻ/td>
+            <td><span class="badge keep">驍ｯ・ｭ隰悶・/span></td>
+            <td>鬨ｾ螢ｼ・ｸ・ｸ UI API 邵ｺ・ｫ邵ｺ・ｯ陷・ｽｺ邵ｺ霈披・邵ｲ竏晢ｽｿ繝ｻ・ｦ竏ｵ蜃ｾ邵ｺ・ｰ邵ｺ繝ｻ<code>/diagnostics</code> 邵ｺ・ｨ邵ｺ蜉ｱ窶ｻ闔閧ｲ・ｴ繝ｻﾂ繝ｻ/td>
+            <td>鬨ｾ螢ｼ・ｸ・ｸ郢晢ｽｦ郢晢ｽｼ郢ｧ・ｶ郢晢ｽｼ隰ｫ蝣ｺ・ｽ諛岩・鬮｢迢怜験/鬩慕距逡鷹坎・ｺ隴・ｽｭ郢ｧ蜻茨ｽｷ・ｷ邵ｺ諛奇ｽ狗ｸｺ・ｨUI邵ｺ迹夲ｽ､繝ｻ蟆・ｸｺ・ｫ邵ｺ・ｪ郢ｧ荵昶螺郢ｧ竏堋繝ｻ/td>
           </tr>
           <tr>
-            <td>製品能力の推測</td>
-            <td>Timeline 側のコードが製品ごとの差分を知っている。</td>
-            <td><span class="badge change">変更</span></td>
-            <td><code>/capabilities</code> と <code>timeline-product.json</code> を正本にする。</td>
-            <td>後続製品を追加しても UI と API クライアントが推測を増やさずに済むため。</td>
+            <td>髯ｬ・ｽ陷ｩ竏ｬ繝ｻ陷牙ｸ吶・隰暦ｽｨ雋ゑｽｬ</td>
+            <td>Timeline 陋幢ｽｴ邵ｺ・ｮ郢ｧ・ｳ郢晢ｽｼ郢晏ｳｨ窶ｲ髯ｬ・ｽ陷ｩ竏夲ｼ・ｸｺ・ｨ邵ｺ・ｮ陝ｾ・ｮ陋ｻ繝ｻ・帝￥・･邵ｺ・｣邵ｺ・ｦ邵ｺ繝ｻ・狗ｸｲ繝ｻ/td>
+            <td><span class="badge change">陞溽判蟲ｩ</span></td>
+            <td><code>/capabilities</code> 邵ｺ・ｨ <code>timeline-product.json</code> 郢ｧ蜻茨ｽｭ・｣隴幢ｽｬ邵ｺ・ｫ邵ｺ蜷ｶ・狗ｸｲ繝ｻ/td>
+            <td>陟墓ｪ趣ｽｶ螟奇ｽ｣・ｽ陷ｩ竏夲ｽ帝恆・ｽ陷会｣ｰ邵ｺ蜉ｱ窶ｻ郢ｧ繝ｻUI 邵ｺ・ｨ API 郢ｧ・ｯ郢晢ｽｩ郢ｧ・､郢ｧ・｢郢晢ｽｳ郢晏現窶ｲ隰暦ｽｨ雋ゑｽｬ郢ｧ雋橸ｽ｢蜉ｱ・・ｸｺ霈披・邵ｺ・ｫ雋ょ現繝ｻ邵ｺ貅假ｽ∫ｸｲ繝ｻ/td>
           </tr>
         </tbody>
       </table>
@@ -793,33 +777,32 @@
   </section>
 
   <section id="common" class="card section">
-    <h2>2. 全製品共通 API</h2>
+    <h2>2. 陷茨ｽｨ髯ｬ・ｽ陷ｩ竏昴・鬨ｾ繝ｻAPI</h2>
     <p class="muted">
-      ここは全サブ製品が同じ意味で持つ API です。現行 CLI の個別コマンドを、一般ユーザーに見える操作名へ寄せます。
-    </p>
+      邵ｺ阮呻ｼ・ｸｺ・ｯ陷茨ｽｨ郢ｧ・ｵ郢晏・・｣・ｽ陷ｩ竏壺ｲ陷ｷ蠕個ｧ隲｢荳櫁｢也ｸｺ・ｧ隰問・笆ｽ API 邵ｺ・ｧ邵ｺ蜷ｶﾂ繧画ｨ滄勗繝ｻCLI 邵ｺ・ｮ陋溷唱謖ｨ郢ｧ・ｳ郢晄ｧｭﾎｦ郢晏ｳｨ・堤ｸｲ竏ｽ・ｸﾂ髣奇ｽｬ郢晢ｽｦ郢晢ｽｼ郢ｧ・ｶ郢晢ｽｼ邵ｺ・ｫ髫穂ｹ昶斡郢ｧ蛹ｺ譯・抄諛ｷ骭千ｸｺ・ｸ陝・・笳狗ｸｺ・ｾ邵ｺ蜷ｶﾂ繝ｻ    </p>
 
     <div class="tree">
       <details open>
-        <summary>2.1 状態確認</summary>
+        <summary>2.1 霑･・ｶ隲ｷ迢暦ｽ｢・ｺ髫ｱ繝ｻ/summary>
         <div class="detail-body">
           <div class="api-node">
             <div class="api-head">
               <span class="method">GET</span>
               <span class="url">/{product}/health</span>
-              <span class="badge new">全製品へ追加</span>
+              <span class="badge new">陷茨ｽｨ髯ｬ・ｽ陷ｩ竏壺・髴托ｽｽ陷会｣ｰ</span>
             </div>
-            <p>API プロセス、常駐 worker、最低限の依存が生きているかを返します。Docker healthcheck や監視用の軽い確認です。</p>
+            <p>API 郢晏干ﾎ溽ｹｧ・ｻ郢ｧ・ｹ邵ｲ竏晢ｽｸ・ｸ鬯ｧ繝ｻworker邵ｲ竏ｵ諤呵抄譛ｱ蜑樒ｸｺ・ｮ關捺剌・ｭ蛟･窶ｲ騾墓ｺ倪ｳ邵ｺ・ｦ邵ｺ繝ｻ・狗ｸｺ荵晢ｽ帝恆譁撰ｼ邵ｺ・ｾ邵ｺ蜷ｶﾂ繝ｻocker healthcheck 郢ｧ繝ｻ螻ｮ髫穂ｹ溽舞邵ｺ・ｮ髴・ｽｽ邵ｺ繝ｻ・｢・ｺ髫ｱ髦ｪ縲堤ｸｺ蜷ｶﾂ繝ｻ/p>
             <dl class="facts">
-              <dt>現行対応</dt>
-              <dd>各製品のローカル API が <code>/health</code> を提供する。</dd>
-              <dt>現行使用箇所</dt>
-              <dd>Docker healthcheck は Image / Video の worker Dockerfile。Timeline 本体は現状 <code>/products/runtime/status</code> や overview で代替確認しています。</dd>
-              <dt>変更点</dt>
-              <dd>CLI 実行の成否ではなく、HTTP 200 と短い JSON で稼働状態を返します。</dd>
-              <dt>主な返却</dt>
+              <dt>霑ｴ・ｾ髯ｦ謔滂ｽｯ・ｾ陟｢繝ｻ/dt>
+              <dd>陷ｷ繝ｻ・｣・ｽ陷ｩ竏壹・郢晢ｽｭ郢晢ｽｼ郢ｧ・ｫ郢晢ｽｫ API 邵ｺ繝ｻ<code>/health</code> 郢ｧ蜻育ｽｲ關灘ｸ吮・郢ｧ荵敖繝ｻ/dd>
+              <dt>霑ｴ・ｾ髯ｦ蠕｡・ｽ・ｿ騾包ｽｨ驍ゅ・蝨・/dt>
+              <dd>Docker healthcheck 邵ｺ・ｯ Image / Video 邵ｺ・ｮ worker Dockerfile邵ｲ・品meline 隴幢ｽｬ闖ｴ阮吶・霑ｴ・ｾ霑･・ｶ <code>/products/runtime/status</code> 郢ｧ繝ｻoverview 邵ｺ・ｧ闔会ｽ｣隴厄ｽｿ驕抵ｽｺ髫ｱ髦ｪ・邵ｺ・ｦ邵ｺ繝ｻ竏ｪ邵ｺ蜷ｶﾂ繝ｻ/dd>
+              <dt>陞溽判蟲ｩ霓､・ｹ</dt>
+              <dd>CLI 陞ｳ貅ｯ・｡蠕後・隰御ｻ吝℡邵ｺ・ｧ邵ｺ・ｯ邵ｺ・ｪ邵ｺ荳環・鬱TP 200 邵ｺ・ｨ驕擾ｽｭ邵ｺ繝ｻJSON 邵ｺ・ｧ驕橸ｽｼ陷貞調諞ｾ隲ｷ荵晢ｽ帝恆譁撰ｼ邵ｺ・ｾ邵ｺ蜷ｶﾂ繝ｻ/dd>
+              <dt>闕ｳ・ｻ邵ｺ・ｪ髴第ｳ悟陪</dt>
               <dd><code>ok</code>, <code>state</code>, <code>productId</code>, <code>version</code>, <code>checks[]</code></dd>
-              <dt>理由</dt>
-              <dd>起動しているかどうかを、人間用の詳細表示や重い検査と分離するためです。</dd>
+              <dt>騾・・鄂ｰ</dt>
+              <dd>隘搾ｽｷ陷崎ｼ費ｼ邵ｺ・ｦ邵ｺ繝ｻ・狗ｸｺ荵昶・邵ｺ繝ｻﾂｰ郢ｧ蛛ｵﾂ竏ｽ・ｺ・ｺ鬮｢骰狗舞邵ｺ・ｮ髫ｧ・ｳ驍擾ｽｰ髯ｦ・ｨ驕会ｽｺ郢ｧ繝ｻ纃ｾ邵ｺ繝ｻ・､諛域ｸ顔ｸｺ・ｨ陋ｻ繝ｻ螻ｬ邵ｺ蜷ｶ・狗ｸｺ貅假ｽ∫ｸｺ・ｧ邵ｺ蜷ｶﾂ繝ｻ/dd>
             </dl>
           </div>
 
@@ -827,44 +810,44 @@
             <div class="api-head">
               <span class="method">GET</span>
               <span class="url">/{product}/status</span>
-              <span class="badge change">既存 overview を統一</span>
+              <span class="badge change">隴鯉ｽ｢陝・・overview 郢ｧ蝣､・ｵ・ｱ闕ｳﾂ</span>
             </div>
-            <p>画面に表示する状態です。設定済みか、入力元が読めるか、出力先に書けるか、最後の処理が成功したか、次に何をすべきかを返します。</p>
+            <p>騾包ｽｻ鬮ｱ・｢邵ｺ・ｫ髯ｦ・ｨ驕会ｽｺ邵ｺ蜷ｶ・玖ｿ･・ｶ隲ｷ荵昴堤ｸｺ蜷ｶﾂ繧奇ｽｨ・ｭ陞ｳ螢ｽ・ｸ蛹ｻ竏ｩ邵ｺ荵敖竏昴・陷牙ｸ帙・邵ｺ迹夲ｽｪ・ｭ郢ｧ竏夲ｽ狗ｸｺ荵敖竏昴・陷牙ｸ帙・邵ｺ・ｫ隴厄ｽｸ邵ｺ莉｣・狗ｸｺ荵敖竏ｵ諤呵募ｾ後・陷・ｽｦ騾・・窶ｲ隰御ｻ咏ｲ･邵ｺ蜉ｱ笳・ｸｺ荵敖竏ｵ・ｬ・｡邵ｺ・ｫ闖ｴ霈費ｽ堤ｸｺ蜷ｶ竏狗ｸｺ髦ｪﾂｰ郢ｧ螳夲ｽｿ譁撰ｼ邵ｺ・ｾ邵ｺ蜷ｶﾂ繝ｻ/p>
             <dl class="facts">
-              <dt>現行対応</dt>
-              <dd><code>settings status</code>, <code>doctor</code>, 各製品の <code>/products/{id}/overview</code>。</dd>
-              <dt>現行使用箇所</dt>
-              <dd>Timeline の各一覧ページ、設定画面、ダッシュボードが overview を参照しています。</dd>
-              <dt>変更点</dt>
-              <dd>製品別の overview 名を <code>/status</code> に統一し、ユーザー向け表示に必要な状態を共通フィールドに寄せます。</dd>
-              <dt>主な返却</dt>
+              <dt>霑ｴ・ｾ髯ｦ謔滂ｽｯ・ｾ陟｢繝ｻ/dt>
+              <dd><code>settings status</code>, <code>doctor</code>, 陷ｷ繝ｻ・｣・ｽ陷ｩ竏壹・ <code>/products/{id}/overview</code>邵ｲ繝ｻ/dd>
+              <dt>霑ｴ・ｾ髯ｦ蠕｡・ｽ・ｿ騾包ｽｨ驍ゅ・蝨・/dt>
+              <dd>Timeline 邵ｺ・ｮ陷ｷ繝ｻ・ｸﾂ髫包ｽｧ郢晏｣ｹ繝ｻ郢ｧ・ｸ邵ｲ竏ｬ・ｨ・ｭ陞ｳ螟ょ愛鬮ｱ・｢邵ｲ竏壹Β郢昴・縺咏ｹ晢ｽ･郢晄㈱繝ｻ郢晏ｳｨ窶ｲ overview 郢ｧ雋樒崟霎｣・ｧ邵ｺ蜉ｱ窶ｻ邵ｺ繝ｻ竏ｪ邵ｺ蜷ｶﾂ繝ｻ/dd>
+              <dt>陞溽判蟲ｩ霓､・ｹ</dt>
+              <dd>髯ｬ・ｽ陷ｩ竏晄肩邵ｺ・ｮ overview 陷ｷ髦ｪ・・<code>/status</code> 邵ｺ・ｫ驍ｨ・ｱ闕ｳﾂ邵ｺ蜉ｱﾂ竏墅倡ｹ晢ｽｼ郢ｧ・ｶ郢晢ｽｼ陷ｷ莉｣・髯ｦ・ｨ驕会ｽｺ邵ｺ・ｫ陟｢繝ｻ・ｦ竏壺・霑･・ｶ隲ｷ荵晢ｽ定怦・ｱ鬨ｾ螢ｹ繝ｵ郢ｧ・｣郢晢ｽｼ郢晢ｽｫ郢晏ｳｨ竊楢汞繝ｻ笳狗ｸｺ・ｾ邵ｺ蜷ｶﾂ繝ｻ/dd>
+              <dt>闕ｳ・ｻ邵ｺ・ｪ髴第ｳ悟陪</dt>
               <dd><code>displayState</code>, <code>nextAction</code>, <code>settingsReady</code>, <code>inputReady</code>, <code>outputReady</code>, <code>latestTask</code></dd>
-              <dt>理由</dt>
-              <dd>「製品が使えるか」を製品ごとの実装差ではなく、同じ画面部品で判断できるようにするためです。</dd>
+              <dt>騾・・鄂ｰ</dt>
+              <dd>邵ｲ迹夲ｽ｣・ｽ陷ｩ竏壺ｲ闖ｴ・ｿ邵ｺ蛹ｻ・狗ｸｺ荵敖髦ｪ・帝勳・ｽ陷ｩ竏夲ｼ・ｸｺ・ｨ邵ｺ・ｮ陞ｳ貅ｯ・｣繝ｻ・ｷ・ｮ邵ｺ・ｧ邵ｺ・ｯ邵ｺ・ｪ邵ｺ荳環竏晞・邵ｺ蛟｡蛻､鬮ｱ・｢鬩幢ｽｨ陷ｩ竏壹定崕・､隴・ｽｭ邵ｺ・ｧ邵ｺ髦ｪ・狗ｹｧ蛹ｻ竕ｧ邵ｺ・ｫ邵ｺ蜷ｶ・狗ｸｺ貅假ｽ∫ｸｺ・ｧ邵ｺ蜷ｶﾂ繝ｻ/dd>
             </dl>
           </div>
         </div>
       </details>
 
       <details open>
-        <summary>2.2 設定</summary>
+        <summary>2.2 髫ｪ・ｭ陞ｳ繝ｻ/summary>
         <div class="detail-body">
           <div class="api-node">
             <div class="api-head">
               <span class="method">GET</span>
               <span class="url">/{product}/settings</span>
-              <span class="badge change">既存</span>
+              <span class="badge change">隴鯉ｽ｢陝・・/span>
             </div>
-            <p>現在の設定を取得します。設定ファイルの場所、入力元、保存先、AI処理方法、トークン設定済みかどうかを返します。</p>
+            <p>霑ｴ・ｾ陜ｨ・ｨ邵ｺ・ｮ髫ｪ・ｭ陞ｳ螢ｹ・定愾髢・ｾ蜉ｱ・邵ｺ・ｾ邵ｺ蜷ｶﾂ繧奇ｽｨ・ｭ陞ｳ螢ｹ繝ｵ郢ｧ・｡郢ｧ・､郢晢ｽｫ邵ｺ・ｮ陜｣・ｴ隰・邵ｲ竏昴・陷牙ｸ帙・邵ｲ竏ｽ・ｿ譎擾ｽｭ莨懊・邵ｲ縲！陷・ｽｦ騾・・蟀ｿ雎戊ｼ板竏壹Κ郢晢ｽｼ郢ｧ・ｯ郢晢ｽｳ髫ｪ・ｭ陞ｳ螢ｽ・ｸ蛹ｻ竏ｩ邵ｺ荵昶・邵ｺ繝ｻﾂｰ郢ｧ螳夲ｽｿ譁撰ｼ邵ｺ・ｾ邵ｺ蜷ｶﾂ繝ｻ/p>
             <dl class="facts">
-              <dt>現行対応</dt>
-              <dd><code>settings status</code>, <code>settings master show</code>, <code>settings output show</code>。</dd>
-              <dt>現行使用箇所</dt>
-              <dd>Timeline 設定画面、各製品設定ページ、初期設定案内。</dd>
-              <dt>変更点</dt>
-              <dd>Audio の <code>master</code>、ChatGPT の <code>output</code>、WindowsCodex の <code>master</code> を <code>outputRoot</code> として揃えます。</dd>
-              <dt>理由</dt>
-              <dd>同じ「生成データの保存先」を製品ごとに別名で扱うと、Swagger と UI の理解コストが上がるためです。</dd>
+              <dt>霑ｴ・ｾ髯ｦ謔滂ｽｯ・ｾ陟｢繝ｻ/dt>
+              <dd><code>settings status</code>, <code>settings master show</code>, <code>settings output show</code>邵ｲ繝ｻ/dd>
+              <dt>霑ｴ・ｾ髯ｦ蠕｡・ｽ・ｿ騾包ｽｨ驍ゅ・蝨・/dt>
+              <dd>Timeline 髫ｪ・ｭ陞ｳ螟ょ愛鬮ｱ・｢邵ｲ竏晄耳髯ｬ・ｽ陷ｩ竏ｬ・ｨ・ｭ陞ｳ螢ｹ繝ｻ郢晢ｽｼ郢ｧ・ｸ邵ｲ竏昴・隴帶ｺｯ・ｨ・ｭ陞ｳ螢ｽ・｡莠･繝ｻ邵ｲ繝ｻ/dd>
+              <dt>陞溽判蟲ｩ霓､・ｹ</dt>
+              <dd>Audio 邵ｺ・ｮ <code>master</code>邵ｲ・敬atGPT 邵ｺ・ｮ <code>output</code>邵ｲ莉拱ndowsCodex 邵ｺ・ｮ <code>master</code> 郢ｧ繝ｻ<code>outputRoot</code> 邵ｺ・ｨ邵ｺ蜉ｱ窶ｻ隰繝ｻ竏ｴ邵ｺ・ｾ邵ｺ蜷ｶﾂ繝ｻ/dd>
+              <dt>騾・・鄂ｰ</dt>
+              <dd>陷ｷ蠕個ｧ邵ｲ讙主・隰瑚・繝ｧ郢晢ｽｼ郢ｧ・ｿ邵ｺ・ｮ闖ｫ譎擾ｽｭ莨懊・邵ｲ髦ｪ・帝勳・ｽ陷ｩ竏夲ｼ・ｸｺ・ｨ邵ｺ・ｫ陋ｻ・･陷ｷ髦ｪ縲定ｬ・ｽｱ邵ｺ繝ｻ竊堤ｸｲ繝ｾwagger 邵ｺ・ｨ UI 邵ｺ・ｮ騾・・・ｧ・｣郢ｧ・ｳ郢ｧ・ｹ郢晏現窶ｲ闕ｳ鄙ｫ窶ｲ郢ｧ荵昶螺郢ｧ竏壹堤ｸｺ蜷ｶﾂ繝ｻ/dd>
             </dl>
           </div>
 
@@ -872,16 +855,16 @@
             <div class="api-head">
               <span class="method put">PUT</span>
               <span class="url">/{product}/settings</span>
-              <span class="badge change">既存コマンドを統合</span>
+              <span class="badge change">隴鯉ｽ｢陝・･縺慕ｹ晄ｧｭﾎｦ郢晏ｳｨ・帝お・ｱ陷ｷ繝ｻ/span>
             </div>
-            <p>設定を保存します。入力元、保存先、処理方法、トークンなどを一つの設定更新として扱います。</p>
+            <p>髫ｪ・ｭ陞ｳ螢ｹ・定将譎擾ｽｭ蛟･・邵ｺ・ｾ邵ｺ蜷ｶﾂ繧・・陷牙ｸ帙・邵ｲ竏ｽ・ｿ譎擾ｽｭ莨懊・邵ｲ竏昴・騾・・蟀ｿ雎戊ｼ板竏壹Κ郢晢ｽｼ郢ｧ・ｯ郢晢ｽｳ邵ｺ・ｪ邵ｺ・ｩ郢ｧ蜑・ｽｸﾂ邵ｺ・､邵ｺ・ｮ髫ｪ・ｭ陞ｳ螢ｽ蟲ｩ隴・ｽｰ邵ｺ・ｨ邵ｺ蜉ｱ窶ｻ隰・ｽｱ邵ｺ繝ｻ竏ｪ邵ｺ蜷ｶﾂ繝ｻ/p>
             <dl class="facts">
-              <dt>現行対応</dt>
-              <dd><code>settings save</code>, <code>settings inputs add/remove/clear</code>, <code>settings master set</code>, <code>settings output set</code>。</dd>
-              <dt>パラメータ変更</dt>
-              <dd><code>--input-root</code> の繰り返しは <code>inputRoots: []</code>、<code>--output-root</code> / <code>--to</code> 系は <code>outputRoot</code>、<code>--compute-mode</code> は <code>computeMode</code> にします。</dd>
-              <dt>理由</dt>
-              <dd>Web UI では「現在の設定全体」を保存する操作になるため、CLI の追加・削除コマンド列より、設定オブジェクト更新の方が安全に差分確認できます。</dd>
+              <dt>霑ｴ・ｾ髯ｦ謔滂ｽｯ・ｾ陟｢繝ｻ/dt>
+              <dd><code>settings save</code>, <code>settings inputs add/remove/clear</code>, <code>settings master set</code>, <code>settings output set</code>邵ｲ繝ｻ/dd>
+              <dt>郢昜ｻ｣ﾎ帷ｹ晢ｽ｡郢晢ｽｼ郢ｧ・ｿ陞溽判蟲ｩ</dt>
+              <dd><code>--input-root</code> 邵ｺ・ｮ驛｢・ｰ郢ｧ鬘假ｽｿ譁撰ｼ邵ｺ・ｯ <code>inputRoots: []</code>邵ｲ繝ｻcode>--output-root</code> / <code>--to</code> 驍会ｽｻ邵ｺ・ｯ <code>outputRoot</code>邵ｲ繝ｻcode>--compute-mode</code> 邵ｺ・ｯ <code>computeMode</code> 邵ｺ・ｫ邵ｺ蜉ｱ竏ｪ邵ｺ蜷ｶﾂ繝ｻ/dd>
+              <dt>騾・・鄂ｰ</dt>
+              <dd>Web UI 邵ｺ・ｧ邵ｺ・ｯ邵ｲ讙取ｨ溯舉・ｨ邵ｺ・ｮ髫ｪ・ｭ陞ｳ螢ｼ繝ｻ闖ｴ阮卍髦ｪ・定将譎擾ｽｭ蛟･笘・ｹｧ蛹ｺ譯・抄諛岩・邵ｺ・ｪ郢ｧ荵昶螺郢ｧ竏堋・鍬I 邵ｺ・ｮ髴托ｽｽ陷会｣ｰ郢晢ｽｻ陷台ｼ∝求郢ｧ・ｳ郢晄ｧｭﾎｦ郢晉甥繝ｻ郢ｧ蛹ｻ・顔ｸｲ竏ｬ・ｨ・ｭ陞ｳ螢ｹ縺檎ｹ晄じ縺夂ｹｧ・ｧ郢ｧ・ｯ郢晏沺蟲ｩ隴・ｽｰ邵ｺ・ｮ隴・ｽｹ邵ｺ謔滂ｽｮ迚吶・邵ｺ・ｫ陝ｾ・ｮ陋ｻ繝ｻ・｢・ｺ髫ｱ髦ｪ縲堤ｸｺ髦ｪ竏ｪ邵ｺ蜷ｶﾂ繝ｻ/dd>
             </dl>
           </div>
 
@@ -889,40 +872,40 @@
             <div class="api-head">
               <span class="method post">POST</span>
               <span class="url">/{product}/settings/check</span>
-              <span class="badge new">追加</span>
+              <span class="badge new">髴托ｽｽ陷会｣ｰ</span>
             </div>
-            <p>保存前または実行前に、設定が有効かだけを確認します。ファイルや会話の取り込みは行いません。</p>
+            <p>闖ｫ譎擾ｽｭ莨懃√邵ｺ・ｾ邵ｺ貅倥・陞ｳ貅ｯ・｡謔溽√邵ｺ・ｫ邵ｲ竏ｬ・ｨ・ｭ陞ｳ螢ｹ窶ｲ隴帷甥譟醍ｸｺ荵昶味邵ｺ莉｣・帝￡・ｺ髫ｱ髦ｪ・邵ｺ・ｾ邵ｺ蜷ｶﾂ繧・Ψ郢ｧ・｡郢ｧ・､郢晢ｽｫ郢ｧ繝ｻ・ｼ螟奇ｽｩ・ｱ邵ｺ・ｮ陷ｿ謔ｶ・企恷・ｼ邵ｺ・ｿ邵ｺ・ｯ髯ｦ蠕鯉ｼ樒ｸｺ・ｾ邵ｺ蟶呻ｽ鍋ｸｲ繝ｻ/p>
             <dl class="facts">
-              <dt>現行対応</dt>
-              <dd><code>doctor</code>, <code>config-check</code>, <code>settings status</code> の検査部分。</dd>
-              <dt>変更点</dt>
-              <dd>検査結果を <code>checks[]</code> と <code>blockingProblems[]</code> に分けます。</dd>
-              <dt>理由</dt>
-              <dd>ユーザーに「何を直せば使えるか」を先に出すためです。処理開始後に失敗するより判断しやすくなります。</dd>
+              <dt>霑ｴ・ｾ髯ｦ謔滂ｽｯ・ｾ陟｢繝ｻ/dt>
+              <dd><code>doctor</code>, <code>config-check</code>, <code>settings status</code> 邵ｺ・ｮ隶諛域ｸ企ｩ幢ｽｨ陋ｻ繝ｻﾂ繝ｻ/dd>
+              <dt>陞溽判蟲ｩ霓､・ｹ</dt>
+              <dd>隶諛域ｸ企お蜈域｣｡郢ｧ繝ｻ<code>checks[]</code> 邵ｺ・ｨ <code>blockingProblems[]</code> 邵ｺ・ｫ陋ｻ繝ｻ・邵ｺ・ｾ邵ｺ蜷ｶﾂ繝ｻ/dd>
+              <dt>騾・・鄂ｰ</dt>
+              <dd>郢晢ｽｦ郢晢ｽｼ郢ｧ・ｶ郢晢ｽｼ邵ｺ・ｫ邵ｲ蠕｡・ｽ霈費ｽ帝ｶ・ｴ邵ｺ蟶吶・闖ｴ・ｿ邵ｺ蛹ｻ・狗ｸｺ荵敖髦ｪ・定怦蛹ｻ竊楢怎・ｺ邵ｺ蜷ｶ笳・ｹｧ竏壹堤ｸｺ蜷ｶﾂ繧・・騾・・蟷戊沂蜿･・ｾ蠕娯・陞滂ｽｱ隰ｨ蜉ｱ笘・ｹｧ荵晢ｽ育ｹｧ髮∵・隴・ｽｭ邵ｺ蜉ｱ・・ｸｺ蜷ｶ・･邵ｺ・ｪ郢ｧ鄙ｫ竏ｪ邵ｺ蜷ｶﾂ繝ｻ/dd>
             </dl>
           </div>
         </div>
       </details>
 
       <details open>
-        <summary>2.3 更新と処理</summary>
+        <summary>2.3 隴厄ｽｴ隴・ｽｰ邵ｺ・ｨ陷・ｽｦ騾・・/summary>
         <div class="detail-body">
           <div class="api-node">
             <div class="api-head">
               <span class="method post">POST</span>
               <span class="url">/{product}/refresh</span>
-              <span class="badge change">items refresh を統一</span>
+              <span class="badge change">items refresh 郢ｧ蝣､・ｵ・ｱ闕ｳﾂ</span>
             </div>
-            <p>元データを確認し、新規または変更されたものを記録へ変換します。長い処理は即時完了ではなく処理IDを返します。</p>
+            <p>陷医・繝ｧ郢晢ｽｼ郢ｧ・ｿ郢ｧ蝣､・｢・ｺ髫ｱ髦ｪ・邵ｲ竏ｵ逵髫穂ｸ岩穐邵ｺ貅倥・陞溽判蟲ｩ邵ｺ霈費ｽ檎ｸｺ貅假ｽらｸｺ・ｮ郢ｧ螳夲ｽｨ蛟ｬ鮖ｸ邵ｺ・ｸ陞溽判驪､邵ｺ蜉ｱ竏ｪ邵ｺ蜷ｶﾂ繧玖◇邵ｺ繝ｻ繝ｻ騾・・繝ｻ陷奇ｽｳ隴弱ｇ・ｮ蠕｡・ｺ繝ｻ縲堤ｸｺ・ｯ邵ｺ・ｪ邵ｺ荳槭・騾・・D郢ｧ螳夲ｽｿ譁撰ｼ邵ｺ・ｾ邵ｺ蜷ｶﾂ繝ｻ/p>
             <dl class="facts">
-              <dt>現行対応</dt>
-              <dd><code>items refresh</code>、PC では <code>capture</code> と <code>items refresh</code> の意味を整理して対応。</dd>
-              <dt>現行使用箇所</dt>
-              <dd>Timeline の各製品ページの「更新」「再スキャン」「取り込み」ボタン、Timeline ストア再構築前の製品収集。</dd>
-              <dt>パラメータ変更</dt>
-              <dd><code>--max-items</code> は <code>limit</code>、<code>--item-id</code> は <code>recordIds</code>、ChatGPT の <code>--file</code> は <code>importId</code> に分離します。</dd>
-              <dt>理由</dt>
-              <dd>製品差分を URL 名に出さず、更新という共通操作として扱うためです。進捗は <code>/tasks/{taskId}</code> に分けます。</dd>
+              <dt>霑ｴ・ｾ髯ｦ謔滂ｽｯ・ｾ陟｢繝ｻ/dt>
+              <dd><code>items refresh</code>邵ｲ・｣C 邵ｺ・ｧ邵ｺ・ｯ <code>capture</code> 邵ｺ・ｨ <code>items refresh</code> 邵ｺ・ｮ隲｢荳櫁｢也ｹｧ蜻育ｴ幃・・・邵ｺ・ｦ陝・ｽｾ陟｢諛環繝ｻ/dd>
+              <dt>霑ｴ・ｾ髯ｦ蠕｡・ｽ・ｿ騾包ｽｨ驍ゅ・蝨・/dt>
+              <dd>Timeline 邵ｺ・ｮ陷ｷ繝ｻ・｣・ｽ陷ｩ竏壹・郢晢ｽｼ郢ｧ・ｸ邵ｺ・ｮ邵ｲ譴ｧ蟲ｩ隴・ｽｰ邵ｲ髦ｪﾂ謔溘・郢ｧ・ｹ郢ｧ・ｭ郢晢ｽ｣郢晢ｽｳ邵ｲ髦ｪﾂ謔溷徐郢ｧ鬘假ｽｾ・ｼ邵ｺ・ｿ邵ｲ髦ｪ繝ｻ郢ｧ・ｿ郢晢ｽｳ邵ｲ繧拱meline 郢ｧ・ｹ郢晏現縺・怙閧ｴ・ｧ迢暦ｽｯ迚咏√邵ｺ・ｮ髯ｬ・ｽ陷ｩ竏晏ｺｶ鬮ｮ繝ｻﾂ繝ｻ/dd>
+              <dt>郢昜ｻ｣ﾎ帷ｹ晢ｽ｡郢晢ｽｼ郢ｧ・ｿ陞溽判蟲ｩ</dt>
+              <dd><code>--max-items</code> 邵ｺ・ｯ <code>limit</code>邵ｲ繝ｻcode>--item-id</code> 邵ｺ・ｯ <code>recordIds</code>邵ｲ・敬atGPT 邵ｺ・ｮ <code>--file</code> 邵ｺ・ｯ <code>importId</code> 邵ｺ・ｫ陋ｻ繝ｻ螻ｬ邵ｺ蜉ｱ竏ｪ邵ｺ蜷ｶﾂ繝ｻ/dd>
+              <dt>騾・・鄂ｰ</dt>
+              <dd>髯ｬ・ｽ陷ｩ竏晢ｽｷ・ｮ陋ｻ繝ｻ・・URL 陷ｷ髦ｪ竊楢怎・ｺ邵ｺ霈披・邵ｲ竏ｵ蟲ｩ隴・ｽｰ邵ｺ・ｨ邵ｺ繝ｻ竕ｧ陷茨ｽｱ鬨ｾ螢ｽ譯・抄諛岩・邵ｺ蜉ｱ窶ｻ隰・ｽｱ邵ｺ繝ｻ笳・ｹｧ竏壹堤ｸｺ蜷ｶﾂ繧仰・ｲ隰仙干繝ｻ <code>/tasks/{taskId}</code> 邵ｺ・ｫ陋ｻ繝ｻ・邵ｺ・ｾ邵ｺ蜷ｶﾂ繝ｻ/dd>
             </dl>
           </div>
 
@@ -931,14 +914,14 @@
               <div class="api-head">
                 <span class="method">GET</span>
                 <span class="url">/{product}/tasks</span>
-                <span class="badge new">追加</span>
+                <span class="badge new">髴托ｽｽ陷会｣ｰ</span>
               </div>
-              <p>進行中または最近の処理を一覧します。Web UI の進捗表示と操作ログの入口です。</p>
+              <p>鬨ｾ・ｲ髯ｦ蠕｡・ｸ・ｭ邵ｺ・ｾ邵ｺ貅倥・隴崢髴台ｻ｣繝ｻ陷・ｽｦ騾・・・定叉ﾂ髫包ｽｧ邵ｺ蜉ｱ竏ｪ邵ｺ蜷ｶﾂ・脇b UI 邵ｺ・ｮ鬨ｾ・ｲ隰占挙・｡・ｨ驕会ｽｺ邵ｺ・ｨ隰ｫ蝣ｺ・ｽ諛莞溽ｹｧ・ｰ邵ｺ・ｮ陷茨ｽ･陷ｿ・｣邵ｺ・ｧ邵ｺ蜷ｶﾂ繝ｻ/p>
               <dl class="facts">
-                <dt>現行対応</dt>
-                <dd><code>runs list</code>、Timeline helper の operation logs、各製品の status.json。</dd>
-                <dt>理由</dt>
-                <dd>「処理中」「完了」「失敗」を CLI 標準出力から読み取るのではなく、API として確認できるようにします。</dd>
+                <dt>霑ｴ・ｾ髯ｦ謔滂ｽｯ・ｾ陟｢繝ｻ/dt>
+                <dd><code>runs list</code>邵ｲ繧拱meline helper 邵ｺ・ｮ operation logs邵ｲ竏晄耳髯ｬ・ｽ陷ｩ竏壹・ status.json邵ｲ繝ｻ/dd>
+                <dt>騾・・鄂ｰ</dt>
+                <dd>邵ｲ謔溘・騾・・・ｸ・ｭ邵ｲ髦ｪﾂ謔滂ｽｮ蠕｡・ｺ繝ｻﾂ髦ｪﾂ謔滂ｽ､・ｱ隰ｨ蜉ｱﾂ髦ｪ・・command 隶灘綜・ｺ髢繝ｻ陷牙ｸ卍ｰ郢ｧ闃ｽ・ｪ・ｭ邵ｺ・ｿ陷ｿ謔ｶ・狗ｸｺ・ｮ邵ｺ・ｧ邵ｺ・ｯ邵ｺ・ｪ邵ｺ荳環縲￣I 邵ｺ・ｨ邵ｺ蜉ｱ窶ｻ驕抵ｽｺ髫ｱ髦ｪ縲堤ｸｺ髦ｪ・狗ｹｧ蛹ｻ竕ｧ邵ｺ・ｫ邵ｺ蜉ｱ竏ｪ邵ｺ蜷ｶﾂ繝ｻ/dd>
               </dl>
             </div>
 
@@ -946,13 +929,13 @@
               <div class="api-head">
                 <span class="method">GET</span>
                 <span class="url">/{product}/tasks/{taskId}</span>
-                <span class="badge new">追加</span>
+                <span class="badge new">髴托ｽｽ陷会｣ｰ</span>
               </div>
-              <p>一つの処理の進捗、現在の段階、完了結果、失敗理由を返します。</p>
+              <p>闕ｳﾂ邵ｺ・､邵ｺ・ｮ陷・ｽｦ騾・・繝ｻ鬨ｾ・ｲ隰仙干ﾂ竏ｫ讓溯舉・ｨ邵ｺ・ｮ隹ｿ・ｵ鬮ｫ蠑ｱﾂ竏晢ｽｮ蠕｡・ｺ繝ｻ・ｵ蜈域｣｡邵ｲ竏晢ｽ､・ｱ隰ｨ遉ｼ轤企包ｽｱ郢ｧ螳夲ｽｿ譁撰ｼ邵ｺ・ｾ邵ｺ蜷ｶﾂ繝ｻ/p>
               <dl class="facts">
-                <dt>現行対応</dt>
-                <dd><code>runs show --run-id</code>、各 run/status ファイル。</dd>
-                <dt>主な返却</dt>
+                <dt>霑ｴ・ｾ髯ｦ謔滂ｽｯ・ｾ陟｢繝ｻ/dt>
+                <dd><code>runs show --run-id</code>邵ｲ竏晄耳 run/status 郢晁ｼ斐＜郢ｧ・､郢晢ｽｫ邵ｲ繝ｻ/dd>
+                <dt>闕ｳ・ｻ邵ｺ・ｪ髴第ｳ悟陪</dt>
                 <dd><code>state</code>, <code>progressPercent</code>, <code>currentStage</code>, <code>message</code>, <code>result</code></dd>
               </dl>
             </div>
@@ -961,14 +944,14 @@
               <div class="api-head">
                 <span class="method post">POST</span>
                 <span class="url">/{product}/tasks/{taskId}/cancel</span>
-                <span class="badge new">追加候補</span>
+                <span class="badge new">髴托ｽｽ陷会｣ｰ陋溷揃・｣繝ｻ/span>
               </div>
-              <p>長時間処理のキャンセルです。初期実装では「受け付け不可」を返してもよいですが、URL は予約します。</p>
+              <p>鬮滂ｽｷ隴弱ｋ菫｣陷・ｽｦ騾・・繝ｻ郢ｧ・ｭ郢晢ｽ｣郢晢ｽｳ郢ｧ・ｻ郢晢ｽｫ邵ｺ・ｧ邵ｺ蜷ｶﾂ繧・・隴帶ｺｷ・ｮ貅ｯ・｣繝ｻ縲堤ｸｺ・ｯ邵ｲ謔溷･ｳ邵ｺ蜿ｰ・ｻ蛟･・闕ｳ讎雁ｺ・ｸｲ髦ｪ・帝恆譁撰ｼ邵ｺ・ｦ郢ｧ繧・ｽ育ｸｺ繝ｻ縲堤ｸｺ蜷ｶ窶ｲ邵ｲ繧朿L 邵ｺ・ｯ闔閧ｲ・ｴ繝ｻ・邵ｺ・ｾ邵ｺ蜷ｶﾂ繝ｻ/p>
               <dl class="facts">
-                <dt>現行対応</dt>
-                <dd>明確な CLI 対応なし。現状は停止スクリプトやプロセス終了に寄りがちです。</dd>
-                <dt>理由</dt>
-                <dd>API 化すると複数アクセスと長時間処理が見えるため、キャンセル可否を契約として返す必要があります。</dd>
+                <dt>霑ｴ・ｾ髯ｦ謔滂ｽｯ・ｾ陟｢繝ｻ/dt>
+                <dd>隴丞ｮ茨ｽ｢・ｺ邵ｺ・ｪ command 陝・ｽｾ陟｢諛岩・邵ｺ蜉ｱﾂ繧画ｨ溯ｿ･・ｶ邵ｺ・ｯ陋帶㊧・ｭ・｢郢ｧ・ｹ郢ｧ・ｯ郢晢ｽｪ郢晏干繝ｨ郢ｧ繝ｻ繝ｻ郢晢ｽｭ郢ｧ・ｻ郢ｧ・ｹ驍ｨ繧・ｽｺ繝ｻ竊楢汞繝ｻ・顔ｸｺ蠕娯蔓邵ｺ・ｧ邵ｺ蜷ｶﾂ繝ｻ/dd>
+                <dt>騾・・鄂ｰ</dt>
+                <dd>API 陋ｹ謔ｶ笘・ｹｧ荵昶・髫阪・辟夂ｹｧ・｢郢ｧ・ｯ郢ｧ・ｻ郢ｧ・ｹ邵ｺ・ｨ鬮滂ｽｷ隴弱ｋ菫｣陷・ｽｦ騾・・窶ｲ髫穂ｹ昶斡郢ｧ荵昶螺郢ｧ竏堋竏壹￥郢晢ｽ｣郢晢ｽｳ郢ｧ・ｻ郢晢ｽｫ陷ｿ・ｯ陷ｷ・ｦ郢ｧ雋橸ｽ･驢搾ｽｴ繝ｻ竊堤ｸｺ蜉ｱ窶ｻ髴第鱒笘・｢繝ｻ・ｦ竏壺ｲ邵ｺ繧・ｽ顔ｸｺ・ｾ邵ｺ蜷ｶﾂ繝ｻ/dd>
               </dl>
             </div>
           </div>
@@ -976,24 +959,24 @@
       </details>
 
       <details open>
-        <summary>2.4 記録と出力</summary>
+        <summary>2.4 髫ｪ蛟ｬ鮖ｸ邵ｺ・ｨ陷・ｽｺ陷峨・/summary>
         <div class="detail-body">
           <div class="api-node">
             <div class="api-head">
               <span class="method">GET</span>
               <span class="url">/{product}/records</span>
-              <span class="badge change">items list を改名</span>
+              <span class="badge change">items list 郢ｧ蜻磯埔陷ｷ繝ｻ/span>
             </div>
-            <p>生成済みの記録を一覧します。内部の item は、ユーザー向けには record と呼びます。</p>
+            <p>騾墓ｻ薙・雋ょ現竏ｩ邵ｺ・ｮ髫ｪ蛟ｬ鮖ｸ郢ｧ蜑・ｽｸﾂ髫包ｽｧ邵ｺ蜉ｱ竏ｪ邵ｺ蜷ｶﾂ繧・・鬩幢ｽｨ邵ｺ・ｮ item 邵ｺ・ｯ邵ｲ竏墅倡ｹ晢ｽｼ郢ｧ・ｶ郢晢ｽｼ陷ｷ莉｣・邵ｺ・ｫ邵ｺ・ｯ record 邵ｺ・ｨ陷ｻ・ｼ邵ｺ・ｳ邵ｺ・ｾ邵ｺ蜷ｶﾂ繝ｻ/p>
             <dl class="facts">
-              <dt>現行対応</dt>
+              <dt>霑ｴ・ｾ髯ｦ謔滂ｽｯ・ｾ陟｢繝ｻ/dt>
               <dd><code>items list --page --page-size --json</code></dd>
-              <dt>現行使用箇所</dt>
-              <dd>Audio / Image / Video / PC の一覧、ChatGPT / WindowsCodex の会話一覧、Timeline ストア再構築。</dd>
-              <dt>パラメータ変更</dt>
-              <dd><code>page</code> と <code>pageSize</code> は維持。製品固有の絞り込みは <code>filter</code> または製品別枝に置きます。</dd>
-              <dt>理由</dt>
-              <dd>Swagger 上で全製品の一覧操作を同じ型にするためです。</dd>
+              <dt>霑ｴ・ｾ髯ｦ蠕｡・ｽ・ｿ騾包ｽｨ驍ゅ・蝨・/dt>
+              <dd>Audio / Image / Video / PC 邵ｺ・ｮ闕ｳﾂ髫包ｽｧ邵ｲ・敬atGPT / WindowsCodex 邵ｺ・ｮ闔ｨ螟奇ｽｩ・ｱ闕ｳﾂ髫包ｽｧ邵ｲ繧拱meline 郢ｧ・ｹ郢晏現縺・怙閧ｴ・ｧ迢暦ｽｯ蟲ｨﾂ繝ｻ/dd>
+              <dt>郢昜ｻ｣ﾎ帷ｹ晢ｽ｡郢晢ｽｼ郢ｧ・ｿ陞溽判蟲ｩ</dt>
+              <dd><code>page</code> 邵ｺ・ｨ <code>pageSize</code> 邵ｺ・ｯ驍ｯ・ｭ隰問・ﾂ繧奇ｽ｣・ｽ陷ｩ竏晏ｴ玖ｭ帛ｳｨ繝ｻ驍ｨ讒ｭ・企恷・ｼ邵ｺ・ｿ邵ｺ・ｯ <code>filter</code> 邵ｺ・ｾ邵ｺ貅倥・髯ｬ・ｽ陷ｩ竏晄肩隴ｫ譏ｴ竊馴р・ｮ邵ｺ髦ｪ竏ｪ邵ｺ蜷ｶﾂ繝ｻ/dd>
+              <dt>騾・・鄂ｰ</dt>
+              <dd>Swagger 闕ｳ鄙ｫ縲定怦・ｨ髯ｬ・ｽ陷ｩ竏壹・闕ｳﾂ髫包ｽｧ隰ｫ蝣ｺ・ｽ諛奇ｽ定惺蠕個ｧ陜吩ｹ昶・邵ｺ蜷ｶ・狗ｸｺ貅假ｽ∫ｸｺ・ｧ邵ｺ蜷ｶﾂ繝ｻ/dd>
             </dl>
           </div>
 
@@ -1001,14 +984,14 @@
             <div class="api-head">
               <span class="method">GET</span>
               <span class="url">/{product}/records/{recordId}</span>
-              <span class="badge new">整理して追加</span>
+              <span class="badge new">隰ｨ・ｴ騾・・・邵ｺ・ｦ髴托ｽｽ陷会｣ｰ</span>
             </div>
-            <p>一つの記録の詳細、タイムライン、生成物の参照を返します。</p>
+            <p>闕ｳﾂ邵ｺ・､邵ｺ・ｮ髫ｪ蛟ｬ鮖ｸ邵ｺ・ｮ髫ｧ・ｳ驍擾ｽｰ邵ｲ竏壹■郢ｧ・､郢晢｣ｰ郢晢ｽｩ郢ｧ・､郢晢ｽｳ邵ｲ竏ｫ蜃ｽ隰悟鴻鮟・ｸｺ・ｮ陷ｿ繧峨・郢ｧ螳夲ｽｿ譁撰ｼ邵ｺ・ｾ邵ｺ蜷ｶﾂ繝ｻ/p>
             <dl class="facts">
-              <dt>現行対応</dt>
-              <dd>製品ごとの detail API、生成済み <code>timeline.json</code> / <code>convert_info.json</code> の読み取り。</dd>
-              <dt>理由</dt>
-              <dd>詳細画面が、元ファイル詳細・会話詳細・PC記録詳細に分かれても、記録としての基礎情報は共通にできます。</dd>
+              <dt>霑ｴ・ｾ髯ｦ謔滂ｽｯ・ｾ陟｢繝ｻ/dt>
+              <dd>髯ｬ・ｽ陷ｩ竏夲ｼ・ｸｺ・ｨ邵ｺ・ｮ detail API邵ｲ竏ｫ蜃ｽ隰悟・・ｸ蛹ｻ竏ｩ <code>timeline.json</code> / <code>convert_info.json</code> 邵ｺ・ｮ髫ｱ・ｭ邵ｺ・ｿ陷ｿ謔ｶ・顔ｸｲ繝ｻ/dd>
+              <dt>騾・・鄂ｰ</dt>
+              <dd>髫ｧ・ｳ驍擾ｽｰ騾包ｽｻ鬮ｱ・｢邵ｺ蠕個竏昴・郢晁ｼ斐＜郢ｧ・､郢晢ｽｫ髫ｧ・ｳ驍擾ｽｰ郢晢ｽｻ闔ｨ螟奇ｽｩ・ｱ髫ｧ・ｳ驍擾ｽｰ郢晢ｽｻPC髫ｪ蛟ｬ鮖ｸ髫ｧ・ｳ驍擾ｽｰ邵ｺ・ｫ陋ｻ繝ｻﾂｰ郢ｧ蠕娯ｻ郢ｧ繧・竏ｬ・ｨ蛟ｬ鮖ｸ邵ｺ・ｨ邵ｺ蜉ｱ窶ｻ邵ｺ・ｮ陜難ｽｺ驕牙叙繝･陜｣・ｱ邵ｺ・ｯ陷茨ｽｱ鬨ｾ螢ｹ竊鍋ｸｺ・ｧ邵ｺ髦ｪ竏ｪ邵ｺ蜷ｶﾂ繝ｻ/dd>
             </dl>
           </div>
 
@@ -1016,16 +999,16 @@
             <div class="api-head">
               <span class="method post">POST</span>
               <span class="url">/{product}/records/download</span>
-              <span class="badge change">items download を改名</span>
+              <span class="badge change">items download 郢ｧ蜻磯埔陷ｷ繝ｻ/span>
             </div>
-            <p>選択した記録、または全記録の ZIP を作成します。実ファイルのダウンロード URL は別に返します。</p>
+            <p>鬩包ｽｸ隰壽ｧｭ・邵ｺ貅ｯ・ｨ蛟ｬ鮖ｸ邵ｲ竏壺穐邵ｺ貅倥・陷茨ｽｨ髫ｪ蛟ｬ鮖ｸ邵ｺ・ｮ ZIP 郢ｧ蜑・ｽｽ諛医・邵ｺ蜉ｱ竏ｪ邵ｺ蜷ｶﾂ繧・ｽｮ貅倥Ψ郢ｧ・｡郢ｧ・､郢晢ｽｫ邵ｺ・ｮ郢敖郢ｧ・ｦ郢晢ｽｳ郢晢ｽｭ郢晢ｽｼ郢昴・URL 邵ｺ・ｯ陋ｻ・･邵ｺ・ｫ髴第鱒・邵ｺ・ｾ邵ｺ蜷ｶﾂ繝ｻ/p>
             <dl class="facts">
-              <dt>現行対応</dt>
+              <dt>霑ｴ・ｾ髯ｦ謔滂ｽｯ・ｾ陟｢繝ｻ/dt>
               <dd><code>items download</code>, <code>items download --item-id</code>, <code>items download --to</code>, <code>--overwrite</code></dd>
-              <dt>パラメータ変更</dt>
-              <dd><code>--item-id</code> は <code>recordIds: []</code>、<code>--to</code> は API 内部の管理ダウンロード先へ移し、画面側は返却された <code>downloadUrl</code> を使います。</dd>
-              <dt>理由</dt>
-              <dd>ブラウザ保存とサーバー側 ZIP 作成を分け、任意のローカルパスを書き換えないようにするためです。</dd>
+              <dt>郢昜ｻ｣ﾎ帷ｹ晢ｽ｡郢晢ｽｼ郢ｧ・ｿ陞溽判蟲ｩ</dt>
+              <dd><code>--item-id</code> 邵ｺ・ｯ <code>recordIds: []</code>邵ｲ繝ｻcode>--to</code> 邵ｺ・ｯ API 陷繝ｻﾎ夂ｸｺ・ｮ驍ゑｽ｡騾・・繝郢ｧ・ｦ郢晢ｽｳ郢晢ｽｭ郢晢ｽｼ郢晉甥繝ｻ邵ｺ・ｸ驕假ｽｻ邵ｺ蜉ｱﾂ竏ｫ蛻､鬮ｱ・｢陋幢ｽｴ邵ｺ・ｯ髴第ｳ悟陪邵ｺ霈費ｽ檎ｸｺ繝ｻ<code>downloadUrl</code> 郢ｧ蜑・ｽｽ・ｿ邵ｺ繝ｻ竏ｪ邵ｺ蜷ｶﾂ繝ｻ/dd>
+              <dt>騾・・鄂ｰ</dt>
+              <dd>郢晄じﾎ帷ｹｧ・ｦ郢ｧ・ｶ闖ｫ譎擾ｽｭ蛟･竊堤ｹｧ・ｵ郢晢ｽｼ郢晁・繝ｻ陋幢ｽｴ ZIP 闖ｴ諛医・郢ｧ雋槭・邵ｺ莉｣ﾂ竏ｽ・ｻ・ｻ隲｢荳翫・郢晢ｽｭ郢晢ｽｼ郢ｧ・ｫ郢晢ｽｫ郢昜ｻ｣縺帷ｹｧ蜻亥ｶ檎ｸｺ閧ｴ驪､邵ｺ蛹ｻ竊醍ｸｺ繝ｻ・育ｸｺ繝ｻ竊鍋ｸｺ蜷ｶ・狗ｸｺ貅假ｽ∫ｸｺ・ｧ邵ｺ蜷ｶﾂ繝ｻ/dd>
             </dl>
           </div>
 
@@ -1033,16 +1016,16 @@
             <div class="api-head">
               <span class="method delete">DELETE</span>
               <span class="url">/{product}/records/generated</span>
-              <span class="badge change">delete-generated/remove を統一</span>
+              <span class="badge change">delete-generated/remove 郢ｧ蝣､・ｵ・ｱ闕ｳﾂ</span>
             </div>
-            <p>元データは残し、生成済みデータだけを削除します。</p>
+            <p>陷医・繝ｧ郢晢ｽｼ郢ｧ・ｿ邵ｺ・ｯ隹ｿ荵晢ｼ邵ｲ竏ｫ蜃ｽ隰悟・・ｸ蛹ｻ竏ｩ郢昴・繝ｻ郢ｧ・ｿ邵ｺ・ｰ邵ｺ莉｣・定恆莨∝求邵ｺ蜉ｱ竏ｪ邵ｺ蜷ｶﾂ繝ｻ/p>
             <dl class="facts">
-              <dt>現行対応</dt>
-              <dd>Audio <code>files/delete-generated</code>、Image / ChatGPT / WindowsCodex の <code>items/delete-generated</code>、Video の <code>items remove</code>。</dd>
-              <dt>パラメータ変更</dt>
-              <dd><code>itemIds</code> / <code>sourceIds</code> を <code>recordIds</code> に寄せます。<code>dryRun</code> は残します。</dd>
-              <dt>理由</dt>
-              <dd>削除対象が「元データではなく生成物だけ」であることを API 名から明確にするためです。</dd>
+              <dt>霑ｴ・ｾ髯ｦ謔滂ｽｯ・ｾ陟｢繝ｻ/dt>
+              <dd>Audio <code>files/delete-generated</code>邵ｲ・［age / ChatGPT / WindowsCodex 邵ｺ・ｮ <code>items/delete-generated</code>邵ｲ縲ナdeo 邵ｺ・ｮ <code>items remove</code>邵ｲ繝ｻ/dd>
+              <dt>郢昜ｻ｣ﾎ帷ｹ晢ｽ｡郢晢ｽｼ郢ｧ・ｿ陞溽判蟲ｩ</dt>
+              <dd><code>itemIds</code> / <code>sourceIds</code> 郢ｧ繝ｻ<code>recordIds</code> 邵ｺ・ｫ陝・・笳狗ｸｺ・ｾ邵ｺ蜷ｶﾂ繝ｻcode>dryRun</code> 邵ｺ・ｯ隹ｿ荵晢ｼ邵ｺ・ｾ邵ｺ蜷ｶﾂ繝ｻ/dd>
+              <dt>騾・・鄂ｰ</dt>
+              <dd>陷台ｼ∝求陝・ｽｾ髮趣ｽ｡邵ｺ蠕個謔溘・郢昴・繝ｻ郢ｧ・ｿ邵ｺ・ｧ邵ｺ・ｯ邵ｺ・ｪ邵ｺ蜀怜・隰悟鴻鮟・ｸｺ・ｰ邵ｺ莉｣ﾂ髦ｪ縲堤ｸｺ繧・ｽ狗ｸｺ阮吮・郢ｧ繝ｻAPI 陷ｷ髦ｪﾂｰ郢ｧ逕ｻ繝ｻ驕抵ｽｺ邵ｺ・ｫ邵ｺ蜷ｶ・狗ｸｺ貅假ｽ∫ｸｺ・ｧ邵ｺ蜷ｶﾂ繝ｻ/dd>
             </dl>
           </div>
         </div>
@@ -1051,27 +1034,26 @@
   </section>
 
   <section id="groups" class="card section">
-    <h2>3. 製品グループ別 API</h2>
+    <h2>3. 髯ｬ・ｽ陷ｩ竏壹￡郢晢ｽｫ郢晢ｽｼ郢晄懈肩 API</h2>
     <p class="muted">
-      製品差分はここに閉じ込めます。全製品に専用 API を増やすのではなく、元データの種類ごとに枝を足します。
-    </p>
+      髯ｬ・ｽ陷ｩ竏晢ｽｷ・ｮ陋ｻ繝ｻ繝ｻ邵ｺ阮呻ｼ・ｸｺ・ｫ鬮｢蟲ｨﾂｧ髴趣ｽｼ郢ｧ竏壺穐邵ｺ蜷ｶﾂ繧・・髯ｬ・ｽ陷ｩ竏壺・陝・ｉ逡・API 郢ｧ雋橸ｽ｢蜉ｱ・・ｸｺ蜷ｶ繝ｻ邵ｺ・ｧ邵ｺ・ｯ邵ｺ・ｪ邵ｺ荳環竏昴・郢昴・繝ｻ郢ｧ・ｿ邵ｺ・ｮ驕橸ｽｮ鬯俶ｧｭ・・ｸｺ・ｨ邵ｺ・ｫ隴ｫ譏ｴ・帝屆・ｳ邵ｺ蜉ｱ竏ｪ邵ｺ蜷ｶﾂ繝ｻ    </p>
 
     <div class="tree">
       <details open>
-        <summary>3.1 ファイル系: Audio / Image / Video</summary>
+        <summary>3.1 郢晁ｼ斐＜郢ｧ・､郢晢ｽｫ驍会ｽｻ: Audio / Image / Video</summary>
         <div class="detail-body">
           <div class="api-node">
             <div class="api-head">
               <span class="method">GET</span>
               <span class="url">/{product}/sources</span>
-              <span class="badge change">settings inputs を整理</span>
+              <span class="badge change">settings inputs 郢ｧ蜻育ｴ幃・・/span>
             </div>
-            <p>ユーザーが指定した入力フォルダーや入力ファイルを一覧します。</p>
+            <p>郢晢ｽｦ郢晢ｽｼ郢ｧ・ｶ郢晢ｽｼ邵ｺ譴ｧ谺陞ｳ螢ｹ・邵ｺ貅ｷ繝ｻ陷牙ｸ吶Ψ郢ｧ・ｩ郢晢ｽｫ郢敖郢晢ｽｼ郢ｧ繝ｻ繝ｻ陷牙ｸ吶Ψ郢ｧ・｡郢ｧ・､郢晢ｽｫ郢ｧ蜑・ｽｸﾂ髫包ｽｧ邵ｺ蜉ｱ竏ｪ邵ｺ蜷ｶﾂ繝ｻ/p>
             <dl class="facts">
-              <dt>現行対応</dt>
-              <dd>Audio <code>settings inputs list</code>、Image / Video <code>settings status</code> 内の <code>inputRoots</code>。</dd>
-              <dt>理由</dt>
-              <dd>「元データの場所」と「処理済み記録」を分けることで、設定画面と一覧画面を整理できます。</dd>
+              <dt>霑ｴ・ｾ髯ｦ謔滂ｽｯ・ｾ陟｢繝ｻ/dt>
+              <dd>Audio <code>settings inputs list</code>邵ｲ・［age / Video <code>settings status</code> 陷繝ｻ繝ｻ <code>inputRoots</code>邵ｲ繝ｻ/dd>
+              <dt>騾・・鄂ｰ</dt>
+              <dd>邵ｲ謔溘・郢昴・繝ｻ郢ｧ・ｿ邵ｺ・ｮ陜｣・ｴ隰・邵ｲ髦ｪ竊堤ｸｲ謔溘・騾・・・ｸ蛹ｻ竏ｩ髫ｪ蛟ｬ鮖ｸ邵ｲ髦ｪ・定崕繝ｻ・郢ｧ荵晢ｼ・ｸｺ・ｨ邵ｺ・ｧ邵ｲ竏ｬ・ｨ・ｭ陞ｳ螟ょ愛鬮ｱ・｢邵ｺ・ｨ闕ｳﾂ髫包ｽｧ騾包ｽｻ鬮ｱ・｢郢ｧ蜻育ｴ幃・・縲堤ｸｺ髦ｪ竏ｪ邵ｺ蜷ｶﾂ繝ｻ/dd>
             </dl>
           </div>
 
@@ -1079,16 +1061,16 @@
             <div class="api-head">
               <span class="method put">PUT</span>
               <span class="url">/{product}/sources</span>
-              <span class="badge change">add/remove をまとめる</span>
+              <span class="badge change">add/remove 郢ｧ蛛ｵ竏ｪ邵ｺ・ｨ郢ｧ竏夲ｽ・/span>
             </div>
-            <p>入力元の一覧を保存します。追加・削除の個別コマンドではなく、現在の一覧を正として更新します。</p>
+            <p>陷茨ｽ･陷牙ｸ帙・邵ｺ・ｮ闕ｳﾂ髫包ｽｧ郢ｧ蜑・ｽｿ譎擾ｽｭ蛟･・邵ｺ・ｾ邵ｺ蜷ｶﾂ繧奇ｽｿ・ｽ陷会｣ｰ郢晢ｽｻ陷台ｼ∝求邵ｺ・ｮ陋溷唱謖ｨ郢ｧ・ｳ郢晄ｧｭﾎｦ郢晏ｳｨ縲堤ｸｺ・ｯ邵ｺ・ｪ邵ｺ荳環竏ｫ讓溯舉・ｨ邵ｺ・ｮ闕ｳﾂ髫包ｽｧ郢ｧ蜻茨ｽｭ・｣邵ｺ・ｨ邵ｺ蜉ｱ窶ｻ隴厄ｽｴ隴・ｽｰ邵ｺ蜉ｱ竏ｪ邵ｺ蜷ｶﾂ繝ｻ/p>
             <dl class="facts">
-              <dt>現行対応</dt>
-              <dd><code>settings inputs add/remove/clear</code>、<code>settings save --input-root</code></dd>
-              <dt>パラメータ変更</dt>
-              <dd><code>inputRoots: [{ path, displayName, enabled }]</code> に統一します。</dd>
-              <dt>理由</dt>
-              <dd>Web UI の保存前確認で「追加されるもの / 外れるもの」を表示しやすくするためです。</dd>
+              <dt>霑ｴ・ｾ髯ｦ謔滂ｽｯ・ｾ陟｢繝ｻ/dt>
+              <dd><code>settings inputs add/remove/clear</code>邵ｲ繝ｻcode>settings save --input-root</code></dd>
+              <dt>郢昜ｻ｣ﾎ帷ｹ晢ｽ｡郢晢ｽｼ郢ｧ・ｿ陞溽判蟲ｩ</dt>
+              <dd><code>inputRoots: [{ path, displayName, enabled }]</code> 邵ｺ・ｫ驍ｨ・ｱ闕ｳﾂ邵ｺ蜉ｱ竏ｪ邵ｺ蜷ｶﾂ繝ｻ/dd>
+              <dt>騾・・鄂ｰ</dt>
+              <dd>Web UI 邵ｺ・ｮ闖ｫ譎擾ｽｭ莨懃√驕抵ｽｺ髫ｱ髦ｪ縲堤ｸｲ迹夲ｽｿ・ｽ陷会｣ｰ邵ｺ霈費ｽ檎ｹｧ荵晢ｽらｸｺ・ｮ / 陞滓じ・檎ｹｧ荵晢ｽらｸｺ・ｮ邵ｲ髦ｪ・帝勗・ｨ驕会ｽｺ邵ｺ蜉ｱ・・ｸｺ蜷ｶ・･邵ｺ蜷ｶ・狗ｸｺ貅假ｽ∫ｸｺ・ｧ邵ｺ蜷ｶﾂ繝ｻ/dd>
             </dl>
           </div>
 
@@ -1096,16 +1078,16 @@
             <div class="api-head">
               <span class="method">GET</span>
               <span class="url">/{product}/files</span>
-              <span class="badge keep">既存</span>
+              <span class="badge keep">隴鯉ｽ｢陝・・/span>
             </div>
-            <p>入力元にあるファイルを一覧します。まだ処理されていないファイルも含みます。</p>
+            <p>陷茨ｽ･陷牙ｸ帙・邵ｺ・ｫ邵ｺ繧・ｽ狗ｹ晁ｼ斐＜郢ｧ・､郢晢ｽｫ郢ｧ蜑・ｽｸﾂ髫包ｽｧ邵ｺ蜉ｱ竏ｪ邵ｺ蜷ｶﾂ繧・穐邵ｺ・ｰ陷・ｽｦ騾・・・・ｹｧ蠕娯ｻ邵ｺ繝ｻ竊醍ｸｺ繝ｻ繝ｵ郢ｧ・｡郢ｧ・､郢晢ｽｫ郢ｧ繧・ｧ邵ｺ・ｿ邵ｺ・ｾ邵ｺ蜷ｶﾂ繝ｻ/p>
             <dl class="facts">
-              <dt>現行対応</dt>
+              <dt>霑ｴ・ｾ髯ｦ謔滂ｽｯ・ｾ陟｢繝ｻ/dt>
               <dd><code>files list --page --page-size --json</code></dd>
-              <dt>現行使用箇所</dt>
-              <dd>Audio の音声ファイル一覧、Image の画像一覧、Video の動画一覧。</dd>
-              <dt>変更点</dt>
-              <dd>URL は製品ごとに同じ。返却には <code>recordState</code> を入れ、未処理 / 処理済み / 変更ありを表します。</dd>
+              <dt>霑ｴ・ｾ髯ｦ蠕｡・ｽ・ｿ騾包ｽｨ驍ゅ・蝨・/dt>
+              <dd>Audio 邵ｺ・ｮ鬮ｻ・ｳ陞｢・ｰ郢晁ｼ斐＜郢ｧ・､郢晢ｽｫ闕ｳﾂ髫包ｽｧ邵ｲ・［age 邵ｺ・ｮ騾包ｽｻ陷剃ｸ茨ｽｸﾂ髫包ｽｧ邵ｲ縲ナdeo 邵ｺ・ｮ陷肴・蛻､闕ｳﾂ髫包ｽｧ邵ｲ繝ｻ/dd>
+              <dt>陞溽判蟲ｩ霓､・ｹ</dt>
+              <dd>URL 邵ｺ・ｯ髯ｬ・ｽ陷ｩ竏夲ｼ・ｸｺ・ｨ邵ｺ・ｫ陷ｷ蠕個ｧ邵ｲ繧奇ｽｿ豕悟陪邵ｺ・ｫ邵ｺ・ｯ <code>recordState</code> 郢ｧ雋槭・郢ｧ蠕個竏ｵ謔ｴ陷・ｽｦ騾・・/ 陷・ｽｦ騾・・・ｸ蛹ｻ竏ｩ / 陞溽判蟲ｩ邵ｺ繧・ｽ顔ｹｧ螳夲ｽ｡・ｨ邵ｺ蜉ｱ竏ｪ邵ｺ蜷ｶﾂ繝ｻ/dd>
             </dl>
           </div>
 
@@ -1114,12 +1096,12 @@
               <div class="api-head">
                 <span class="method">GET</span>
                 <span class="url">/{product}/files/{fileId}</span>
-                <span class="badge change">detail を整理</span>
+                <span class="badge change">detail 郢ｧ蜻育ｴ幃・・/span>
               </div>
-              <p>一つの元ファイルの詳細です。元ファイルの情報、対応する記録、生成物の有無を返します。</p>
+              <p>闕ｳﾂ邵ｺ・､邵ｺ・ｮ陷医・繝ｵ郢ｧ・｡郢ｧ・､郢晢ｽｫ邵ｺ・ｮ髫ｧ・ｳ驍擾ｽｰ邵ｺ・ｧ邵ｺ蜷ｶﾂ繧・・郢晁ｼ斐＜郢ｧ・､郢晢ｽｫ邵ｺ・ｮ隲繝ｻ・ｰ・ｱ邵ｲ竏晢ｽｯ・ｾ陟｢諛岩・郢ｧ邇厄ｽｨ蛟ｬ鮖ｸ邵ｲ竏ｫ蜃ｽ隰悟鴻鮟・ｸｺ・ｮ隴幄・笏檎ｹｧ螳夲ｽｿ譁撰ｼ邵ｺ・ｾ邵ｺ蜷ｶﾂ繝ｻ/p>
               <dl class="facts">
-                <dt>現行対応</dt>
-                <dd>Timeline helper の <code>files/detail</code> 系 API、Audio の詳細ページ、Image / Video の詳細ページ。</dd>
+                <dt>霑ｴ・ｾ髯ｦ謔滂ｽｯ・ｾ陟｢繝ｻ/dt>
+                <dd>Timeline helper 邵ｺ・ｮ <code>files/detail</code> 驍会ｽｻ API邵ｲ縲「dio 邵ｺ・ｮ髫ｧ・ｳ驍擾ｽｰ郢晏｣ｹ繝ｻ郢ｧ・ｸ邵ｲ・［age / Video 邵ｺ・ｮ髫ｧ・ｳ驍擾ｽｰ郢晏｣ｹ繝ｻ郢ｧ・ｸ邵ｲ繝ｻ/dd>
               </dl>
             </div>
 
@@ -1127,14 +1109,14 @@
               <div class="api-head">
                 <span class="method">GET</span>
                 <span class="url">/{product}/files/{fileId}/source</span>
-                <span class="badge keep">既存</span>
+                <span class="badge keep">隴鯉ｽ｢陝・・/span>
               </div>
-              <p>ブラウザで再生・表示するため、元ファイルを読み取り専用で返します。</p>
+              <p>郢晄じﾎ帷ｹｧ・ｦ郢ｧ・ｶ邵ｺ・ｧ陷蜥ｲ蜃ｽ郢晢ｽｻ髯ｦ・ｨ驕会ｽｺ邵ｺ蜷ｶ・狗ｸｺ貅假ｽ∫ｸｲ竏昴・郢晁ｼ斐＜郢ｧ・､郢晢ｽｫ郢ｧ螳夲ｽｪ・ｭ邵ｺ・ｿ陷ｿ謔ｶ・願氣繧臥舞邵ｺ・ｧ髴第鱒・邵ｺ・ｾ邵ｺ蜷ｶﾂ繝ｻ/p>
               <dl class="facts">
-                <dt>現行対応</dt>
-                <dd>Timeline helper の <code>files/source</code> 系。Audio 再生、Image プレビュー、Video プレビューで使用。</dd>
-                <dt>責務</dt>
-                <dd>元ファイルを削除・変更しない。Range リクエスト、Content-Type、アクセス可能なルート制限を持つ。</dd>
+                <dt>霑ｴ・ｾ髯ｦ謔滂ｽｯ・ｾ陟｢繝ｻ/dt>
+                <dd>Timeline helper 邵ｺ・ｮ <code>files/source</code> 驍会ｽｻ邵ｲ繝ｻudio 陷蜥ｲ蜃ｽ邵ｲ・［age 郢晏干ﾎ樒ｹ晁侭ﾎ礼ｹ晢ｽｼ邵ｲ縲ナdeo 郢晏干ﾎ樒ｹ晁侭ﾎ礼ｹ晢ｽｼ邵ｺ・ｧ闖ｴ・ｿ騾包ｽｨ邵ｲ繝ｻ/dd>
+                <dt>髮具ｽｬ陷阪・/dt>
+                <dd>陷医・繝ｵ郢ｧ・｡郢ｧ・､郢晢ｽｫ郢ｧ雋樒ｎ鬮ｯ・､郢晢ｽｻ陞溽判蟲ｩ邵ｺ蜉ｱ竊醍ｸｺ繝ｻﾂ・殿nge 郢晢ｽｪ郢ｧ・ｯ郢ｧ・ｨ郢ｧ・ｹ郢晏現ﾂ・経ntent-Type邵ｲ竏壹＞郢ｧ・ｯ郢ｧ・ｻ郢ｧ・ｹ陷ｿ・ｯ髢ｭ・ｽ邵ｺ・ｪ郢晢ｽｫ郢晢ｽｼ郢昜ｺ･螳幃ｫｯ闊鯉ｽ定ｬ問・笆ｽ邵ｲ繝ｻ/dd>
               </dl>
             </div>
           </div>
@@ -1142,24 +1124,24 @@
       </details>
 
       <details open>
-        <summary>3.2 会話系: ChatGPT / WindowsCodex</summary>
+        <summary>3.2 闔ｨ螟奇ｽｩ・ｱ驍会ｽｻ: ChatGPT / WindowsCodex</summary>
         <div class="detail-body">
           <div class="api-node">
             <div class="api-head">
               <span class="method">GET</span>
               <span class="url">/{product}/conversations</span>
-              <span class="badge change">threads/items を改名</span>
+              <span class="badge change">threads/items 郢ｧ蜻磯埔陷ｷ繝ｻ/span>
             </div>
-            <p>会話の一覧です。ChatGPT と WindowsCodex は、同じ会話系 UI として扱います。</p>
+            <p>闔ｨ螟奇ｽｩ・ｱ邵ｺ・ｮ闕ｳﾂ髫包ｽｧ邵ｺ・ｧ邵ｺ蜷ｶﾂ繝ｻhatGPT 邵ｺ・ｨ WindowsCodex 邵ｺ・ｯ邵ｲ竏晞・邵ｺ蛟・ｽｼ螟奇ｽｩ・ｱ驍会ｽｻ UI 邵ｺ・ｨ邵ｺ蜉ｱ窶ｻ隰・ｽｱ邵ｺ繝ｻ竏ｪ邵ｺ蜷ｶﾂ繝ｻ/p>
             <dl class="facts">
-              <dt>現行対応</dt>
-              <dd><code>items list --json</code>、Timeline helper の <code>/products/{id}/items</code>。</dd>
-              <dt>現行使用箇所</dt>
-              <dd>ChatGPT スレッド一覧、WindowsCodex スレッド一覧。</dd>
-              <dt>パラメータ変更</dt>
-              <dd><code>page</code> / <code>pageSize</code> は維持。表示語は <code>threads</code> から <code>conversations</code> へ寄せます。</dd>
-              <dt>理由</dt>
-              <dd>一般ユーザーには「スレッド」より「会話」の方が意味が伝わりやすいためです。</dd>
+              <dt>霑ｴ・ｾ髯ｦ謔滂ｽｯ・ｾ陟｢繝ｻ/dt>
+              <dd><code>items list --json</code>邵ｲ繧拱meline helper 邵ｺ・ｮ <code>/products/{id}/items</code>邵ｲ繝ｻ/dd>
+              <dt>霑ｴ・ｾ髯ｦ蠕｡・ｽ・ｿ騾包ｽｨ驍ゅ・蝨・/dt>
+              <dd>ChatGPT 郢ｧ・ｹ郢晢ｽｬ郢昴・繝ｩ闕ｳﾂ髫包ｽｧ邵ｲ莉拱ndowsCodex 郢ｧ・ｹ郢晢ｽｬ郢昴・繝ｩ闕ｳﾂ髫包ｽｧ邵ｲ繝ｻ/dd>
+              <dt>郢昜ｻ｣ﾎ帷ｹ晢ｽ｡郢晢ｽｼ郢ｧ・ｿ陞溽判蟲ｩ</dt>
+              <dd><code>page</code> / <code>pageSize</code> 邵ｺ・ｯ驍ｯ・ｭ隰問・ﾂ繧奇ｽ｡・ｨ驕会ｽｺ髫ｱ讒ｭ繝ｻ <code>threads</code> 邵ｺ荵晢ｽ・<code>conversations</code> 邵ｺ・ｸ陝・・笳狗ｸｺ・ｾ邵ｺ蜷ｶﾂ繝ｻ/dd>
+              <dt>騾・・鄂ｰ</dt>
+              <dd>闕ｳﾂ髣奇ｽｬ郢晢ｽｦ郢晢ｽｼ郢ｧ・ｶ郢晢ｽｼ邵ｺ・ｫ邵ｺ・ｯ邵ｲ蠕後○郢晢ｽｬ郢昴・繝ｩ邵ｲ髦ｪ・育ｹｧ鄙ｫﾂ蠕｡・ｼ螟奇ｽｩ・ｱ邵ｲ髦ｪ繝ｻ隴・ｽｹ邵ｺ譴ｧﾑ崎惱・ｳ邵ｺ蠕｡・ｼ譏ｴ・冗ｹｧ鄙ｫ・・ｸｺ蜷ｶ・樒ｸｺ貅假ｽ∫ｸｺ・ｧ邵ｺ蜷ｶﾂ繝ｻ/dd>
             </dl>
           </div>
 
@@ -1167,14 +1149,14 @@
             <div class="api-head">
               <span class="method">GET</span>
               <span class="url">/{product}/conversations/{conversationId}</span>
-              <span class="badge change">thread detail を改名</span>
+              <span class="badge change">thread detail 郢ｧ蜻磯埔陷ｷ繝ｻ/span>
             </div>
-            <p>会話の詳細です。タイトル、時刻、メッセージ、タイムライン変換情報を返します。</p>
+            <p>闔ｨ螟奇ｽｩ・ｱ邵ｺ・ｮ髫ｧ・ｳ驍擾ｽｰ邵ｺ・ｧ邵ｺ蜷ｶﾂ繧・■郢ｧ・､郢晏現ﾎ晉ｸｲ竏ｵ蜃ｾ陋ｻ・ｻ邵ｲ竏墅鍋ｹ昴・縺晉ｹ晢ｽｼ郢ｧ・ｸ邵ｲ竏壹■郢ｧ・､郢晢｣ｰ郢晢ｽｩ郢ｧ・､郢晢ｽｳ陞溽判驪､隲繝ｻ・ｰ・ｱ郢ｧ螳夲ｽｿ譁撰ｼ邵ｺ・ｾ邵ｺ蜷ｶﾂ繝ｻ/p>
             <dl class="facts">
-              <dt>現行対応</dt>
-              <dd>Timeline helper の <code>/products/chatgpt/threads/{id}</code> と <code>/products/windows-codex/threads/{id}</code>。</dd>
-              <dt>理由</dt>
-              <dd>ChatGPT と WindowsCodex の詳細画面を同じ型で持てるようにするためです。</dd>
+              <dt>霑ｴ・ｾ髯ｦ謔滂ｽｯ・ｾ陟｢繝ｻ/dt>
+              <dd>Timeline helper 邵ｺ・ｮ <code>/products/chatgpt/threads/{id}</code> 邵ｺ・ｨ <code>/products/windows-codex/threads/{id}</code>邵ｲ繝ｻ/dd>
+              <dt>騾・・鄂ｰ</dt>
+              <dd>ChatGPT 邵ｺ・ｨ WindowsCodex 邵ｺ・ｮ髫ｧ・ｳ驍擾ｽｰ騾包ｽｻ鬮ｱ・｢郢ｧ雋樣・邵ｺ莨懈｢帷ｸｺ・ｧ隰問・窶ｻ郢ｧ荵晢ｽ育ｸｺ繝ｻ竊鍋ｸｺ蜷ｶ・狗ｸｺ貅假ｽ∫ｸｺ・ｧ邵ｺ蜷ｶﾂ繝ｻ/dd>
             </dl>
           </div>
 
@@ -1182,40 +1164,40 @@
             <div class="api-head">
               <span class="method post">POST</span>
               <span class="url">/chatgpt/imports</span>
-              <span class="badge new">ChatGPT 専用</span>
+              <span class="badge new">ChatGPT 陝・ｉ逡・/span>
             </div>
-            <p>ChatGPT エクスポート ZIP を登録します。登録後、<code>/chatgpt/refresh</code> に <code>importId</code> を渡して処理します。</p>
+            <p>ChatGPT 郢ｧ・ｨ郢ｧ・ｯ郢ｧ・ｹ郢晄亢繝ｻ郢昴・ZIP 郢ｧ蝣､蛹ｳ鬪ｭ・ｲ邵ｺ蜉ｱ竏ｪ邵ｺ蜷ｶﾂ繧牙元鬪ｭ・ｲ陟募ｾ個繝ｻcode>/chatgpt/refresh</code> 邵ｺ・ｫ <code>importId</code> 郢ｧ蜻茨ｽｸ・｡邵ｺ蜉ｱ窶ｻ陷・ｽｦ騾・・・邵ｺ・ｾ邵ｺ蜷ｶﾂ繝ｻ/p>
             <dl class="facts">
-              <dt>現行対応</dt>
+              <dt>霑ｴ・ｾ髯ｦ謔滂ｽｯ・ｾ陟｢繝ｻ/dt>
               <dd><code>items refresh --file C:\path\chatgpt-export.zip</code></dd>
-              <dt>パラメータ変更</dt>
-              <dd>ローカルファイルパスを直接 refresh に渡すのではなく、先に import として扱います。</dd>
-              <dt>理由</dt>
-              <dd>ブラウザ UI ではファイル選択、アップロード/登録、処理開始を分けた方が失敗時の説明と再実行がしやすいためです。</dd>
+              <dt>郢昜ｻ｣ﾎ帷ｹ晢ｽ｡郢晢ｽｼ郢ｧ・ｿ陞溽判蟲ｩ</dt>
+              <dd>郢晢ｽｭ郢晢ｽｼ郢ｧ・ｫ郢晢ｽｫ郢晁ｼ斐＜郢ｧ・､郢晢ｽｫ郢昜ｻ｣縺帷ｹｧ蝣､蟲ｩ隰暦ｽ･ refresh 邵ｺ・ｫ雋ゑｽ｡邵ｺ蜷ｶ繝ｻ邵ｺ・ｧ邵ｺ・ｯ邵ｺ・ｪ邵ｺ荳環竏昴・邵ｺ・ｫ import 邵ｺ・ｨ邵ｺ蜉ｱ窶ｻ隰・ｽｱ邵ｺ繝ｻ竏ｪ邵ｺ蜷ｶﾂ繝ｻ/dd>
+              <dt>騾・・鄂ｰ</dt>
+              <dd>郢晄じﾎ帷ｹｧ・ｦ郢ｧ・ｶ UI 邵ｺ・ｧ邵ｺ・ｯ郢晁ｼ斐＜郢ｧ・､郢晢ｽｫ鬩包ｽｸ隰壽ｧｭﾂ竏壹＞郢昴・繝ｻ郢晢ｽｭ郢晢ｽｼ郢昴・騾具ｽｻ鬪ｭ・ｲ邵ｲ竏昴・騾・・蟷戊沂荵晢ｽ定崕繝ｻ・邵ｺ貊灘ｩｿ邵ｺ謔滂ｽ､・ｱ隰ｨ邇ｲ蜃ｾ邵ｺ・ｮ髫ｱ・ｬ隴丞ｼｱ竊定怙讎奇ｽｮ貅ｯ・｡蠕娯ｲ邵ｺ蜉ｱ・・ｸｺ蜷ｶ・樒ｸｺ貅假ｽ∫ｸｺ・ｧ邵ｺ蜷ｶﾂ繝ｻ/dd>
             </dl>
           </div>
         </div>
       </details>
 
       <details open>
-        <summary>3.3 PC記録系: TimelineForPC</summary>
+        <summary>3.3 PC髫ｪ蛟ｬ鮖ｸ驍会ｽｻ: TimelineForPC</summary>
         <div class="detail-body">
           <div class="api-node">
             <div class="api-head">
               <span class="method post">POST</span>
               <span class="url">/pc/captures</span>
-              <span class="badge change">capture を API 化</span>
+              <span class="badge change">capture 郢ｧ繝ｻAPI 陋ｹ繝ｻ/span>
             </div>
-            <p>現在の PC 状態を記録します。これは元ファイルの変換ではなく、その時点の PC のスナップショット作成です。</p>
+            <p>霑ｴ・ｾ陜ｨ・ｨ邵ｺ・ｮ PC 霑･・ｶ隲ｷ荵晢ｽ帝坎蛟ｬ鮖ｸ邵ｺ蜉ｱ竏ｪ邵ｺ蜷ｶﾂ繧・ｼ・ｹｧ蠕後・陷医・繝ｵ郢ｧ・｡郢ｧ・､郢晢ｽｫ邵ｺ・ｮ陞溽判驪､邵ｺ・ｧ邵ｺ・ｯ邵ｺ・ｪ邵ｺ荳環竏壺落邵ｺ・ｮ隴弱ｉ縺帷ｸｺ・ｮ PC 邵ｺ・ｮ郢ｧ・ｹ郢晉ｿｫ繝｣郢晏干縺咏ｹ晢ｽｧ郢昴・繝ｨ闖ｴ諛医・邵ｺ・ｧ邵ｺ蜷ｶﾂ繝ｻ/p>
             <dl class="facts">
-              <dt>現行対応</dt>
+              <dt>霑ｴ・ｾ髯ｦ謔滂ｽｯ・ｾ陟｢繝ｻ/dt>
               <dd><code>POST /capture</code></dd>
-              <dt>現行使用箇所</dt>
-              <dd>TimelineForPC 単体 CLI。Timeline 本体では <code>/products/pc/refresh</code> が <code>items refresh</code> を呼ぶ形で統合途中。</dd>
-              <dt>パラメータ変更</dt>
-              <dd><code>--output-root</code> は settings 側へ移し、実行時は <code>redactionProfile</code>, <code>mockProfile</code>, <code>force</code> 程度に絞ります。</dd>
-              <dt>理由</dt>
-              <dd>PC Web UI では「今のPCを記録する」という操作が主であり、ファイル系の <code>/files</code> とは別概念にすべきためです。</dd>
+              <dt>霑ｴ・ｾ髯ｦ蠕｡・ｽ・ｿ騾包ｽｨ驍ゅ・蝨・/dt>
+              <dd>TimelineForPC 陷雁・ｽｽ繝ｻCLI邵ｲ・品meline 隴幢ｽｬ闖ｴ阮吶堤ｸｺ・ｯ <code>/products/pc/refresh</code> 邵ｺ繝ｻ<code>items refresh</code> 郢ｧ雋樔ｻ也ｸｺ・ｶ陟厄ｽ｢邵ｺ・ｧ驍ｨ・ｱ陷ｷ逎ｯﾂ豈費ｽｸ・ｭ邵ｲ繝ｻ/dd>
+              <dt>郢昜ｻ｣ﾎ帷ｹ晢ｽ｡郢晢ｽｼ郢ｧ・ｿ陞溽判蟲ｩ</dt>
+              <dd><code>--output-root</code> 邵ｺ・ｯ settings 陋幢ｽｴ邵ｺ・ｸ驕假ｽｻ邵ｺ蜉ｱﾂ竏晢ｽｮ貅ｯ・｡譴ｧ蜃ｾ邵ｺ・ｯ <code>redactionProfile</code>, <code>mockProfile</code>, <code>force</code> 驕槫唱・ｺ・ｦ邵ｺ・ｫ驍ｨ讒ｭ・顔ｸｺ・ｾ邵ｺ蜷ｶﾂ繝ｻ/dd>
+              <dt>騾・・鄂ｰ</dt>
+              <dd>PC Web UI 邵ｺ・ｧ邵ｺ・ｯ邵ｲ蠕｡・ｻ鄙ｫ繝ｻPC郢ｧ螳夲ｽｨ蛟ｬ鮖ｸ邵ｺ蜷ｶ・狗ｸｲ髦ｪ竊堤ｸｺ繝ｻ竕ｧ隰ｫ蝣ｺ・ｽ諛岩ｲ闕ｳ・ｻ邵ｺ・ｧ邵ｺ繧・ｽ顔ｸｲ竏壹Ψ郢ｧ・｡郢ｧ・､郢晢ｽｫ驍会ｽｻ邵ｺ・ｮ <code>/files</code> 邵ｺ・ｨ邵ｺ・ｯ陋ｻ・･隶弱ｇ・ｿ・ｵ邵ｺ・ｫ邵ｺ蜷ｶ竏狗ｸｺ髦ｪ笳・ｹｧ竏壹堤ｸｺ蜷ｶﾂ繝ｻ/dd>
             </dl>
           </div>
 
@@ -1224,12 +1206,12 @@
               <div class="api-head">
                 <span class="method">GET</span>
                 <span class="url">/pc/captures</span>
-                <span class="badge change">履歴一覧</span>
+                <span class="badge change">陞ｻ・･雎・ｽｴ闕ｳﾂ髫包ｽｧ</span>
               </div>
-              <p>過去の PC 記録の一覧です。現在の <code>items list</code> と capture run 履歴を統合して見せます。</p>
+              <p>鬩穂ｸｻ謔臥ｸｺ・ｮ PC 髫ｪ蛟ｬ鮖ｸ邵ｺ・ｮ闕ｳﾂ髫包ｽｧ邵ｺ・ｧ邵ｺ蜷ｶﾂ繧画ｨ溯舉・ｨ邵ｺ・ｮ <code>items list</code> 邵ｺ・ｨ capture run 陞ｻ・･雎・ｽｴ郢ｧ蝣､・ｵ・ｱ陷ｷ蛹ｻ・邵ｺ・ｦ髫穂ｹ昶雷邵ｺ・ｾ邵ｺ蜷ｶﾂ繝ｻ/p>
               <dl class="facts">
-                <dt>現行対応</dt>
-                <dd><code>items list --json</code> と出力ディレクトリ内の run 履歴。</dd>
+                <dt>霑ｴ・ｾ髯ｦ謔滂ｽｯ・ｾ陟｢繝ｻ/dt>
+                <dd><code>items list --json</code> 邵ｺ・ｨ陷・ｽｺ陷牙ｸ吶Ι郢ｧ・｣郢晢ｽｬ郢ｧ・ｯ郢晏現ﾎ懆怙繝ｻ繝ｻ run 陞ｻ・･雎・ｽｴ邵ｲ繝ｻ/dd>
               </dl>
             </div>
 
@@ -1237,14 +1219,14 @@
               <div class="api-head">
                 <span class="method">GET</span>
                 <span class="url">/pc/captures/{captureId}/report</span>
-                <span class="badge keep">既存出力を公開</span>
+                <span class="badge keep">隴鯉ｽ｢陝・ｼ懊・陷牙ｸ呻ｽ定怦・ｬ鬮｢繝ｻ/span>
               </div>
-              <p>PC 記録の読みやすいレポートを返します。</p>
+              <p>PC 髫ｪ蛟ｬ鮖ｸ邵ｺ・ｮ髫ｱ・ｭ邵ｺ・ｿ郢ｧ繝ｻ笘・ｸｺ繝ｻﾎ樒ｹ晄亢繝ｻ郢晏現・帝恆譁撰ｼ邵ｺ・ｾ邵ｺ蜷ｶﾂ繝ｻ/p>
               <dl class="facts">
-                <dt>現行対応</dt>
+                <dt>霑ｴ・ｾ髯ｦ謔滂ｽｯ・ｾ陟｢繝ｻ/dt>
                 <dd><code>report.md</code>, <code>export/YYYYMMDDHHMM.md</code></dd>
-                <dt>理由</dt>
-                <dd>TimelineForPC を Web UI 化する場合、ユーザーに最初に見せる価値は JSON ではなくレポートだからです。</dd>
+                <dt>騾・・鄂ｰ</dt>
+                <dd>TimelineForPC 郢ｧ繝ｻWeb UI 陋ｹ謔ｶ笘・ｹｧ蜿･・ｰ・ｴ陷ｷ蛹ｻﾂ竏墅倡ｹ晢ｽｼ郢ｧ・ｶ郢晢ｽｼ邵ｺ・ｫ隴崢陋ｻ譏ｴ竊馴囎荵昶雷郢ｧ蛟ｶ・ｾ・｡陋滂ｽ､邵ｺ・ｯ JSON 邵ｺ・ｧ邵ｺ・ｯ邵ｺ・ｪ邵ｺ荳莞樒ｹ晄亢繝ｻ郢晏現笆｡邵ｺ荵晢ｽ臥ｸｺ・ｧ邵ｺ蜷ｶﾂ繝ｻ/dd>
               </dl>
             </div>
 
@@ -1252,14 +1234,14 @@
               <div class="api-head">
                 <span class="method">GET</span>
                 <span class="url">/pc/captures/{captureId}/snapshot</span>
-                <span class="badge keep">既存出力を公開</span>
+                <span class="badge keep">隴鯉ｽ｢陝・ｼ懊・陷牙ｸ呻ｽ定怦・ｬ鬮｢繝ｻ/span>
               </div>
-              <p>機械処理向けの PC スナップショット JSON を返します。</p>
+              <p>隶匁ｻ難ｽ｢・ｰ陷・ｽｦ騾・・鬮・ｸｺ莉｣繝ｻ PC 郢ｧ・ｹ郢晉ｿｫ繝｣郢晏干縺咏ｹ晢ｽｧ郢昴・繝ｨ JSON 郢ｧ螳夲ｽｿ譁撰ｼ邵ｺ・ｾ邵ｺ蜷ｶﾂ繝ｻ/p>
               <dl class="facts">
-                <dt>現行対応</dt>
+                <dt>霑ｴ・ｾ髯ｦ謔滂ｽｯ・ｾ陟｢繝ｻ/dt>
                 <dd><code>snapshot.json</code>, <code>snapshot_redacted.json</code></dd>
-                <dt>責務</dt>
-                <dd>通常表示では redacted を優先し、未マスク情報へのアクセスは明示的に分けます。</dd>
+                <dt>髮具ｽｬ陷阪・/dt>
+                <dd>鬨ｾ螢ｼ・ｸ・ｸ髯ｦ・ｨ驕会ｽｺ邵ｺ・ｧ邵ｺ・ｯ redacted 郢ｧ雋樞煤陷亥現・邵ｲ竏ｵ謔ｴ郢晄ｧｭ縺帷ｹｧ・ｯ隲繝ｻ・ｰ・ｱ邵ｺ・ｸ邵ｺ・ｮ郢ｧ・｢郢ｧ・ｯ郢ｧ・ｻ郢ｧ・ｹ邵ｺ・ｯ隴丞ｮ茨ｽ､・ｺ騾ｧ繝ｻ竊楢崕繝ｻ・邵ｺ・ｾ邵ｺ蜷ｶﾂ繝ｻ/dd>
               </dl>
             </div>
           </div>
@@ -1269,66 +1251,65 @@
   </section>
 
   <section id="products" class="card section">
-    <h2>4. 製品別の現行対応</h2>
+    <h2>4. 髯ｬ・ｽ陷ｩ竏晄肩邵ｺ・ｮ霑ｴ・ｾ髯ｦ謔滂ｽｯ・ｾ陟｢繝ｻ/h2>
     <p class="muted">
-      ここでは製品ごとに、提案 API が現行 CLI のどこに対応するかを確認します。
-    </p>
+      邵ｺ阮呻ｼ・ｸｺ・ｧ邵ｺ・ｯ髯ｬ・ｽ陷ｩ竏夲ｼ・ｸｺ・ｨ邵ｺ・ｫ邵ｲ竏ｵ鄂ｲ隴ｯ繝ｻAPI 邵ｺ讙取ｨ滄勗繝ｻCLI 邵ｺ・ｮ邵ｺ・ｩ邵ｺ阮吮・陝・ｽｾ陟｢諛岩・郢ｧ荵敖ｰ郢ｧ蝣､・｢・ｺ髫ｱ髦ｪ・邵ｺ・ｾ邵ｺ蜷ｶﾂ繝ｻ    </p>
 
     <div class="tree">
       <details open>
         <summary>4.1 TimelineForAudio</summary>
         <div class="detail-body">
           <div class="api-node">
-            <h3>役割</h3>
-            <p>音声ファイルを読み取り、話者ラベル、時間範囲、音響単位を持つ記録を作るファイル系製品です。</p>
+            <h3>陟厄ｽｹ陷托ｽｲ</h3>
+            <p>鬮ｻ・ｳ陞｢・ｰ郢晁ｼ斐＜郢ｧ・､郢晢ｽｫ郢ｧ螳夲ｽｪ・ｭ邵ｺ・ｿ陷ｿ謔ｶ・顔ｸｲ竏ｬ・ｩ・ｱ髢繝ｻﾎ帷ｹ晏生ﾎ晉ｸｲ竏ｵ蜃ｾ鬮｢骰具ｽｯ繝ｻ蟲・ｸｲ繝ｻ豬ｹ鬮ｻ・ｿ陷雁・ｽｽ髦ｪ・定ｬ問・笆ｽ髫ｪ蛟ｬ鮖ｸ郢ｧ蜑・ｽｽ諛奇ｽ狗ｹ晁ｼ斐＜郢ｧ・､郢晢ｽｫ驍会ｽｻ髯ｬ・ｽ陷ｩ竏壹堤ｸｺ蜷ｶﾂ繝ｻ/p>
           </div>
           <div class="table-wrap">
             <table>
               <thead>
-                <tr><th>提案 API</th><th>現行 CLI</th><th>既存/新規</th><th>変更点と理由</th></tr>
+                <tr><th>隰蜈茨ｽ｡繝ｻAPI</th><th>霑ｴ・ｾ髯ｦ繝ｻCLI</th><th>隴鯉ｽ｢陝・・隴・ｽｰ髫輔・/th><th>陞溽判蟲ｩ霓､・ｹ邵ｺ・ｨ騾・・鄂ｰ</th></tr>
               </thead>
               <tbody>
                 <tr>
                   <td><code>GET /audio/health</code></td>
-                  <td>明確な対応なし。worker daemon の稼働と Docker 状態で代替。</td>
-                  <td>新規</td>
-                  <td>Audio は長時間処理とモデル依存があるため、API と worker の生存確認を分けて返す必要があります。</td>
+                  <td>隴丞ｮ茨ｽ｢・ｺ邵ｺ・ｪ陝・ｽｾ陟｢諛岩・邵ｺ蜉ｱﾂ・ｸorker daemon 邵ｺ・ｮ驕橸ｽｼ陷帝亂竊・Docker 霑･・ｶ隲ｷ荵昴定脂・｣隴厄ｽｿ邵ｲ繝ｻ/td>
+                  <td>隴・ｽｰ髫輔・/td>
+                  <td>Audio 邵ｺ・ｯ鬮滂ｽｷ隴弱ｋ菫｣陷・ｽｦ騾・・竊堤ｹ晢ｽ｢郢昴・ﾎ晁嵩譎擾ｽｭ蛟･窶ｲ邵ｺ繧・ｽ狗ｸｺ貅假ｽ∫ｸｲ縲￣I 邵ｺ・ｨ worker 邵ｺ・ｮ騾墓ｺｷ・ｭ蛟｡・｢・ｺ髫ｱ髦ｪ・定崕繝ｻ・邵ｺ・ｦ髴第鱒笘・｢繝ｻ・ｦ竏壺ｲ邵ｺ繧・ｽ顔ｸｺ・ｾ邵ｺ蜷ｶﾂ繝ｻ/td>
                 </tr>
                 <tr>
                   <td><code>GET /audio/status</code></td>
                   <td><code>settings status</code>, <code>settings inputs list</code>, <code>settings master show</code>, <code>runs list</code></td>
-                  <td>既存統合</td>
-                  <td>画面が必要とする「設定済みか」「実行中か」「最新処理はどうか」を一つにまとめます。</td>
+                  <td>隴鯉ｽ｢陝・｡・ｵ・ｱ陷ｷ繝ｻ/td>
+                  <td>騾包ｽｻ鬮ｱ・｢邵ｺ謔滂ｽｿ繝ｻ・ｦ竏壺・邵ｺ蜷ｶ・狗ｸｲ迹夲ｽｨ・ｭ陞ｳ螢ｽ・ｸ蛹ｻ竏ｩ邵ｺ荵敖髦ｪﾂ謔滂ｽｮ貅ｯ・｡蠕｡・ｸ・ｭ邵ｺ荵敖髦ｪﾂ譴ｧ諤呵ｭ・ｽｰ陷・ｽｦ騾・・繝ｻ邵ｺ・ｩ邵ｺ繝ｻﾂｰ邵ｲ髦ｪ・定叉ﾂ邵ｺ・､邵ｺ・ｫ邵ｺ・ｾ邵ｺ・ｨ郢ｧ竏壺穐邵ｺ蜷ｶﾂ繝ｻ/td>
                 </tr>
                 <tr>
                   <td><code>PUT /audio/settings</code></td>
                   <td><code>settings save --token --compute-mode</code>, <code>settings inputs add/remove/clear</code>, <code>settings master set</code></td>
-                  <td>既存統合</td>
-                  <td>複数 CLI 呼び出しを一つの設定保存にします。保存前確認と差分表示がしやすくなります。</td>
+                  <td>隴鯉ｽ｢陝・｡・ｵ・ｱ陷ｷ繝ｻ/td>
+                  <td>髫阪・辟・command 陷ｻ・ｼ邵ｺ・ｳ陷・ｽｺ邵ｺ蜉ｱ・定叉ﾂ邵ｺ・､邵ｺ・ｮ髫ｪ・ｭ陞ｳ螢ｻ・ｿ譎擾ｽｭ蛟･竊鍋ｸｺ蜉ｱ竏ｪ邵ｺ蜷ｶﾂ繧・ｽｿ譎擾ｽｭ莨懃√驕抵ｽｺ髫ｱ髦ｪ竊定淦・ｮ陋ｻ繝ｻ・｡・ｨ驕会ｽｺ邵ｺ蠕鯉ｼ郢ｧ繝ｻ笘・ｸｺ荳岩・郢ｧ鄙ｫ竏ｪ邵ｺ蜷ｶﾂ繝ｻ/td>
                 </tr>
                 <tr>
                   <td><code>GET /audio/files</code></td>
                   <td><code>files list --page --page-size --json</code></td>
-                  <td>既存</td>
-                  <td>URL と返却名を他ファイル系製品に合わせます。</td>
+                  <td>隴鯉ｽ｢陝・・/td>
+                  <td>URL 邵ｺ・ｨ髴第ｳ悟陪陷ｷ髦ｪ・定脂謔ｶ繝ｵ郢ｧ・｡郢ｧ・､郢晢ｽｫ驍会ｽｻ髯ｬ・ｽ陷ｩ竏壺・陷ｷ蛹ｻ・冗ｸｺ蟶吮穐邵ｺ蜷ｶﾂ繝ｻ/td>
                 </tr>
                 <tr>
                   <td><code>POST /audio/refresh</code></td>
                   <td><code>items refresh --max-items --json</code></td>
-                  <td>既存改名</td>
-                  <td><code>maxItems</code> を <code>limit</code> に整理し、処理IDを返す形へ寄せます。</td>
+                  <td>隴鯉ｽ｢陝・ｿｶ髫ｼ陷ｷ繝ｻ/td>
+                  <td><code>maxItems</code> 郢ｧ繝ｻ<code>limit</code> 邵ｺ・ｫ隰ｨ・ｴ騾・・・邵ｲ竏昴・騾・・D郢ｧ螳夲ｽｿ譁絶・陟厄ｽ｢邵ｺ・ｸ陝・・笳狗ｸｺ・ｾ邵ｺ蜷ｶﾂ繝ｻ/td>
                 </tr>
                 <tr>
                   <td><code>GET /audio/records</code></td>
                   <td><code>items list --page --page-size --json</code></td>
-                  <td>既存改名</td>
-                  <td>item は内部語、record は画面/API語として扱います。</td>
+                  <td>隴鯉ｽ｢陝・ｿｶ髫ｼ陷ｷ繝ｻ/td>
+                  <td>item 邵ｺ・ｯ陷繝ｻﾎ夐坡讒ｭﾂ縲影cord 邵ｺ・ｯ騾包ｽｻ鬮ｱ・｢/API髫ｱ讒ｭ竊堤ｸｺ蜉ｱ窶ｻ隰・ｽｱ邵ｺ繝ｻ竏ｪ邵ｺ蜷ｶﾂ繝ｻ/td>
                 </tr>
                 <tr>
                   <td><code>POST /audio/records/download</code></td>
                   <td><code>items download --item-id --output --json</code></td>
-                  <td>既存改名</td>
-                  <td><code>output</code> の任意パス指定は管理ダウンロード先へ寄せ、ブラウザ保存で受け取ります。</td>
+                  <td>隴鯉ｽ｢陝・ｿｶ髫ｼ陷ｷ繝ｻ/td>
+                  <td><code>output</code> 邵ｺ・ｮ闔会ｽｻ隲｢荳翫Τ郢ｧ・ｹ隰悶・・ｮ螢ｹ繝ｻ驍ゑｽ｡騾・・繝郢ｧ・ｦ郢晢ｽｳ郢晢ｽｭ郢晢ｽｼ郢晉甥繝ｻ邵ｺ・ｸ陝・・笳狗ｸｲ竏壹Ω郢晢ｽｩ郢ｧ・ｦ郢ｧ・ｶ闖ｫ譎擾ｽｭ蛟･縲定愾蜉ｱ・陷ｿ謔ｶ・顔ｸｺ・ｾ邵ｺ蜷ｶﾂ繝ｻ/td>
                 </tr>
               </tbody>
             </table>
@@ -1340,50 +1321,50 @@
         <summary>4.2 TimelineForImage</summary>
         <div class="detail-body">
           <div class="api-node">
-            <h3>役割</h3>
-            <p>画像ファイルを読み取り、OCR と画像メタデータを含む記録を作るファイル系製品です。</p>
+            <h3>陟厄ｽｹ陷托ｽｲ</h3>
+            <p>騾包ｽｻ陷剃ｸ翫Ψ郢ｧ・｡郢ｧ・､郢晢ｽｫ郢ｧ螳夲ｽｪ・ｭ邵ｺ・ｿ陷ｿ謔ｶ・顔ｸｲ・ｾCR 邵ｺ・ｨ騾包ｽｻ陷剃ｸ莞鍋ｹｧ・ｿ郢昴・繝ｻ郢ｧ・ｿ郢ｧ雋樊ｧ郢ｧﾂ髫ｪ蛟ｬ鮖ｸ郢ｧ蜑・ｽｽ諛奇ｽ狗ｹ晁ｼ斐＜郢ｧ・､郢晢ｽｫ驍会ｽｻ髯ｬ・ｽ陷ｩ竏壹堤ｸｺ蜷ｶﾂ繝ｻ/p>
           </div>
           <div class="table-wrap">
             <table>
               <thead>
-                <tr><th>提案 API</th><th>現行 CLI</th><th>既存/新規</th><th>変更点と理由</th></tr>
+                <tr><th>隰蜈茨ｽ｡繝ｻAPI</th><th>霑ｴ・ｾ髯ｦ繝ｻCLI</th><th>隴鯉ｽ｢陝・・隴・ｽｰ髫輔・/th><th>陞溽判蟲ｩ霓､・ｹ邵ｺ・ｨ騾・・鄂ｰ</th></tr>
               </thead>
               <tbody>
                 <tr>
                   <td><code>GET /image/health</code></td>
                   <td><code>health</code></td>
-                  <td>既存</td>
-                  <td>CLI health を HTTP 化します。Docker healthcheck と同じ軽量性を維持します。</td>
+                  <td>隴鯉ｽ｢陝・・/td>
+                  <td>CLI health 郢ｧ繝ｻHTTP 陋ｹ謔ｶ・邵ｺ・ｾ邵ｺ蜷ｶﾂ繝ｻocker healthcheck 邵ｺ・ｨ陷ｷ蠕個ｧ髴・ｽｽ鬩･荵猟・ｧ郢ｧ蝣､・ｶ・ｭ隰問・・邵ｺ・ｾ邵ｺ蜷ｶﾂ繝ｻ/td>
                 </tr>
                 <tr>
                   <td><code>GET /image/status</code></td>
                   <td><code>doctor</code>, <code>settings status</code>, <code>items list</code></td>
-                  <td>既存統合</td>
-                  <td>OCR 準備、入力元、出力先、記録件数を画面用にまとめます。</td>
+                  <td>隴鯉ｽ｢陝・｡・ｵ・ｱ陷ｷ繝ｻ/td>
+                  <td>OCR 雋・摩・咏ｸｲ竏昴・陷牙ｸ帙・邵ｲ竏昴・陷牙ｸ帙・邵ｲ竏ｬ・ｨ蛟ｬ鮖ｸ闔会ｽｶ隰ｨ・ｰ郢ｧ蝣､蛻､鬮ｱ・｢騾包ｽｨ邵ｺ・ｫ邵ｺ・ｾ邵ｺ・ｨ郢ｧ竏壺穐邵ｺ蜷ｶﾂ繝ｻ/td>
                 </tr>
                 <tr>
                   <td><code>PUT /image/settings</code></td>
                   <td><code>settings save --input-root --output-root</code></td>
-                  <td>既存</td>
-                  <td>引数を <code>inputRoots</code> と <code>outputRoot</code> の設定オブジェクトへ変えます。</td>
+                  <td>隴鯉ｽ｢陝・・/td>
+                  <td>陟大｢鍋・郢ｧ繝ｻ<code>inputRoots</code> 邵ｺ・ｨ <code>outputRoot</code> 邵ｺ・ｮ髫ｪ・ｭ陞ｳ螢ｹ縺檎ｹ晄じ縺夂ｹｧ・ｧ郢ｧ・ｯ郢晏現竏郁棔蟲ｨ竏ｴ邵ｺ・ｾ邵ｺ蜷ｶﾂ繝ｻ/td>
                 </tr>
                 <tr>
                   <td><code>GET /image/files</code></td>
                   <td><code>files list --page --page-size</code></td>
-                  <td>既存</td>
-                  <td>Audio / Video と同じファイル一覧 API にします。</td>
+                  <td>隴鯉ｽ｢陝・・/td>
+                  <td>Audio / Video 邵ｺ・ｨ陷ｷ蠕個ｧ郢晁ｼ斐＜郢ｧ・､郢晢ｽｫ闕ｳﾂ髫包ｽｧ API 邵ｺ・ｫ邵ｺ蜉ｱ竏ｪ邵ｺ蜷ｶﾂ繝ｻ/td>
                 </tr>
                 <tr>
                   <td><code>POST /image/refresh</code></td>
                   <td><code>items refresh --max-items --reprocess-duplicates</code></td>
-                  <td>既存改名</td>
-                  <td><code>maxItems</code> は <code>limit</code>、<code>reprocessDuplicates</code> は製品別オプションとして残します。</td>
+                  <td>隴鯉ｽ｢陝・ｿｶ髫ｼ陷ｷ繝ｻ/td>
+                  <td><code>maxItems</code> 邵ｺ・ｯ <code>limit</code>邵ｲ繝ｻcode>reprocessDuplicates</code> 邵ｺ・ｯ髯ｬ・ｽ陷ｩ竏晄肩郢ｧ・ｪ郢晏干縺咏ｹ晢ｽｧ郢晢ｽｳ邵ｺ・ｨ邵ｺ蜉ｱ窶ｻ隹ｿ荵晢ｼ邵ｺ・ｾ邵ｺ蜷ｶﾂ繝ｻ/td>
                 </tr>
                 <tr>
                   <td><code>DELETE /image/records/generated</code></td>
                   <td><code>items remove --item-id --dry-run</code></td>
-                  <td>既存改名</td>
-                  <td>削除対象が生成物だけであることを明確にします。</td>
+                  <td>隴鯉ｽ｢陝・ｿｶ髫ｼ陷ｷ繝ｻ/td>
+                  <td>陷台ｼ∝求陝・ｽｾ髮趣ｽ｡邵ｺ讙主・隰悟鴻鮟・ｸｺ・ｰ邵ｺ莉｣縲堤ｸｺ繧・ｽ狗ｸｺ阮吮・郢ｧ蜻医・驕抵ｽｺ邵ｺ・ｫ邵ｺ蜉ｱ竏ｪ邵ｺ蜷ｶﾂ繝ｻ/td>
                 </tr>
               </tbody>
             </table>
@@ -1395,50 +1376,50 @@
         <summary>4.3 TimelineForVideo</summary>
         <div class="detail-body">
           <div class="api-node">
-            <h3>役割</h3>
-            <p>動画ファイルを読み取り、フレームサンプル、OCR、音声証跡、活動マップを含む記録を作るファイル系製品です。</p>
+            <h3>陟厄ｽｹ陷托ｽｲ</h3>
+            <p>陷肴・蛻､郢晁ｼ斐＜郢ｧ・､郢晢ｽｫ郢ｧ螳夲ｽｪ・ｭ邵ｺ・ｿ陷ｿ謔ｶ・顔ｸｲ竏壹Ψ郢晢ｽｬ郢晢ｽｼ郢晢｣ｰ郢ｧ・ｵ郢晢ｽｳ郢晏干ﾎ晉ｸｲ・ｾCR邵ｲ繝ｻ豬ｹ陞｢・ｰ髫ｪ・ｼ髴搾ｽ｡邵ｲ竏ｵ・ｴ・ｻ陷崎ｼ斐・郢昴・繝ｻ郢ｧ雋樊ｧ郢ｧﾂ髫ｪ蛟ｬ鮖ｸ郢ｧ蜑・ｽｽ諛奇ｽ狗ｹ晁ｼ斐＜郢ｧ・､郢晢ｽｫ驍会ｽｻ髯ｬ・ｽ陷ｩ竏壹堤ｸｺ蜷ｶﾂ繝ｻ/p>
           </div>
           <div class="table-wrap">
             <table>
               <thead>
-                <tr><th>提案 API</th><th>現行 CLI</th><th>既存/新規</th><th>変更点と理由</th></tr>
+                <tr><th>隰蜈茨ｽ｡繝ｻAPI</th><th>霑ｴ・ｾ髯ｦ繝ｻCLI</th><th>隴鯉ｽ｢陝・・隴・ｽｰ髫輔・/th><th>陞溽判蟲ｩ霓､・ｹ邵ｺ・ｨ騾・・鄂ｰ</th></tr>
               </thead>
               <tbody>
                 <tr>
                   <td><code>GET /video/health</code></td>
                   <td><code>health --json</code></td>
-                  <td>既存</td>
-                  <td>Docker healthcheck と同じ軽量確認を HTTP 化します。</td>
+                  <td>隴鯉ｽ｢陝・・/td>
+                  <td>Docker healthcheck 邵ｺ・ｨ陷ｷ蠕個ｧ髴・ｽｽ鬩･蜀暦ｽ｢・ｺ髫ｱ髦ｪ・・HTTP 陋ｹ謔ｶ・邵ｺ・ｾ邵ｺ蜷ｶﾂ繝ｻ/td>
                 </tr>
                 <tr>
                   <td><code>GET /video/status</code></td>
                   <td><code>doctor</code>, <code>models list</code>, <code>runs list</code>, <code>settings status</code></td>
-                  <td>既存統合</td>
-                  <td>GPU、ffmpeg、Tesseract、音声モデル、入力元、出力先をまとめて画面表示します。</td>
+                  <td>隴鯉ｽ｢陝・｡・ｵ・ｱ陷ｷ繝ｻ/td>
+                  <td>GPU邵ｲ窶冉mpeg邵ｲ繧抛sseract邵ｲ繝ｻ豬ｹ陞｢・ｰ郢晢ｽ｢郢昴・ﾎ晉ｸｲ竏昴・陷牙ｸ帙・邵ｲ竏昴・陷牙ｸ帙・郢ｧ蛛ｵ竏ｪ邵ｺ・ｨ郢ｧ竏壺ｻ騾包ｽｻ鬮ｱ・｢髯ｦ・ｨ驕会ｽｺ邵ｺ蜉ｱ竏ｪ邵ｺ蜷ｶﾂ繝ｻ/td>
                 </tr>
                 <tr>
                   <td><code>GET /video/files</code></td>
                   <td><code>files list --page --page-size --json</code></td>
-                  <td>既存</td>
-                  <td>重い一覧なので <code>refresh=true</code> などの明示更新を残します。</td>
+                  <td>隴鯉ｽ｢陝・・/td>
+                  <td>鬩･髦ｪ・櫁叉ﾂ髫包ｽｧ邵ｺ・ｪ邵ｺ・ｮ邵ｺ・ｧ <code>refresh=true</code> 邵ｺ・ｪ邵ｺ・ｩ邵ｺ・ｮ隴丞ｮ茨ｽ､・ｺ隴厄ｽｴ隴・ｽｰ郢ｧ蜻茨ｽｮ荵晢ｼ邵ｺ・ｾ邵ｺ蜷ｶﾂ繝ｻ/td>
                 </tr>
                 <tr>
                   <td><code>POST /video/refresh</code></td>
                   <td><code>items refresh --max-items --samples-per-video --audio-model-mode</code></td>
-                  <td>既存改名</td>
-                  <td>通常処理は共通の refresh。診断用の <code>probe</code>, <code>sample</code>, <code>ocr</code>, <code>audio</code>, <code>activity</code> は詳細/開発 API に分けます。</td>
+                  <td>隴鯉ｽ｢陝・ｿｶ髫ｼ陷ｷ繝ｻ/td>
+                  <td>鬨ｾ螢ｼ・ｸ・ｸ陷・ｽｦ騾・・繝ｻ陷茨ｽｱ鬨ｾ螢ｹ繝ｻ refresh邵ｲ繧奇ｽｨ・ｺ隴・ｽｭ騾包ｽｨ邵ｺ・ｮ <code>probe</code>, <code>sample</code>, <code>ocr</code>, <code>audio</code>, <code>activity</code> 邵ｺ・ｯ髫ｧ・ｳ驍擾ｽｰ/鬮｢迢怜験 API 邵ｺ・ｫ陋ｻ繝ｻ・邵ｺ・ｾ邵ｺ蜷ｶﾂ繝ｻ/td>
                 </tr>
                 <tr>
                   <td><code>GET /video/records</code></td>
                   <td><code>items list --page --page-size --json</code></td>
-                  <td>既存改名</td>
-                  <td>生成済み動画記録として扱います。</td>
+                  <td>隴鯉ｽ｢陝・ｿｶ髫ｼ陷ｷ繝ｻ/td>
+                  <td>騾墓ｻ薙・雋ょ現竏ｩ陷肴・蛻､髫ｪ蛟ｬ鮖ｸ邵ｺ・ｨ邵ｺ蜉ｱ窶ｻ隰・ｽｱ邵ｺ繝ｻ竏ｪ邵ｺ蜷ｶﾂ繝ｻ/td>
                 </tr>
                 <tr>
                   <td><code>DELETE /video/records/generated</code></td>
                   <td><code>items remove --item-id --dry-run</code></td>
-                  <td>既存改名</td>
-                  <td>元動画を絶対に削除しないという責務を API 名と説明で固定します。</td>
+                  <td>隴鯉ｽ｢陝・ｿｶ髫ｼ陷ｷ繝ｻ/td>
+                  <td>陷医・陌夐包ｽｻ郢ｧ蝣､・ｵ・ｶ陝・ｽｾ邵ｺ・ｫ陷台ｼ∝求邵ｺ蜉ｱ竊醍ｸｺ繝ｻ竊堤ｸｺ繝ｻ竕ｧ髮具ｽｬ陷榊生・・API 陷ｷ髦ｪ竊帝坡・ｬ隴丞ｼｱ縲定摎・ｺ陞ｳ螢ｹ・邵ｺ・ｾ邵ｺ蜷ｶﾂ繝ｻ/td>
                 </tr>
               </tbody>
             </table>
@@ -1450,44 +1431,44 @@
         <summary>4.4 TimelineForPC</summary>
         <div class="detail-body">
           <div class="api-node">
-            <h3>役割</h3>
-            <p>現在の Windows PC 状態を読み取り、レポートとタイムライン記録を作る PC記録系製品です。</p>
+            <h3>陟厄ｽｹ陷托ｽｲ</h3>
+            <p>霑ｴ・ｾ陜ｨ・ｨ邵ｺ・ｮ Windows PC 霑･・ｶ隲ｷ荵晢ｽ帝坡・ｭ邵ｺ・ｿ陷ｿ謔ｶ・顔ｸｲ竏墅樒ｹ晄亢繝ｻ郢晏現竊堤ｹｧ・ｿ郢ｧ・､郢晢｣ｰ郢晢ｽｩ郢ｧ・､郢晢ｽｳ髫ｪ蛟ｬ鮖ｸ郢ｧ蜑・ｽｽ諛奇ｽ・PC髫ｪ蛟ｬ鮖ｸ驍会ｽｻ髯ｬ・ｽ陷ｩ竏壹堤ｸｺ蜷ｶﾂ繝ｻ/p>
           </div>
           <div class="table-wrap">
             <table>
               <thead>
-                <tr><th>提案 API</th><th>現行 CLI</th><th>既存/新規</th><th>変更点と理由</th></tr>
+                <tr><th>隰蜈茨ｽ｡繝ｻAPI</th><th>霑ｴ・ｾ髯ｦ繝ｻCLI</th><th>隴鯉ｽ｢陝・・隴・ｽｰ髫輔・/th><th>陞溽判蟲ｩ霓､・ｹ邵ｺ・ｨ騾・・鄂ｰ</th></tr>
               </thead>
               <tbody>
                 <tr>
                   <td><code>GET /pc/health</code></td>
                   <td><code>doctor --json</code>, <code>smoke-test</code></td>
-                  <td>新規整理</td>
-                  <td>PC API プロセス、Python、PowerShell、CIM/WMI の最低限を軽く確認します。実際の capture はしません。</td>
+                  <td>隴・ｽｰ髫穂ｹ礼ｴ幃・・/td>
+                  <td>PC API 郢晏干ﾎ溽ｹｧ・ｻ郢ｧ・ｹ邵ｲ・｣ython邵ｲ・｣owerShell邵ｲ・栗M/WMI 邵ｺ・ｮ隴崢闖ｴ譛ｱ蜑樒ｹｧ螳夲ｽｻ・ｽ邵ｺ蜀暦ｽ｢・ｺ髫ｱ髦ｪ・邵ｺ・ｾ邵ｺ蜷ｶﾂ繧・ｽｮ貊・怙邵ｺ・ｮ capture 邵ｺ・ｯ邵ｺ蜉ｱ竏ｪ邵ｺ蟶呻ｽ鍋ｸｲ繝ｻ/td>
                 </tr>
                 <tr>
                   <td><code>GET /pc/status</code></td>
                   <td><code>settings status --json</code>, <code>doctor --json</code>, <code>items list --json</code></td>
-                  <td>既存統合</td>
-                  <td>Web UI に「記録できる状態か」「最後の記録はいつか」を返します。</td>
+                  <td>隴鯉ｽ｢陝・｡・ｵ・ｱ陷ｷ繝ｻ/td>
+                  <td>Web UI 邵ｺ・ｫ邵ｲ迹夲ｽｨ蛟ｬ鮖ｸ邵ｺ・ｧ邵ｺ髦ｪ・玖ｿ･・ｶ隲ｷ荵敖ｰ邵ｲ髦ｪﾂ譴ｧ諤呵募ｾ後・髫ｪ蛟ｬ鮖ｸ邵ｺ・ｯ邵ｺ繝ｻ笆ｽ邵ｺ荵敖髦ｪ・帝恆譁撰ｼ邵ｺ・ｾ邵ｺ蜷ｶﾂ繝ｻ/td>
                 </tr>
                 <tr>
                   <td><code>POST /pc/captures</code></td>
                   <td><code>capture --redaction-profile --mock --mock-profile</code></td>
-                  <td>既存改名</td>
-                  <td>「PC状態を記録する」操作として正面に出します。<code>/pc/refresh</code> は必要なら captures の別名にします。</td>
+                  <td>隴鯉ｽ｢陝・ｿｶ髫ｼ陷ｷ繝ｻ/td>
+                  <td>邵ｲ險鼎霑･・ｶ隲ｷ荵晢ｽ帝坎蛟ｬ鮖ｸ邵ｺ蜷ｶ・狗ｸｲ閧ｴ譯・抄諛岩・邵ｺ蜉ｱ窶ｻ雎・ｽ｣鬮ｱ・｢邵ｺ・ｫ陷・ｽｺ邵ｺ蜉ｱ竏ｪ邵ｺ蜷ｶﾂ繝ｻcode>/pc/refresh</code> 邵ｺ・ｯ陟｢繝ｻ・ｦ竏壺・郢ｧ繝ｻcaptures 邵ｺ・ｮ陋ｻ・･陷ｷ髦ｪ竊鍋ｸｺ蜉ｱ竏ｪ邵ｺ蜷ｶﾂ繝ｻ/td>
                 </tr>
                 <tr>
                   <td><code>GET /pc/captures/{captureId}/report</code></td>
                   <td><code>report.md</code>, <code>export/YYYYMMDDHHMM.md</code></td>
-                  <td>既存出力を公開</td>
-                  <td>PC Web UI の主表示。JSON より先に読みやすいレポートを見せます。</td>
+                  <td>隴鯉ｽ｢陝・ｼ懊・陷牙ｸ呻ｽ定怦・ｬ鬮｢繝ｻ/td>
+                  <td>PC Web UI 邵ｺ・ｮ闕ｳ・ｻ髯ｦ・ｨ驕会ｽｺ邵ｲ繝ｻSON 郢ｧ蛹ｻ・願怦蛹ｻ竊馴坡・ｭ邵ｺ・ｿ郢ｧ繝ｻ笘・ｸｺ繝ｻﾎ樒ｹ晄亢繝ｻ郢晏現・帝囎荵昶雷邵ｺ・ｾ邵ｺ蜷ｶﾂ繝ｻ/td>
                 </tr>
                 <tr>
                   <td><code>POST /pc/records/download</code></td>
                   <td><code>items download --output --overwrite --json</code></td>
-                  <td>既存改名</td>
-                  <td>ZIP 作成は他製品と同じ records/download に揃えます。</td>
+                  <td>隴鯉ｽ｢陝・ｿｶ髫ｼ陷ｷ繝ｻ/td>
+                  <td>ZIP 闖ｴ諛医・邵ｺ・ｯ闔牙・・｣・ｽ陷ｩ竏壺・陷ｷ蠕個ｧ records/download 邵ｺ・ｫ隰繝ｻ竏ｴ邵ｺ・ｾ邵ｺ蜷ｶﾂ繝ｻ/td>
                 </tr>
               </tbody>
             </table>
@@ -1499,44 +1480,44 @@
         <summary>4.5 TimelineForChatGPT</summary>
         <div class="detail-body">
           <div class="api-node">
-            <h3>役割</h3>
-            <p>ChatGPT エクスポート ZIP を読み取り、会話ごとの記録を作る会話系製品です。</p>
+            <h3>陟厄ｽｹ陷托ｽｲ</h3>
+            <p>ChatGPT 郢ｧ・ｨ郢ｧ・ｯ郢ｧ・ｹ郢晄亢繝ｻ郢昴・ZIP 郢ｧ螳夲ｽｪ・ｭ邵ｺ・ｿ陷ｿ謔ｶ・顔ｸｲ竏ｽ・ｼ螟奇ｽｩ・ｱ邵ｺ譁絶・邵ｺ・ｮ髫ｪ蛟ｬ鮖ｸ郢ｧ蜑・ｽｽ諛奇ｽ玖耳螟奇ｽｩ・ｱ驍会ｽｻ髯ｬ・ｽ陷ｩ竏壹堤ｸｺ蜷ｶﾂ繝ｻ/p>
           </div>
           <div class="table-wrap">
             <table>
               <thead>
-                <tr><th>提案 API</th><th>現行 CLI</th><th>既存/新規</th><th>変更点と理由</th></tr>
+                <tr><th>隰蜈茨ｽ｡繝ｻAPI</th><th>霑ｴ・ｾ髯ｦ繝ｻCLI</th><th>隴鯉ｽ｢陝・・隴・ｽｰ髫輔・/th><th>陞溽判蟲ｩ霓､・ｹ邵ｺ・ｨ騾・・鄂ｰ</th></tr>
               </thead>
               <tbody>
                 <tr>
                   <td><code>GET /chatgpt/health</code></td>
-                  <td>明確な対応なし。daemon / Docker 状態で代替。</td>
-                  <td>新規</td>
-                  <td>ZIP 処理前に worker と設定が使えるかを確認します。</td>
+                  <td>隴丞ｮ茨ｽ｢・ｺ邵ｺ・ｪ陝・ｽｾ陟｢諛岩・邵ｺ蜉ｱﾂ・･aemon / Docker 霑･・ｶ隲ｷ荵昴定脂・｣隴厄ｽｿ邵ｲ繝ｻ/td>
+                  <td>隴・ｽｰ髫輔・/td>
+                  <td>ZIP 陷・ｽｦ騾・・辯慕ｸｺ・ｫ worker 邵ｺ・ｨ髫ｪ・ｭ陞ｳ螢ｹ窶ｲ闖ｴ・ｿ邵ｺ蛹ｻ・狗ｸｺ荵晢ｽ帝￡・ｺ髫ｱ髦ｪ・邵ｺ・ｾ邵ｺ蜷ｶﾂ繝ｻ/td>
                 </tr>
                 <tr>
                   <td><code>POST /chatgpt/imports</code></td>
                   <td><code>items refresh --file C:\path\chatgpt-export.zip</code></td>
-                  <td>新規分離</td>
-                  <td>ファイル登録と処理開始を分けます。ブラウザ UI で失敗説明と再処理を扱いやすくします。</td>
+                  <td>隴・ｽｰ髫穂ｸ槭・鬮ｮ・｢</td>
+                  <td>郢晁ｼ斐＜郢ｧ・､郢晢ｽｫ騾具ｽｻ鬪ｭ・ｲ邵ｺ・ｨ陷・ｽｦ騾・・蟷戊沂荵晢ｽ定崕繝ｻ・邵ｺ・ｾ邵ｺ蜷ｶﾂ繧・Ω郢晢ｽｩ郢ｧ・ｦ郢ｧ・ｶ UI 邵ｺ・ｧ陞滂ｽｱ隰ｨ闍難ｽｪ・ｬ隴丞ｼｱ竊定怙讎翫・騾・・・定ｬ・ｽｱ邵ｺ繝ｻ・・ｸｺ蜷ｶ・･邵ｺ蜉ｱ竏ｪ邵ｺ蜷ｶﾂ繝ｻ/td>
                 </tr>
                 <tr>
                   <td><code>POST /chatgpt/refresh</code></td>
                   <td><code>items refresh --file --download-to --json</code></td>
-                  <td>既存改名</td>
-                  <td><code>file</code> は <code>importId</code> へ、<code>downloadTo</code> は refresh から分離し <code>records/download</code> へ寄せます。</td>
+                  <td>隴鯉ｽ｢陝・ｿｶ髫ｼ陷ｷ繝ｻ/td>
+                  <td><code>file</code> 邵ｺ・ｯ <code>importId</code> 邵ｺ・ｸ邵ｲ繝ｻcode>downloadTo</code> 邵ｺ・ｯ refresh 邵ｺ荵晢ｽ芽崕繝ｻ螻ｬ邵ｺ繝ｻ<code>records/download</code> 邵ｺ・ｸ陝・・笳狗ｸｺ・ｾ邵ｺ蜷ｶﾂ繝ｻ/td>
                 </tr>
                 <tr>
                   <td><code>GET /chatgpt/conversations</code></td>
                   <td><code>items list --page --page-size --json</code></td>
-                  <td>既存改名</td>
-                  <td>会話系共通の一覧にします。</td>
+                  <td>隴鯉ｽ｢陝・ｿｶ髫ｼ陷ｷ繝ｻ/td>
+                  <td>闔ｨ螟奇ｽｩ・ｱ驍会ｽｻ陷茨ｽｱ鬨ｾ螢ｹ繝ｻ闕ｳﾂ髫包ｽｧ邵ｺ・ｫ邵ｺ蜉ｱ竏ｪ邵ｺ蜷ｶﾂ繝ｻ/td>
                 </tr>
                 <tr>
                   <td><code>GET /chatgpt/conversations/{conversationId}</code></td>
-                  <td>Timeline helper の <code>threads/{id}</code> 詳細</td>
-                  <td>既存改名</td>
-                  <td>thread ではなく conversation として一般ユーザー向けに整理します。</td>
+                  <td>Timeline helper 邵ｺ・ｮ <code>threads/{id}</code> 髫ｧ・ｳ驍擾ｽｰ</td>
+                  <td>隴鯉ｽ｢陝・ｿｶ髫ｼ陷ｷ繝ｻ/td>
+                  <td>thread 邵ｺ・ｧ邵ｺ・ｯ邵ｺ・ｪ邵ｺ繝ｻconversation 邵ｺ・ｨ邵ｺ蜉ｱ窶ｻ闕ｳﾂ髣奇ｽｬ郢晢ｽｦ郢晢ｽｼ郢ｧ・ｶ郢晢ｽｼ陷ｷ莉｣・邵ｺ・ｫ隰ｨ・ｴ騾・・・邵ｺ・ｾ邵ｺ蜷ｶﾂ繝ｻ/td>
                 </tr>
               </tbody>
             </table>
@@ -1548,44 +1529,44 @@
         <summary>4.6 TimelineForWindowsCodex</summary>
         <div class="detail-body">
           <div class="api-node">
-            <h3>役割</h3>
-            <p>ローカルの Codex 履歴を読み取り、会話ごとの記録を作る会話系製品です。</p>
+            <h3>陟厄ｽｹ陷托ｽｲ</h3>
+            <p>郢晢ｽｭ郢晢ｽｼ郢ｧ・ｫ郢晢ｽｫ邵ｺ・ｮ Codex 陞ｻ・･雎・ｽｴ郢ｧ螳夲ｽｪ・ｭ邵ｺ・ｿ陷ｿ謔ｶ・顔ｸｲ竏ｽ・ｼ螟奇ｽｩ・ｱ邵ｺ譁絶・邵ｺ・ｮ髫ｪ蛟ｬ鮖ｸ郢ｧ蜑・ｽｽ諛奇ｽ玖耳螟奇ｽｩ・ｱ驍会ｽｻ髯ｬ・ｽ陷ｩ竏壹堤ｸｺ蜷ｶﾂ繝ｻ/p>
           </div>
           <div class="table-wrap">
             <table>
               <thead>
-                <tr><th>提案 API</th><th>現行 CLI</th><th>既存/新規</th><th>変更点と理由</th></tr>
+                <tr><th>隰蜈茨ｽ｡繝ｻAPI</th><th>霑ｴ・ｾ髯ｦ繝ｻCLI</th><th>隴鯉ｽ｢陝・・隴・ｽｰ髫輔・/th><th>陞溽判蟲ｩ霓､・ｹ邵ｺ・ｨ騾・・鄂ｰ</th></tr>
               </thead>
               <tbody>
                 <tr>
                   <td><code>GET /windows-codex/health</code></td>
-                  <td>明確な対応なし。Docker コンテナは <code>sleep infinity</code>。</td>
-                  <td>新規</td>
-                  <td>履歴マウントと設定ファイルを読めるか、worker が実行可能かを確認します。</td>
+                  <td>隴丞ｮ茨ｽ｢・ｺ邵ｺ・ｪ陝・ｽｾ陟｢諛岩・邵ｺ蜉ｱﾂ繝ｻocker 郢ｧ・ｳ郢晢ｽｳ郢昴・繝ｪ邵ｺ・ｯ <code>sleep infinity</code>邵ｲ繝ｻ/td>
+                  <td>隴・ｽｰ髫輔・/td>
+                  <td>陞ｻ・･雎・ｽｴ郢晄ｧｭ縺育ｹ晢ｽｳ郢晏現竊帝坎・ｭ陞ｳ螢ｹ繝ｵ郢ｧ・｡郢ｧ・､郢晢ｽｫ郢ｧ螳夲ｽｪ・ｭ郢ｧ竏夲ｽ狗ｸｺ荵敖縲姉rker 邵ｺ謔滂ｽｮ貅ｯ・｡謔溷ｺ・妙・ｽ邵ｺ荵晢ｽ帝￡・ｺ髫ｱ髦ｪ・邵ｺ・ｾ邵ｺ蜷ｶﾂ繝ｻ/td>
                 </tr>
                 <tr>
                   <td><code>GET /windows-codex/status</code></td>
                   <td><code>settings status</code>, <code>settings master show</code>, <code>items list</code></td>
-                  <td>既存統合</td>
-                  <td>ローカル履歴の読み取り可能性、保存先、記録件数をまとめます。</td>
+                  <td>隴鯉ｽ｢陝・｡・ｵ・ｱ陷ｷ繝ｻ/td>
+                  <td>郢晢ｽｭ郢晢ｽｼ郢ｧ・ｫ郢晢ｽｫ陞ｻ・･雎・ｽｴ邵ｺ・ｮ髫ｱ・ｭ邵ｺ・ｿ陷ｿ謔ｶ・願愾・ｯ髢ｭ・ｽ隲､・ｧ邵ｲ竏ｽ・ｿ譎擾ｽｭ莨懊・邵ｲ竏ｬ・ｨ蛟ｬ鮖ｸ闔会ｽｶ隰ｨ・ｰ郢ｧ蛛ｵ竏ｪ邵ｺ・ｨ郢ｧ竏壺穐邵ｺ蜷ｶﾂ繝ｻ/td>
                 </tr>
                 <tr>
                   <td><code>POST /windows-codex/refresh</code></td>
                   <td><code>items refresh --json</code></td>
-                  <td>既存改名</td>
-                  <td>ChatGPT と違い import は不要です。既存ローカル履歴を読むだけなので refresh に集約します。</td>
+                  <td>隴鯉ｽ｢陝・ｿｶ髫ｼ陷ｷ繝ｻ/td>
+                  <td>ChatGPT 邵ｺ・ｨ鬩戊ｼ費ｼ・import 邵ｺ・ｯ闕ｳ蟠趣ｽｦ竏壹堤ｸｺ蜷ｶﾂ繧磯㈹陝・･ﾎ溽ｹ晢ｽｼ郢ｧ・ｫ郢晢ｽｫ陞ｻ・･雎・ｽｴ郢ｧ螳夲ｽｪ・ｭ郢ｧﾂ邵ｺ・ｰ邵ｺ莉｣竊醍ｸｺ・ｮ邵ｺ・ｧ refresh 邵ｺ・ｫ鬮ｮ繝ｻ・ｴ繝ｻ・邵ｺ・ｾ邵ｺ蜷ｶﾂ繝ｻ/td>
                 </tr>
                 <tr>
                   <td><code>GET /windows-codex/conversations</code></td>
                   <td><code>items list --page --page-size --json</code></td>
-                  <td>既存改名</td>
-                  <td>会話系共通の一覧にします。</td>
+                  <td>隴鯉ｽ｢陝・ｿｶ髫ｼ陷ｷ繝ｻ/td>
+                  <td>闔ｨ螟奇ｽｩ・ｱ驍会ｽｻ陷茨ｽｱ鬨ｾ螢ｹ繝ｻ闕ｳﾂ髫包ｽｧ邵ｺ・ｫ邵ｺ蜉ｱ竏ｪ邵ｺ蜷ｶﾂ繝ｻ/td>
                 </tr>
                 <tr>
                   <td><code>POST /windows-codex/records/download</code></td>
                   <td><code>items download --to --json</code></td>
-                  <td>既存改名</td>
-                  <td><code>--to</code> を API 管理ダウンロードに寄せ、ブラウザ保存と分離します。</td>
+                  <td>隴鯉ｽ｢陝・ｿｶ髫ｼ陷ｷ繝ｻ/td>
+                  <td><code>--to</code> 郢ｧ繝ｻAPI 驍ゑｽ｡騾・・繝郢ｧ・ｦ郢晢ｽｳ郢晢ｽｭ郢晢ｽｼ郢晏ｳｨ竊楢汞繝ｻ笳狗ｸｲ竏壹Ω郢晢ｽｩ郢ｧ・ｦ郢ｧ・ｶ闖ｫ譎擾ｽｭ蛟･竊定崕繝ｻ螻ｬ邵ｺ蜉ｱ竏ｪ邵ｺ蜷ｶﾂ繝ｻ/td>
                 </tr>
               </tbody>
             </table>
@@ -1596,47 +1577,45 @@
   </section>
 
   <section id="long-running" class="card section">
-    <h2>5. 長時間処理の扱い</h2>
+    <h2>5. 鬮滂ｽｷ隴弱ｋ菫｣陷・ｽｦ騾・・繝ｻ隰・ｽｱ邵ｺ繝ｻ/h2>
     <p class="muted">
-      API 化で一番重要なのは、時間がかかる処理を通常の同期 API として扱わないことです。
-      Web UI から見ると、更新、ZIP 作成、削除、PC 記録、ChatGPT ZIP 取り込みは「押したらすぐ終わるボタン」ではなく、進捗を持つ処理として扱うべきです。
-    </p>
+      API 陋ｹ謔ｶ縲定叉ﾂ騾｡・ｪ鬩･蟠趣ｽｦ竏壺・邵ｺ・ｮ邵ｺ・ｯ邵ｲ竏ｵ蜃ｾ鬮｢阮吮ｲ邵ｺ荵敖ｰ郢ｧ蜿･繝ｻ騾・・・帝ｨｾ螢ｼ・ｸ・ｸ邵ｺ・ｮ陷ｷ譴ｧ謔・API 邵ｺ・ｨ邵ｺ蜉ｱ窶ｻ隰・ｽｱ郢ｧ荳岩・邵ｺ繝ｻ・・ｸｺ・ｨ邵ｺ・ｧ邵ｺ蜷ｶﾂ繝ｻ      Web UI 邵ｺ荵晢ｽ蛾囎荵晢ｽ狗ｸｺ・ｨ邵ｲ竏ｵ蟲ｩ隴・ｽｰ邵ｲ縲⑩P 闖ｴ諛医・邵ｲ竏晉ｎ鬮ｯ・､邵ｲ・｣C 髫ｪ蛟ｬ鮖ｸ邵ｲ・敬atGPT ZIP 陷ｿ謔ｶ・企恷・ｼ邵ｺ・ｿ邵ｺ・ｯ邵ｲ譴ｧ谺ｾ邵ｺ蜉ｱ笳・ｹｧ蟲ｨ笘・ｸｺ蜊・ｽｵ繧・ｽ冗ｹｧ荵昴・郢ｧ・ｿ郢晢ｽｳ邵ｲ髦ｪ縲堤ｸｺ・ｯ邵ｺ・ｪ邵ｺ荳環繝ｻﾂ・ｲ隰仙干・定ｬ問・笆ｽ陷・ｽｦ騾・・竊堤ｸｺ蜉ｱ窶ｻ隰・ｽｱ邵ｺ繝ｻ竏狗ｸｺ髦ｪ縲堤ｸｺ蜷ｶﾂ繝ｻ    </p>
 
     <div class="grid-3">
       <div class="mini">
-        <h3>短い API</h3>
-        <p><code>/health</code>、軽い <code>/settings</code>、キャッシュ済み <code>/status</code> は数秒以内に返します。画面の定期確認に使えます。</p>
+        <h3>驕擾ｽｭ邵ｺ繝ｻAPI</h3>
+        <p><code>/health</code>邵ｲ竏ｬ・ｻ・ｽ邵ｺ繝ｻ<code>/settings</code>邵ｲ竏壹￥郢晢ｽ｣郢昴・縺咏ｹ晢ｽ･雋ょ現竏ｩ <code>/status</code> 邵ｺ・ｯ隰ｨ・ｰ驕伜宴・ｻ・･陷繝ｻ竊馴恆譁撰ｼ邵ｺ・ｾ邵ｺ蜷ｶﾂ繧牙愛鬮ｱ・｢邵ｺ・ｮ陞ｳ螢ｽ謔・￡・ｺ髫ｱ髦ｪ竊楢抄・ｿ邵ｺ蛹ｻ竏ｪ邵ｺ蜷ｶﾂ繝ｻ/p>
       </div>
       <div class="mini">
-        <h3>重くなり得る API</h3>
-        <p><code>/files</code>、<code>/records</code>、<code>/status</code> の詳細検査は、件数や初回キャッシュで遅くなる可能性があります。ページングとキャッシュが必要です。</p>
+        <h3>鬩･髦ｪ・･邵ｺ・ｪ郢ｧ髮・ｽｾ蜉ｱ・・API</h3>
+        <p><code>/files</code>邵ｲ繝ｻcode>/records</code>邵ｲ繝ｻcode>/status</code> 邵ｺ・ｮ髫ｧ・ｳ驍擾ｽｰ隶諛域ｸ顔ｸｺ・ｯ邵ｲ竏ｽ・ｻ・ｶ隰ｨ・ｰ郢ｧ繝ｻ繝ｻ陜玲ｧｭ縺冗ｹ晢ｽ｣郢昴・縺咏ｹ晢ｽ･邵ｺ・ｧ鬩輔・・･邵ｺ・ｪ郢ｧ蜿･蠎・妙・ｽ隲､・ｧ邵ｺ蠕娯旺郢ｧ鄙ｫ竏ｪ邵ｺ蜷ｶﾂ繧・・郢晢ｽｼ郢ｧ・ｸ郢晢ｽｳ郢ｧ・ｰ邵ｺ・ｨ郢ｧ・ｭ郢晢ｽ｣郢昴・縺咏ｹ晢ｽ･邵ｺ謔滂ｽｿ繝ｻ・ｦ竏壹堤ｸｺ蜷ｶﾂ繝ｻ/p>
       </div>
       <div class="mini">
-        <h3>長時間 API</h3>
-        <p><code>/refresh</code>、<code>/records/download</code>、<code>/records/generated</code>、<code>/pc/captures</code>、<code>/chatgpt/imports</code> は処理IDを返して非同期にします。</p>
+        <h3>鬮滂ｽｷ隴弱ｋ菫｣ API</h3>
+        <p><code>/refresh</code>邵ｲ繝ｻcode>/records/download</code>邵ｲ繝ｻcode>/records/generated</code>邵ｲ繝ｻcode>/pc/captures</code>邵ｲ繝ｻcode>/chatgpt/imports</code> 邵ｺ・ｯ陷・ｽｦ騾・・D郢ｧ螳夲ｽｿ譁撰ｼ邵ｺ・ｦ鬮ｱ讒ｫ驟碑ｭ帶ｺ倪・邵ｺ蜉ｱ竏ｪ邵ｺ蜷ｶﾂ繝ｻ/p>
       </div>
     </div>
 
     <div class="tree">
       <details open>
-        <summary>5.1 長時間 API の基本形</summary>
+        <summary>5.1 鬮滂ｽｷ隴弱ｋ菫｣ API 邵ｺ・ｮ陜難ｽｺ隴幢ｽｬ陟厄ｽ｢</summary>
         <div class="detail-body">
           <div class="api-node">
             <div class="api-head">
               <span class="method post">POST</span>
               <span class="url">/{product}/refresh</span>
-              <span class="badge change">同期完了から処理開始へ変更</span>
+              <span class="badge change">陷ｷ譴ｧ謔・楜蠕｡・ｺ繝ｻﾂｰ郢ｧ迚吶・騾・・蟷戊沂荵昶・陞溽判蟲ｩ</span>
             </div>
-            <p>更新処理を開始し、完了を待たずに <code>taskId</code> を返します。HTTP レスポンスは <code>202 Accepted</code> を基本にします。</p>
+            <p>隴厄ｽｴ隴・ｽｰ陷・ｽｦ騾・・・帝ｫ｢蜿･・ｧ荵晢ｼ邵ｲ竏晢ｽｮ蠕｡・ｺ繝ｻ・定輔・笳・ｸｺ螢ｹ竊・<code>taskId</code> 郢ｧ螳夲ｽｿ譁撰ｼ邵ｺ・ｾ邵ｺ蜷ｶﾂ繝ｻTTP 郢晢ｽｬ郢ｧ・ｹ郢晄亢ﾎｦ郢ｧ・ｹ邵ｺ・ｯ <code>202 Accepted</code> 郢ｧ雋樊ｸ戊ｭ幢ｽｬ邵ｺ・ｫ邵ｺ蜉ｱ竏ｪ邵ｺ蜷ｶﾂ繝ｻ/p>
             <dl class="facts">
-              <dt>現行の問題</dt>
-              <dd>CLI 実行中は呼び出し元が待ち続けます。動画、音声、ChatGPT ZIP、PC記録では数十秒から数十分になり得ます。</dd>
-              <dt>あるべき挙動</dt>
-              <dd>API は「処理を受け付けた」ことだけを返し、進捗は <code>GET /{product}/tasks/{taskId}</code> で確認します。</dd>
-              <dt>返却例</dt>
+              <dt>霑ｴ・ｾ髯ｦ蠕後・陜蝓趣ｽ｡繝ｻ/dt>
+              <dd>CLI 陞ｳ貅ｯ・｡蠕｡・ｸ・ｭ邵ｺ・ｯ陷ｻ・ｼ邵ｺ・ｳ陷・ｽｺ邵ｺ諤懊・邵ｺ謔滂ｽｾ繝ｻ笆驍ｯ螢ｹ・邵ｺ・ｾ邵ｺ蜷ｶﾂ繧・劒騾包ｽｻ邵ｲ繝ｻ豬ｹ陞｢・ｰ邵ｲ・敬atGPT ZIP邵ｲ・｣C髫ｪ蛟ｬ鮖ｸ邵ｺ・ｧ邵ｺ・ｯ隰ｨ・ｰ陷岩悪・ｧ蛛ｵﾂｰ郢ｧ逕ｻ辟夊怺竏昴・邵ｺ・ｫ邵ｺ・ｪ郢ｧ髮・ｽｾ蜉ｱ竏ｪ邵ｺ蜷ｶﾂ繝ｻ/dd>
+              <dt>邵ｺ繧・ｽ狗ｸｺ・ｹ邵ｺ閧ｴ雖瑚恪繝ｻ/dt>
+              <dd>API 邵ｺ・ｯ邵ｲ謔溘・騾・・・定愾蜉ｱ・闔牙･・邵ｺ貅伉髦ｪ・・ｸｺ・ｨ邵ｺ・ｰ邵ｺ莉｣・帝恆譁撰ｼ邵ｲ繝ｻﾂ・ｲ隰仙干繝ｻ <code>GET /{product}/tasks/{taskId}</code> 邵ｺ・ｧ驕抵ｽｺ髫ｱ髦ｪ・邵ｺ・ｾ邵ｺ蜷ｶﾂ繝ｻ/dd>
+              <dt>髴第ｳ悟陪關薙・/dt>
               <dd><code>{ taskId, state: "queued", statusUrl, cancelUrl }</code></dd>
-              <dt>理由</dt>
-              <dd>ブラウザ、プロキシ、HTTP クライアントのタイムアウトに処理寿命を依存させないためです。</dd>
+              <dt>騾・・鄂ｰ</dt>
+              <dd>郢晄じﾎ帷ｹｧ・ｦ郢ｧ・ｶ邵ｲ竏壹・郢晢ｽｭ郢ｧ・ｭ郢ｧ・ｷ邵ｲ・鬱TP 郢ｧ・ｯ郢晢ｽｩ郢ｧ・､郢ｧ・｢郢晢ｽｳ郢晏現繝ｻ郢ｧ・ｿ郢ｧ・､郢晢｣ｰ郢ｧ・｢郢ｧ・ｦ郢晏現竊楢怎・ｦ騾・・・ｯ・ｿ陷ｻ・ｽ郢ｧ蜑・ｽｾ譎擾ｽｭ蛟･・・ｸｺ蟶吮・邵ｺ繝ｻ笳・ｹｧ竏壹堤ｸｺ蜷ｶﾂ繝ｻ/dd>
             </dl>
           </div>
 
@@ -1644,16 +1623,16 @@
             <div class="api-head">
               <span class="method">GET</span>
               <span class="url">/{product}/tasks/{taskId}</span>
-              <span class="badge new">進捗確認</span>
+              <span class="badge new">鬨ｾ・ｲ隰千､ｼ・｢・ｺ髫ｱ繝ｻ/span>
             </div>
-            <p>現在の段階、進捗率、処理件数、現在処理中の対象、失敗理由、次の推奨操作を返します。</p>
+            <p>霑ｴ・ｾ陜ｨ・ｨ邵ｺ・ｮ隹ｿ・ｵ鬮ｫ蠑ｱﾂ繝ｻﾂ・ｲ隰千､ｼ邏ｫ邵ｲ竏昴・騾・・・ｻ・ｶ隰ｨ・ｰ邵ｲ竏ｫ讓溯舉・ｨ陷・ｽｦ騾・・・ｸ・ｭ邵ｺ・ｮ陝・ｽｾ髮趣ｽ｡邵ｲ竏晢ｽ､・ｱ隰ｨ遉ｼ轤企包ｽｱ邵ｲ竏ｵ・ｬ・｡邵ｺ・ｮ隰暦ｽｨ陞ゑｽｨ隰ｫ蝣ｺ・ｽ諛奇ｽ帝恆譁撰ｼ邵ｺ・ｾ邵ｺ蜷ｶﾂ繝ｻ/p>
             <dl class="facts">
-              <dt>状態</dt>
+              <dt>霑･・ｶ隲ｷ繝ｻ/dt>
               <dd><code>queued</code>, <code>preparing</code>, <code>running</code>, <code>waiting</code>, <code>completed</code>, <code>failed</code>, <code>cancelRequested</code>, <code>cancelled</code>, <code>interrupted</code></dd>
-              <dt>途中経過</dt>
+              <dt>鬨ｾ豈費ｽｸ・ｭ驍ｨ遒≫с</dt>
               <dd><code>progressPercent</code>, <code>currentStage</code>, <code>itemsDone</code>, <code>itemsTotal</code>, <code>currentItemLabel</code>, <code>updatedAt</code></dd>
-              <dt>画面側</dt>
-              <dd>開始直後に処理カードを表示し、2〜5秒間隔で polling します。完了後は該当一覧を再読み込みします。</dd>
+              <dt>騾包ｽｻ鬮ｱ・｢陋幢ｽｴ</dt>
+              <dd>鬮｢蜿･・ｧ迢怜ｳｩ陟募ｾ娯・陷・ｽｦ騾・・縺咲ｹ晢ｽｼ郢晏ｳｨ・帝勗・ｨ驕会ｽｺ邵ｺ蜉ｱﾂ繝ｻ邵ｲ繝ｻ驕伜ｸ昜ｿ｣鬮ｫ譁舌・polling 邵ｺ蜉ｱ竏ｪ邵ｺ蜷ｶﾂ繧・ｽｮ蠕｡・ｺ繝ｻ・ｾ蠕後・髫ｧ・ｲ陟冶ｬ趣ｽｸﾂ髫包ｽｧ郢ｧ雋槭・髫ｱ・ｭ邵ｺ・ｿ髴趣ｽｼ邵ｺ・ｿ邵ｺ蜉ｱ竏ｪ邵ｺ蜷ｶﾂ繝ｻ/dd>
             </dl>
           </div>
 
@@ -1661,80 +1640,80 @@
             <div class="api-head">
               <span class="method">GET</span>
               <span class="url">/{product}/tasks/{taskId}/events</span>
-              <span class="badge new">任意追加</span>
+              <span class="badge new">闔会ｽｻ隲｢蜑ｰ・ｿ・ｽ陷会｣ｰ</span>
             </div>
-            <p>必要なら Server-Sent Events で進捗イベントを流します。初期実装は polling だけで十分です。</p>
+            <p>陟｢繝ｻ・ｦ竏壺・郢ｧ繝ｻServer-Sent Events 邵ｺ・ｧ鬨ｾ・ｲ隰仙干縺・ｹ晏生ﾎｦ郢晏現・定ｱｬ竏夲ｼ邵ｺ・ｾ邵ｺ蜷ｶﾂ繧・・隴帶ｺｷ・ｮ貅ｯ・｣繝ｻ繝ｻ polling 邵ｺ・ｰ邵ｺ莉｣縲定怺竏昴・邵ｺ・ｧ邵ｺ蜷ｶﾂ繝ｻ/p>
             <dl class="facts">
-              <dt>採用判断</dt>
-              <dd>まずは <code>GET /tasks/{taskId}</code> の polling を標準にします。SSE は動画や音声の細かい進捗が必要になった時だけ追加します。</dd>
-              <dt>理由</dt>
-              <dd>最初から WebSocket/SSE を必須にすると実装と復旧が複雑になります。状態ファイル/DB に進捗を残す polling の方が堅いです。</dd>
+              <dt>隰暦ｽ｡騾包ｽｨ陋ｻ・､隴・ｽｭ</dt>
+              <dd>邵ｺ・ｾ邵ｺ螢ｹ繝ｻ <code>GET /tasks/{taskId}</code> 邵ｺ・ｮ polling 郢ｧ蜻茨ｽｨ蜻趣ｽｺ謔ｶ竊鍋ｸｺ蜉ｱ竏ｪ邵ｺ蜷ｶﾂ・粘E 邵ｺ・ｯ陷肴・蛻､郢ｧ繝ｻ豬ｹ陞｢・ｰ邵ｺ・ｮ驍擾ｽｰ邵ｺ荵晢ｼ樣ｨｾ・ｲ隰仙干窶ｲ陟｢繝ｻ・ｦ竏壺・邵ｺ・ｪ邵ｺ・｣邵ｺ貊灘・邵ｺ・ｰ邵ｺ鬘鯉ｽｿ・ｽ陷会｣ｰ邵ｺ蜉ｱ竏ｪ邵ｺ蜷ｶﾂ繝ｻ/dd>
+              <dt>騾・・鄂ｰ</dt>
+              <dd>隴崢陋ｻ譏ｴﾂｰ郢ｧ繝ｻWebSocket/SSE 郢ｧ雋橸ｽｿ繝ｻ・ｰ蛹ｻ竊鍋ｸｺ蜷ｶ・狗ｸｺ・ｨ陞ｳ貅ｯ・｣繝ｻ竊定包ｽｩ隴鯉ｽｧ邵ｺ迹夲ｽ､繝ｻ蟆・ｸｺ・ｫ邵ｺ・ｪ郢ｧ鄙ｫ竏ｪ邵ｺ蜷ｶﾂ繧画・隲ｷ荵昴Ψ郢ｧ・｡郢ｧ・､郢晢ｽｫ/DB 邵ｺ・ｫ鬨ｾ・ｲ隰仙干・定ｰｿ荵昶・ polling 邵ｺ・ｮ隴・ｽｹ邵ｺ謔滂｣ｰ繝ｻ・樒ｸｺ・ｧ邵ｺ蜷ｶﾂ繝ｻ/dd>
             </dl>
           </div>
         </div>
       </details>
 
       <details open>
-        <summary>5.2 API ごとの同期/非同期判断</summary>
+        <summary>5.2 API 邵ｺ譁絶・邵ｺ・ｮ陷ｷ譴ｧ謔・鬮ｱ讒ｫ驟碑ｭ帶ｺｷ諢幄ｭ・ｽｭ</summary>
         <div class="detail-body">
           <div class="table-wrap">
             <table>
               <thead>
                 <tr>
                   <th>API</th>
-                  <th>想定時間</th>
-                  <th>推奨</th>
-                  <th>理由</th>
+                  <th>隲・ｳ陞ｳ螢ｽ蜃ｾ鬮｢繝ｻ/th>
+                  <th>隰暦ｽｨ陞ゑｽｨ</th>
+                  <th>騾・・鄂ｰ</th>
                 </tr>
               </thead>
               <tbody>
                 <tr>
                   <td><code>GET /{product}/health</code></td>
-                  <td>1秒以内</td>
-                  <td>同期</td>
-                  <td>監視用です。重い検査、モデル確認、全件スキャンを含めません。</td>
+                  <td>1驕伜宴・ｻ・･陷繝ｻ/td>
+                  <td>陷ｷ譴ｧ謔・/td>
+                  <td>騾ｶ・｣髫穂ｹ溽舞邵ｺ・ｧ邵ｺ蜷ｶﾂ繧九裟邵ｺ繝ｻ・､諛域ｸ顔ｸｲ竏墅皮ｹ昴・ﾎ晞￡・ｺ髫ｱ髦ｪﾂ竏昴・闔会ｽｶ郢ｧ・ｹ郢ｧ・ｭ郢晢ｽ｣郢晢ｽｳ郢ｧ雋樊ｧ郢ｧ竏壺穐邵ｺ蟶呻ｽ鍋ｸｲ繝ｻ/td>
                 </tr>
                 <tr>
                   <td><code>GET /{product}/status</code></td>
-                  <td>通常 1〜3秒</td>
-                  <td>同期 + キャッシュ</td>
-                  <td>画面表示に必要ですが、詳細検査で遅くなる場合は前回結果と <code>stale</code> 表示を返します。</td>
+                  <td>鬨ｾ螢ｼ・ｸ・ｸ 1邵ｲ繝ｻ驕倥・/td>
+                  <td>陷ｷ譴ｧ謔・+ 郢ｧ・ｭ郢晢ｽ｣郢昴・縺咏ｹ晢ｽ･</td>
+                  <td>騾包ｽｻ鬮ｱ・｢髯ｦ・ｨ驕会ｽｺ邵ｺ・ｫ陟｢繝ｻ・ｦ竏壹堤ｸｺ蜷ｶ窶ｲ邵ｲ竏ｬ・ｩ・ｳ驍擾ｽｰ隶諛域ｸ顔ｸｺ・ｧ鬩輔・・･邵ｺ・ｪ郢ｧ蜿･・ｰ・ｴ陷ｷ蛹ｻ繝ｻ陷第ｦ雁ｱ馴お蜈域｣｡邵ｺ・ｨ <code>stale</code> 髯ｦ・ｨ驕会ｽｺ郢ｧ螳夲ｽｿ譁撰ｼ邵ｺ・ｾ邵ｺ蜷ｶﾂ繝ｻ/td>
                 </tr>
                 <tr>
                   <td><code>GET /{product}/files</code></td>
-                  <td>件数次第</td>
-                  <td>同期 + ページング + キャッシュ</td>
-                  <td>動画や大量画像は初回が遅いです。<code>refresh=true</code> などで明示更新にします。</td>
+                  <td>闔会ｽｶ隰ｨ・ｰ隹ｺ・｡髫ｨ・ｬ</td>
+                  <td>陷ｷ譴ｧ謔・+ 郢晏｣ｹ繝ｻ郢ｧ・ｸ郢晢ｽｳ郢ｧ・ｰ + 郢ｧ・ｭ郢晢ｽ｣郢昴・縺咏ｹ晢ｽ･</td>
+                  <td>陷肴・蛻､郢ｧ繝ｻ・､・ｧ鬩･蜀怜愛陷剃ｸ翫・陋ｻ譎丞ｱ鍋ｸｺ遒≫襖邵ｺ繝ｻ縲堤ｸｺ蜷ｶﾂ繝ｻcode>refresh=true</code> 邵ｺ・ｪ邵ｺ・ｩ邵ｺ・ｧ隴丞ｮ茨ｽ､・ｺ隴厄ｽｴ隴・ｽｰ邵ｺ・ｫ邵ｺ蜉ｱ竏ｪ邵ｺ蜷ｶﾂ繝ｻ/td>
                 </tr>
                 <tr>
                   <td><code>POST /{product}/refresh</code></td>
-                  <td>長い</td>
-                  <td>非同期</td>
-                  <td>音声モデル、動画処理、ZIP展開、PC収集は長時間化します。<code>taskId</code> を返すべきです。</td>
+                  <td>鬮滂ｽｷ邵ｺ繝ｻ/td>
+                  <td>鬮ｱ讒ｫ驟碑ｭ帙・/td>
+                  <td>鬮ｻ・ｳ陞｢・ｰ郢晢ｽ｢郢昴・ﾎ晉ｸｲ竏晁劒騾包ｽｻ陷・ｽｦ騾・・ﾂ縲⑩P陞ｻ證ｮ蟷慕ｸｲ・｣C陷ｿ譛ｱ蟇皮ｸｺ・ｯ鬮滂ｽｷ隴弱ｋ菫｣陋ｹ謔ｶ・邵ｺ・ｾ邵ｺ蜷ｶﾂ繝ｻcode>taskId</code> 郢ｧ螳夲ｽｿ譁絶・邵ｺ・ｹ邵ｺ髦ｪ縲堤ｸｺ蜷ｶﾂ繝ｻ/td>
                 </tr>
                 <tr>
                   <td><code>POST /{product}/records/download</code></td>
-                  <td>中〜長</td>
-                  <td>非同期</td>
-                  <td>ZIP 作成は件数と容量に依存します。完了後に <code>downloadUrl</code> を返します。</td>
+                  <td>闕ｳ・ｭ邵ｲ諞ｺ閨・/td>
+                  <td>鬮ｱ讒ｫ驟碑ｭ帙・/td>
+                  <td>ZIP 闖ｴ諛医・邵ｺ・ｯ闔会ｽｶ隰ｨ・ｰ邵ｺ・ｨ陞ｳ・ｹ鬩･荳岩・關捺剌・ｭ蛟･・邵ｺ・ｾ邵ｺ蜷ｶﾂ繧・ｽｮ蠕｡・ｺ繝ｻ・ｾ蠕娯・ <code>downloadUrl</code> 郢ｧ螳夲ｽｿ譁撰ｼ邵ｺ・ｾ邵ｺ蜷ｶﾂ繝ｻ/td>
                 </tr>
                 <tr>
                   <td><code>DELETE /{product}/records/generated</code></td>
-                  <td>中〜長</td>
-                  <td>非同期候補</td>
-                  <td>件数が少なければ同期でもよいですが、統一して task 化すると削除中表示と dry-run が扱いやすいです。</td>
+                  <td>闕ｳ・ｭ邵ｲ諞ｺ閨・/td>
+                  <td>鬮ｱ讒ｫ驟碑ｭ帶ｺｷﾂ蜻ｵ・｣繝ｻ/td>
+                  <td>闔会ｽｶ隰ｨ・ｰ邵ｺ謔滂ｽｰ莉｣竊醍ｸｺ莉｣・檎ｸｺ・ｰ陷ｷ譴ｧ謔・ｸｺ・ｧ郢ｧ繧・ｽ育ｸｺ繝ｻ縲堤ｸｺ蜷ｶ窶ｲ邵ｲ竏ｫ・ｵ・ｱ闕ｳﾂ邵ｺ蜉ｱ窶ｻ task 陋ｹ謔ｶ笘・ｹｧ荵昶・陷台ｼ∝求闕ｳ・ｭ髯ｦ・ｨ驕会ｽｺ邵ｺ・ｨ dry-run 邵ｺ譴ｧ譯ｶ邵ｺ繝ｻ・・ｸｺ蜷ｶ・樒ｸｺ・ｧ邵ｺ蜷ｶﾂ繝ｻ/td>
                 </tr>
                 <tr>
                   <td><code>POST /pc/captures</code></td>
-                  <td>中〜長</td>
-                  <td>非同期</td>
-                  <td>CIM/WMI、アプリ一覧、ディスク情報などで時間が変動します。進捗段階を出すべきです。</td>
+                  <td>闕ｳ・ｭ邵ｲ諞ｺ閨・/td>
+                  <td>鬮ｱ讒ｫ驟碑ｭ帙・/td>
+                  <td>CIM/WMI邵ｲ竏壹＞郢晏干ﾎ懆叉ﾂ髫包ｽｧ邵ｲ竏壹Ι郢ｧ・｣郢ｧ・ｹ郢ｧ・ｯ隲繝ｻ・ｰ・ｱ邵ｺ・ｪ邵ｺ・ｩ邵ｺ・ｧ隴弱ｋ菫｣邵ｺ謔滂ｽ､迚呵劒邵ｺ蜉ｱ竏ｪ邵ｺ蜷ｶﾂ繧仰・ｲ隰千軸・ｮ・ｵ鬮ｫ蠑ｱ・定怎・ｺ邵ｺ蜷ｶ竏狗ｸｺ髦ｪ縲堤ｸｺ蜷ｶﾂ繝ｻ/td>
                 </tr>
                 <tr>
                   <td><code>POST /chatgpt/imports</code></td>
-                  <td>ファイル次第</td>
-                  <td>登録は同期、解析は非同期</td>
-                  <td>ZIP の受け取り/登録と、会話変換処理は分けます。大きい ZIP は処理だけ task 化します。</td>
+                  <td>郢晁ｼ斐＜郢ｧ・､郢晢ｽｫ隹ｺ・｡髫ｨ・ｬ</td>
+                  <td>騾具ｽｻ鬪ｭ・ｲ邵ｺ・ｯ陷ｷ譴ｧ謔・ｸｲ竏ｬ・ｧ・｣隴ｫ闊後・鬮ｱ讒ｫ驟碑ｭ帙・/td>
+                  <td>ZIP 邵ｺ・ｮ陷ｿ蜉ｱ・陷ｿ謔ｶ・・騾具ｽｻ鬪ｭ・ｲ邵ｺ・ｨ邵ｲ竏ｽ・ｼ螟奇ｽｩ・ｱ陞溽判驪､陷・ｽｦ騾・・繝ｻ陋ｻ繝ｻ・邵ｺ・ｾ邵ｺ蜷ｶﾂ繧・ｽ､・ｧ邵ｺ髦ｪ・・ZIP 邵ｺ・ｯ陷・ｽｦ騾・・笆｡邵ｺ繝ｻtask 陋ｹ謔ｶ・邵ｺ・ｾ邵ｺ蜷ｶﾂ繝ｻ/td>
                 </tr>
               </tbody>
             </table>
@@ -1743,136 +1722,136 @@
       </details>
 
       <details open>
-        <summary>5.3 複数アクセスとキュー</summary>
+        <summary>5.3 髫阪・辟夂ｹｧ・｢郢ｧ・ｯ郢ｧ・ｻ郢ｧ・ｹ邵ｺ・ｨ郢ｧ・ｭ郢晢ｽ･郢晢ｽｼ</summary>
         <div class="detail-body">
           <div class="api-node">
-            <h3>基本ルール</h3>
-            <p>重い処理は、製品ごとに原則 1 本だけ同時実行します。読み取り API は動かしてよいですが、同じ生成データを書き換える処理はキューまたは拒否にします。</p>
+            <h3>陜難ｽｺ隴幢ｽｬ郢晢ｽｫ郢晢ｽｼ郢晢ｽｫ</h3>
+            <p>鬩･髦ｪ・櫁怎・ｦ騾・・繝ｻ邵ｲ竏ｬ・｣・ｽ陷ｩ竏夲ｼ・ｸｺ・ｨ邵ｺ・ｫ陷ｴ貅ｷ謠ｴ 1 隴幢ｽｬ邵ｺ・ｰ邵ｺ螟ｧ驟碑ｭ弱ｇ・ｮ貅ｯ・｡蠕鯉ｼ邵ｺ・ｾ邵ｺ蜷ｶﾂ繧奇ｽｪ・ｭ邵ｺ・ｿ陷ｿ謔ｶ・・API 邵ｺ・ｯ陷崎ｼ板ｰ邵ｺ蜉ｱ窶ｻ郢ｧ蛹ｻ・樒ｸｺ・ｧ邵ｺ蜷ｶ窶ｲ邵ｲ竏晞・邵ｺ蛟｡蜃ｽ隰瑚・繝ｧ郢晢ｽｼ郢ｧ・ｿ郢ｧ蜻亥ｶ檎ｸｺ閧ｴ驪､邵ｺ蛹ｻ・玖怎・ｦ騾・・繝ｻ郢ｧ・ｭ郢晢ｽ･郢晢ｽｼ邵ｺ・ｾ邵ｺ貅倥・隲｡雋槫℡邵ｺ・ｫ邵ｺ蜉ｱ竏ｪ邵ｺ蜷ｶﾂ繝ｻ/p>
             <dl class="facts">
-              <dt>同時実行可</dt>
+              <dt>陷ｷ譴ｧ蜃ｾ陞ｳ貅ｯ・｡謔溷ｺ・/dt>
               <dd><code>/health</code>, <code>/status</code>, <code>/records</code>, <code>/files</code>, <code>/tasks/{taskId}</code></dd>
-              <dt>同時実行制限</dt>
+              <dt>陷ｷ譴ｧ蜃ｾ陞ｳ貅ｯ・｡謔溷ｮ幃ｫｯ繝ｻ/dt>
               <dd><code>/refresh</code>, <code>/records/download</code>, <code>/records/generated</code>, <code>/pc/captures</code></dd>
-              <dt>重複リクエスト</dt>
-              <dd>同じ条件の処理が実行中なら、新しい処理を作らず既存の <code>taskId</code> を返す選択肢を持ちます。</dd>
-              <dt>理由</dt>
-              <dd>同じ outputRoot に複数処理が同時書き込みすると、成果物、latest ZIP、status.json が壊れる可能性があるためです。</dd>
+              <dt>鬩･蟠趣ｽ､繝ｻﾎ懃ｹｧ・ｯ郢ｧ・ｨ郢ｧ・ｹ郢昴・/dt>
+              <dd>陷ｷ蠕個ｧ隴夲ｽ｡闔会ｽｶ邵ｺ・ｮ陷・ｽｦ騾・・窶ｲ陞ｳ貅ｯ・｡蠕｡・ｸ・ｭ邵ｺ・ｪ郢ｧ蟲ｨﾂ竏ｵ逵邵ｺ蜉ｱ・櫁怎・ｦ騾・・・定抄諛奇ｽ臥ｸｺ螢ｽ驥瑚氛蛟･繝ｻ <code>taskId</code> 郢ｧ螳夲ｽｿ譁絶・鬩包ｽｸ隰壽ｫ√＞郢ｧ蜻域亜邵ｺ・｡邵ｺ・ｾ邵ｺ蜷ｶﾂ繝ｻ/dd>
+              <dt>騾・・鄂ｰ</dt>
+              <dd>陷ｷ蠕個ｧ outputRoot 邵ｺ・ｫ髫阪・辟夊怎・ｦ騾・・窶ｲ陷ｷ譴ｧ蜃ｾ隴厄ｽｸ邵ｺ蟠趣ｽｾ・ｼ邵ｺ・ｿ邵ｺ蜷ｶ・狗ｸｺ・ｨ邵ｲ竏ｵ繝ｻ隴ｫ諛・ｻ・ｸｲ縲病test ZIP邵ｲ縲閣atus.json 邵ｺ謔滂ｽ｣鄙ｫ・檎ｹｧ蜿･蠎・妙・ｽ隲､・ｧ邵ｺ蠕娯旺郢ｧ荵昶螺郢ｧ竏壹堤ｸｺ蜷ｶﾂ繝ｻ/dd>
             </dl>
           </div>
 
           <div class="api-node">
             <h3>Idempotency-Key</h3>
-            <p>Web UI からの二重クリックや通信リトライに備えて、長時間 POST は <code>Idempotency-Key</code> を受け付けます。</p>
+            <p>Web UI 邵ｺ荵晢ｽ臥ｸｺ・ｮ闔遒√裟郢ｧ・ｯ郢晢ｽｪ郢昴・縺醍ｹｧ繝ｻﾂ螢ｻ・ｿ・｡郢晢ｽｪ郢晏現ﾎ帷ｹｧ・､邵ｺ・ｫ陋ｯ蜷ｶ竏ｴ邵ｺ・ｦ邵ｲ繝ｻ閨櫁ｭ弱ｋ菫｣ POST 邵ｺ・ｯ <code>Idempotency-Key</code> 郢ｧ雋槫･ｳ邵ｺ蜿ｰ・ｻ蛟･・邵ｺ・ｾ邵ｺ蜷ｶﾂ繝ｻ/p>
             <dl class="facts">
-              <dt>あるべき挙動</dt>
-              <dd>同じ key と同じ本文なら同じ <code>taskId</code> を返します。違う本文なら <code>409 Conflict</code> を返します。</dd>
-              <dt>理由</dt>
-              <dd>ユーザーがボタンを連打しても、同じ処理が複数走らないようにするためです。</dd>
+              <dt>邵ｺ繧・ｽ狗ｸｺ・ｹ邵ｺ閧ｴ雖瑚恪繝ｻ/dt>
+              <dd>陷ｷ蠕個ｧ key 邵ｺ・ｨ陷ｷ蠕個ｧ隴幢ｽｬ隴√・竊醍ｹｧ迚咎・邵ｺ繝ｻ<code>taskId</code> 郢ｧ螳夲ｽｿ譁撰ｼ邵ｺ・ｾ邵ｺ蜷ｶﾂ繧具ｼ・ｸｺ繝ｻ謔ｽ隴√・竊醍ｹｧ繝ｻ<code>409 Conflict</code> 郢ｧ螳夲ｽｿ譁撰ｼ邵ｺ・ｾ邵ｺ蜷ｶﾂ繝ｻ/dd>
+              <dt>騾・・鄂ｰ</dt>
+              <dd>郢晢ｽｦ郢晢ｽｼ郢ｧ・ｶ郢晢ｽｼ邵ｺ蠕後・郢ｧ・ｿ郢晢ｽｳ郢ｧ蟶敖・｣隰・侭・邵ｺ・ｦ郢ｧ繧・竏晞・邵ｺ莨懊・騾・・窶ｲ髫阪・辟夊･搾ｽｰ郢ｧ蟲ｨ竊醍ｸｺ繝ｻ・育ｸｺ繝ｻ竊鍋ｸｺ蜷ｶ・狗ｸｺ貅假ｽ∫ｸｺ・ｧ邵ｺ蜷ｶﾂ繝ｻ/dd>
             </dl>
           </div>
 
           <div class="api-node">
-            <h3>排他ロック</h3>
-            <p>API 層だけでなく、worker 側にもファイルロックまたは DB ロックを置きます。</p>
+            <h3>隰怜宴・ｻ謔ｶﾎ溽ｹ昴・縺・/h3>
+            <p>API 陞ｻ・､邵ｺ・ｰ邵ｺ莉｣縲堤ｸｺ・ｪ邵ｺ荳環縲姉rker 陋幢ｽｴ邵ｺ・ｫ郢ｧ繧・Ψ郢ｧ・｡郢ｧ・､郢晢ｽｫ郢晢ｽｭ郢昴・縺醍ｸｺ・ｾ邵ｺ貅倥・ DB 郢晢ｽｭ郢昴・縺醍ｹｧ蝣､・ｽ・ｮ邵ｺ髦ｪ竏ｪ邵ｺ蜷ｶﾂ繝ｻ/p>
             <dl class="facts">
-              <dt>必要な場所</dt>
-              <dd>outputRoot、latest ZIP、settings 書き込み、run/task 状態更新、Docker compose 起動。</dd>
-              <dt>理由</dt>
-              <dd>API サーバーが再起動しても、worker 側で成果物保護が効くようにするためです。</dd>
+              <dt>陟｢繝ｻ・ｦ竏壺・陜｣・ｴ隰・</dt>
+              <dd>outputRoot邵ｲ縲病test ZIP邵ｲ縲各ttings 隴厄ｽｸ邵ｺ蟠趣ｽｾ・ｼ邵ｺ・ｿ邵ｲ縲疫n/task 霑･・ｶ隲ｷ蛹ｺ蟲ｩ隴・ｽｰ邵ｲ・姉cker compose 隘搾ｽｷ陷崎ｼ板繝ｻ/dd>
+              <dt>騾・・鄂ｰ</dt>
+              <dd>API 郢ｧ・ｵ郢晢ｽｼ郢晁・繝ｻ邵ｺ謔溘・隘搾ｽｷ陷崎ｼ費ｼ邵ｺ・ｦ郢ｧ繧・縲姉rker 陋幢ｽｴ邵ｺ・ｧ隰悟・譽｡霑夲ｽｩ闖ｫ譎・ｽｭ・ｷ邵ｺ謔滓汨邵ｺ荳奇ｽ育ｸｺ繝ｻ竊鍋ｸｺ蜷ｶ・狗ｸｺ貅假ｽ∫ｸｺ・ｧ邵ｺ蜷ｶﾂ繝ｻ/dd>
             </dl>
           </div>
         </div>
       </details>
 
       <details open>
-        <summary>5.4 キャンセル、失敗、復旧</summary>
+        <summary>5.4 郢ｧ・ｭ郢晢ｽ｣郢晢ｽｳ郢ｧ・ｻ郢晢ｽｫ邵ｲ竏晢ｽ､・ｱ隰ｨ蜉ｱﾂ竏晢ｽｾ・ｩ隴鯉ｽｧ</summary>
         <div class="detail-body">
           <div class="api-node">
-            <h3>キャンセル</h3>
-            <p>キャンセルは即時 kill ではなく、<code>cancelRequested</code> を保存し、worker が安全な区切りで停止します。</p>
+            <h3>郢ｧ・ｭ郢晢ｽ｣郢晢ｽｳ郢ｧ・ｻ郢晢ｽｫ</h3>
+            <p>郢ｧ・ｭ郢晢ｽ｣郢晢ｽｳ郢ｧ・ｻ郢晢ｽｫ邵ｺ・ｯ陷奇ｽｳ隴弱・kill 邵ｺ・ｧ邵ｺ・ｯ邵ｺ・ｪ邵ｺ荳環繝ｻcode>cancelRequested</code> 郢ｧ蜑・ｽｿ譎擾ｽｭ蛟･・邵ｲ縲姉rker 邵ｺ謔滂ｽｮ迚吶・邵ｺ・ｪ陋ｹ・ｺ陋ｻ繝ｻ・顔ｸｺ・ｧ陋帶㊧・ｭ・｢邵ｺ蜉ｱ竏ｪ邵ｺ蜷ｶﾂ繝ｻ/p>
             <dl class="facts">
-              <dt>返却</dt>
+              <dt>髴第ｳ悟陪</dt>
               <dd><code>canCancel</code>, <code>cancelRequested</code>, <code>cancelReason</code></dd>
-              <dt>できない場合</dt>
-              <dd>外部コマンドやモデル処理中で安全に止められない場合は <code>canCancel: false</code> を返します。</dd>
-              <dt>理由</dt>
-              <dd>生成途中のファイルやロックを壊さず、次回 refresh で復帰できる状態を保つためです。</dd>
+              <dt>邵ｺ・ｧ邵ｺ髦ｪ竊醍ｸｺ繝ｻ・ｰ・ｴ陷ｷ繝ｻ/dt>
+              <dd>陞溷､慚夂ｹｧ・ｳ郢晄ｧｭﾎｦ郢晏ｳｨ・・ｹ晢ｽ｢郢昴・ﾎ晁怎・ｦ騾・・・ｸ・ｭ邵ｺ・ｧ陞ｳ迚吶・邵ｺ・ｫ雎・ｽ｢郢ｧ竏夲ｽ臥ｹｧ蠕娯・邵ｺ繝ｻ・ｰ・ｴ陷ｷ蛹ｻ繝ｻ <code>canCancel: false</code> 郢ｧ螳夲ｽｿ譁撰ｼ邵ｺ・ｾ邵ｺ蜷ｶﾂ繝ｻ/dd>
+              <dt>騾・・鄂ｰ</dt>
+              <dd>騾墓ｻ薙・鬨ｾ豈費ｽｸ・ｭ邵ｺ・ｮ郢晁ｼ斐＜郢ｧ・､郢晢ｽｫ郢ｧ繝ｻﾎ溽ｹ昴・縺醍ｹｧ雋橸ｽ｣鄙ｫ・・ｸｺ螢ｹﾂ竏ｵ・ｬ・｡陜励・refresh 邵ｺ・ｧ陟包ｽｩ陝ｶ・ｰ邵ｺ・ｧ邵ｺ髦ｪ・玖ｿ･・ｶ隲ｷ荵晢ｽ定将譏ｴ笆ｽ邵ｺ貅假ｽ∫ｸｺ・ｧ邵ｺ蜷ｶﾂ繝ｻ/dd>
             </dl>
           </div>
 
           <div class="api-node">
-            <h3>失敗</h3>
-            <p>失敗は「ユーザーが次に何をすべきか」を返す形にします。</p>
+            <h3>陞滂ｽｱ隰ｨ繝ｻ/h3>
+            <p>陞滂ｽｱ隰ｨ蜉ｱ繝ｻ邵ｲ蠕湖倡ｹ晢ｽｼ郢ｧ・ｶ郢晢ｽｼ邵ｺ譴ｧ・ｬ・｡邵ｺ・ｫ闖ｴ霈費ｽ堤ｸｺ蜷ｶ竏狗ｸｺ髦ｪﾂｰ邵ｲ髦ｪ・帝恆譁絶・陟厄ｽ｢邵ｺ・ｫ邵ｺ蜉ｱ竏ｪ邵ｺ蜷ｶﾂ繝ｻ/p>
             <dl class="facts">
-              <dt>返却</dt>
+              <dt>髴第ｳ悟陪</dt>
               <dd><code>userMessage</code>, <code>technicalMessage</code>, <code>retryable</code>, <code>nextAction</code>, <code>logsUrl</code></dd>
-              <dt>理由</dt>
-              <dd>CLI の stderr をそのまま見せると、一般ユーザーが安全に判断できないためです。</dd>
+              <dt>騾・・鄂ｰ</dt>
+              <dd>CLI 邵ｺ・ｮ stderr 郢ｧ蛛ｵ笳守ｸｺ・ｮ邵ｺ・ｾ邵ｺ・ｾ髫穂ｹ昶雷郢ｧ荵昶・邵ｲ竏ｽ・ｸﾂ髣奇ｽｬ郢晢ｽｦ郢晢ｽｼ郢ｧ・ｶ郢晢ｽｼ邵ｺ謔滂ｽｮ迚吶・邵ｺ・ｫ陋ｻ・､隴・ｽｭ邵ｺ・ｧ邵ｺ髦ｪ竊醍ｸｺ繝ｻ笳・ｹｧ竏壹堤ｸｺ蜷ｶﾂ繝ｻ/dd>
             </dl>
           </div>
 
           <div class="api-node">
-            <h3>復旧</h3>
-            <p>API または worker が落ちた場合、次回起動時に古い <code>running</code> を <code>interrupted</code> にします。</p>
+            <h3>陟包ｽｩ隴鯉ｽｧ</h3>
+            <p>API 邵ｺ・ｾ邵ｺ貅倥・ worker 邵ｺ迹夊ｪ邵ｺ・｡邵ｺ貅ｷ・ｰ・ｴ陷ｷ蛹ｻﾂ竏ｵ・ｬ・｡陜玲ｫ・ｽｵ・ｷ陷榊｢灘・邵ｺ・ｫ陷ｿ・､邵ｺ繝ｻ<code>running</code> 郢ｧ繝ｻ<code>interrupted</code> 邵ｺ・ｫ邵ｺ蜉ｱ竏ｪ邵ｺ蜷ｶﾂ繝ｻ/p>
             <dl class="facts">
-              <dt>必要な実装</dt>
-              <dd>task 状態の永続化、heartbeat 時刻、stale 判定、途中ファイルの cleanup または再利用判定。</dd>
-              <dt>理由</dt>
-              <dd>画面に「処理中」のまま残り続ける状態を避け、再実行できるかを明示するためです。</dd>
+              <dt>陟｢繝ｻ・ｦ竏壺・陞ｳ貅ｯ・｣繝ｻ/dt>
+              <dd>task 霑･・ｶ隲ｷ荵昴・雎鯉ｽｸ驍ｯ螢ｼ蝟ｧ邵ｲ窶抛artbeat 隴弱ｇ邯ｾ邵ｲ縲閣ale 陋ｻ・､陞ｳ螢ｹﾂ繝ｻﾂ豈費ｽｸ・ｭ郢晁ｼ斐＜郢ｧ・､郢晢ｽｫ邵ｺ・ｮ cleanup 邵ｺ・ｾ邵ｺ貅倥・陷讎願懸騾包ｽｨ陋ｻ・､陞ｳ螢ｹﾂ繝ｻ/dd>
+              <dt>騾・・鄂ｰ</dt>
+              <dd>騾包ｽｻ鬮ｱ・｢邵ｺ・ｫ邵ｲ謔溘・騾・・・ｸ・ｭ邵ｲ髦ｪ繝ｻ邵ｺ・ｾ邵ｺ・ｾ隹ｿ荵晢ｽ企け螢ｹ・郢ｧ迢玲・隲ｷ荵晢ｽ帝ｩ包ｽｿ邵ｺ莉｣ﾂ竏昴・陞ｳ貅ｯ・｡蠕後堤ｸｺ髦ｪ・狗ｸｺ荵晢ｽ定ｭ丞ｮ茨ｽ､・ｺ邵ｺ蜷ｶ・狗ｸｺ貅假ｽ∫ｸｺ・ｧ邵ｺ蜷ｶﾂ繝ｻ/dd>
             </dl>
           </div>
         </div>
       </details>
 
       <details open>
-        <summary>5.5 製品別の進捗ステージ案</summary>
+        <summary>5.5 髯ｬ・ｽ陷ｩ竏晄肩邵ｺ・ｮ鬨ｾ・ｲ隰仙干縺帷ｹ昴・繝ｻ郢ｧ・ｸ隴ｯ繝ｻ/summary>
         <div class="detail-body">
           <div class="table-wrap">
             <table>
               <thead>
                 <tr>
-                  <th>製品</th>
-                  <th>長時間処理</th>
-                  <th>進捗ステージ</th>
-                  <th>画面に出すべき途中経過</th>
+                  <th>髯ｬ・ｽ陷ｩ繝ｻ/th>
+                  <th>鬮滂ｽｷ隴弱ｋ菫｣陷・ｽｦ騾・・/th>
+                  <th>鬨ｾ・ｲ隰仙干縺帷ｹ昴・繝ｻ郢ｧ・ｸ</th>
+                  <th>騾包ｽｻ鬮ｱ・｢邵ｺ・ｫ陷・ｽｺ邵ｺ蜷ｶ竏狗ｸｺ蝓ｼﾂ豈費ｽｸ・ｭ驍ｨ遒≫с</th>
                 </tr>
               </thead>
               <tbody>
                 <tr>
                   <td>Audio</td>
                   <td><code>/audio/refresh</code>, <code>/audio/records/download</code></td>
-                  <td>設定確認 → ファイル検出 → モデル準備 → 音声解析 → 記録作成 → ZIP 作成</td>
-                  <td>処理済みファイル数、対象ファイル名、処理済み音声時間、推定残り時間、モデル待ち状態。</td>
+                  <td>髫ｪ・ｭ陞ｳ螟ゑｽ｢・ｺ髫ｱ繝ｻ遶翫・郢晁ｼ斐＜郢ｧ・､郢晢ｽｫ隶諛ｷ繝ｻ 遶翫・郢晢ｽ｢郢昴・ﾎ晁ｲ・摩・・遶翫・鬮ｻ・ｳ陞｢・ｰ髫暦ｽ｣隴ｫ繝ｻ遶翫・髫ｪ蛟ｬ鮖ｸ闖ｴ諛医・ 遶翫・ZIP 闖ｴ諛医・</td>
+                  <td>陷・ｽｦ騾・・・ｸ蛹ｻ竏ｩ郢晁ｼ斐＜郢ｧ・､郢晢ｽｫ隰ｨ・ｰ邵ｲ竏晢ｽｯ・ｾ髮趣ｽ｡郢晁ｼ斐＜郢ｧ・､郢晢ｽｫ陷ｷ髦ｪﾂ竏昴・騾・・・ｸ蛹ｻ竏ｩ鬮ｻ・ｳ陞｢・ｰ隴弱ｋ菫｣邵ｲ竏ｵ閠ｳ陞ｳ螢ｽ・ｮ荵晢ｽ願ｭ弱ｋ菫｣邵ｲ竏墅皮ｹ昴・ﾎ晁輔・笆霑･・ｶ隲ｷ荵敖繝ｻ/td>
                 </tr>
                 <tr>
                   <td>Image</td>
-                  <td><code>/image/refresh</code>, <code>/image/records/download</code>, 生成物削除</td>
-                  <td>設定確認 → ファイル検出 → 画像正規化 → OCR → 記録作成 → ZIP 作成</td>
-                  <td>処理済み画像数、現在の画像名、OCR 状態、スキップ数、失敗数。</td>
+                  <td><code>/image/refresh</code>, <code>/image/records/download</code>, 騾墓ｻ薙・霑夲ｽｩ陷台ｼ∝求</td>
+                  <td>髫ｪ・ｭ陞ｳ螟ゑｽ｢・ｺ髫ｱ繝ｻ遶翫・郢晁ｼ斐＜郢ｧ・､郢晢ｽｫ隶諛ｷ繝ｻ 遶翫・騾包ｽｻ陷剃ｹ暦ｽｭ・｣髫穂ｸ槫密 遶翫・OCR 遶翫・髫ｪ蛟ｬ鮖ｸ闖ｴ諛医・ 遶翫・ZIP 闖ｴ諛医・</td>
+                  <td>陷・ｽｦ騾・・・ｸ蛹ｻ竏ｩ騾包ｽｻ陷剃ｹ礼・邵ｲ竏ｫ讓溯舉・ｨ邵ｺ・ｮ騾包ｽｻ陷剃ｸ樣倹邵ｲ・ｾCR 霑･・ｶ隲ｷ荵敖竏壹○郢ｧ・ｭ郢昴・繝ｻ隰ｨ・ｰ邵ｲ竏晢ｽ､・ｱ隰ｨ邇ｲ辟夂ｸｲ繝ｻ/td>
                 </tr>
                 <tr>
                   <td>Video</td>
                   <td><code>/video/refresh</code>, <code>/video/records/download</code></td>
-                  <td>設定確認 → ffprobe → フレーム抽出 → OCR → 音声解析 → 活動マップ → 記録作成 → ZIP 作成</td>
-                  <td>現在の動画名、現在ステージ、処理済み動画数、サンプル数、音声モデル待ち、失敗ステージ。</td>
+                  <td>髫ｪ・ｭ陞ｳ螟ゑｽ｢・ｺ髫ｱ繝ｻ遶翫・ffprobe 遶翫・郢晁ｼ釆樒ｹ晢ｽｼ郢晢｣ｰ隰夲ｽｽ陷・ｽｺ 遶翫・OCR 遶翫・鬮ｻ・ｳ陞｢・ｰ髫暦ｽ｣隴ｫ繝ｻ遶翫・雎｢・ｻ陷崎ｼ斐・郢昴・繝ｻ 遶翫・髫ｪ蛟ｬ鮖ｸ闖ｴ諛医・ 遶翫・ZIP 闖ｴ諛医・</td>
+                  <td>霑ｴ・ｾ陜ｨ・ｨ邵ｺ・ｮ陷肴・蛻､陷ｷ髦ｪﾂ竏ｫ讓溯舉・ｨ郢ｧ・ｹ郢昴・繝ｻ郢ｧ・ｸ邵ｲ竏昴・騾・・・ｸ蛹ｻ竏ｩ陷肴・蛻､隰ｨ・ｰ邵ｲ竏壹＠郢晢ｽｳ郢晏干ﾎ晁ｬｨ・ｰ邵ｲ繝ｻ豬ｹ陞｢・ｰ郢晢ｽ｢郢昴・ﾎ晁輔・笆邵ｲ竏晢ｽ､・ｱ隰ｨ蜉ｱ縺帷ｹ昴・繝ｻ郢ｧ・ｸ邵ｲ繝ｻ/td>
                 </tr>
                 <tr>
                   <td>PC</td>
                   <td><code>/pc/captures</code>, <code>/pc/records/download</code></td>
-                  <td>事前確認 → OS情報 → ハードウェア → ディスク → ネットワーク → アプリ一覧 → マスク処理 → レポート作成</td>
-                  <td>現在収集中のカテゴリ、警告数、マスク済み/未マスクの状態、レポート作成完了。</td>
+                  <td>闔蜿･辯暮￡・ｺ髫ｱ繝ｻ遶翫・OS隲繝ｻ・ｰ・ｱ 遶翫・郢昜ｸ翫・郢晏ｳｨ縺育ｹｧ・ｧ郢ｧ・｢ 遶翫・郢昴・縺・ｹｧ・ｹ郢ｧ・ｯ 遶翫・郢晞亂繝｣郢晏現ﾎ｡郢晢ｽｼ郢ｧ・ｯ 遶翫・郢ｧ・｢郢晏干ﾎ懆叉ﾂ髫包ｽｧ 遶翫・郢晄ｧｭ縺帷ｹｧ・ｯ陷・ｽｦ騾・・遶翫・郢晢ｽｬ郢晄亢繝ｻ郢昜ｺ包ｽｽ諛医・</td>
+                  <td>霑ｴ・ｾ陜ｨ・ｨ陷ｿ譛ｱ蟇碑叉・ｭ邵ｺ・ｮ郢ｧ・ｫ郢昴・縺也ｹ晢ｽｪ邵ｲ竏ｬ・ｭ・ｦ陷ｻ鬆醍・邵ｲ竏壹・郢ｧ・ｹ郢ｧ・ｯ雋ょ現竏ｩ/隴幢ｽｪ郢晄ｧｭ縺帷ｹｧ・ｯ邵ｺ・ｮ霑･・ｶ隲ｷ荵敖竏墅樒ｹ晄亢繝ｻ郢昜ｺ包ｽｽ諛医・陞ｳ蠕｡・ｺ繝ｻﾂ繝ｻ/td>
                 </tr>
                 <tr>
                   <td>ChatGPT</td>
                   <td><code>/chatgpt/imports</code>, <code>/chatgpt/refresh</code>, <code>/chatgpt/records/download</code></td>
-                  <td>ZIP確認 → 展開 → conversations 読み取り → 会話変換 → 記録作成 → ZIP 作成</td>
-                  <td>会話総数、変換済み会話数、失敗会話数、現在の会話タイトル、ZIP検証結果。</td>
+                  <td>ZIP驕抵ｽｺ髫ｱ繝ｻ遶翫・陞ｻ證ｮ蟷・遶翫・conversations 髫ｱ・ｭ邵ｺ・ｿ陷ｿ謔ｶ・・遶翫・闔ｨ螟奇ｽｩ・ｱ陞溽判驪､ 遶翫・髫ｪ蛟ｬ鮖ｸ闖ｴ諛医・ 遶翫・ZIP 闖ｴ諛医・</td>
+                  <td>闔ｨ螟奇ｽｩ・ｱ驍ｱ荵礼・邵ｲ竏晢ｽ､逕ｻ驪､雋ょ現竏ｩ闔ｨ螟奇ｽｩ・ｱ隰ｨ・ｰ邵ｲ竏晢ｽ､・ｱ隰ｨ蠍ｺ・ｼ螟奇ｽｩ・ｱ隰ｨ・ｰ邵ｲ竏ｫ讓溯舉・ｨ邵ｺ・ｮ闔ｨ螟奇ｽｩ・ｱ郢ｧ・ｿ郢ｧ・､郢晏現ﾎ晉ｸｲ縲⑩P隶諛・ｽｨ・ｼ驍ｨ蜈域｣｡邵ｲ繝ｻ/td>
                 </tr>
                 <tr>
                   <td>WindowsCodex</td>
                   <td><code>/windows-codex/refresh</code>, <code>/windows-codex/records/download</code></td>
-                  <td>マウント確認 → セッション探索 → 会話復元 → 記録作成 → ZIP 作成</td>
-                  <td>探索済みファイル数、会話数、スキップ数、現在の会話ID、読めない履歴の警告。</td>
+                  <td>郢晄ｧｭ縺育ｹ晢ｽｳ郢晁ご・｢・ｺ髫ｱ繝ｻ遶翫・郢ｧ・ｻ郢昴・縺咏ｹ晢ｽｧ郢晢ｽｳ隰暦ｽ｢驍擾ｽ｢ 遶翫・闔ｨ螟奇ｽｩ・ｱ陟包ｽｩ陷医・遶翫・髫ｪ蛟ｬ鮖ｸ闖ｴ諛医・ 遶翫・ZIP 闖ｴ諛医・</td>
+                  <td>隰暦ｽ｢驍擾ｽ｢雋ょ現竏ｩ郢晁ｼ斐＜郢ｧ・､郢晢ｽｫ隰ｨ・ｰ邵ｲ竏ｽ・ｼ螟奇ｽｩ・ｱ隰ｨ・ｰ邵ｲ竏壹○郢ｧ・ｭ郢昴・繝ｻ隰ｨ・ｰ邵ｲ竏ｫ讓溯舉・ｨ邵ｺ・ｮ闔ｨ螟奇ｽｩ・ｱID邵ｲ竏ｬ・ｪ・ｭ郢ｧ竏壺・邵ｺ繝ｻ・ｱ・･雎・ｽｴ邵ｺ・ｮ髫ｴ・ｦ陷ｻ鄙ｫﾂ繝ｻ/td>
                 </tr>
               </tbody>
             </table>
@@ -1881,32 +1860,32 @@
       </details>
 
       <details open>
-        <summary>5.6 運用上あるべき実装</summary>
+        <summary>5.6 鬩慕距逡題叉鄙ｫ竕郢ｧ荵昶・邵ｺ讎奇ｽｮ貅ｯ・｣繝ｻ/summary>
         <div class="detail-body">
           <div class="grid-2">
             <div class="mini">
-              <h3>操作ログ</h3>
-              <p>全 task に <code>operationId</code> を持たせ、親 UI 操作、API リクエスト、worker 実行、旧 CLI 呼び出しをつなぎます。</p>
+              <h3>隰ｫ蝣ｺ・ｽ諛莞溽ｹｧ・ｰ</h3>
+              <p>陷茨ｽｨ task 邵ｺ・ｫ <code>operationId</code> 郢ｧ蜻域亜邵ｺ貅倪雷邵ｲ竏ｬ・ｦ・ｪ UI 隰ｫ蝣ｺ・ｽ諛環縲￣I 郢晢ｽｪ郢ｧ・ｯ郢ｧ・ｨ郢ｧ・ｹ郢晏現ﾂ縲姉rker 陞ｳ貅ｯ・｡蠕個竏ｵ遶・command 陷ｻ・ｼ邵ｺ・ｳ陷・ｽｺ邵ｺ蜉ｱ・堤ｸｺ・､邵ｺ・ｪ邵ｺ蠑ｱ竏ｪ邵ｺ蜷ｶﾂ繝ｻ/p>
             </div>
             <div class="mini">
-              <h3>安全なログ表示</h3>
-              <p>トークン、パスワード、APIキー、個人情報になり得る値はログ保存前にマスクします。画面には短い説明を優先します。</p>
+              <h3>陞ｳ迚吶・邵ｺ・ｪ郢晢ｽｭ郢ｧ・ｰ髯ｦ・ｨ驕会ｽｺ</h3>
+              <p>郢晏現繝ｻ郢ｧ・ｯ郢晢ｽｳ邵ｲ竏壹Τ郢ｧ・ｹ郢晢ｽｯ郢晢ｽｼ郢晏ｳｨﾂ縲￣I郢ｧ・ｭ郢晢ｽｼ邵ｲ竏敖蛟ｶ・ｺ・ｺ隲繝ｻ・ｰ・ｱ邵ｺ・ｫ邵ｺ・ｪ郢ｧ髮・ｽｾ蜉ｱ・玖屐・､邵ｺ・ｯ郢晢ｽｭ郢ｧ・ｰ闖ｫ譎擾ｽｭ莨懃√邵ｺ・ｫ郢晄ｧｭ縺帷ｹｧ・ｯ邵ｺ蜉ｱ竏ｪ邵ｺ蜷ｶﾂ繧牙愛鬮ｱ・｢邵ｺ・ｫ邵ｺ・ｯ驕擾ｽｭ邵ｺ繝ｻ・ｪ・ｬ隴丞ｼｱ・定怕・ｪ陷亥現・邵ｺ・ｾ邵ｺ蜷ｶﾂ繝ｻ/p>
             </div>
             <div class="mini">
-              <h3>キャッシュ</h3>
-              <p>重い一覧や status は <code>cachedAt</code> と <code>stale</code> を返します。ユーザーが明示更新した時だけ再スキャンします。</p>
+              <h3>郢ｧ・ｭ郢晢ｽ｣郢昴・縺咏ｹ晢ｽ･</h3>
+              <p>鬩･髦ｪ・櫁叉ﾂ髫包ｽｧ郢ｧ繝ｻstatus 邵ｺ・ｯ <code>cachedAt</code> 邵ｺ・ｨ <code>stale</code> 郢ｧ螳夲ｽｿ譁撰ｼ邵ｺ・ｾ邵ｺ蜷ｶﾂ繧・倡ｹ晢ｽｼ郢ｧ・ｶ郢晢ｽｼ邵ｺ譴ｧ繝ｻ驕会ｽｺ隴厄ｽｴ隴・ｽｰ邵ｺ蜉ｱ笳・ｭ弱ｅ笆｡邵ｺ螟ｧ繝ｻ郢ｧ・ｹ郢ｧ・ｭ郢晢ｽ｣郢晢ｽｳ邵ｺ蜉ｱ竏ｪ邵ｺ蜷ｶﾂ繝ｻ/p>
             </div>
             <div class="mini">
-              <h3>タイムアウト</h3>
-              <p>HTTP リクエストは短く、worker 処理は task として継続します。API タイムアウトと処理タイムアウトを混同しません。</p>
+              <h3>郢ｧ・ｿ郢ｧ・､郢晢｣ｰ郢ｧ・｢郢ｧ・ｦ郢昴・/h3>
+              <p>HTTP 郢晢ｽｪ郢ｧ・ｯ郢ｧ・ｨ郢ｧ・ｹ郢晏現繝ｻ驕擾ｽｭ邵ｺ荳環縲姉rker 陷・ｽｦ騾・・繝ｻ task 邵ｺ・ｨ邵ｺ蜉ｱ窶ｻ驍ｯ蜥擾ｽｶ螢ｹ・邵ｺ・ｾ邵ｺ蜷ｶﾂ繝ｻPI 郢ｧ・ｿ郢ｧ・､郢晢｣ｰ郢ｧ・｢郢ｧ・ｦ郢晏現竊定怎・ｦ騾・・縺｡郢ｧ・､郢晢｣ｰ郢ｧ・｢郢ｧ・ｦ郢晏現・定ｱｺ・ｷ陷ｷ蠕鯉ｼ邵ｺ・ｾ邵ｺ蟶呻ｽ鍋ｸｲ繝ｻ/p>
             </div>
             <div class="mini">
-              <h3>古い処理の扱い</h3>
-              <p>heartbeat が一定時間更新されない task は <code>interrupted</code> にします。次回 refresh で再開または再処理します。</p>
+              <h3>陷ｿ・､邵ｺ繝ｻ繝ｻ騾・・繝ｻ隰・ｽｱ邵ｺ繝ｻ/h3>
+              <p>heartbeat 邵ｺ蠕｡・ｸﾂ陞ｳ螢ｽ蜃ｾ鬮｢謐ｺ蟲ｩ隴・ｽｰ邵ｺ霈費ｽ檎ｸｺ・ｪ邵ｺ繝ｻtask 邵ｺ・ｯ <code>interrupted</code> 邵ｺ・ｫ邵ｺ蜉ｱ竏ｪ邵ｺ蜷ｶﾂ繧茨ｽｬ・｡陜励・refresh 邵ｺ・ｧ陷蝓ｼ蟷慕ｸｺ・ｾ邵ｺ貅倥・陷讎翫・騾・・・邵ｺ・ｾ邵ｺ蜷ｶﾂ繝ｻ/p>
             </div>
             <div class="mini">
-              <h3>互換期間</h3>
-              <p>移行中は API 内部から現行 CLI を呼んでもよいですが、外部契約は API の task/records/status へ寄せます。</p>
+              <h3>闔蜻磯共隴帶ｻ・ｿ｣</h3>
+              <p>驕假ｽｻ髯ｦ蠕｡・ｸ・ｭ邵ｺ・ｯ API 陷繝ｻﾎ夂ｸｺ荵晢ｽ芽ｿｴ・ｾ髯ｦ繝ｻCLI 郢ｧ雋樔ｻ也ｹｧ阮吶堤ｹｧ繧・ｽ育ｸｺ繝ｻ縲堤ｸｺ蜷ｶ窶ｲ邵ｲ竏晢ｽ､螟慚夊桙驢搾ｽｴ繝ｻ繝ｻ API 邵ｺ・ｮ task/records/status 邵ｺ・ｸ陝・・笳狗ｸｺ・ｾ邵ｺ蜷ｶﾂ繝ｻ/p>
             </div>
           </div>
         </div>
@@ -1915,89 +1894,87 @@
   </section>
 
   <section id="considerations" class="card section">
-    <h2>6. あるべき配慮</h2>
+    <h2>6. 邵ｺ繧・ｽ狗ｸｺ・ｹ邵ｺ蝓ｼ繝ｻ隲ｷ・ｮ</h2>
     <p class="muted">
-      「必要最低限」ではなく「あるべきものがある」状態にするための採否です。
-      ただし、初期 API を重くしすぎないよう、入れるもの、予約だけするもの、今は入れないものを分けます。
-    </p>
+      邵ｲ謔滂ｽｿ繝ｻ・ｦ竏ｵ諤呵抄譛ｱ蜑樒ｸｲ髦ｪ縲堤ｸｺ・ｯ邵ｺ・ｪ邵ｺ荳環蠕娯旺郢ｧ荵昶・邵ｺ髦ｪ・らｸｺ・ｮ邵ｺ蠕娯旺郢ｧ荵敖蜥ｲ諞ｾ隲ｷ荵昶・邵ｺ蜷ｶ・狗ｸｺ貅假ｽ∫ｸｺ・ｮ隰暦ｽ｡陷ｷ・ｦ邵ｺ・ｧ邵ｺ蜷ｶﾂ繝ｻ      邵ｺ貅倪味邵ｺ蜉ｱﾂ竏昴・隴帙・API 郢ｧ蟶昴裟邵ｺ荳奇ｼ邵ｺ蜷ｶ邃・ｸｺ・ｪ邵ｺ繝ｻ・育ｸｺ繝ｻﾂ竏昴・郢ｧ蠕鯉ｽ狗ｹｧ繧・・邵ｲ竏ｽ・ｺ閧ｲ・ｴ繝ｻ笆｡邵ｺ莉｣笘・ｹｧ荵晢ｽらｸｺ・ｮ邵ｲ竏ｽ・ｻ鄙ｫ繝ｻ陷茨ｽ･郢ｧ蠕娯・邵ｺ繝ｻ・らｸｺ・ｮ郢ｧ雋槭・邵ｺ莉｣竏ｪ邵ｺ蜷ｶﾂ繝ｻ    </p>
 
     <div class="grid-3">
       <div class="mini">
-        <h3>必ず入れる</h3>
-        <p>ヘルス、状態、進捗、データ鮮度、ユーザー向けエラー、元データ保護、部分失敗、製品能力 discovery。</p>
+        <h3>陟｢繝ｻ笘・怦・･郢ｧ蠕鯉ｽ・/h3>
+        <p>郢晏･ﾎ晉ｹｧ・ｹ邵ｲ竏ｫ諞ｾ隲ｷ荵敖繝ｻﾂ・ｲ隰仙干ﾂ竏壹Ι郢晢ｽｼ郢ｧ・ｿ鬲・ｽｮ陟趣ｽｦ邵ｲ竏墅倡ｹ晢ｽｼ郢ｧ・ｶ郢晢ｽｼ陷ｷ莉｣・郢ｧ・ｨ郢晢ｽｩ郢晢ｽｼ邵ｲ竏昴・郢昴・繝ｻ郢ｧ・ｿ闖ｫ譎・ｽｭ・ｷ邵ｲ繝ｻﾎ夊崕繝ｻ・､・ｱ隰ｨ蜉ｱﾂ竏ｬ・｣・ｽ陷ｩ竏ｬ繝ｻ陷峨・discovery邵ｲ繝ｻ/p>
       </div>
       <div class="mini">
-        <h3>予約する</h3>
-        <p>SSE、診断 API、maintenance cleanup、詳細な認証、外部監視連携。URL と概念だけ先に置き、実装は後回しにします。</p>
+        <h3>闔閧ｲ・ｴ繝ｻ笘・ｹｧ繝ｻ/h3>
+        <p>SSE邵ｲ竏ｬ・ｨ・ｺ隴・ｽｭ API邵ｲ・ｻaintenance cleanup邵ｲ竏ｬ・ｩ・ｳ驍擾ｽｰ邵ｺ・ｪ髫ｱ蟠趣ｽｨ・ｼ邵ｲ竏晢ｽ､螟慚夐ｶ・｣髫募､慊・｣隰ｳ・ｺ邵ｲ・乏L 邵ｺ・ｨ隶弱ｇ・ｿ・ｵ邵ｺ・ｰ邵ｺ螟ｧ繝ｻ邵ｺ・ｫ驗ゑｽｮ邵ｺ髦ｪﾂ竏晢ｽｮ貅ｯ・｣繝ｻ繝ｻ陟墓ぁ螻鍋ｸｺ蜉ｱ竊鍋ｸｺ蜉ｱ竏ｪ邵ｺ蜷ｶﾂ繝ｻ/p>
       </div>
       <div class="mini">
-        <h3>入れない</h3>
-        <p>元データ削除、任意ローカルパスへの書き込み、複雑なユーザー管理、GraphQL、全製品共通の巨大ワークフローエンジン。</p>
+        <h3>陷茨ｽ･郢ｧ蠕娯・邵ｺ繝ｻ/h3>
+        <p>陷医・繝ｧ郢晢ｽｼ郢ｧ・ｿ陷台ｼ∝求邵ｲ竏ｽ・ｻ・ｻ隲｢荳莞溽ｹ晢ｽｼ郢ｧ・ｫ郢晢ｽｫ郢昜ｻ｣縺帷ｸｺ・ｸ邵ｺ・ｮ隴厄ｽｸ邵ｺ蟠趣ｽｾ・ｼ邵ｺ・ｿ邵ｲ竏ｬ・､繝ｻ蟆・ｸｺ・ｪ郢晢ｽｦ郢晢ｽｼ郢ｧ・ｶ郢晢ｽｼ驍ゑｽ｡騾・・ﾂ・孑aphQL邵ｲ竏昴・髯ｬ・ｽ陷ｩ竏昴・鬨ｾ螢ｹ繝ｻ陝ｾ・ｨ陞滂ｽｧ郢晢ｽｯ郢晢ｽｼ郢ｧ・ｯ郢晁ｼ釆溽ｹ晢ｽｼ郢ｧ・ｨ郢晢ｽｳ郢ｧ・ｸ郢晢ｽｳ邵ｲ繝ｻ/p>
       </div>
     </div>
 
     <div class="tree">
       <details open>
-        <summary>6.1 共通レスポンスに入れる配慮</summary>
+        <summary>6.1 陷茨ｽｱ鬨ｾ螢ｹﾎ樒ｹｧ・ｹ郢晄亢ﾎｦ郢ｧ・ｹ邵ｺ・ｫ陷茨ｽ･郢ｧ蠕鯉ｽ矩ｩ溯ざ繝ｻ</summary>
         <div class="detail-body">
           <div class="table-wrap">
             <table>
               <thead>
                 <tr>
-                  <th>配慮</th>
-                  <th>共通フィールド</th>
-                  <th>対象 API</th>
-                  <th>理由</th>
+                  <th>鬩溯ざ繝ｻ</th>
+                  <th>陷茨ｽｱ鬨ｾ螢ｹ繝ｵ郢ｧ・｣郢晢ｽｼ郢晢ｽｫ郢昴・/th>
+                  <th>陝・ｽｾ髮趣ｽ｡ API</th>
+                  <th>騾・・鄂ｰ</th>
                 </tr>
               </thead>
               <tbody>
                 <tr>
-                  <td>契約バージョン</td>
+                  <td>陞る・・ｴ繝ｻ繝ｰ郢晢ｽｼ郢ｧ・ｸ郢晢ｽｧ郢晢ｽｳ</td>
                   <td><code>contractVersion</code>, <code>schemaVersion</code></td>
-                  <td>全 API</td>
-                  <td>Swagger と実装のずれを検出しやすくするため。破壊的変更時の判断材料になります。</td>
+                  <td>陷茨ｽｨ API</td>
+                  <td>Swagger 邵ｺ・ｨ陞ｳ貅ｯ・｣繝ｻ繝ｻ邵ｺ螢ｹ・檎ｹｧ蜻茨ｽ､諛ｷ繝ｻ邵ｺ蜉ｱ・・ｸｺ蜷ｶ・･邵ｺ蜷ｶ・狗ｸｺ貅假ｽ∫ｸｲ繧会｣ｰ・ｴ陞｢鬘泌飭陞溽判蟲ｩ隴弱ｅ繝ｻ陋ｻ・､隴・ｽｭ隴壼・萓ｭ邵ｺ・ｫ邵ｺ・ｪ郢ｧ鄙ｫ竏ｪ邵ｺ蜷ｶﾂ繝ｻ/td>
                 </tr>
                 <tr>
-                  <td>データ鮮度</td>
+                  <td>郢昴・繝ｻ郢ｧ・ｿ鬲・ｽｮ陟趣ｽｦ</td>
                   <td><code>dataFreshness.cachedAt</code>, <code>isStale</code>, <code>refreshAvailable</code></td>
                   <td><code>/status</code>, <code>/files</code>, <code>/records</code>, <code>/conversations</code></td>
-                  <td>重い一覧を毎回スキャンせず、UI が「この情報は古い可能性があります」と説明できるようにします。</td>
+                  <td>鬩･髦ｪ・櫁叉ﾂ髫包ｽｧ郢ｧ蜻茨ｽｯ荳ｻ螻鍋ｹｧ・ｹ郢ｧ・ｭ郢晢ｽ｣郢晢ｽｳ邵ｺ蟶吮・邵ｲ繧曵 邵ｺ蠕個蠕鯉ｼ・ｸｺ・ｮ隲繝ｻ・ｰ・ｱ邵ｺ・ｯ陷ｿ・､邵ｺ繝ｻ蠎・妙・ｽ隲､・ｧ邵ｺ蠕娯旺郢ｧ鄙ｫ竏ｪ邵ｺ蜷ｶﾂ髦ｪ竊帝坡・ｬ隴丞ｼｱ縲堤ｸｺ髦ｪ・狗ｹｧ蛹ｻ竕ｧ邵ｺ・ｫ邵ｺ蜉ｱ竏ｪ邵ｺ蜷ｶﾂ繝ｻ/td>
                 </tr>
                 <tr>
-                  <td>ユーザー向けエラー</td>
+                  <td>郢晢ｽｦ郢晢ｽｼ郢ｧ・ｶ郢晢ｽｼ陷ｷ莉｣・郢ｧ・ｨ郢晢ｽｩ郢晢ｽｼ</td>
                   <td><code>errorCode</code>, <code>userMessage</code>, <code>technicalMessage</code>, <code>nextAction</code></td>
-                  <td>全 API</td>
-                  <td>CLI stderr や Python 例外をそのまま表示しないため。一般ユーザーが次の行動を選べます。</td>
+                  <td>陷茨ｽｨ API</td>
+                  <td>CLI stderr 郢ｧ繝ｻPython 關灘唱・､謔ｶ・堤ｸｺ譏ｴ繝ｻ邵ｺ・ｾ邵ｺ・ｾ髯ｦ・ｨ驕会ｽｺ邵ｺ蜉ｱ竊醍ｸｺ繝ｻ笳・ｹｧ竏堋繧・ｽｸﾂ髣奇ｽｬ郢晢ｽｦ郢晢ｽｼ郢ｧ・ｶ郢晢ｽｼ邵ｺ譴ｧ・ｬ・｡邵ｺ・ｮ髯ｦ謔溯劒郢ｧ蟶昶・邵ｺ・ｹ邵ｺ・ｾ邵ｺ蜷ｶﾂ繝ｻ/td>
                 </tr>
                 <tr>
-                  <td>部分失敗</td>
+                  <td>鬩幢ｽｨ陋ｻ繝ｻ・､・ｱ隰ｨ繝ｻ/td>
                   <td><code>partial</code>, <code>warnings[]</code>, <code>failedItems[]</code></td>
                   <td><code>/refresh</code>, <code>/records/download</code>, <code>/imports</code></td>
-                  <td>大量ファイルや大量会話では、一部失敗でも成果物が有効なケースがあるためです。</td>
+                  <td>陞滂ｽｧ鬩･荳翫Ψ郢ｧ・｡郢ｧ・､郢晢ｽｫ郢ｧ繝ｻ・､・ｧ鬩･荳茨ｽｼ螟奇ｽｩ・ｱ邵ｺ・ｧ邵ｺ・ｯ邵ｲ竏ｽ・ｸﾂ鬩幢ｽｨ陞滂ｽｱ隰ｨ蜉ｱ縲堤ｹｧ繧医・隴ｫ諛・ｻ・ｸｺ譴ｧ諤剰怏・ｹ邵ｺ・ｪ郢ｧ・ｱ郢晢ｽｼ郢ｧ・ｹ邵ｺ蠕娯旺郢ｧ荵昶螺郢ｧ竏壹堤ｸｺ蜷ｶﾂ繝ｻ/td>
                 </tr>
                 <tr>
-                  <td>元データ保護</td>
+                  <td>陷医・繝ｧ郢晢ｽｼ郢ｧ・ｿ闖ｫ譎・ｽｭ・ｷ</td>
                   <td><code>sourceSafety.readOnly</code>, <code>sourceIncludedInExport</code>, <code>deleteSourceData</code></td>
-                  <td><code>/files</code>, <code>/records/download</code>, 削除 API</td>
-                  <td>各製品の README が持つ「元データを消さない、ZIPに含めない」方針を API 契約に出します。</td>
+                  <td><code>/files</code>, <code>/records/download</code>, 陷台ｼ∝求 API</td>
+                  <td>陷ｷ繝ｻ・｣・ｽ陷ｩ竏壹・ README 邵ｺ譴ｧ謌溽ｸｺ・､邵ｲ謔溘・郢昴・繝ｻ郢ｧ・ｿ郢ｧ蜻茨ｽｶ蛹ｻ・・ｸｺ・ｪ邵ｺ繝ｻﾂ縲⑩P邵ｺ・ｫ陷ｷ・ｫ郢ｧ竏壺・邵ｺ繝ｻﾂ閧ｴ蟀ｿ鬩･譏ｴ・・API 陞る・・ｴ繝ｻ竊楢怎・ｺ邵ｺ蜉ｱ竏ｪ邵ｺ蜷ｶﾂ繝ｻ/td>
                 </tr>
                 <tr>
-                  <td>伏字化</td>
+                  <td>闔ｨ荳橸ｽｭ諤懷密</td>
                   <td><code>redaction.redacted</code>, <code>redactionProfile</code>, <code>containsSensitiveData</code></td>
-                  <td>PC、会話系、ログ表示、エラー表示</td>
-                  <td>TimelineForPC の <code>llm_safe</code> と、会話履歴/ログ表示の安全性を同じ考え方で扱うためです。</td>
+                  <td>PC邵ｲ竏ｽ・ｼ螟奇ｽｩ・ｱ驍会ｽｻ邵ｲ竏墅溽ｹｧ・ｰ髯ｦ・ｨ驕会ｽｺ邵ｲ竏壹♀郢晢ｽｩ郢晢ｽｼ髯ｦ・ｨ驕会ｽｺ</td>
+                  <td>TimelineForPC 邵ｺ・ｮ <code>llm_safe</code> 邵ｺ・ｨ邵ｲ竏ｽ・ｼ螟奇ｽｩ・ｱ陞ｻ・･雎・ｽｴ/郢晢ｽｭ郢ｧ・ｰ髯ｦ・ｨ驕会ｽｺ邵ｺ・ｮ陞ｳ迚吶・隲､・ｧ郢ｧ雋樣・邵ｺ蛟ｩﾂ繝ｻ竏ｴ隴・ｽｹ邵ｺ・ｧ隰・ｽｱ邵ｺ繝ｻ笳・ｹｧ竏壹堤ｸｺ蜷ｶﾂ繝ｻ/td>
                 </tr>
                 <tr>
-                  <td>出所と再処理判断</td>
+                  <td>陷・ｽｺ隰・邵ｺ・ｨ陷讎翫・騾・・諢幄ｭ・ｽｭ</td>
                   <td><code>provenance.sourceFingerprint</code>, <code>settingsHash</code>, <code>modelVersions</code>, <code>sourceModifiedAt</code></td>
                   <td><code>/records</code>, <code>/records/{id}</code></td>
-                  <td>変更検出、再処理、スキップ理由、成果物の信頼性を説明するためです。</td>
+                  <td>陞溽判蟲ｩ隶諛ｷ繝ｻ邵ｲ竏昴・陷・ｽｦ騾・・ﾂ竏壹○郢ｧ・ｭ郢昴・繝ｻ騾・・鄂ｰ邵ｲ竏ｵ繝ｻ隴ｫ諛・ｻ・ｸｺ・ｮ闖ｫ・｡鬯・ｽｼ隲､・ｧ郢ｧ螳夲ｽｪ・ｬ隴丞ｼｱ笘・ｹｧ荵昶螺郢ｧ竏壹堤ｸｺ蜷ｶﾂ繝ｻ/td>
                 </tr>
                 <tr>
-                  <td>操作追跡</td>
+                  <td>隰ｫ蝣ｺ・ｽ諛・ｽｿ・ｽ髴搾ｽ｡</td>
                   <td><code>operationId</code>, <code>taskId</code>, <code>logsUrl</code></td>
-                  <td>長時間処理、設定保存、削除、ダウンロード</td>
-                  <td>UI操作、API、worker、旧CLI呼び出しを一本の履歴として追えるようにするためです。</td>
+                  <td>鬮滂ｽｷ隴弱ｋ菫｣陷・ｽｦ騾・・ﾂ竏ｬ・ｨ・ｭ陞ｳ螢ｻ・ｿ譎擾ｽｭ蛟･ﾂ竏晉ｎ鬮ｯ・､邵ｲ竏壹Β郢ｧ・ｦ郢晢ｽｳ郢晢ｽｭ郢晢ｽｼ郢昴・/td>
+                  <td>UI隰ｫ蝣ｺ・ｽ諛環縲￣I邵ｲ縲姉rker邵ｲ竏ｵ遶気LI陷ｻ・ｼ邵ｺ・ｳ陷・ｽｺ邵ｺ蜉ｱ・定叉ﾂ隴幢ｽｬ邵ｺ・ｮ陞ｻ・･雎・ｽｴ邵ｺ・ｨ邵ｺ蜉ｱ窶ｻ髴托ｽｽ邵ｺ蛹ｻ・狗ｹｧ蛹ｻ竕ｧ邵ｺ・ｫ邵ｺ蜷ｶ・狗ｸｺ貅假ｽ∫ｸｺ・ｧ邵ｺ蜷ｶﾂ繝ｻ/td>
                 </tr>
               </tbody>
             </table>
@@ -2006,54 +1983,54 @@
       </details>
 
       <details open>
-        <summary>6.2 ユーザーに見せる言葉</summary>
+        <summary>6.2 郢晢ｽｦ郢晢ｽｼ郢ｧ・ｶ郢晢ｽｼ邵ｺ・ｫ髫穂ｹ昶雷郢ｧ邇厄ｽｨﾂ髣｡繝ｻ/summary>
         <div class="detail-body">
           <div class="table-wrap">
             <table>
               <thead>
                 <tr>
-                  <th>内部語</th>
-                  <th>API語</th>
-                  <th>画面表示</th>
-                  <th>使い分け</th>
+                  <th>陷繝ｻﾎ夐坡繝ｻ/th>
+                  <th>API髫ｱ繝ｻ/th>
+                  <th>騾包ｽｻ鬮ｱ・｢髯ｦ・ｨ驕会ｽｺ</th>
+                  <th>闖ｴ・ｿ邵ｺ繝ｻ繝ｻ邵ｺ繝ｻ/th>
                 </tr>
               </thead>
               <tbody>
                 <tr>
                   <td><code>item</code></td>
                   <td><code>record</code></td>
-                  <td>記録</td>
-                  <td>既存ファイル名やIDでは item を残してよいが、API正面は record。</td>
+                  <td>髫ｪ蛟ｬ鮖ｸ</td>
+                  <td>隴鯉ｽ｢陝・･繝ｵ郢ｧ・｡郢ｧ・､郢晢ｽｫ陷ｷ髦ｪ・ИD邵ｺ・ｧ邵ｺ・ｯ item 郢ｧ蜻茨ｽｮ荵晢ｼ邵ｺ・ｦ郢ｧ蛹ｻ・樒ｸｺ蠕個縲￣I雎・ｽ｣鬮ｱ・｢邵ｺ・ｯ record邵ｲ繝ｻ/td>
                 </tr>
                 <tr>
                   <td><code>run</code></td>
                   <td><code>task</code></td>
-                  <td>処理</td>
-                  <td>現在実行中、待機中、失敗、完了をまとめて扱う。</td>
+                  <td>陷・ｽｦ騾・・/td>
+                  <td>霑ｴ・ｾ陜ｨ・ｨ陞ｳ貅ｯ・｡蠕｡・ｸ・ｭ邵ｲ竏晢ｽｾ繝ｻ・ｩ貊会ｽｸ・ｭ邵ｲ竏晢ｽ､・ｱ隰ｨ蜉ｱﾂ竏晢ｽｮ蠕｡・ｺ繝ｻ・堤ｸｺ・ｾ邵ｺ・ｨ郢ｧ竏壺ｻ隰・ｽｱ邵ｺ繝ｻﾂ繝ｻ/td>
                 </tr>
                 <tr>
                   <td><code>inputRoot</code></td>
                   <td><code>source</code></td>
-                  <td>元データ</td>
-                  <td>ファイル系では入力フォルダー、ChatGPT ではインポートZIP、WindowsCodex では履歴ルート。</td>
+                  <td>陷医・繝ｧ郢晢ｽｼ郢ｧ・ｿ</td>
+                  <td>郢晁ｼ斐＜郢ｧ・､郢晢ｽｫ驍会ｽｻ邵ｺ・ｧ邵ｺ・ｯ陷茨ｽ･陷牙ｸ吶Ψ郢ｧ・ｩ郢晢ｽｫ郢敖郢晢ｽｼ邵ｲ・敬atGPT 邵ｺ・ｧ邵ｺ・ｯ郢ｧ・､郢晢ｽｳ郢晄亢繝ｻ郢昴・IP邵ｲ莉拱ndowsCodex 邵ｺ・ｧ邵ｺ・ｯ陞ｻ・･雎・ｽｴ郢晢ｽｫ郢晢ｽｼ郢晏現ﾂ繝ｻ/td>
                 </tr>
                 <tr>
                   <td><code>thread</code></td>
                   <td><code>conversation</code></td>
-                  <td>会話</td>
-                  <td>ChatGPT / WindowsCodex の共通UIでは conversation を使う。</td>
+                  <td>闔ｨ螟奇ｽｩ・ｱ</td>
+                  <td>ChatGPT / WindowsCodex 邵ｺ・ｮ陷茨ｽｱ鬨ｾ蝠・邵ｺ・ｧ邵ｺ・ｯ conversation 郢ｧ蜑・ｽｽ・ｿ邵ｺ繝ｻﾂ繝ｻ/td>
                 </tr>
                 <tr>
                   <td><code>master</code> / <code>output</code></td>
                   <td><code>outputRoot</code></td>
-                  <td>保存先</td>
-                  <td>製品ごとの差分名を API では統一する。</td>
+                  <td>闖ｫ譎擾ｽｭ莨懊・</td>
+                  <td>髯ｬ・ｽ陷ｩ竏夲ｼ・ｸｺ・ｨ邵ｺ・ｮ陝ｾ・ｮ陋ｻ繝ｻ骭千ｹｧ繝ｻAPI 邵ｺ・ｧ邵ｺ・ｯ驍ｨ・ｱ闕ｳﾂ邵ｺ蜷ｶ・狗ｸｲ繝ｻ/td>
                 </tr>
                 <tr>
                   <td><code>doctor</code></td>
-                  <td><code>settings/check</code> または <code>status</code></td>
-                  <td>利用前チェック</td>
-                  <td>軽いヘルスとは分け、ユーザーが直すべき問題を返す。</td>
+                  <td><code>settings/check</code> 邵ｺ・ｾ邵ｺ貅倥・ <code>status</code></td>
+                  <td>陋ｻ・ｩ騾包ｽｨ陷鷹亂繝｡郢ｧ・ｧ郢昴・縺・/td>
+                  <td>髴・ｽｽ邵ｺ繝ｻ繝ｻ郢晢ｽｫ郢ｧ・ｹ邵ｺ・ｨ邵ｺ・ｯ陋ｻ繝ｻ・邵ｲ竏墅倡ｹ晢ｽｼ郢ｧ・ｶ郢晢ｽｼ邵ｺ讙主ｳｩ邵ｺ蜷ｶ竏狗ｸｺ讎頑牒鬯伜ｾ鯉ｽ帝恆譁絶・邵ｲ繝ｻ/td>
                 </tr>
               </tbody>
             </table>
@@ -2062,86 +2039,86 @@
       </details>
 
       <details open>
-        <summary>6.3 削除・上書き・ダウンロードの安全設計</summary>
+        <summary>6.3 陷台ｼ∝求郢晢ｽｻ闕ｳ鬆大ｶ檎ｸｺ髦ｪ繝ｻ郢敖郢ｧ・ｦ郢晢ｽｳ郢晢ｽｭ郢晢ｽｼ郢晏ｳｨ繝ｻ陞ｳ迚吶・髫ｪ・ｭ髫ｪ繝ｻ/summary>
         <div class="detail-body">
           <div class="api-node">
-            <h3>削除</h3>
-            <p>削除 API は生成物だけを対象にします。元ファイル、ChatGPT の元 ZIP、Codex の元履歴、PC の実体情報は対象外です。</p>
+            <h3>陷台ｼ∝求</h3>
+            <p>陷台ｼ∝求 API 邵ｺ・ｯ騾墓ｻ薙・霑夲ｽｩ邵ｺ・ｰ邵ｺ莉｣・定汞・ｾ髮趣ｽ｡邵ｺ・ｫ邵ｺ蜉ｱ竏ｪ邵ｺ蜷ｶﾂ繧・・郢晁ｼ斐＜郢ｧ・､郢晢ｽｫ邵ｲ・敬atGPT 邵ｺ・ｮ陷医・ZIP邵ｲ・経dex 邵ｺ・ｮ陷医・・ｱ・･雎・ｽｴ邵ｲ・｣C 邵ｺ・ｮ陞ｳ貊会ｽｽ謐ｺ繝･陜｣・ｱ邵ｺ・ｯ陝・ｽｾ髮趣ｽ｡陞滓じ縲堤ｸｺ蜷ｶﾂ繝ｻ/p>
             <dl class="facts">
-              <dt>必須</dt>
+              <dt>陟｢繝ｻ・ｰ繝ｻ/dt>
               <dd><code>dryRun</code>, <code>deletePlan</code>, <code>willDelete[]</code>, <code>willKeep[]</code>, <code>requiresConfirmation</code></dd>
-              <dt>理由</dt>
-              <dd>既存ドキュメントでは、元データを削除しない方針が繰り返し示されています。API でもこの境界を崩しません。</dd>
+              <dt>騾・・鄂ｰ</dt>
+              <dd>隴鯉ｽ｢陝・･繝ｩ郢ｧ・ｭ郢晢ｽ･郢晢ｽ｡郢晢ｽｳ郢晏現縲堤ｸｺ・ｯ邵ｲ竏昴・郢昴・繝ｻ郢ｧ・ｿ郢ｧ雋樒ｎ鬮ｯ・､邵ｺ蜉ｱ竊醍ｸｺ繝ｻ蟀ｿ鬩･譏ｴ窶ｲ驛｢・ｰ郢ｧ鬘假ｽｿ譁撰ｼ驕会ｽｺ邵ｺ霈費ｽ檎ｸｺ・ｦ邵ｺ繝ｻ竏ｪ邵ｺ蜷ｶﾂ繝ｻPI 邵ｺ・ｧ郢ｧ繧・ｼ・ｸｺ・ｮ陟・・髦懃ｹｧ雋橸ｽｴ・ｩ邵ｺ蜉ｱ竏ｪ邵ｺ蟶呻ｽ鍋ｸｲ繝ｻ/dd>
             </dl>
           </div>
 
           <div class="api-node">
-            <h3>上書き</h3>
-            <p>ダウンロードやエクスポートは、API 管理下の保存先に作り、ブラウザには <code>downloadUrl</code> を返します。</p>
+            <h3>闕ｳ鬆大ｶ檎ｸｺ繝ｻ/h3>
+            <p>郢敖郢ｧ・ｦ郢晢ｽｳ郢晢ｽｭ郢晢ｽｼ郢晏ｳｨ・・ｹｧ・ｨ郢ｧ・ｯ郢ｧ・ｹ郢晄亢繝ｻ郢晏現繝ｻ邵ｲ縲￣I 驍ゑｽ｡騾・・・ｸ荵昴・闖ｫ譎擾ｽｭ莨懊・邵ｺ・ｫ闖ｴ諛奇ｽ顔ｸｲ竏壹Ω郢晢ｽｩ郢ｧ・ｦ郢ｧ・ｶ邵ｺ・ｫ邵ｺ・ｯ <code>downloadUrl</code> 郢ｧ螳夲ｽｿ譁撰ｼ邵ｺ・ｾ邵ｺ蜷ｶﾂ繝ｻ/p>
             <dl class="facts">
-              <dt>変える点</dt>
-              <dd>CLI の <code>--to</code>, <code>--output</code>, <code>--overwrite</code> は、Web API の正面引数から外します。</dd>
-              <dt>理由</dt>
-              <dd>Web UI から任意の Windows パスを書き換える操作は、ユーザー説明と安全確認が難しいためです。</dd>
+              <dt>陞溷ｳｨ竏ｴ郢ｧ迢励○</dt>
+              <dd>CLI 邵ｺ・ｮ <code>--to</code>, <code>--output</code>, <code>--overwrite</code> 邵ｺ・ｯ邵ｲ莉抛b API 邵ｺ・ｮ雎・ｽ｣鬮ｱ・｢陟大｢鍋・邵ｺ荵晢ｽ芽棔謔ｶ・邵ｺ・ｾ邵ｺ蜷ｶﾂ繝ｻ/dd>
+              <dt>騾・・鄂ｰ</dt>
+              <dd>Web UI 邵ｺ荵晢ｽ芽脂・ｻ隲｢荳翫・ Windows 郢昜ｻ｣縺帷ｹｧ蜻亥ｶ檎ｸｺ閧ｴ驪､邵ｺ蛹ｻ・玖ｬｫ蝣ｺ・ｽ諛翫・邵ｲ竏墅倡ｹ晢ｽｼ郢ｧ・ｶ郢晢ｽｼ髫ｱ・ｬ隴丞ｼｱ竊定楜迚吶・驕抵ｽｺ髫ｱ髦ｪ窶ｲ鬮ｮ・｣邵ｺ蜉ｱ・樒ｸｺ貅假ｽ∫ｸｺ・ｧ邵ｺ蜷ｶﾂ繝ｻ/dd>
             </dl>
           </div>
 
           <div class="api-node">
-            <h3>ダウンロード</h3>
-            <p>ZIP 作成とファイル取得は分けます。ZIP 作成は task、ファイル取得は読み取り専用の download URL です。</p>
+            <h3>郢敖郢ｧ・ｦ郢晢ｽｳ郢晢ｽｭ郢晢ｽｼ郢昴・/h3>
+            <p>ZIP 闖ｴ諛医・邵ｺ・ｨ郢晁ｼ斐＜郢ｧ・､郢晢ｽｫ陷ｿ髢・ｾ蜉ｱ繝ｻ陋ｻ繝ｻ・邵ｺ・ｾ邵ｺ蜷ｶﾂ繝ｻIP 闖ｴ諛医・邵ｺ・ｯ task邵ｲ竏壹Ψ郢ｧ・｡郢ｧ・､郢晢ｽｫ陷ｿ髢・ｾ蜉ｱ繝ｻ髫ｱ・ｭ邵ｺ・ｿ陷ｿ謔ｶ・願氣繧臥舞邵ｺ・ｮ download URL 邵ｺ・ｧ邵ｺ蜷ｶﾂ繝ｻ/p>
             <dl class="facts">
-              <dt>返却</dt>
+              <dt>髴第ｳ悟陪</dt>
               <dd><code>downloadUrl</code>, <code>fileName</code>, <code>sizeBytes</code>, <code>sha256</code>, <code>expiresAt</code></dd>
-              <dt>理由</dt>
-              <dd>大きい ZIP、途中失敗、再取得、ブラウザ保存を安定して扱うためです。</dd>
+              <dt>騾・・鄂ｰ</dt>
+              <dd>陞滂ｽｧ邵ｺ髦ｪ・・ZIP邵ｲ繝ｻﾂ豈費ｽｸ・ｭ陞滂ｽｱ隰ｨ蜉ｱﾂ竏昴・陷ｿ髢・ｾ蜉ｱﾂ竏壹Ω郢晢ｽｩ郢ｧ・ｦ郢ｧ・ｶ闖ｫ譎擾ｽｭ蛟･・定楜迚呻ｽｮ螢ｹ・邵ｺ・ｦ隰・ｽｱ邵ｺ繝ｻ笳・ｹｧ竏壹堤ｸｺ蜷ｶﾂ繝ｻ/dd>
             </dl>
           </div>
         </div>
       </details>
 
       <details open>
-        <summary>6.4 予約するが初期実装しないもの</summary>
+        <summary>6.4 闔閧ｲ・ｴ繝ｻ笘・ｹｧ荵昶ｲ陋ｻ譎・ｄ陞ｳ貅ｯ・｣繝ｻ・邵ｺ・ｪ邵ｺ繝ｻ・らｸｺ・ｮ</summary>
         <div class="detail-body">
           <div class="table-wrap">
             <table>
               <thead>
                 <tr>
-                  <th>機能</th>
-                  <th>予約する形</th>
-                  <th>初期実装しない理由</th>
-                  <th>追加判断</th>
+                  <th>隶匁ｺｯ繝ｻ</th>
+                  <th>闔閧ｲ・ｴ繝ｻ笘・ｹｧ蜿･・ｽ・｢</th>
+                  <th>陋ｻ譎・ｄ陞ｳ貅ｯ・｣繝ｻ・邵ｺ・ｪ邵ｺ繝ｻ轤企包ｽｱ</th>
+                  <th>髴托ｽｽ陷会｣ｰ陋ｻ・､隴・ｽｭ</th>
                 </tr>
               </thead>
               <tbody>
                 <tr>
-                  <td>リアルタイム進捗</td>
+                  <td>郢晢ｽｪ郢ｧ・｢郢晢ｽｫ郢ｧ・ｿ郢ｧ・､郢晢｣ｰ鬨ｾ・ｲ隰舌・/td>
                   <td><code>/tasks/{taskId}/events</code></td>
-                  <td>polling で十分始められる。SSE/WebSocket は復旧と接続管理が増える。</td>
-                  <td>動画・音声で細かい進捗が必要になったら追加。</td>
+                  <td>polling 邵ｺ・ｧ陷岩・繝ｻ陝倶ｹ晢ｽ∫ｹｧ蟲ｨ・檎ｹｧ荵敖・粘E/WebSocket 邵ｺ・ｯ陟包ｽｩ隴鯉ｽｧ邵ｺ・ｨ隰暦ｽ･驍ｯ螟ゑｽｮ・｡騾・・窶ｲ陟・干竏ｴ郢ｧ荵敖繝ｻ/td>
+                  <td>陷肴・蛻､郢晢ｽｻ鬮ｻ・ｳ陞｢・ｰ邵ｺ・ｧ驍擾ｽｰ邵ｺ荵晢ｼ樣ｨｾ・ｲ隰仙干窶ｲ陟｢繝ｻ・ｦ竏壺・邵ｺ・ｪ邵ｺ・｣邵ｺ貅假ｽ蛾恆・ｽ陷会｣ｰ邵ｲ繝ｻ/td>
                 </tr>
                 <tr>
-                  <td>診断 API</td>
+                  <td>髫ｪ・ｺ隴・ｽｭ API</td>
                   <td><code>/{product}/diagnostics/*</code></td>
-                  <td>通常ユーザーの操作導線を複雑にする。</td>
-                  <td>管理画面や開発者モードが必要になったら追加。</td>
+                  <td>鬨ｾ螢ｼ・ｸ・ｸ郢晢ｽｦ郢晢ｽｼ郢ｧ・ｶ郢晢ｽｼ邵ｺ・ｮ隰ｫ蝣ｺ・ｽ諛ｷ・ｰ螳茨ｽｷ螢ｹ・帝嚶繝ｻ蟆・ｸｺ・ｫ邵ｺ蜷ｶ・狗ｸｲ繝ｻ/td>
+                  <td>驍ゑｽ｡騾・・蛻､鬮ｱ・｢郢ｧ繝ｻ蟷暮具ｽｺ髢繝ｻﾎ皮ｹ晢ｽｼ郢晏ｳｨ窶ｲ陟｢繝ｻ・ｦ竏壺・邵ｺ・ｪ邵ｺ・｣邵ｺ貅假ｽ蛾恆・ｽ陷会｣ｰ邵ｲ繝ｻ/td>
                 </tr>
                 <tr>
                   <td>maintenance cleanup</td>
                   <td><code>/{product}/maintenance/cleanup-plan</code></td>
-                  <td>削除対象の説明と確認 UI が必要で、refresh より危険度が高い。</td>
-                  <td>容量管理画面を作る段階で追加。</td>
+                  <td>陷台ｼ∝求陝・ｽｾ髮趣ｽ｡邵ｺ・ｮ髫ｱ・ｬ隴丞ｼｱ竊帝￡・ｺ髫ｱ繝ｻUI 邵ｺ謔滂ｽｿ繝ｻ・ｦ竏壹堤ｸｲ縲影fresh 郢ｧ蛹ｻ・願怺・ｱ鬮ｯ・ｺ陟趣ｽｦ邵ｺ遒・ｽｫ蛟･・樒ｸｲ繝ｻ/td>
+                  <td>陞ｳ・ｹ鬩･蜀暦ｽｮ・｡騾・・蛻､鬮ｱ・｢郢ｧ蜑・ｽｽ諛奇ｽ玖ｰｿ・ｵ鬮ｫ蠑ｱ縲帝恆・ｽ陷会｣ｰ邵ｲ繝ｻ/td>
                 </tr>
                 <tr>
-                  <td>強い認証</td>
-                  <td>ローカル token / allowlist</td>
-                  <td>現段階ではローカル API 前提。多ユーザー権限は過剰。</td>
-                  <td>LAN公開や外部連携が必要になった時だけ設計。</td>
+                  <td>陟托ｽｷ邵ｺ繝ｻ・ｪ蟠趣ｽｨ・ｼ</td>
+                  <td>郢晢ｽｭ郢晢ｽｼ郢ｧ・ｫ郢晢ｽｫ token / allowlist</td>
+                  <td>霑ｴ・ｾ隹ｿ・ｵ鬮ｫ蠑ｱ縲堤ｸｺ・ｯ郢晢ｽｭ郢晢ｽｼ郢ｧ・ｫ郢晢ｽｫ API 陷題ざ鄂ｲ邵ｲ繧・ｽ､螢ｹﾎ倡ｹ晢ｽｼ郢ｧ・ｶ郢晢ｽｼ隶難ｽｩ鬮ｯ闊後・鬩穂ｸｻ閾・ｸｲ繝ｻ/td>
+                  <td>LAN陷茨ｽｬ鬮｢荵晢ｽ・棔螟慚夐ｨｾ・｣隰ｳ・ｺ邵ｺ謔滂ｽｿ繝ｻ・ｦ竏壺・邵ｺ・ｪ邵ｺ・｣邵ｺ貊灘・邵ｺ・ｰ邵ｺ鬘鯉ｽｨ・ｭ髫ｪ蛹ｻﾂ繝ｻ/td>
                 </tr>
                 <tr>
-                  <td>外部監視連携</td>
-                  <td><code>/health</code> のみ先に対応</td>
-                  <td>OpenTelemetry などを最初から入れると運用前提が重くなる。</td>
-                  <td>長期常駐運用や複数端末監視が必要になったら追加。</td>
+                  <td>陞溷､慚夐ｶ・｣髫募､慊・｣隰ｳ・ｺ</td>
+                  <td><code>/health</code> 邵ｺ・ｮ邵ｺ・ｿ陷亥現竊楢汞・ｾ陟｢繝ｻ/td>
+                  <td>OpenTelemetry 邵ｺ・ｪ邵ｺ・ｩ郢ｧ蜻域呵崕譏ｴﾂｰ郢ｧ迚吶・郢ｧ蠕鯉ｽ狗ｸｺ・ｨ鬩慕距逡題恆閧ｴ鄂ｲ邵ｺ遒√裟邵ｺ荳岩・郢ｧ荵敖繝ｻ/td>
+                  <td>鬮滂ｽｷ隴帶ｺｷ・ｸ・ｸ鬯ｧ螳｣ﾂｰ騾包ｽｨ郢ｧ繝ｻ・､繝ｻ辟夐・・ｯ隴幢ｽｫ騾ｶ・｣髫墓じ窶ｲ陟｢繝ｻ・ｦ竏壺・邵ｺ・ｪ邵ｺ・｣邵ｺ貅假ｽ蛾恆・ｽ陷会｣ｰ邵ｲ繝ｻ/td>
                 </tr>
               </tbody>
             </table>
@@ -2152,10 +2129,9 @@
   </section>
 
   <section id="schemas" class="card section">
-    <h2>7. 返却形式</h2>
+    <h2>7. 髴第ｳ悟陪陟厄ｽ｢陟代・/h2>
     <p class="muted">
-      Swagger 化するときは、URL だけでなく返却形も共通化します。以下は最小の共通形です。
-    </p>
+      Swagger 陋ｹ謔ｶ笘・ｹｧ荵昶・邵ｺ髦ｪ繝ｻ邵ｲ繧朿L 邵ｺ・ｰ邵ｺ莉｣縲堤ｸｺ・ｪ邵ｺ蜑ｰ・ｿ豕悟陪陟厄ｽ｢郢ｧ繧・・鬨ｾ螢ｼ蝟ｧ邵ｺ蜉ｱ竏ｪ邵ｺ蜷ｶﾂ繧・ｽｻ・･闕ｳ荵昴・隴崢陝・ｸ翫・陷茨ｽｱ鬨ｾ螢ｼ・ｽ・｢邵ｺ・ｧ邵ｺ蜷ｶﾂ繝ｻ    </p>
 
     <div class="grid-2">
       <div class="mini">
@@ -2177,7 +2153,7 @@
         <pre>{
   "contractVersion": "2026-05",
   "state": "ready",
-  "displayState": "利用できます",
+  "displayState": "陋ｻ・ｩ騾包ｽｨ邵ｺ・ｧ邵ｺ髦ｪ竏ｪ邵ｺ繝ｻ,
   "nextAction": "",
   "settingsReady": true,
   "inputReady": true,
@@ -2200,7 +2176,7 @@
   "state": "running",
   "progressPercent": 42.5,
   "currentStage": "processing",
-  "message": "記録を作成しています",
+  "message": "髫ｪ蛟ｬ鮖ｸ郢ｧ蜑・ｽｽ諛医・邵ｺ蜉ｱ窶ｻ邵ｺ繝ｻ竏ｪ邵ｺ繝ｻ,
   "itemsDone": 17,
   "itemsTotal": 40,
   "currentItemLabel": "meeting-2026-05-12.mp4",
@@ -2237,10 +2213,10 @@
   "contractVersion": "2026-05",
   "ok": false,
   "errorCode": "worker_unavailable",
-  "userMessage": "処理用ワーカーが起動していません",
+  "userMessage": "陷・ｽｦ騾・・逡醍ｹ晢ｽｯ郢晢ｽｼ郢ｧ・ｫ郢晢ｽｼ邵ｺ迹夲ｽｵ・ｷ陷崎ｼ費ｼ邵ｺ・ｦ邵ｺ繝ｻ竏ｪ邵ｺ蟶呻ｽ・,
   "technicalMessage": "Docker worker health check failed.",
   "retryable": true,
-  "nextAction": "製品を起動してから再試行してください",
+  "nextAction": "髯ｬ・ｽ陷ｩ竏夲ｽ定･搾ｽｷ陷崎ｼ費ｼ邵ｺ・ｦ邵ｺ荵晢ｽ芽怙蟠趣ｽｩ・ｦ髯ｦ蠕鯉ｼ邵ｺ・ｦ邵ｺ荳岩味邵ｺ霈費ｼ・,
   "operationId": "op-...",
   "logsUrl": "/audio/tasks/task-.../logs"
 }</pre>
@@ -2271,7 +2247,7 @@
     { "pathLabel": "items/video-...", "sizeBytes": 123456 }
   ],
   "willKeep": [
-    { "kind": "source", "reason": "元動画は削除対象外です" }
+    { "kind": "source", "reason": "陷医・陌夐包ｽｻ邵ｺ・ｯ陷台ｼ∝求陝・ｽｾ髮趣ｽ｡陞滓じ縲堤ｸｺ繝ｻ }
   ],
   "requiresConfirmation": true
 }</pre>
@@ -2279,8 +2255,7 @@
     </div>
 
     <div class="note danger">
-      削除 API は、必ず「生成物だけ」か「設定も含む」かを URL と本文で分けます。元ファイル、元 ZIP、Codex 履歴、PC の実体情報を API 経由で削除する操作は、この設計には含めません。
-    </div>
+      陷台ｼ∝求 API 邵ｺ・ｯ邵ｲ竏晢ｽｿ繝ｻ笘・ｸｲ讙主・隰悟鴻鮟・ｸｺ・ｰ邵ｺ莉｣ﾂ髦ｪﾂｰ邵ｲ迹夲ｽｨ・ｭ陞ｳ螢ｹ・り惺・ｫ郢ｧﾂ邵ｲ髦ｪﾂｰ郢ｧ繝ｻURL 邵ｺ・ｨ隴幢ｽｬ隴√・縲定崕繝ｻ・邵ｺ・ｾ邵ｺ蜷ｶﾂ繧・・郢晁ｼ斐＜郢ｧ・､郢晢ｽｫ邵ｲ竏昴・ ZIP邵ｲ・経dex 陞ｻ・･雎・ｽｴ邵ｲ・｣C 邵ｺ・ｮ陞ｳ貊会ｽｽ謐ｺ繝･陜｣・ｱ郢ｧ繝ｻAPI 驍ｨ讙守ｽｰ邵ｺ・ｧ陷台ｼ∝求邵ｺ蜷ｶ・玖ｬｫ蝣ｺ・ｽ諛翫・邵ｲ竏夲ｼ・ｸｺ・ｮ髫ｪ・ｭ髫ｪ蛹ｻ竊鍋ｸｺ・ｯ陷ｷ・ｫ郢ｧ竏壺穐邵ｺ蟶呻ｽ鍋ｸｲ繝ｻ    </div>
   </section>
 </main>
 </body>

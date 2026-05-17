@@ -9,7 +9,7 @@ publish ports, and connect through local product APIs.
 - A developer can run more than one copy when ports are configured explicitly.
 - Product data is not mixed by accident.
 - Shared base images and model caches can be reused when that is operationally safe.
-- Sub-products can change their internal CLI or worker implementation without
+- Sub-products can change their internal command or worker implementation without
   changing the parent product API boundary.
 
 ## Resource classes
@@ -134,7 +134,7 @@ If a sub-product is stopped:
 - Runtime-dependent API calls must return an unavailable/stopped result.
 - Timeline may still read Timeline-owned cached data or local settings when that
   does not call the sub-product runtime.
-- Timeline must not call a sub-product CLI just to discover whether data is
+- Timeline must not call a sub-product implementation directly just to discover whether data is
   available.
 
 The API integration contract is:
@@ -147,7 +147,7 @@ The API integration contract is:
 - `GET /health` is the running-state check. A read or status call must not start
   Docker implicitly when health is unavailable.
 - Item operations should use `/items/*` API routes. A sub-product may delegate
-  those routes to its own CLI internally, but that delegation remains hidden
+  those routes to its own worker commands internally, but that delegation remains hidden
   behind the local API boundary.
 
 Setting shape:

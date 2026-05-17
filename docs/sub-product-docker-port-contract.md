@@ -379,9 +379,9 @@ Current parent-to-sub-product boundary:
 http://127.0.0.1:<apiPort>
 ```
 
-The parent Timeline product must use the local API for product operations. The
-host CLI launchers are deprecated and should not be invoked for normal refresh,
-list, download, remove, detail, model, or settings operations.
+The parent Timeline product must use the local API for product operations.
+Host launchers should not be invoked for normal refresh, list, download,
+remove, detail, model, or settings operations.
 
 Minimum API shape expected by Timeline:
 

@@ -1,4 +1,4 @@
-# Sub-product host launcher removal
+# Sub-product command launcher removal
 
 ## Goal
 
@@ -24,17 +24,13 @@ product command launchers are not part of the normal integration contract.
     already running
   - does not start or stop products
   - skips products whose API is not reachable unless `-RequireRunning` is used
-- `scripts/check-product-cli-contracts.ps1`
-  - kept only as a compatibility wrapper
-  - delegates to `check-product-api-contracts.ps1`
 - `scripts/smoke-audio-ps1-download.ps1`
   - kept only as a compatibility filename
   - uses the TimelineForAudio API for direct product download checks
 
-## Remaining follow-up
+## Completed follow-up
 
-The worker-internal Python modules named `cli.py` are not host launchers. The
-local C# APIs still execute product commands through Docker worker entrypoints,
-and some of those entrypoints are implemented by Python command modules
-internally. Removing or renaming those internal modules is a separate worker
-refactor.
+Worker-internal Python command modules were renamed to `commands.py` in the
+sub-products. Local C# APIs still execute product commands
+through Docker worker entrypoints, but that detail stays behind each local API
+boundary.
