@@ -30,8 +30,8 @@ product command launchers are not part of the normal integration contract.
 ## Completed follow-up
 
 Worker-internal Python operation modules are named `operations.py` in the
-sub-products. TimelineForAudio, TimelineForImage, and TimelineForVideo now serve
-their normal local API directly from the resident worker container, so those
-paths no longer spawn a Python operation process per API request. Other products
-still keep operation runners behind their local API boundary while start / stop
-remains the manifest launcher surface.
+sub-products. TimelineForAudio, TimelineForChatGPT, TimelineForImage, and
+TimelineForVideo now serve their normal local API directly from the resident
+worker container, so those paths no longer spawn a Python operation process per
+API request. Other products still keep operation runners behind their local API
+boundary while start / stop remains the manifest launcher surface.
