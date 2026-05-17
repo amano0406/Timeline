@@ -29,7 +29,6 @@ product command launchers are not part of the normal integration contract.
 
 ## Completed follow-up
 
-Worker-internal Python command modules were renamed to `commands.py` in the
-sub-products. Local C# APIs still execute product commands
-through Docker worker entrypoints, but that detail stays behind each local API
-boundary.
+Worker-internal Python operation modules are named `operations.py` in the
+sub-products. Local C# APIs use operation runners behind each local API
+boundary, while start / stop remains the manifest launcher surface.
