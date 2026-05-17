@@ -285,11 +285,11 @@ function Assert-DownloadEndpoint {
     )
 
     if (-not $IncludeDownloads) {
-        Add-ContractResult -Product $Product -Check "items download" -Status "SKIP" -Message "Use -IncludeDownloads to verify ZIP creation."
+        Add-ContractResult -Product $Product -Check "/items/download" -Status "SKIP" -Message "Use -IncludeDownloads to verify ZIP creation."
         return
     }
     if ((Get-ItemCount -Payload $ItemsPayload) -le 0) {
-        Add-ContractResult -Product $Product -Check "items download" -Status "SKIP" -Message "No items are available."
+        Add-ContractResult -Product $Product -Check "/items/download" -Status "SKIP" -Message "No items are available."
         return
     }
 
@@ -297,10 +297,10 @@ function Assert-DownloadEndpoint {
         $payload = Invoke-ProductApiJson -BaseUrl $BaseUrl -Path "/items/download" -Body $Body -TimeoutSeconds 120
         $archivePath = [string](Get-ObjectProperty -Object $payload -Names @("archivePath", "archive_path", "downloadPath", "download_path", "destinationPath", "destination_path") -Default "")
         Assert-ZipReadable -Path $archivePath -Product $Product
-        Add-ContractResult -Product $Product -Check "items download" -Status "PASS" -Message "ZIP was created."
+        Add-ContractResult -Product $Product -Check "/items/download" -Status "PASS" -Message "ZIP was created."
     }
     catch {
-        Add-ContractResult -Product $Product -Check "items download" -Status "FAIL" -Message $_.Exception.Message
+        Add-ContractResult -Product $Product -Check "/items/download" -Status "FAIL" -Message $_.Exception.Message
     }
 }
 
@@ -323,7 +323,7 @@ function Test-ProductApi {
     $settingsPayload = Assert-ProductApiJson `
         -Product $Product `
         -BaseUrl $baseUrl `
-        -Check "settings status" `
+        -Check "/settings/status" `
         -Path "/settings/status" `
         -RequiredAnyProperties @("settings", "setup", "outputRoot", "output_root", "outputRoots", "master")
 
@@ -331,7 +331,7 @@ function Test-ProductApi {
         Assert-ProductApiJson `
             -Product $Product `
             -BaseUrl $baseUrl `
-            -Check "files list" `
+            -Check "/files/list" `
             -Path "/files/list" `
             -Body @{ page = 1; pageSize = 1 } `
             -RequiredAnyProperties @("files", "items", "count", "pagination") | Out-Null
@@ -340,7 +340,7 @@ function Test-ProductApi {
     $itemsPayload = Assert-ProductApiJson `
         -Product $Product `
         -BaseUrl $baseUrl `
-        -Check "items list" `
+        -Check "/items/list" `
         -Path "/items/list" `
         -Body @{ page = 1; pageSize = 1 } `
         -RequiredAnyProperties @("items", "threads", "count", "pagination")
@@ -349,13 +349,13 @@ function Test-ProductApi {
         Assert-ProductApiJson `
             -Product $Product `
             -BaseUrl $baseUrl `
-            -Check "models list" `
+            -Check "/models/list" `
             -Path "/models/list" `
             -RequiredAnyProperties @("models", "items", "count") | Out-Null
     }
 
     if ($HasSettingsSave -and $null -ne $settingsPayload) {
-        Add-ContractResult -Product $Product -Check "settings save" -Status "SKIP" -Message "Not run by default because it changes settings."
+        Add-ContractResult -Product $Product -Check "/settings/save" -Status "SKIP" -Message "Not run by default because it changes settings."
     }
 
     $downloadBody = @{}

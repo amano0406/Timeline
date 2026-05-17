@@ -113,7 +113,7 @@ $directPayload = Invoke-RestMethod `
     -TimeoutSec 120
 $directArchivePath = Convert-TimelineAudioSmokePath -Path ([string]$directPayload.archive_path) -ProductPath $AudioProductPath
 Assert-ZipReadable -Path $directArchivePath
-Write-Host "PASS direct TimelineForAudio API items download -> $directArchivePath"
+Write-Host "PASS direct TimelineForAudio API /items/download -> $directArchivePath"
 
 $helperPayload = Invoke-RestMethod `
     -Uri "$HelperBaseUrl/products/audio/items/download" `

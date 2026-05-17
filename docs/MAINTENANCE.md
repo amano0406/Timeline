@@ -91,7 +91,7 @@ user-visible behavior during refactoring.
   JS watch / seek state in `FileDetail.AudioPlayer.cs`, audio verbalization
   loading / polling in `FileDetail.Verbalization.cs`, and display labels in
   `FileDetail.Display.cs`.
-- Video `files list` can be slow on cold cache. Timeline currently mitigates
+- Video `POST /files/list` can be slow on cold cache. Timeline currently mitigates
   this with progressive loading and cache behavior; do not change visible list
   behavior while refactoring.
 - Product management can wait when helper-side product checks are busy. Keep

@@ -26,7 +26,7 @@ product command launchers are not part of the normal integration contract.
   - skips products whose API is not reachable unless `-RequireRunning` is used
 - `scripts/check-sub-product-cli-removal.ps1`
   - verifies sub-product manifests expose only runtime launchers
-  - rejects legacy CLI entrypoint filenames and old operation module names
+  - rejects retired entrypoint filenames and old operation module names
   - scans source files for retired Timeline-to-product command dispatch names
   - does not start or stop products
 - `scripts/smoke-audio-api-download.ps1`
@@ -40,12 +40,11 @@ resident worker container, so those paths no longer spawn a Python operation
 process per API request. TimelineForPC serves its normal local API from a
 resident Python process on the Windows host and calls the capture / item
 functions in-process. The normal Timeline integration path no longer uses
-product CLI command runners; start / stop remains the manifest launcher
+product command runners; start / stop remains the manifest launcher
 surface.
 
-Legacy host-side C# API projects, Dockerfiles for those APIs, and package-level
-`__main__.py` CLI entrypoints have been removed from the sub-products. Legacy
-worker `operations.py` CLI aggregators were also removed where they existed;
-API-only helper modules remain as normal in-process service code. Remaining
-process execution inside products is domain work such as ffmpeg probing or
-Windows PC collection, not Timeline-to-product command dispatch.
+Legacy host-side C# API projects, Dockerfiles for those APIs, package-level
+entrypoint files, and worker operation aggregators have been removed from the
+sub-products. API-only helper modules remain as normal in-process service code.
+Remaining process execution inside products is domain work such as ffmpeg
+probing or Windows PC collection, not Timeline-to-product command dispatch.

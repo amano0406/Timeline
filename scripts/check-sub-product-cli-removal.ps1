@@ -116,6 +116,26 @@ $forbiddenSourcePatterns = @(
     "directory_refresh_operations",
     "runs_operations"
 )
+$forbiddenHostIntegrationPatterns = @(
+    "ProductOperationRunner",
+    "Start-ProductOperation",
+    "Invoke-ProductOperation",
+    "cli.ps1",
+    "CLI.ps1",
+    "__main__.py",
+    "items refresh",
+    "items list",
+    "items detail",
+    "items download",
+    "settings status",
+    "settings save",
+    "files list",
+    "models list",
+    "doctor --json",
+    "--json",
+    "--max-items",
+    "--page-size"
+)
 
 $violations = [System.Collections.Generic.List[string]]::new()
 
@@ -172,6 +192,20 @@ foreach ($root in $ProductRoots) {
         foreach ($pattern in $forbiddenSourcePatterns) {
             if ($text.Contains($pattern)) {
                 Add-Violation -Violations $violations -ProductRoot $productRoot -Message ("forbidden source reference `{0}` in {1}" -f $pattern, $file.FullName)
+            }
+        }
+    }
+}
+
+$hostIntegrationRoot = Join-Path $repoRoot "local-api"
+if (Test-Path -LiteralPath $hostIntegrationRoot -PathType Container) {
+    $hostSourceFiles = Get-ChildItem -LiteralPath $hostIntegrationRoot -Recurse -File -Filter *.cs |
+        Where-Object { -not (Test-IgnoredCliAuditPath -Path ([string]$_.FullName)) }
+    foreach ($file in $hostSourceFiles) {
+        $text = Get-Content -LiteralPath $file.FullName -Raw -Encoding UTF8
+        foreach ($pattern in $forbiddenHostIntegrationPatterns) {
+            if ($text.Contains($pattern)) {
+                Add-Violation -Violations $violations -ProductRoot $repoRoot -Message ("forbidden host integration reference `{0}` in {1}" -f $pattern, $file.FullName)
             }
         }
     }

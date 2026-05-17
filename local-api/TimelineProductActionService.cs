@@ -562,33 +562,6 @@ public sealed class TimelineProductActionService
         }
     }
 
-    private static List<string> BuildAudioRefreshArgs(
-        JsonObject? request,
-        bool queueOnly,
-        int? maxItems,
-        string command)
-    {
-        var args = command.Equals("items", StringComparison.Ordinal)
-            ? new List<string> { "items", "refresh" }
-            : new List<string> { "refresh" };
-        if (queueOnly)
-        {
-            args.Add("--queue-only");
-        }
-        args.Add("--json");
-        if (GetBool(request, "reprocessDuplicates", false))
-        {
-            args.Add("--reprocess-duplicates");
-        }
-        if (maxItems is > 0)
-        {
-            args.Add("--max-items");
-            args.Add(maxItems.Value.ToString());
-        }
-
-        return args;
-    }
-
     private JsonObject ConvertAudioDownloadItemsResult(JsonObject? payload)
     {
         var archivePath = GetStringAny(
