@@ -75,6 +75,34 @@ function Add-Violation {
     $Violations.Add(("{0}: {1}" -f $ProductRoot, $Message)) | Out-Null
 }
 
+function Get-JsonPropertyValue {
+    param(
+        [object]$Object,
+        [string]$Name
+    )
+
+    if ($null -eq $Object) {
+        return $null
+    }
+
+    $property = $Object.PSObject.Properties[$Name]
+    if ($null -eq $property) {
+        return $null
+    }
+
+    return $property.Value
+}
+
+function Test-JsonArrayHasValues {
+    param(
+        [object]$Object,
+        [string]$Name
+    )
+
+    $value = Get-JsonPropertyValue -Object $Object -Name $Name
+    return $null -ne $value -and @($value).Count -gt 0
+}
+
 if ($ProductRoots.Count -eq 0) {
     $roots = [System.Collections.Generic.List[string]]::new()
     foreach ($productName in $productNames) {
@@ -160,6 +188,18 @@ foreach ($root in $ProductRoots) {
         }
         if (-not $manifest.api -or [string]::IsNullOrWhiteSpace([string]$manifest.api.healthPath)) {
             Add-Violation -Violations $violations -ProductRoot $productRoot -Message "manifest api.healthPath is required"
+        }
+
+        $runtime = Get-JsonPropertyValue -Object $manifest -Name "runtime"
+        $usesDocker = Get-JsonPropertyValue -Object $runtime -Name "usesDocker"
+        $hostApi = Get-JsonPropertyValue -Object $runtime -Name "hostApi"
+        if ($hostApi -eq $true -and $usesDocker -eq $false) {
+            if (-not (Test-JsonArrayHasValues -Object $runtime -Name "hostOnlyResponsibilities")) {
+                Add-Violation -Violations $violations -ProductRoot $productRoot -Message "host-only API products must declare runtime.hostOnlyResponsibilities"
+            }
+            if (-not (Test-JsonArrayHasValues -Object $runtime -Name "dockerOffloadCandidates")) {
+                Add-Violation -Violations $violations -ProductRoot $productRoot -Message "host-only API products must declare runtime.dockerOffloadCandidates"
+            }
         }
 
         if ($manifest.commands) {

@@ -48,3 +48,19 @@ entrypoint files, and worker operation aggregators have been removed from the
 sub-products. API-only helper modules remain as normal in-process service code.
 Remaining process execution inside products is domain work such as ffmpeg
 probing or Windows PC collection, not Timeline-to-product command dispatch.
+
+## Host-only product boundary
+
+Host-only products are allowed only when the source data cannot be collected
+from a Docker worker. TimelineForPC is the current example because it captures
+the current Windows machine state and current-user autostart state.
+
+For those products:
+
+- The host process must expose a local HTTP API and a health endpoint.
+- Timeline must not call product operation command runners.
+- Host-side code should stay limited to Windows-only collection and process
+  lifecycle.
+- Platform-neutral work such as normalization, report rendering, and archive
+  packaging should be treated as a future Docker offload candidate if it becomes
+  heavy.

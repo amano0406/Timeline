@@ -451,6 +451,12 @@ For host-only sub-products such as TimelineForPC:
 1. Do not add Docker settings just for consistency.
 2. Keep host execution explicit.
 3. Keep API port settings configurable.
+4. Keep the host API thin. It may collect Windows-only facts and manage the
+   local host process lifecycle, but normal Timeline integration still goes
+   through HTTP API routes.
+5. Treat normalization, report rendering, packaging, and other CPU-heavy or
+   platform-neutral work as Docker offload candidates if they grow beyond the
+   simple adapter role.
 
 ## Acceptance tests
 
