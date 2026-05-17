@@ -33,6 +33,7 @@ Worker-internal Python operation modules are named `operations.py` in the
 sub-products. TimelineForAudio, TimelineForChatGPT, TimelineForImage,
 TimelineForVideo, and TimelineForWindowsCodex now serve their normal local API
 directly from the resident worker container, so those paths no longer spawn a
-Python operation process per API request. Other products still keep operation
-runners behind their local API boundary while start / stop remains the manifest
-launcher surface.
+Python operation process per API request. TimelineForPC serves its normal local
+API from a resident Python process on the Windows host and calls the capture /
+item functions in-process. The normal Timeline integration path no longer uses
+product CLI command runners; start / stop remains the manifest launcher surface.
