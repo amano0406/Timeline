@@ -30,5 +30,8 @@ product command launchers are not part of the normal integration contract.
 ## Completed follow-up
 
 Worker-internal Python operation modules are named `operations.py` in the
-sub-products. Local C# APIs use operation runners behind each local API
-boundary, while start / stop remains the manifest launcher surface.
+sub-products. TimelineForAudio and TimelineForImage now serve their normal
+local API directly from the resident worker container, so those paths no longer
+spawn a Python operation process per API request. Other products still keep
+operation runners behind their local API boundary while start / stop remains the
+manifest launcher surface.
