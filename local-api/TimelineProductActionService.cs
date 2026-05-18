@@ -375,7 +375,7 @@ public sealed class TimelineProductActionService
                 "TimelineForVideo",
                 "/items/refresh",
                 requestBody,
-                900,
+                3600,
                 operationId,
                 cancellationToken);
             return new JsonObject
