@@ -96,8 +96,9 @@ user-visible behavior during refactoring.
   behavior while refactoring.
 - Product management can wait when helper-side product checks are busy. Keep
   loading feedback stable unless a dedicated behavior change is planned.
-- Speech verbalization is still in quality-validation mode. Do not expand to
-  full processing as part of unrelated refactors.
+- Speech verbalization bulk processing now covers every audio/video target that
+  still needs work. Keep target selection, retry priority, and batch limits
+  explicit when changing this flow.
 
 ## Active Follow-Ups
 

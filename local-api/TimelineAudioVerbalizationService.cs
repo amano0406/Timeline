@@ -700,19 +700,12 @@ public sealed class TimelineAudioVerbalizationService
             page++;
         }
 
-        var selectedTargets = new List<AudioVerbalizationBulkTarget>();
-        var audioTarget = SelectQualityCheckTarget(audioTargets);
-        var videoTarget = SelectQualityCheckTarget(videoTargets);
-        if (audioTarget is not null)
-        {
-            selectedTargets.Add(audioTarget);
-        }
-        if (videoTarget is not null)
-        {
-            selectedTargets.Add(videoTarget);
-        }
-
-        return selectedTargets;
+        return audioTargets
+            .Concat(videoTargets)
+            .OrderBy(target => BulkTargetWorkPriority(target.Status))
+            .ThenBy(target => BulkTargetProductPriority(target.Product))
+            .ThenBy(target => GetString(target.Row, "fileName", string.Empty), StringComparer.OrdinalIgnoreCase)
+            .ToList();
     }
 
     private JsonObject GetBulkTargetDetail(
@@ -722,28 +715,6 @@ public sealed class TimelineAudioVerbalizationService
         return target.Product.Equals("video", StringComparison.OrdinalIgnoreCase)
             ? _videoFiles.GetFileDetail(target.SourcePath)
             : _audioFiles.GetFileDetail(target.SourceId, target.RelativePath, localApiBaseUrl);
-    }
-
-    private AudioVerbalizationBulkTarget? SelectQualityCheckTarget(
-        IReadOnlyCollection<AudioVerbalizationBulkTarget> targets)
-    {
-        AudioVerbalizationBulkTarget? bestTarget = null;
-        var bestScore = double.MaxValue;
-        const double preferredDurationSec = 600;
-        foreach (var target in targets)
-        {
-            var durationSec = GetDouble(target.Row, "durationSec", 0);
-            var score = durationSec > 0
-                ? Math.Abs(durationSec - preferredDurationSec)
-                : double.MaxValue;
-            if (bestTarget is null || score < bestScore)
-            {
-                bestTarget = target;
-                bestScore = score;
-            }
-        }
-
-        return bestTarget;
     }
 
     private bool AudioVerbalizationNeedsWork(JsonObject status)
@@ -767,6 +738,21 @@ public sealed class TimelineAudioVerbalizationService
 
         return GetInt(status, "totalTurns", 0) > 0;
     }
+
+    private static int BulkTargetWorkPriority(JsonObject status)
+    {
+        var state = GetString(status, "state", string.Empty).ToLowerInvariant();
+        return state switch
+        {
+            "failed" or "unreadable" or "unknown" => 0,
+            "queued" or "running" => 1,
+            "source_transcript" or "not_started" or "planned" => 2,
+            _ => 3,
+        };
+    }
+
+    private static int BulkTargetProductPriority(string product) =>
+        product.Equals("audio", StringComparison.OrdinalIgnoreCase) ? 0 : 1;
 
     private void StartSingleWorker(string audioItemId, string jobId)
     {
