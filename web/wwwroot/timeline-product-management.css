@@ -132,6 +132,18 @@
   padding: 0.4375rem 0.75rem;
 }
 
+@media (max-width: 1400px) {
+  .tfa-product-row {
+    align-items: stretch;
+    grid-template-columns: 1fr;
+  }
+
+  .tfa-product-actions {
+    justify-content: flex-start;
+    padding-left: 3.375rem;
+  }
+}
+
 @media (max-width: 640px) {
   .tfa-product-management-header {
     align-items: flex-start;
@@ -159,6 +171,7 @@
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     justify-content: stretch;
+    padding-left: 0;
     width: 100%;
   }
 
