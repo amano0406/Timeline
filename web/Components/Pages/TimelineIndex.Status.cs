@@ -88,6 +88,18 @@ public partial class TimelineIndex
 
     private static string ProductJobProductLabel(TimelineProductJobStatus job)
     {
+        if (job.ProductId.Equals("audio", StringComparison.OrdinalIgnoreCase)
+            || job.ProductName.Equals("TimelineForAudio", StringComparison.OrdinalIgnoreCase))
+        {
+            return "音声ファイル";
+        }
+
+        if (job.ProductId.Equals("image", StringComparison.OrdinalIgnoreCase)
+            || job.ProductName.Equals("TimelineForImage", StringComparison.OrdinalIgnoreCase))
+        {
+            return "画像ファイル";
+        }
+
         if (job.ProductId.Equals("video", StringComparison.OrdinalIgnoreCase)
             || job.ProductName.Equals("TimelineForVideo", StringComparison.OrdinalIgnoreCase))
         {
@@ -113,6 +125,14 @@ public partial class TimelineIndex
         {
             "queued" => "開始待ち",
             "start" => "準備",
+            "discover" => "素材確認",
+            "process" => "画像解析",
+            "preflight" => "音声確認",
+            "extract_audio" => "音声抽出",
+            "detect_speech_candidates" => "発話区間検出",
+            "diarize_audio" => "話者分離",
+            "transcribe_audio" => "文字起こし",
+            "generate_artifacts" => "記録作成",
             "sample" => "フレーム抽出",
             "frame_ocr" => "画面内テキスト解析",
             "audio" => "音声解析",

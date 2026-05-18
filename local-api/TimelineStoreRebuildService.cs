@@ -254,7 +254,13 @@ public sealed class TimelineStoreRebuildService
                 refreshed: true,
                 skipped: false,
                 reason: string.Empty,
-                await _productActions.RefreshAudioAsync(new JsonObject { ["queueOnly"] = false }, cancellationToken));
+                await _productActions.RefreshAudioWithJobAsync(
+                    new JsonObject(),
+                    productJob => progress(
+                        "refreshing",
+                        "Refreshing " + product.DisplayName + " data through its API.",
+                        productJob),
+                    cancellationToken));
         }
         if (product.ProductId.Equals("windows-codex", StringComparison.OrdinalIgnoreCase))
         {
@@ -281,7 +287,13 @@ public sealed class TimelineStoreRebuildService
                 refreshed: true,
                 skipped: false,
                 reason: string.Empty,
-                await _productActions.RefreshImageAsync(new JsonObject(), cancellationToken));
+                await _productActions.RefreshImageWithJobAsync(
+                    new JsonObject(),
+                    productJob => progress(
+                        "refreshing",
+                        "Refreshing " + product.DisplayName + " data through its API.",
+                        productJob),
+                    cancellationToken));
         }
         if (product.ProductId.Equals("video", StringComparison.OrdinalIgnoreCase))
         {

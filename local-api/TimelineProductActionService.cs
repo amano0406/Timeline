@@ -29,6 +29,24 @@ public sealed class TimelineProductActionService
             operationId => RefreshAudioCoreAsync(request, operationId, cancellationToken));
     }
 
+    public Task<JsonObject> RefreshAudioWithJobAsync(
+        JsonObject? request,
+        Action<JsonObject>? productJobProgress,
+        CancellationToken cancellationToken)
+    {
+        return InvokeWebOperationAsync(
+            "TimelineForAudio",
+            "audio_refresh_job",
+            operationId => RefreshProductJobCoreAsync(
+                "audio",
+                "TimelineForAudio",
+                BuildAudioRefreshRequestBody(request, forceQueueOnly: true),
+                productJobProgress,
+                operationId,
+                () => RefreshAudioCoreAsync(WithBool(request, "queueOnly", false), operationId, cancellationToken),
+                cancellationToken));
+    }
+
     public Task<JsonObject> DownloadAudioItemsAsync(JsonObject? request, CancellationToken cancellationToken)
     {
         return InvokeWebOperationAsync(
@@ -51,6 +69,24 @@ public sealed class TimelineProductActionService
             "TimelineForImage",
             "image_refresh",
             operationId => RefreshImageCoreAsync(request, operationId, cancellationToken));
+    }
+
+    public Task<JsonObject> RefreshImageWithJobAsync(
+        JsonObject? request,
+        Action<JsonObject>? productJobProgress,
+        CancellationToken cancellationToken)
+    {
+        return InvokeWebOperationAsync(
+            "TimelineForImage",
+            "image_refresh_job",
+            operationId => RefreshProductJobCoreAsync(
+                "image",
+                "TimelineForImage",
+                BuildImageRefreshRequestBody(request),
+                productJobProgress,
+                operationId,
+                () => RefreshImageCoreAsync(request, operationId, cancellationToken),
+                cancellationToken));
     }
 
     public Task<JsonObject> DownloadImageItemsAsync(JsonObject? request, CancellationToken cancellationToken)
@@ -85,7 +121,14 @@ public sealed class TimelineProductActionService
         return InvokeWebOperationAsync(
             "TimelineForVideo",
             "video_refresh_job",
-            operationId => RefreshVideoJobCoreAsync(request, productJobProgress, operationId, cancellationToken));
+            operationId => RefreshProductJobCoreAsync(
+                "video",
+                "TimelineForVideo",
+                BuildVideoRefreshRequestBody(request),
+                productJobProgress,
+                operationId,
+                () => RefreshVideoCoreAsync(request, operationId, cancellationToken),
+                cancellationToken));
     }
 
     public Task<JsonObject> DownloadVideoItemsAsync(JsonObject? request, CancellationToken cancellationToken)
@@ -119,16 +162,7 @@ public sealed class TimelineProductActionService
     {
         var queueOnly = GetBool(request, "queueOnly", true);
         var timeoutSeconds = queueOnly ? 120 : 900;
-        var maxItems = GetNullableInt(request, "maxItems");
-        var requestBody = new JsonObject
-        {
-            ["queueOnly"] = queueOnly,
-            ["reprocessDuplicates"] = GetBool(request, "reprocessDuplicates", false),
-        };
-        if (maxItems is > 0)
-        {
-            requestBody["maxItems"] = maxItems.Value;
-        }
+        var requestBody = BuildAudioRefreshRequestBody(request);
 
         var payload = await _api.PostJsonAsync(
             "audio",
@@ -141,6 +175,22 @@ public sealed class TimelineProductActionService
         var result = ConvertAudioRefreshResult(payload as JsonObject);
         result["queueOnly"] = queueOnly;
         return result;
+    }
+
+    private static JsonObject BuildAudioRefreshRequestBody(JsonObject? request, bool? forceQueueOnly = null)
+    {
+        var requestBody = new JsonObject
+        {
+            ["queueOnly"] = forceQueueOnly ?? GetBool(request, "queueOnly", true),
+            ["reprocessDuplicates"] = GetBool(request, "reprocessDuplicates", false),
+        };
+        var maxItems = GetNullableInt(request, "maxItems");
+        if (maxItems is > 0)
+        {
+            requestBody["maxItems"] = maxItems.Value;
+        }
+
+        return requestBody;
     }
 
     private async Task<JsonObject> DownloadAudioItemsCoreAsync(
@@ -262,15 +312,7 @@ public sealed class TimelineProductActionService
         string operationId,
         CancellationToken cancellationToken)
     {
-        var requestBody = new JsonObject
-        {
-            ["reprocessDuplicates"] = GetBool(request, "reprocessDuplicates", false),
-        };
-        var maxItems = GetNullableInt(request, "maxItems");
-        if (maxItems is > 0)
-        {
-            requestBody["maxItems"] = maxItems.Value;
-        }
+        var requestBody = BuildImageRefreshRequestBody(request);
 
         var payload = await _api.PostJsonAsync(
             "image",
@@ -290,6 +332,21 @@ public sealed class TimelineProductActionService
             ["failedCount"] = GetInt(payload as JsonObject, "failed_count", 0),
             ["archivePath"] = ConvertProductLocalPath("image", GetString(payload as JsonObject, "archive_path", string.Empty)),
         };
+    }
+
+    private static JsonObject BuildImageRefreshRequestBody(JsonObject? request)
+    {
+        var requestBody = new JsonObject
+        {
+            ["reprocessDuplicates"] = GetBool(request, "reprocessDuplicates", false),
+        };
+        var maxItems = GetNullableInt(request, "maxItems");
+        if (maxItems is > 0)
+        {
+            requestBody["maxItems"] = maxItems.Value;
+        }
+
+        return requestBody;
     }
 
     private async Task<JsonObject> DownloadImageItemsCoreAsync(
@@ -426,7 +483,7 @@ public sealed class TimelineProductActionService
                 30,
                 operationId,
                 cancellationToken);
-            status = ConvertVideoJobStatus(payload as JsonObject);
+            status = ConvertProductJobStatus(payload as JsonObject, "video", "TimelineForVideo");
         }
         catch (InvalidOperationException ex) when (ex.Message.Contains("Endpoint not found", StringComparison.OrdinalIgnoreCase))
         {
@@ -450,7 +507,7 @@ public sealed class TimelineProductActionService
                 30,
                 operationId,
                 cancellationToken);
-            status = ConvertVideoJobStatus(payload as JsonObject);
+            status = ConvertProductJobStatus(payload as JsonObject, "video", "TimelineForVideo");
             productJobProgress?.Invoke(status);
         }
 
@@ -463,7 +520,76 @@ public sealed class TimelineProductActionService
                 : error);
         }
 
-        return ConvertVideoRefreshResult(status);
+        return ConvertProductJobRefreshResult(status);
+    }
+
+    private async Task<JsonObject> RefreshProductJobCoreAsync(
+        string productId,
+        string productName,
+        JsonObject requestBody,
+        Action<JsonObject>? productJobProgress,
+        string operationId,
+        Func<Task<JsonObject>> fallback,
+        CancellationToken cancellationToken)
+    {
+        JsonObject status;
+        try
+        {
+            var payload = await _api.PostJsonAsync(
+                productId,
+                productName,
+                "/jobs",
+                new JsonObject
+                {
+                    ["type"] = "refresh",
+                    ["options"] = requestBody.DeepClone(),
+                },
+                30,
+                operationId,
+                cancellationToken);
+            status = ConvertProductJobStatus(payload as JsonObject, productId, productName);
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("Endpoint not found", StringComparison.OrdinalIgnoreCase))
+        {
+            return await fallback();
+        }
+
+        productJobProgress?.Invoke(status);
+        var jobId = GetString(status, "jobId", string.Empty);
+        if (string.IsNullOrWhiteSpace(jobId))
+        {
+            if (IsProductJobActive(status))
+            {
+                throw new InvalidOperationException(productName + " API did not return a job id.");
+            }
+
+            return ConvertProductJobRefreshResult(status);
+        }
+
+        while (IsProductJobActive(status))
+        {
+            await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
+            var payload = await _api.GetJsonAsync(
+                productId,
+                productName,
+                "/jobs/" + Uri.EscapeDataString(jobId),
+                30,
+                operationId,
+                cancellationToken);
+            status = ConvertProductJobStatus(payload as JsonObject, productId, productName);
+            productJobProgress?.Invoke(status);
+        }
+
+        var state = GetString(status, "state", string.Empty);
+        if (state.Equals("failed", StringComparison.OrdinalIgnoreCase))
+        {
+            var error = GetString(status, "error", string.Empty);
+            throw new InvalidOperationException(string.IsNullOrWhiteSpace(error)
+                ? productName + " refresh job failed."
+                : error);
+        }
+
+        return ConvertProductJobRefreshResult(status);
     }
 
     private static JsonObject BuildVideoRefreshRequestBody(JsonObject? request)
@@ -722,14 +848,17 @@ public sealed class TimelineProductActionService
         };
     }
 
-    private static JsonObject ConvertVideoJobStatus(JsonObject? payload)
+    private static JsonObject ConvertProductJobStatus(
+        JsonObject? payload,
+        string fallbackProductId,
+        string fallbackProductName)
     {
         var progress = GetObject(payload, "progress");
         var result = GetObject(payload, "result");
         return new JsonObject
         {
-            ["productId"] = GetString(payload, "productId", "video"),
-            ["productName"] = GetString(payload, "productName", "TimelineForVideo"),
+            ["productId"] = GetString(payload, "productId", fallbackProductId),
+            ["productName"] = GetString(payload, "productName", fallbackProductName),
             ["type"] = GetString(payload, "type", "refresh"),
             ["jobId"] = GetString(payload, "jobId", string.Empty),
             ["state"] = GetString(payload, "state", string.Empty),
@@ -753,7 +882,7 @@ public sealed class TimelineProductActionService
         };
     }
 
-    private static JsonObject ConvertVideoRefreshResult(JsonObject jobStatus)
+    private static JsonObject ConvertProductJobRefreshResult(JsonObject jobStatus)
     {
         var result = GetObject(jobStatus, "result");
         var counts = GetObject(result, "counts");
@@ -761,10 +890,10 @@ public sealed class TimelineProductActionService
         {
             ["runId"] = GetString(jobStatus, "jobId", string.Empty),
             ["state"] = GetString(jobStatus, "state", string.Empty),
-            ["sourceCount"] = GetInt(counts, "sourceFiles", 0),
-            ["processedCount"] = GetInt(counts, "processedItems", 0),
-            ["skippedCount"] = GetInt(counts, "skippedItems", 0),
-            ["failedCount"] = GetInt(counts, "failedItems", 0),
+            ["sourceCount"] = GetIntAny(result, ["source_count", "sourceCount", "total_discovered", "totalDiscovered"], GetInt(counts, "sourceFiles", 0)),
+            ["processedCount"] = GetIntAny(result, ["processed_count", "processedCount", "processed"], GetInt(counts, "processedItems", 0)),
+            ["skippedCount"] = GetIntAny(result, ["skipped_count", "skippedCount", "skipped"], GetInt(counts, "skippedItems", 0)),
+            ["failedCount"] = GetIntAny(result, ["failed_count", "failedCount", "error_count", "errorCount", "failed"], GetInt(counts, "failedItems", 0)),
             ["message"] = GetString(jobStatus, "message", string.Empty),
             ["job"] = jobStatus.DeepClone(),
         };
@@ -1128,6 +1257,13 @@ public sealed class TimelineProductActionService
         }
 
         return array;
+    }
+
+    private static JsonObject WithBool(JsonObject? source, string name, bool value)
+    {
+        var clone = source?.DeepClone() as JsonObject ?? new JsonObject();
+        clone[name] = value;
+        return clone;
     }
 
     private static int ConvertNodeToInt(JsonNode node, int fallback)
