@@ -145,7 +145,7 @@ function Test-ProductApiRunning {
     )
 
     try {
-        $response = Invoke-WebRequest -UseBasicParsing -TimeoutSec 3 -Uri "$($BaseUrl.TrimEnd('/'))/health"
+        $response = Invoke-WebRequest -UseBasicParsing -TimeoutSec 10 -Uri "$($BaseUrl.TrimEnd('/'))/health"
         if ($response.StatusCode -lt 200 -or $response.StatusCode -ge 300) {
             Add-ContractResult -Product $Product -Check "health" -Status "FAIL" -Message "Unexpected HTTP status: $($response.StatusCode)"
             return $false

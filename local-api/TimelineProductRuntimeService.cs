@@ -652,10 +652,15 @@ public sealed class TimelineProductRuntimeService
                 "running",
                 DateTimeOffset.Now.ToString("o"),
                 "Product started.");
-            return await ConvertRuntimeStatusAsync(definition, cancellationToken);
+            return await WaitForProductRuntimeStateAsync(
+                definition,
+                expectedRunning: true,
+                restart ? "restart" : "start",
+                TimeSpan.FromSeconds(45),
+                cancellationToken);
         }
 
-        return await ConvertRuntimeStatusAsync(definition, cancellationToken);
+        throw new InvalidOperationException($"Product start script was not found: {definition.StartPath}");
     }
 
     private async Task<ProductRuntimeRowResponse> StopProductCoreAsync(
@@ -692,7 +697,46 @@ public sealed class TimelineProductRuntimeService
         }
 
         WriteRuntimeState(definition.Id, "stopped", message: "Product stopped.");
-        return await ConvertRuntimeStatusAsync(definition, cancellationToken);
+        return await WaitForProductRuntimeStateAsync(
+            definition,
+            expectedRunning: false,
+            "stop",
+            TimeSpan.FromSeconds(30),
+            cancellationToken);
+    }
+
+    private async Task<ProductRuntimeRowResponse> WaitForProductRuntimeStateAsync(
+        ProductRuntimeDefinition definition,
+        bool expectedRunning,
+        string action,
+        TimeSpan timeout,
+        CancellationToken cancellationToken)
+    {
+        var deadline = DateTimeOffset.Now.Add(timeout);
+        ProductRuntimeRowResponse status;
+        do
+        {
+            status = await ConvertRuntimeStatusAsync(definition, cancellationToken);
+            if (status.Running == expectedRunning)
+            {
+                return status;
+            }
+
+            if (DateTimeOffset.Now >= deadline)
+            {
+                break;
+            }
+
+            await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
+        }
+        while (true);
+
+        var expectedState = expectedRunning ? "running" : "stopped";
+        var message = !string.IsNullOrWhiteSpace(status.Message)
+            ? status.Message
+            : $"Product did not become {expectedState}.";
+        WriteRuntimeState(definition.Id, "failed", message: message);
+        throw new InvalidOperationException($"{definition.DisplayName} {action} failed: {message}");
     }
 
     private async Task<ProcessRunResult> RunLoggedProcessAsync(
@@ -2106,7 +2150,7 @@ public sealed class TimelineProductRuntimeService
         {
             using var request = new HttpRequestMessage(HttpMethod.Get, baseUrl.TrimEnd('/') + "/health");
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            timeout.CancelAfter(TimeSpan.FromSeconds(3));
+            timeout.CancelAfter(TimeSpan.FromSeconds(10));
             using var response = await _http.SendAsync(request, timeout.Token);
             var text = await response.Content.ReadAsStringAsync(timeout.Token);
             var running = TestHealthValue(text);
