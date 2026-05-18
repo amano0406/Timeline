@@ -129,6 +129,112 @@ public sealed class TimelineProductApiClient
         }
     }
 
+    public async Task<JsonNode?> GetJsonAsync(
+        string productId,
+        string productName,
+        string path,
+        int timeoutSeconds,
+        string parentOperationId,
+        CancellationToken cancellationToken)
+    {
+        var productPath = GetProductPath(productId);
+        if (string.IsNullOrEmpty(productPath) || !Directory.Exists(productPath))
+        {
+            throw new InvalidOperationException($"{productName} product directory was not found: {productPath}");
+        }
+
+        var baseUrl = GetProductHealthBaseUrl(productId, productPath);
+        if (string.IsNullOrEmpty(baseUrl))
+        {
+            throw new InvalidOperationException($"{productName} API base URL was not resolved.");
+        }
+
+        await AssertProductApiAccessAllowedAsync(productName, baseUrl, cancellationToken);
+
+        var operationId = _operations.NewOperationId("api");
+        var url = baseUrl.TrimEnd('/') + "/" + path.TrimStart('/');
+        var startedAt = DateTimeOffset.Now;
+        _operations.WriteOperationEvent(
+            operationId,
+            "api",
+            productName,
+            path,
+            "started",
+            "Product API request started.",
+            commandLine: url,
+            parentOperationId: parentOperationId);
+
+        var failureLogged = false;
+        try
+        {
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeout.CancelAfter(TimeSpan.FromSeconds(timeoutSeconds));
+            using var response = await _http.GetAsync(url, timeout.Token);
+            var text = await response.Content.ReadAsStringAsync(timeout.Token);
+            var payload = TryParseJson(text);
+            var durationMs = (int)(DateTimeOffset.Now - startedAt).TotalMilliseconds;
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var message = GetJsonErrorMessage(payload);
+                if (string.IsNullOrEmpty(message))
+                {
+                    message = !string.IsNullOrWhiteSpace(text)
+                        ? text.Trim()
+                        : $"{(int)response.StatusCode} {response.ReasonPhrase}";
+                }
+
+                _operations.WriteOperationEvent(
+                    operationId,
+                    "api",
+                    productName,
+                    path,
+                    "failed",
+                    message,
+                    commandLine: url,
+                    exitCode: (int)response.StatusCode,
+                    durationMs: durationMs,
+                    stdout: text,
+                    parentOperationId: parentOperationId);
+                failureLogged = true;
+                throw new InvalidOperationException($"{productName} API failed: {message}");
+            }
+
+            _operations.WriteOperationEvent(
+                operationId,
+                "api",
+                productName,
+                path,
+                "completed",
+                "Product API request completed.",
+                commandLine: url,
+                exitCode: (int)response.StatusCode,
+                durationMs: durationMs,
+                stdout: text,
+                parentOperationId: parentOperationId);
+            return payload;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            if (!failureLogged)
+            {
+                var durationMs = (int)(DateTimeOffset.Now - startedAt).TotalMilliseconds;
+                _operations.WriteOperationEvent(
+                    operationId,
+                    "api",
+                    productName,
+                    path,
+                    "error",
+                    ex.Message,
+                    commandLine: url,
+                    durationMs: durationMs,
+                    stderr: ex.Message,
+                    parentOperationId: parentOperationId);
+            }
+            throw;
+        }
+    }
+
     private async Task AssertProductApiAccessAllowedAsync(
         string productName,
         string baseUrl,

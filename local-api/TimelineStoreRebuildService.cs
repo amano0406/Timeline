@@ -48,11 +48,13 @@ public sealed class TimelineStoreRebuildService
         var startedAt = DateTimeOffset.Now.ToString("o");
         var lastStage = "collecting";
         var lastMessage = "Collecting product data through product APIs one product at a time.";
-        void WriteProgress(string stage, string message)
+        JsonObject? lastProductJob = null;
+        void WriteProgress(string stage, string message, JsonObject? productJob = null)
         {
             lastStage = stage;
             lastMessage = message;
-            WriteJobStatus(jobId, "running", stage, message, startedAt);
+            lastProductJob = productJob?.DeepClone() as JsonObject;
+            WriteJobStatus(jobId, "running", stage, message, startedAt, productJob: lastProductJob);
         }
 
         try
@@ -90,17 +92,18 @@ public sealed class TimelineStoreRebuildService
                     ? "Timeline store rebuild failed."
                     : "Timeline store rebuild failed while: " + lastMessage,
                 startedAt,
-                error: ex.Message);
+                error: ex.Message,
+                productJob: lastProductJob);
         }
     }
 
     private async Task<JsonObject> RebuildStoreAsync(
         string jobId,
         string startedAt,
-        Action<string, string> progress,
+        Action<string, string, JsonObject?> progress,
         CancellationToken cancellationToken)
     {
-        progress("preparing", "Preparing timeline store workspace.");
+        progress("preparing", "Preparing timeline store workspace.", null);
 
         var storeRoot = _settings.GetStoreDirectory();
         var rebuildsRoot = Path.Combine(storeRoot, "rebuilds");
@@ -130,20 +133,20 @@ public sealed class TimelineStoreRebuildService
                 {
                     cancellationToken.ThrowIfCancellationRequested();
 
-                    progress("refreshing", "Refreshing " + product.DisplayName + " data through its API.");
-                    refreshResults.Add(await RefreshProductForScanAsync(product, cancellationToken));
+                    progress("refreshing", "Refreshing " + product.DisplayName + " data through its API.", null);
+                    refreshResults.Add(await RefreshProductForScanAsync(product, progress, cancellationToken));
 
-                    progress("downloading", "Downloading " + product.DisplayName + " data through its API.");
+                    progress("downloading", "Downloading " + product.DisplayName + " data through its API.", null);
                     var download = await DownloadProductForExportAsync(product, cancellationToken);
 
-                    progress("importing", "Importing " + product.DisplayName + " data into the Timeline store.");
+                    progress("importing", "Importing " + product.DisplayName + " data into the Timeline store.", null);
                     productResults.Add(AddProductArchive(
                         product,
                         download.ArchivePath,
                         packageRoot,
                         itemsWriter,
                         eventsWriter,
-                        progress));
+                        (stage, message) => progress(stage, message, null)));
                 }
             }
         }
@@ -170,10 +173,10 @@ public sealed class TimelineStoreRebuildService
             throw new InvalidOperationException("No Timeline items were found. Check each product list first.");
         }
 
-        progress("sorting", "Sorting timeline events.");
+        progress("sorting", "Sorting timeline events.", null);
         SortEventsFile(eventsPath);
 
-        progress("publishing", "Publishing rebuilt timeline store.");
+        progress("publishing", "Publishing rebuilt timeline store.", null);
         var manifest = new JsonObject
         {
             ["schemaVersion"] = 1,
@@ -241,6 +244,7 @@ public sealed class TimelineStoreRebuildService
 
     private async Task<JsonObject> RefreshProductForScanAsync(
         TimelineStoreProduct product,
+        Action<string, string, JsonObject?> progress,
         CancellationToken cancellationToken)
     {
         if (product.ProductId.Equals("audio", StringComparison.OrdinalIgnoreCase))
@@ -286,7 +290,13 @@ public sealed class TimelineStoreRebuildService
                 refreshed: true,
                 skipped: false,
                 reason: string.Empty,
-                await _productActions.RefreshVideoAsync(new JsonObject(), cancellationToken));
+                await _productActions.RefreshVideoWithJobAsync(
+                    new JsonObject(),
+                    productJob => progress(
+                        "refreshing",
+                        "Refreshing " + product.DisplayName + " data through its API.",
+                        productJob),
+                    cancellationToken));
         }
         if (product.ProductId.Equals("pc", StringComparison.OrdinalIgnoreCase))
         {
@@ -792,7 +802,8 @@ public sealed class TimelineStoreRebuildService
         string error = "",
         JsonObject? result = null,
         int itemCount = 0,
-        int eventCount = 0)
+        int eventCount = 0,
+        JsonObject? productJob = null)
     {
         var now = DateTimeOffset.Now.ToString("o");
         _workerStatus.WriteWorkerJobStatus(new JsonObject
@@ -808,6 +819,7 @@ public sealed class TimelineStoreRebuildService
             ["completedAt"] = state is "completed" or "failed" ? now : string.Empty,
             ["itemCount"] = itemCount,
             ["eventCount"] = eventCount,
+            ["productJob"] = productJob?.DeepClone(),
             ["result"] = result?.DeepClone(),
         });
     }

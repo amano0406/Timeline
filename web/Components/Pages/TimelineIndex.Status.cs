@@ -44,6 +44,96 @@ public partial class TimelineIndex
         }
     }
 
+    private TimelineProductJobStatus? ActiveProductJob => _workerStatus?.ProductJob;
+
+    private bool ShouldShowProductJobProgress =>
+        RebuildActive && ActiveProductJob is not null && !string.IsNullOrWhiteSpace(ActiveProductJob.JobId);
+
+    private string ProductJobTitle
+    {
+        get
+        {
+            var job = ActiveProductJob;
+            if (job is null)
+            {
+                return "";
+            }
+
+            return $"{ProductJobProductLabel(job)} の処理状況";
+        }
+    }
+
+    private string ProductJobStatusLine
+    {
+        get
+        {
+            var job = ActiveProductJob;
+            if (job is null)
+            {
+                return "";
+            }
+
+            return FormatProductJobStatusLine(job);
+        }
+    }
+
+    private static string FormatProductJobStatusLine(TimelineProductJobStatus job)
+    {
+        var state = ProductJobStateLabel(job.State);
+        var stage = ProductJobStageLabel(job.Stage);
+        var count = ProductJobProgressCountLabel(job.Progress);
+        var message = string.IsNullOrWhiteSpace(job.Message) ? "" : $" / {job.Message}";
+        return $"{state} / {stage}{count}{message}";
+    }
+
+    private static string ProductJobProductLabel(TimelineProductJobStatus job)
+    {
+        if (job.ProductId.Equals("video", StringComparison.OrdinalIgnoreCase)
+            || job.ProductName.Equals("TimelineForVideo", StringComparison.OrdinalIgnoreCase))
+        {
+            return "動画ファイル";
+        }
+
+        return string.IsNullOrWhiteSpace(job.ProductName) ? job.ProductId : job.ProductName;
+    }
+
+    private static string ProductJobStateLabel(string state) =>
+        state.ToLowerInvariant() switch
+        {
+            "queued" => "待機中",
+            "running" => "処理中",
+            "completed" => "完了",
+            "completed_with_errors" => "確認あり",
+            "failed" => "失敗",
+            _ => string.IsNullOrWhiteSpace(state) ? "未確認" : state,
+        };
+
+    private static string ProductJobStageLabel(string stage) =>
+        stage.ToLowerInvariant() switch
+        {
+            "queued" => "開始待ち",
+            "start" => "準備",
+            "sample" => "フレーム抽出",
+            "frame_ocr" => "画面内テキスト解析",
+            "audio" => "音声解析",
+            "activity" => "活動解析",
+            "refresh" => "記録更新",
+            "completed" => "完了",
+            "failed" => "失敗",
+            _ => string.IsNullOrWhiteSpace(stage) ? "処理中" : stage,
+        };
+
+    private static string ProductJobProgressCountLabel(TimelineProductJobProgress progress)
+    {
+        if (progress.Total <= 0)
+        {
+            return "";
+        }
+
+        var unit = progress.Unit.Equals("files", StringComparison.OrdinalIgnoreCase) ? "件" : progress.Unit;
+        return $" / {progress.Current:N0} / {progress.Total:N0} {unit}";
+    }
+
     private bool ScanFailed =>
         string.Equals(_workerStatus?.State, "failed", StringComparison.OrdinalIgnoreCase);
 
@@ -228,7 +318,7 @@ public partial class TimelineIndex
         state.ToLowerInvariant() switch
         {
             "running" => "tfa-status-pill border-sky-200 bg-sky-50 text-sky-800",
-            "review" => "tfa-status-pill border-amber-200 bg-amber-50 text-amber-900",
+            "review" or "completed_with_errors" => "tfa-status-pill border-amber-200 bg-amber-50 text-amber-900",
             "completed" => "tfa-status-pill border-teal-200 bg-teal-50 text-teal-800",
             "failed" => "tfa-status-pill border-red-200 bg-red-50 text-red-800",
             _ => "tfa-status-pill border-slate-200 bg-slate-50 text-slate-700",

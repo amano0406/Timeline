@@ -60,11 +60,29 @@
             </div>
             <div class="tfa-scan-failure-help">@ScanFailureHelp</div>
         </div>
+        @if (_workerStatus?.ProductJob is { } failedProductJob)
+        {
+            <div class="mt-4 rounded-md border border-red-200 bg-white/80 p-4">
+                <div class="flex flex-wrap items-center gap-2 text-sm font-semibold text-slate-900">
+                    <FaIcon Name="list-check" Class="tfa-icon text-red-700" />
+                    <span>@ProductJobProductLabel(failedProductJob) の処理状況</span>
+                    <span class="@StepPillClass(failedProductJob.State)">@ProductJobStateLabel(failedProductJob.State)</span>
+                </div>
+                <div class="mt-1 text-sm leading-6 text-slate-700">
+                    @FormatProductJobStatusLine(failedProductJob)
+                </div>
+                @if (!string.IsNullOrWhiteSpace(failedProductJob.Error))
+                {
+                    <div class="mt-2 text-sm leading-6 text-red-800">@failedProductJob.Error</div>
+                }
+            </div>
+        }
     </section>
 }
 else if (ShouldShowOperationMessage && ScanActive)
 {
     var remainingItems = RemainingScanPhaseItems;
+    var productJob = ActiveProductJob;
     <section class="tfa-scan-running-panel mb-5" role="status" aria-live="polite">
         <div class="flex items-start gap-3">
             <span class="tfa-scan-running-spinner" aria-hidden="true">
@@ -78,6 +96,26 @@ else if (ShouldShowOperationMessage && ScanActive)
         <div class="tfa-scan-running-meter" aria-hidden="true">
             <span></span>
         </div>
+        @if (ShouldShowProductJobProgress && productJob is not null)
+        {
+            <div class="mt-4 rounded-md border border-sky-200 bg-white/80 p-4">
+                <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <div class="min-w-0">
+                        <div class="flex flex-wrap items-center gap-2 text-sm font-semibold text-slate-900">
+                            <FaIcon Name="list-check" Class="tfa-icon text-sky-700" />
+                            <span>@ProductJobTitle</span>
+                            <span class="@StepPillClass(productJob.State)">@ProductJobStateLabel(productJob.State)</span>
+                        </div>
+                        <div class="mt-1 text-sm leading-6 text-slate-600">@ProductJobStatusLine</div>
+                    </div>
+                    <div class="font-mono text-lg font-bold text-slate-900">@ProgressLabel(productJob.Progress.Percent)</div>
+                </div>
+                <div class="mt-3 h-2 overflow-hidden rounded-full bg-slate-200" role="progressbar"
+                     aria-valuemin="0" aria-valuemax="100" aria-valuenow="@ProgressAriaValue(productJob.Progress.Percent)">
+                    <div class="h-full rounded-full bg-sky-600 transition-all" style="@ProgressBarStyle(productJob.Progress.Percent)"></div>
+                </div>
+            </div>
+        }
         @if (remainingItems.Count > 0)
         {
             <div class="tfa-scan-remaining">

@@ -61,7 +61,36 @@ public sealed class TimelineWorkerJobStatus
     public string CompletedAt { get; set; } = "";
     public int ItemCount { get; set; }
     public int EventCount { get; set; }
+    public TimelineProductJobStatus? ProductJob { get; set; }
     public TimelineRebuildResult? Result { get; set; }
+}
+
+public sealed class TimelineProductJobStatus
+{
+    public string ProductId { get; set; } = "";
+    public string ProductName { get; set; } = "";
+    public string Type { get; set; } = "";
+    public string JobId { get; set; } = "";
+    public string State { get; set; } = "";
+    public string Phase { get; set; } = "";
+    public string Stage { get; set; } = "";
+    public string Message { get; set; } = "";
+    public TimelineProductJobProgress Progress { get; set; } = new();
+    public string StartedAt { get; set; } = "";
+    public string UpdatedAt { get; set; } = "";
+    public string CompletedAt { get; set; } = "";
+    public string Error { get; set; } = "";
+    public List<string> Warnings { get; set; } = [];
+}
+
+public sealed class TimelineProductJobProgress
+{
+    public double Percent { get; set; }
+    public int Current { get; set; }
+    public int Total { get; set; }
+    public string Unit { get; set; } = "";
+    public string CurrentItem { get; set; } = "";
+    public double? EstimatedRemainingSeconds { get; set; }
 }
 
 public sealed class TimelineDockerWorkerStatus
