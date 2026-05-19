@@ -13,6 +13,11 @@ public sealed class TimelineAudioVerbalizationExecutionService
         Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
     };
 
+    private static readonly JsonSerializerOptions FileJsonOptions = new()
+    {
+        WriteIndented = true,
+    };
+
     private static readonly JsonSerializerOptions CompactJsonOptions = new()
     {
         WriteIndented = false,
@@ -956,6 +961,10 @@ public sealed class TimelineAudioVerbalizationExecutionService
 
         var sourceText = GetString(sourceTurn, "sourceText", string.Empty);
         var language = GetString(context, "language", "ja-JP");
+        if (language.Equals("ja-JP", StringComparison.OrdinalIgnoreCase) && LooksLikeJapaneseMojibake(text))
+        {
+            return false;
+        }
         if (!string.IsNullOrEmpty(sourceText))
         {
             return !language.Equals("ja-JP", StringComparison.OrdinalIgnoreCase)
@@ -1019,6 +1028,19 @@ public sealed class TimelineAudioVerbalizationExecutionService
     private static bool HasJapaneseSignal(string text)
         => Regex.IsMatch(text, "[\\p{IsHiragana}\\p{IsCJKUnifiedIdeographs}]");
 
+    private static bool LooksLikeJapaneseMojibake(string text)
+    {
+        text = ConvertTimelineText(text);
+        if (text.Length < 4)
+        {
+            return false;
+        }
+
+        var markers = Regex.Matches(text, "[縺繧譚荳莨髮霆鬆蠎蛯隧驛邱繝]").Count;
+        var signal = Regex.Matches(text, "\\p{L}|\\p{N}").Count;
+        return markers >= 3 && signal > 0 && markers / (double)signal >= 0.2;
+    }
+
     private static int SentenceMarkerCount(string text)
         => Regex.Matches(ConvertTimelineText(text), "[\\.\\!\\?\\u3002\\uFF01\\uFF1F]").Count;
 
@@ -1076,10 +1098,10 @@ public sealed class TimelineAudioVerbalizationExecutionService
             Directory.CreateDirectory(directory);
         }
 
-        File.WriteAllText(
-            path,
-            payload.ToJsonString(JsonOptions) + Environment.NewLine,
-            new UTF8Encoding(false));
+        var json = payload.ToJsonString(FileJsonOptions) + Environment.NewLine;
+        JsonNode.Parse(json);
+        File.WriteAllText(path, json, new UTF8Encoding(false));
+        JsonNode.Parse(File.ReadAllText(path));
     }
 
     private static JsonObject ReadJsonFileRequired(string path)

@@ -16,6 +16,17 @@ public sealed class TimelineVideoOverviewService
         ".webm",
         ".wmv",
     ];
+    private static readonly HashSet<string> KnownSilenceHallucinationPhrases = new(StringComparer.OrdinalIgnoreCase)
+    {
+        NormalizeTranscriptText("ご視聴ありがとうございました"),
+        NormalizeTranscriptText("ご視聴ありがとうございます"),
+        NormalizeTranscriptText("ありがとうございました"),
+        NormalizeTranscriptText("Thank you for watching"),
+        NormalizeTranscriptText("Thanks for watching"),
+    };
+    private const double MinimumTranscriptSpeechOverlapSec = 0.1;
+    private const double HighNoSpeechProbability = 0.6;
+    private const double LowTranscriptConfidence = -0.6;
 
     private readonly TimelineSettingsService _settings;
     private readonly TimelineOperationLogService _operations;
@@ -305,7 +316,7 @@ public sealed class TimelineVideoOverviewService
                 && File.Exists(catalogRow.TimelinePath),
             ["turns"] = turns,
             ["audioVerbalization"] = audioVerbalization,
-            ["audioVerbalizationResult"] = NewAudioVerbalizationResult(audioVerbalization, turns),
+            ["audioVerbalizationResult"] = NewAudioVerbalizationResult(catalogRow, audioVerbalization, turns),
         };
     }
 
@@ -826,12 +837,25 @@ public sealed class TimelineVideoOverviewService
 
         var audioAnalysisPath = Path.Combine(catalogRow.OutputDirectory, "raw_outputs", "audio_analysis.json");
         var audioAnalysis = ReadVideoJsonFile(audioAnalysisPath);
+        var speechActivity = GetObject(audioAnalysis, "speechActivity");
+        var speechCandidates = GetArray(speechActivity, "speechCandidates")
+            .OfType<JsonObject>()
+            .ToList();
+        var hasSpeechEvidence = speechActivity is not null;
         var transcription = GetObject(audioAnalysis, "transcription");
         var segments = GetArray(transcription, "segments");
         if (segments.Count == 0)
         {
             return turns;
         }
+        var repeatedTexts = segments
+            .OfType<JsonObject>()
+            .Select(segment => NormalizeTranscriptText(GetString(segment, "text", string.Empty)))
+            .Where(text => text.Length > 0)
+            .GroupBy(text => text, StringComparer.OrdinalIgnoreCase)
+            .Where(group => group.Count() >= 3)
+            .Select(group => group.Key)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         foreach (var segmentNode in segments)
         {
@@ -842,6 +866,10 @@ public sealed class TimelineVideoOverviewService
 
             var text = GetString(segment, "text", string.Empty);
             if (string.IsNullOrWhiteSpace(text))
+            {
+                continue;
+            }
+            if (ShouldRejectTranscriptSegment(segment, speechCandidates, hasSpeechEvidence, repeatedTexts))
             {
                 continue;
             }
@@ -867,6 +895,69 @@ public sealed class TimelineVideoOverviewService
 
         return turns;
     }
+
+    private static bool ShouldRejectTranscriptSegment(
+        JsonObject segment,
+        List<JsonObject> speechCandidates,
+        bool hasSpeechEvidence,
+        HashSet<string> repeatedTexts)
+    {
+        var text = GetString(segment, "text", string.Empty);
+        var normalizedText = NormalizeTranscriptText(text);
+        var startSec = GetDoubleAny(segment, ["startSec", "start_sec", "start"], 0) ?? 0;
+        var endSec = GetDoubleAny(segment, ["endSec", "end_sec", "end"], startSec) ?? startSec;
+        var speechOverlap = TranscriptSpeechOverlap(startSec, endSec, speechCandidates);
+        var speakerAssignment = GetObject(segment, "speakerAssignment");
+        var speakerOverlap = GetDoubleAny(speakerAssignment, ["overlapSec", "overlap_sec"], 0) ?? 0;
+        var confidence = GetDoubleAny(segment, ["confidence", "avg_logprob"], null);
+        var noSpeechProbability = GetDoubleAny(segment, ["noSpeechProbability", "no_speech_probability", "no_speech_prob"], null);
+
+        if (hasSpeechEvidence && speechOverlap < MinimumTranscriptSpeechOverlapSec)
+        {
+            return true;
+        }
+
+        if (noSpeechProbability.HasValue && noSpeechProbability.Value >= HighNoSpeechProbability)
+        {
+            return true;
+        }
+
+        if (KnownSilenceHallucinationPhrases.Contains(normalizedText)
+            && repeatedTexts.Contains(normalizedText)
+            && (speechOverlap < MinimumTranscriptSpeechOverlapSec || speakerOverlap <= 0))
+        {
+            return true;
+        }
+
+        return confidence.HasValue
+            && confidence.Value < LowTranscriptConfidence
+            && speakerOverlap <= 0
+            && KnownSilenceHallucinationPhrases.Contains(normalizedText);
+    }
+
+    private static double TranscriptSpeechOverlap(
+        double startSec,
+        double endSec,
+        List<JsonObject> speechCandidates)
+    {
+        if (endSec <= startSec)
+        {
+            return 0;
+        }
+
+        var overlap = 0.0;
+        foreach (var candidate in speechCandidates)
+        {
+            var candidateStart = GetDoubleAny(candidate, ["startSec", "start_sec", "original_start"], 0) ?? 0;
+            var candidateEnd = GetDoubleAny(candidate, ["endSec", "end_sec", "original_end"], candidateStart) ?? candidateStart;
+            overlap += Math.Max(0, Math.Min(endSec, candidateEnd) - Math.Max(startSec, candidateStart));
+        }
+
+        return overlap;
+    }
+
+    private static string NormalizeTranscriptText(string value)
+        => string.Concat((value ?? string.Empty).Where(character => !char.IsWhiteSpace(character))).ToLowerInvariant();
 
     private JsonObject NewAudioVerbalizationStatus(VideoCatalogRow? catalogRow)
     {
@@ -918,6 +1009,9 @@ public sealed class TimelineVideoOverviewService
     {
         if (turnCount <= 0)
         {
+            status["totalTurns"] = 0;
+            status["verbalizedTurns"] = 0;
+            status["unresolvedTurns"] = 0;
             return;
         }
 
@@ -934,7 +1028,12 @@ public sealed class TimelineVideoOverviewService
         {
             status["verbalizedTurns"] = turnCount;
             status["unresolvedTurns"] = 0;
+            return;
         }
+
+        var verbalizedTurns = Math.Min(turnCount, Math.Max(0, GetInt(status, "verbalizedTurns", 0)));
+        status["verbalizedTurns"] = verbalizedTurns;
+        status["unresolvedTurns"] = Math.Max(0, turnCount - verbalizedTurns);
     }
 
     private static JsonObject NewAudioVerbalizationResult(JsonObject status, JsonArray turns)
@@ -983,8 +1082,99 @@ public sealed class TimelineVideoOverviewService
 
     private JsonObject? ReadAudioVerbalizationStatus(string itemId)
     {
+        var payload = ReadAudioVerbalizationPayload(itemId);
+        return GetObject(payload, "status") ?? payload;
+    }
+
+    private JsonObject? ReadAudioVerbalizationPayload(string itemId)
+    {
         var resultPath = Path.Combine(GetAudioVerbalizationRoot(), GetZipSafeSegment(itemId), "audio-verbalization.json");
         return ReadVideoJsonFile(resultPath);
+    }
+
+    private JsonObject NewAudioVerbalizationResult(VideoCatalogRow? catalogRow, JsonObject status, JsonArray sourceTurns)
+    {
+        if (catalogRow is not null && !string.IsNullOrEmpty(catalogRow.ItemId))
+        {
+            var payload = ReadAudioVerbalizationPayload(catalogRow.ItemId);
+            var storedTurns = GetArray(payload, "turns");
+            if (storedTurns.Count > 0)
+            {
+                var filteredStoredTurns = FilterStoredAudioVerbalizationTurns(storedTurns, sourceTurns);
+                return new JsonObject
+                {
+                    ["available"] = filteredStoredTurns.Count > 0,
+                    ["status"] = (JsonObject)status.DeepClone(),
+                    ["turns"] = filteredStoredTurns,
+                    ["chunks"] = (JsonArray)GetArray(payload, "chunks").DeepClone(),
+                    ["message"] = string.Empty,
+                };
+            }
+        }
+
+        return NewAudioVerbalizationResult(status, sourceTurns);
+    }
+
+    private static JsonArray FilterStoredAudioVerbalizationTurns(JsonArray storedTurns, JsonArray sourceTurns)
+    {
+        var sourceIntervals = sourceTurns
+            .OfType<JsonObject>()
+            .Select(turn =>
+            {
+                var start = GetDoubleAny(turn, ["startSec", "start_sec"], null);
+                var end = GetDoubleAny(turn, ["endSec", "end_sec"], start);
+                return new
+                {
+                    Start = start,
+                    End = end,
+                    Text = NormalizeTranscriptText(GetString(turn, "text", string.Empty)),
+                };
+            })
+            .Where(turn => turn.Start.HasValue && turn.End.HasValue && turn.End.Value > turn.Start.Value)
+            .ToList();
+
+        var result = new JsonArray();
+        if (sourceIntervals.Count == 0)
+        {
+            return result;
+        }
+
+        foreach (var storedNode in storedTurns)
+        {
+            if (storedNode is not JsonObject storedTurn)
+            {
+                continue;
+            }
+
+            var start = GetDoubleAny(storedTurn, ["startSec", "start_sec"], null);
+            var end = GetDoubleAny(storedTurn, ["endSec", "end_sec"], start);
+            if (!start.HasValue || !end.HasValue || end.Value <= start.Value)
+            {
+                continue;
+            }
+
+            var text = NormalizeTranscriptText(GetString(storedTurn, "text", string.Empty));
+            var matchesSource = sourceIntervals.Any(source =>
+            {
+                var overlap = Math.Max(0, Math.Min(end.Value, source.End!.Value) - Math.Max(start.Value, source.Start!.Value));
+                if (overlap >= MinimumTranscriptSpeechOverlapSec)
+                {
+                    return true;
+                }
+
+                return text.Length > 0
+                    && source.Text.Equals(text, StringComparison.OrdinalIgnoreCase)
+                    && Math.Abs(source.Start.Value - start.Value) <= MinimumTranscriptSpeechOverlapSec
+                    && Math.Abs(source.End.Value - end.Value) <= MinimumTranscriptSpeechOverlapSec;
+            });
+
+            if (matchesSource)
+            {
+                result.Add(storedTurn.DeepClone());
+            }
+        }
+
+        return result;
     }
 
     private static JsonObject NormalizeAudioVerbalizationStatus(JsonObject status, VideoCatalogRow catalogRow)

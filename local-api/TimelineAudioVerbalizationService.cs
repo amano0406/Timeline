@@ -506,11 +506,9 @@ public sealed class TimelineAudioVerbalizationService
                     status["currentFileName"] = string.IsNullOrEmpty(context.FileName) ? target.FileName : context.FileName;
                     status["currentRelativePath"] = target.RelativePath;
                     status["currentItemTotalChunks"] = itemTotalChunks;
-                    if (totalChunks <= 0)
-                    {
-                        totalChunks += itemTotalChunks;
-                        status["totalChunks"] = totalChunks;
-                    }
+                    var remainingUnknownItems = Math.Max(0, targets.Count - completedItems - reviewItems - failedItems - skippedItems - 1);
+                    totalChunks = Math.Max(totalChunks, completedChunksBase + itemTotalChunks + remainingUnknownItems);
+                    status["totalChunks"] = totalChunks;
                     status["message"] = "Audio verbalization bulk job is processing the current file.";
                     WriteBulkStatus(status);
 
@@ -1030,7 +1028,19 @@ public sealed class TimelineAudioVerbalizationService
         {
             if (node.GetValueKind() == JsonValueKind.Number)
             {
-                return node.GetValue<long>();
+                var value = node.AsValue();
+                if (value.TryGetValue<long>(out var longValue))
+                {
+                    return longValue;
+                }
+                if (value.TryGetValue<int>(out var intValue))
+                {
+                    return intValue;
+                }
+                if (value.TryGetValue<double>(out var doubleValue))
+                {
+                    return (long)Math.Round(doubleValue);
+                }
             }
 
             return long.TryParse(ConvertTimelineText(node.GetValue<object>()), out var parsed)
