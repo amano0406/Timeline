@@ -117,6 +117,7 @@ public sealed class AudioFileDetailResult
     public string PipelineVersion { get; set; } = "";
     public string UnitType { get; set; } = "";
     public List<AudioTimelineTurn> Turns { get; set; } = [];
+    public AudioObservationInfo Observation { get; set; } = new();
     public AudioVerbalizationStatus AudioVerbalization { get; set; } = new();
 }
 
@@ -132,6 +133,86 @@ public sealed class AudioTimelineTurn
     public string PhoneTokens { get; set; } = "";
     public string UnitType { get; set; } = "";
     public double? Confidence { get; set; }
+    public double? AvgLogprob { get; set; }
+    public double? NoSpeechProbability { get; set; }
+    public double? TranscriptionSegmentIndex { get; set; }
+}
+
+public sealed class AudioObservationInfo
+{
+    public bool Available { get; set; }
+    public AudioObservationSource Source { get; set; } = new();
+    public AudioObservationCounts Counts { get; set; } = new();
+    public AudioObservationPipeline Pipeline { get; set; } = new();
+    public List<AudioObservationSpeaker> Speakers { get; set; } = [];
+    public AudioObservationMetrics Metrics { get; set; } = new();
+}
+
+public sealed class AudioObservationSource
+{
+    public string FileName { get; set; } = "";
+    public string SourceHash { get; set; } = "";
+    public double? DurationSec { get; set; }
+    public string ContainerName { get; set; } = "";
+    public string Extension { get; set; } = "";
+    public string AudioCodec { get; set; } = "";
+    public double? AudioChannels { get; set; }
+    public double? AudioSampleRate { get; set; }
+    public double? Bitrate { get; set; }
+    public string RecordedAt { get; set; } = "";
+    public string RecordedAtSource { get; set; } = "";
+    public string RecordedAtTimezone { get; set; } = "";
+}
+
+public sealed class AudioObservationCounts
+{
+    public int SpeechCandidateRanges { get; set; }
+    public int SpeakerTurns { get; set; }
+    public int TranscriptSegments { get; set; }
+    public int RawTranscriptSegments { get; set; }
+    public int RejectedTranscriptSegments { get; set; }
+    public int TimelineTurns { get; set; }
+    public int SpeakerCount { get; set; }
+}
+
+public sealed class AudioObservationPipeline
+{
+    public string PipelineVersion { get; set; } = "";
+    public string GenerationSignature { get; set; } = "";
+    public string ComputeMode { get; set; } = "";
+    public string SpeechActivityBackend { get; set; } = "";
+    public string SpeechActivityModelId { get; set; } = "";
+    public string SpeechActivityProfile { get; set; } = "";
+    public string SpeakerBackend { get; set; } = "";
+    public string SpeakerModelId { get; set; } = "";
+    public string SpeakerStatus { get; set; } = "";
+    public string TranscriptionBackend { get; set; } = "";
+    public string TranscriptionModelId { get; set; } = "";
+    public string TranscriptionLanguage { get; set; } = "";
+    public string TranscriptionDevice { get; set; } = "";
+    public string TranscriptionComputeType { get; set; } = "";
+    public string TranscriptionStatus { get; set; } = "";
+    public double? TranscriptionLanguageProbability { get; set; }
+}
+
+public sealed class AudioObservationSpeaker
+{
+    public string Speaker { get; set; } = "";
+    public int TurnCount { get; set; }
+}
+
+public sealed class AudioObservationMetrics
+{
+    public AudioObservationRange AvgLogprob { get; set; } = new();
+    public AudioObservationRange NoSpeechProbability { get; set; } = new();
+    public AudioObservationRange Confidence { get; set; } = new();
+}
+
+public sealed class AudioObservationRange
+{
+    public int Count { get; set; }
+    public double? Min { get; set; }
+    public double? Max { get; set; }
 }
 
 public sealed class AudioVerbalizationStartRequest
@@ -167,6 +248,9 @@ public sealed class AudioVerbalizationStatus
     public string StartedAt { get; set; } = "";
     public double ElapsedSec { get; set; }
     public double EstimatedRemainingSec { get; set; }
+    public double LastActivitySec { get; set; }
+    public double ProgressPercent { get; set; }
+    public bool ActiveJob { get; set; }
     public string UpdatedAt { get; set; } = "";
     public string Message { get; set; } = "";
 }

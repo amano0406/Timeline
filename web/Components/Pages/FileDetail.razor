@@ -55,7 +55,7 @@ else if (_file is not null)
 {
     var file = _file;
     <div class="grid gap-5 xl:grid-cols-[360px_1fr]">
-        <aside class="grid gap-5">
+        <aside class="tfa-file-detail-aside grid gap-5">
             <section class="tfa-card tfa-card-pad">
                 <h2 class="flex items-center gap-2 text-lg font-semibold">
                     <FaIcon Name="circle-info" Class="tfa-icon text-accent" />
@@ -128,7 +128,29 @@ else if (_file is not null)
                             <dt class="text-slate-500">残り目安</dt>
                             <dd>@UiFormat.Duration(verbalization.EstimatedRemainingSec)</dd>
                         }
+                        @if (!string.IsNullOrWhiteSpace(verbalization.CurrentChunkId))
+                        {
+                            <dt class="text-slate-500">現在の作業</dt>
+                            <dd>@VerbalizationCurrentChunkLabel(verbalization)</dd>
+                        }
+                        @if (verbalization.LastActivitySec > 0)
+                        {
+                            <dt class="text-slate-500">最終更新</dt>
+                            <dd>@VerbalizationLastActivityLabel(verbalization)</dd>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(verbalization.JobId))
+                        {
+                            <dt class="text-slate-500">実行状態</dt>
+                            <dd>@VerbalizationRuntimeLabel(verbalization)</dd>
+                        }
                     </dl>
+                    <div class="mt-4 h-2 overflow-hidden rounded-full bg-slate-200"
+                         role="progressbar"
+                         aria-valuemin="0"
+                         aria-valuemax="100"
+                         aria-valuenow="@VerbalizationProgressAriaValue(verbalization)">
+                        <div class="@VerbalizationProgressBarClass(verbalization)" style="@VerbalizationProgressBarStyle(verbalization)"></div>
+                    </div>
 
                     @if (!string.IsNullOrWhiteSpace(VerbalizationDisplayMessage(verbalization)))
                     {
@@ -172,7 +194,7 @@ else if (_file is not null)
             }
         </aside>
 
-        <section class="grid gap-5">
+        <section class="grid min-w-0 content-start gap-5">
             <div class="tfa-card tfa-card-pad">
                 <h2 class="flex items-center gap-2 text-lg font-semibold">
                     <FaIcon Name="headphones" Class="tfa-icon text-accent" />
@@ -193,6 +215,7 @@ else if (_file is not null)
 
             @if (HasVerbalizedTurns)
             {
+                var transcriptRows = TranscriptRows;
                 <div class="tfa-card overflow-hidden">
                     <div class="tfa-card-pad border-b border-line">
                         <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -201,49 +224,76 @@ else if (_file is not null)
                                 <span>文字起こし</span>
                             </h2>
                             <div class="flex flex-wrap gap-2 text-xs text-slate-500">
-                                <span class="tfa-status-pill border-teal-200 bg-teal-50 text-teal-800">@_verbalizationResult!.Turns.Count 区間</span>
-                                <span class="@VerbalizationPill(_verbalizationResult.Status.State)">
+                                <span class="tfa-status-pill border-teal-200 bg-teal-50 text-teal-800">@transcriptRows.Count 区間</span>
+                                <span class="@VerbalizationPill(_verbalizationResult!.Status.State)">
                                     <FaIcon Name="@VerbalizationIcon(_verbalizationResult.Status.State)" Class="tfa-icon !h-3 !w-3" />
                                     <span>@VerbalizationLabel(_verbalizationResult.Status.State)</span>
                                 </span>
                             </div>
                         </div>
                     </div>
-                    <div class="max-h-[680px] overflow-auto">
-                        <table class="tfa-table">
+                    <div id="@TranscriptScrollElementId" class="overflow-auto" style="max-height: 560px;">
+                        <table class="tfa-table" style="min-width: 980px;">
                             <thead class="sticky top-0">
                                 <tr>
                                     <th>再生</th>
                                     <th>時間</th>
                                     <th>話者</th>
-                                    <th>内容</th>
+                                    <th>元 / 補正</th>
+                                    <th>音声認識</th>
                                     <th>確度</th>
+                                    <th>補正根拠</th>
                                     <th>状態</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                @foreach (var turn in _verbalizationResult!.Turns)
+                                @foreach (var row in transcriptRows)
                                 {
-                                    <tr class="@ActiveTurnRowClass(turn.StartSec)">
+                                    var turn = row.Turn;
+                                    var sourceTurn = row.SourceTurn;
+                                    <tr class="@TranscriptRowClass(row)" data-turn-start="@TurnStartDataValue(row.StartSec)">
                                         <td>
-                                            <button class="tfa-icon-box text-accent" type="button" title="この位置から再生" @onclick="() => SeekAsync(turn.StartSec)">
-                                                <FaIcon Name="play" Class="tfa-icon !h-3.5 !w-3.5" />
+                                            <button class="@PlaybackButtonClass(row.StartSec)" type="button" title="@PlaybackTitle(row.StartSec)" @onclick="() => ToggleTurnPlaybackAsync(row.StartSec)">
+                                                <FaIcon Name="@PlaybackIcon(row.StartSec)" Class="tfa-icon !h-3.5 !w-3.5" />
                                             </button>
                                         </td>
                                         <td class="whitespace-nowrap font-mono text-xs">
-                                            @DurationLabel(turn.StartSec) - @DurationLabel(turn.EndSec)
+                                            @TranscriptRangeLabel(row)
                                         </td>
                                         <td>
-                                            <span class="tfa-status-pill border-slate-200 bg-slate-50">@SpeakerLabel(turn.Speaker)</span>
+                                            <span class="tfa-status-pill border-slate-200 bg-slate-50">@TranscriptSpeakerLabel(row)</span>
                                         </td>
-                                        <td class="max-w-[980px] whitespace-pre-wrap break-words text-sm leading-6 text-slate-900">
-                                            @VerbalizedText(turn)
+                                        <td class="max-w-[520px] whitespace-pre-wrap break-words text-sm leading-6">
+                                            @if (row.IsSilence)
+                                            {
+                                                <div class="text-slate-500">@TranscriptTextLabel(row)</div>
+                                            }
+                                            else if (turn is not null && ShouldShowSourceText(sourceTurn, turn))
+                                            {
+                                                <div class="tfa-transcript-source-text text-slate-500">@SourceTextLabel(sourceTurn)</div>
+                                                <div class="@($"mt-1 {SourceToRefinedClass(sourceTurn, turn)}")">@VerbalizedText(turn)</div>
+                                            }
+                                            else if (turn is not null)
+                                            {
+                                                <div class="@SourceToRefinedClass(sourceTurn, turn)">@VerbalizedText(turn)</div>
+                                            }
                                         </td>
                                         <td class="whitespace-nowrap font-mono text-xs text-slate-500">
-                                            @ConfidenceLabel(turn.Confidence)
+                                            <div>認識スコア: @MetricLabel(sourceTurn?.AvgLogprob)</div>
+                                            <div>無音判定: @MetricLabel(sourceTurn?.NoSpeechProbability)</div>
+                                        </td>
+                                        <td class="whitespace-nowrap font-mono text-xs text-slate-500">
+                                            @ConfidenceLabel(turn?.Confidence)
+                                        </td>
+                                        <td class="max-w-[360px] break-words text-xs leading-5 text-slate-600">
+                                            @TranscriptBasisLabel(row)
+                                            @if (turn is not null && HasUncertainTerms(turn))
+                                            {
+                                                <div class="mt-1 text-amber-800">要確認語: @UncertainTermsText(turn)</div>
+                                            }
                                         </td>
                                         <td>
-                                            <span class="@VerbalizedTurnPill(turn.Status)">@VerbalizedTurnLabel(turn.Status)</span>
+                                            <span class="@TranscriptStatusPill(row)">@TranscriptStatusLabel(row)</span>
                                         </td>
                                     </tr>
                                 }
@@ -264,6 +314,133 @@ else if (_file is not null)
                     </p>
                 </div>
             }
+
+            @if (_detail?.Observation.Available == true)
+            {
+                var observation = _detail.Observation;
+                <div class="tfa-card tfa-card-pad">
+                    <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                        <h2 class="flex items-center gap-2 text-lg font-semibold">
+                            <FaIcon Name="chart-simple" Class="tfa-icon text-accent" />
+                            <span>取得データ</span>
+                        </h2>
+                        <span class="tfa-status-pill border-sky-200 bg-sky-50 text-sky-800">取得値を表示</span>
+                    </div>
+
+                    <div class="tfa-audio-metric-strip mt-4">
+                        <div class="rounded-md border border-line bg-slate-50 p-3">
+                            <div class="text-xs text-slate-500">時間軸区間</div>
+                            <div class="mt-1 text-2xl font-semibold">@observation.Counts.TimelineTurns</div>
+                            <div class="mt-1 text-xs text-slate-500">文字起こし区間: @observation.Counts.TranscriptSegments</div>
+                        </div>
+                        <div class="rounded-md border border-line bg-slate-50 p-3">
+                            <div class="text-xs text-slate-500">発話候補</div>
+                            <div class="mt-1 text-2xl font-semibold">@observation.Counts.SpeechCandidateRanges</div>
+                            <div class="mt-1 text-xs text-slate-500">話者区間: @observation.Counts.SpeakerTurns</div>
+                        </div>
+                        <div class="rounded-md border border-line bg-slate-50 p-3">
+                            <div class="text-xs text-slate-500">補正結果</div>
+                            <div class="mt-1 text-2xl font-semibold">@_detail.AudioVerbalization.VerbalizedTurns / @_detail.AudioVerbalization.TotalTurns</div>
+                            <div class="mt-1 text-xs text-slate-500">未解決区間: @_detail.AudioVerbalization.UnresolvedTurns</div>
+                        </div>
+                        <div class="rounded-md border border-line bg-slate-50 p-3">
+                            <div class="text-xs text-slate-500">音声認識指標</div>
+                            <div class="mt-1 font-mono text-sm">認識スコア: @RangeLabel(observation.Metrics.AvgLogprob)</div>
+                            <div class="mt-1 font-mono text-xs text-slate-500">無音判定: @RangeLabel(observation.Metrics.NoSpeechProbability)</div>
+                        </div>
+                    </div>
+
+                    <div class="tfa-audio-observation-columns mt-4">
+                        <section class="rounded-md border border-line bg-slate-50 p-3">
+                            <h3 class="text-sm font-semibold">話者別区間数</h3>
+                            <div class="mt-3 grid gap-2">
+                                @for (var index = 0; index < observation.Speakers.Count; index++)
+                                {
+                                    var speaker = observation.Speakers[index];
+                                    <div class="grid grid-cols-[110px_1fr_48px] items-center gap-2 text-sm">
+                                        <span class="font-mono text-xs">@SpeakerLabel(speaker.Speaker)</span>
+                                        <div class="h-2 overflow-hidden rounded-full bg-slate-200">
+                                            <div class="h-full rounded-full" style="@SpeakerBarStyle(speaker, index)"></div>
+                                        </div>
+                                        <span class="text-right font-mono text-xs text-slate-600">@speaker.TurnCount</span>
+                                    </div>
+                                }
+                            </div>
+                        </section>
+
+                        <section class="rounded-md border border-line bg-slate-50 p-3">
+                            <h3 class="text-sm font-semibold">処理情報</h3>
+                            <dl class="tfa-audio-observation-dl mt-3">
+                                <dt class="text-slate-500">処理定義</dt>
+                                <dd class="break-all font-mono text-xs">@EmptyText(observation.Pipeline.PipelineVersion)</dd>
+                                <dt class="text-slate-500">発話検出</dt>
+                                <dd class="break-all font-mono text-xs">@EmptyText(observation.Pipeline.SpeechActivityBackend) / @EmptyText(observation.Pipeline.SpeechActivityModelId)</dd>
+                                <dt class="text-slate-500">話者分離</dt>
+                                <dd class="break-all font-mono text-xs">@EmptyText(observation.Pipeline.SpeakerBackend) / @EmptyText(observation.Pipeline.SpeakerModelId)</dd>
+                                <dt class="text-slate-500">文字起こし</dt>
+                                <dd class="break-all font-mono text-xs">@EmptyText(observation.Pipeline.TranscriptionModelId) / @DeviceValueLabel(observation.Pipeline.TranscriptionDevice) / @EmptyText(observation.Pipeline.TranscriptionComputeType)</dd>
+                                <dt class="text-slate-500">音声形式</dt>
+                                <dd class="break-all font-mono text-xs">@EmptyText(observation.Source.AudioCodec) / @IntLikeLabel(observation.Source.AudioSampleRate) Hz / @IntLikeLabel(observation.Source.AudioChannels) ch</dd>
+                                <dt class="text-slate-500">記録日時</dt>
+                                <dd class="break-all font-mono text-xs">@EmptyText(observation.Source.RecordedAt) / @RecordedAtSourceLabel(observation.Source.RecordedAtSource) / @EmptyText(observation.Source.RecordedAtTimezone)</dd>
+                            </dl>
+                        </section>
+                    </div>
+                </div>
+
+                <div class="tfa-card tfa-card-pad">
+                    <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                        <h2 class="flex items-center gap-2 text-lg font-semibold">
+                            <FaIcon Name="diagram-project" Class="tfa-icon text-accent" />
+                            <span>処理パイプライン</span>
+                        </h2>
+                        <span class="tfa-status-pill border-slate-200 bg-slate-50 text-slate-700">@EmptyText(observation.Pipeline.PipelineVersion)</span>
+                    </div>
+                    <div class="tfa-audio-pipeline-list mt-4">
+                        <div class="tfa-audio-pipeline-step rounded-md border border-line bg-slate-50 p-3">
+                            <div class="text-xs font-semibold text-slate-500">1. 音声正規化</div>
+                            <div class="mt-2 break-all font-mono text-xs leading-5">
+                                形式: @EmptyText(observation.Source.AudioCodec)<br />
+                                サンプルレート: @IntLikeLabel(observation.Source.AudioSampleRate) Hz<br />
+                                チャンネル: @IntLikeLabel(observation.Source.AudioChannels)
+                            </div>
+                        </div>
+                        <div class="tfa-audio-pipeline-step rounded-md border border-line bg-slate-50 p-3">
+                            <div class="text-xs font-semibold text-slate-500">2. 発話候補</div>
+                            <div class="mt-2 break-all font-mono text-xs leading-5">
+                                方式: @EmptyText(observation.Pipeline.SpeechActivityBackend)<br />
+                                設定: @EmptyText(observation.Pipeline.SpeechActivityProfile)<br />
+                                候補数: @observation.Counts.SpeechCandidateRanges
+                            </div>
+                        </div>
+                        <div class="tfa-audio-pipeline-step rounded-md border border-line bg-slate-50 p-3">
+                            <div class="text-xs font-semibold text-slate-500">3. 話者分離</div>
+                            <div class="mt-2 break-all font-mono text-xs leading-5">
+                                モデル: @EmptyText(observation.Pipeline.SpeakerModelId)<br />
+                                状態: @StatusValueLabel(observation.Pipeline.SpeakerStatus)<br />
+                                話者区間: @observation.Counts.SpeakerTurns
+                            </div>
+                        </div>
+                        <div class="tfa-audio-pipeline-step rounded-md border border-line bg-slate-50 p-3">
+                            <div class="text-xs font-semibold text-slate-500">4. 文字起こし</div>
+                            <div class="mt-2 break-all font-mono text-xs leading-5">
+                                モデル: @EmptyText(observation.Pipeline.TranscriptionModelId)<br />
+                                言語: @LanguageValueLabel(observation.Pipeline.TranscriptionLanguage)<br />
+                                実行環境: @DeviceValueLabel(observation.Pipeline.TranscriptionDevice)
+                            </div>
+                        </div>
+                        <div class="tfa-audio-pipeline-step rounded-md border border-line bg-slate-50 p-3">
+                            <div class="text-xs font-semibold text-slate-500">5. 時間軸統合</div>
+                            <div class="mt-2 break-all font-mono text-xs leading-5">
+                                時間軸区間: @observation.Counts.TimelineTurns<br />
+                                話者数: @observation.Counts.SpeakerCount<br />
+                                確度: @RangeLabel(observation.Metrics.Confidence)
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }
         </section>
     </div>
+
 }

@@ -13,8 +13,33 @@ public partial class FileDetail
         }
 
         _activeTurnStartSec = Math.Max(0, seconds);
+        _audioPlaying = true;
         StateHasChanged();
         await JS.InvokeVoidAsync("timelineAudioPlayer.seek", AudioElementId, Math.Max(0, seconds));
+        await ScrollTranscriptToTurnAsync(_activeTurnStartSec.Value);
+    }
+
+    private async Task ToggleTurnPlaybackAsync(double seconds)
+    {
+        if (IsTurnPlaying(seconds))
+        {
+            await PauseAudioAsync();
+            return;
+        }
+
+        await SeekAsync(seconds);
+    }
+
+    private async Task PauseAudioAsync()
+    {
+        if (_detail?.AudioAvailable != true)
+        {
+            return;
+        }
+
+        _audioPlaying = false;
+        StateHasChanged();
+        await JS.InvokeVoidAsync("timelineAudioPlayer.pause", AudioElementId);
     }
 
     [JSInvokable]
@@ -27,6 +52,22 @@ public partial class FileDetail
         }
 
         _activeTurnStartSec = nextStart;
+        await InvokeAsync(StateHasChanged);
+        if (nextStart is not null)
+        {
+            await ScrollTranscriptToTurnAsync(nextStart.Value);
+        }
+    }
+
+    [JSInvokable]
+    public async Task OnAudioPlaybackStateChanged(bool playing)
+    {
+        if (_audioPlaying == playing)
+        {
+            return;
+        }
+
+        _audioPlaying = playing;
         await InvokeAsync(StateHasChanged);
     }
 
@@ -60,13 +101,14 @@ public partial class FileDetail
 
     private double? FindActiveTurnStart(double currentTime)
     {
-        if (_verbalizationResult?.Turns.Count > 0)
+        var rows = TranscriptRows;
+        if (rows.Count > 0)
         {
-            foreach (var turn in _verbalizationResult.Turns)
+            foreach (var row in rows)
             {
-                if (currentTime >= turn.StartSec && currentTime < Math.Max(turn.StartSec, turn.EndSec))
+                if (currentTime >= row.StartSec && currentTime < Math.Max(row.StartSec, row.EndSec))
                 {
-                    return turn.StartSec;
+                    return row.StartSec;
                 }
             }
         }
@@ -83,5 +125,19 @@ public partial class FileDetail
         }
 
         return null;
+    }
+
+    private async Task ScrollTranscriptToTurnAsync(double startSec)
+    {
+        try
+        {
+            await JS.InvokeVoidAsync(
+                "timelineAudioPlayer.scrollTurnIntoView",
+                TranscriptScrollElementId,
+                TurnStartDataValue(startSec));
+        }
+        catch
+        {
+        }
     }
 }

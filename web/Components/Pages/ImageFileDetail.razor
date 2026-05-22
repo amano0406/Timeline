@@ -12,16 +12,14 @@
 </TimelineBreadcrumbs>
 
 <div class="mb-6">
-    <div>
-        <h1 class="tfa-title flex items-center gap-2">
-            <FaIcon Name="image" Class="tfa-icon text-accent" />
-            <span>@(_detail?.File is { } titleFile ? DisplayName(titleFile) : "画像詳細")</span>
-        </h1>
-        @if (_detail?.File is { } loadedFile)
-        {
-            <p class="mt-2 break-all font-mono text-sm text-slate-600">@loadedFile.SourcePath</p>
-        }
-    </div>
+    <h1 class="tfa-title flex items-center gap-2">
+        <FaIcon Name="image" Class="tfa-icon text-accent" />
+        <span>@(_detail?.File is { } titleFile ? DisplayName(titleFile) : "画像詳細")</span>
+    </h1>
+    @if (_detail?.File is { } loadedFile)
+    {
+        <p class="mt-2 break-all font-mono text-sm text-slate-600">@loadedFile.SourcePath</p>
+    }
 </div>
 
 @if (_error is not null)
@@ -55,15 +53,17 @@ else
 {
     var file = _detail.File!;
     var record = _detail.Record;
+    var visual = _detail.Visual;
+    var layoutInfo = _detail.Layout;
 
-    <div class="grid gap-5 xl:grid-cols-[360px_1fr]">
-        <aside class="grid gap-5">
+    <div class="tfa-image-detail-layout">
+        <aside class="tfa-image-detail-aside grid gap-4">
             <section class="tfa-card tfa-card-pad">
                 <h2 class="flex items-center gap-2 text-lg font-semibold">
                     <FaIcon Name="circle-info" Class="tfa-icon text-accent" />
                     <span>ファイル情報</span>
                 </h2>
-                <dl class="mt-4 grid grid-cols-2 gap-2 text-sm">
+                <dl class="mt-4 grid grid-cols-[max-content_minmax(0,1fr)] gap-x-4 gap-y-2 text-sm">
                     <dt class="text-slate-500">状態</dt>
                     <dd>
                         <span class="@ArtifactPillClass(file)">
@@ -71,7 +71,7 @@ else
                             <span>@ArtifactLabel(file)</span>
                         </span>
                     </dd>
-                    <dt class="text-slate-500">日時</dt>
+                    <dt class="text-slate-500">更新日時</dt>
                     <dd class="inline-flex items-center gap-1.5">
                         <FaIcon Name="clock" Class="tfa-icon !h-3 !w-3 text-slate-400" />
                         @UiFormat.ShortDate(file.ModifiedAt)
@@ -94,10 +94,201 @@ else
 
             <section class="tfa-card tfa-card-pad">
                 <h2 class="flex items-center gap-2 text-lg font-semibold">
+                    <FaIcon Name="chart-simple" Class="tfa-icon text-accent" />
+                    <span>取得データ</span>
+                </h2>
+                <div class="mt-4 grid gap-3">
+                    <div class="tfa-image-data-row">
+                        <span>OCR座標</span>
+                        <strong>@OcrBlocksWithBbox.Count() / @_detail.TextBlocks.Count</strong>
+                    </div>
+                    <div class="tfa-image-data-row">
+                        <span>レイアウト格子</span>
+                        <strong>@layoutInfo.Grid.Count</strong>
+                    </div>
+                    <div class="tfa-image-data-row">
+                        <span>色パレット</span>
+                        <strong>@layoutInfo.ColorPalette.Count</strong>
+                    </div>
+                    <div class="tfa-image-data-row">
+                        <span>検索キーワード</span>
+                        <strong>@_detail.SearchKeywords.Count</strong>
+                    </div>
+                    <div class="tfa-image-data-row">
+                        <span>生成済みオーバーレイ</span>
+                        <strong>@(_detail.Artifacts.HasDebugOverlay ? "あり" : "なし")</strong>
+                    </div>
+                </div>
+            </section>
+
+            @if (layoutInfo.ColorPalette.Count > 0)
+            {
+                <section class="tfa-card tfa-card-pad">
+                    <h2 class="flex items-center gap-2 text-lg font-semibold">
+                        <FaIcon Name="palette" Class="tfa-icon text-accent" />
+                        <span>色の傾向</span>
+                    </h2>
+                    <div class="mt-4 grid gap-2">
+                        @foreach (var color in layoutInfo.ColorPalette.Take(8))
+                        {
+                            <div class="flex items-center gap-3 text-sm">
+                                <span class="tfa-image-color-swatch" style="@PaletteStyle(color)"></span>
+                                <span class="font-mono text-slate-700">@ColorLabel(color)</span>
+                            </div>
+                        }
+                    </div>
+                </section>
+            }
+        </aside>
+
+        <main class="grid min-w-0 gap-4">
+            <section class="tfa-card overflow-hidden">
+                <div class="tfa-card-pad flex flex-col gap-3 border-b border-line lg:flex-row lg:items-center lg:justify-between">
+                    <div>
+                        <h2 class="flex items-center gap-2 text-lg font-semibold">
+                            <FaIcon Name="expand" Class="tfa-icon text-accent" />
+                            <span>画像プレビュー</span>
+                        </h2>
+                        <p class="mt-1 text-sm text-slate-600">OCRで取れている位置と、取れていない領域を画像上で確認できます。</p>
+                    </div>
+                    <div class="flex flex-wrap items-center gap-2">
+                        <button type="button"
+                                class="@LayerButtonClass(_imageLayer, ImageLayerOcr)"
+                                @onclick="@(() => SetImageLayer(ImageLayerOcr))">
+                            OCRボックス
+                        </button>
+                        <button type="button"
+                                class="@LayerButtonClass(_imageLayer, ImageLayerGrid)"
+                                @onclick="@(() => SetImageLayer(ImageLayerGrid))">
+                            OCRなし領域
+                        </button>
+                        <button type="button"
+                                class="@LayerButtonClass(_imageLayer, ImageLayerDebug, !_detail.Artifacts.HasDebugOverlay)"
+                                disabled="@(!_detail.Artifacts.HasDebugOverlay)"
+                                @onclick="@(() => SetImageLayer(ImageLayerDebug))">
+                            生成済みオーバーレイ
+                        </button>
+                        <button type="button"
+                                class="@LayerButtonClass(_imageLayer, ImageLayerSource)"
+                                @onclick="@(() => SetImageLayer(ImageLayerSource))">
+                            画像のみ
+                        </button>
+                        <button type="button"
+                                class="tfa-image-layer-button"
+                                @onclick="ToggleOcrLabels">
+                            @(_showOcrLabels ? "ラベル非表示" : "ラベル表示")
+                        </button>
+                    </div>
+                </div>
+                <div class="tfa-image-preview-shell">
+                    <div class="tfa-image-stage">
+                        <img src="@VisibleImageUrl(file)"
+                             alt="@DisplayName(file)"
+                             class="tfa-image-preview" />
+
+                        @if (_imageLayer == ImageLayerOcr)
+                        {
+                            @foreach (var block in OcrBlocksWithBbox)
+                            {
+                                <div class="@OverlayBoxClass(block)" style="@BboxStyle(block.BboxNorm)">
+                                    @if (_showOcrLabels)
+                                    {
+                                        <span>@BlockText(block)</span>
+                                    }
+                                </div>
+                            }
+                        }
+
+                        @if (_imageLayer == ImageLayerGrid)
+                        {
+                            @foreach (var cell in GridCellsWithBbox)
+                            {
+                                var textCount = TextRegionCountForCell(cell);
+                                <div class="@GridCellClass(cell)" style="@BboxStyle(cell.BboxNorm)">
+                                    @if (_showOcrLabels)
+                                    {
+                                        <span>@GridCellLabel(cell, textCount)</span>
+                                    }
+                                </div>
+                            }
+                        }
+                    </div>
+                </div>
+            </section>
+
+            <section class="tfa-card overflow-hidden">
+                <div class="tfa-card-pad flex flex-col gap-2 border-b border-line sm:flex-row sm:items-center sm:justify-between">
+                    <h2 class="flex items-center gap-2 text-lg font-semibold">
+                        <FaIcon Name="align-left" Class="tfa-icon text-accent" />
+                        <span>OCR全文</span>
+                    </h2>
+                    <span class="@ConfidencePill(record.HasText ? "high" : "")">@TextSummary(record)</span>
+                </div>
+                @if (string.IsNullOrWhiteSpace(record.FullText))
+                {
+                    <div class="p-5 text-sm text-slate-600">読み取った文字はありません。</div>
+                }
+                else
+                {
+                    <div class="p-5">
+                        <div class="tfa-image-fulltext">@record.FullText</div>
+                    </div>
+                }
+            </section>
+        </main>
+
+        <aside class="tfa-image-detail-side grid gap-4">
+            <section class="tfa-card tfa-card-pad">
+                <h2 class="flex items-center gap-2 text-lg font-semibold">
+                    <FaIcon Name="file-lines" Class="tfa-icon text-accent" />
+                    <span>画像説明</span>
+                </h2>
+                @if (HasVisualDescription(visual))
+                {
+                    <div class="mt-4 grid gap-3 text-sm">
+                        @if (!string.IsNullOrWhiteSpace(visual.Caption))
+                        {
+                            <div>
+                                <div class="tfa-kicker">短い説明</div>
+                                <p class="mt-1 leading-6 text-slate-900">@visual.Caption</p>
+                            </div>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(visual.SceneSummary))
+                        {
+                            <div>
+                                <div class="tfa-kicker">画像の内容</div>
+                                <p class="mt-1 leading-6 text-slate-900">@visual.SceneSummary</p>
+                            </div>
+                        }
+                        @if (visual.Observations.Count > 0)
+                        {
+                            <div>
+                                <div class="tfa-kicker">観察項目</div>
+                                <ul class="mt-1 grid gap-1 leading-6 text-slate-900">
+                                    @foreach (var observation in visual.Observations)
+                                    {
+                                        <li>@observation</li>
+                                    }
+                                </ul>
+                            </div>
+                        }
+                    </div>
+                }
+                else
+                {
+                    <div class="mt-4 rounded-md border border-line bg-slate-50 p-4 text-sm leading-6 text-slate-600">
+                        この画像レコードでは、画像説明データがまだ入っていません。
+                        Timeline本体では説明文を新規生成せず、TimelineForImageが保存した画像説明データだけを表示します。
+                    </div>
+                }
+            </section>
+
+            <section class="tfa-card tfa-card-pad">
+                <h2 class="flex items-center gap-2 text-lg font-semibold">
                     <FaIcon Name="calendar-days" Class="tfa-icon text-accent" />
                     <span>時間情報</span>
                 </h2>
-                <dl class="mt-4 grid grid-cols-2 gap-2 text-sm">
+                <dl class="mt-4 grid grid-cols-[max-content_minmax(0,1fr)] gap-x-4 gap-y-2 text-sm">
                     <dt class="text-slate-500">時間軸</dt>
                     <dd>@UiFormat.ShortDate(record.TimelineAt)</dd>
                     <dt class="text-slate-500">撮影日時</dt>
@@ -105,6 +296,26 @@ else
                     <dt class="text-slate-500">更新日時</dt>
                     <dd>@UiFormat.ShortDate(record.ModifiedAt)</dd>
                 </dl>
+            </section>
+
+            <section class="tfa-card tfa-card-pad">
+                <h2 class="flex items-center gap-2 text-lg font-semibold">
+                    <FaIcon Name="tags" Class="tfa-icon text-accent" />
+                    <span>検索キーワード</span>
+                </h2>
+                @if (_detail.SearchKeywords.Count == 0)
+                {
+                    <p class="mt-4 text-sm text-slate-600">検索キーワードはありません。</p>
+                }
+                else
+                {
+                    <div class="mt-4 flex flex-wrap gap-2">
+                        @foreach (var keyword in _detail.SearchKeywords.Take(30))
+                        {
+                            <span class="tfa-status-pill border-slate-200 bg-slate-50 text-slate-700">@keyword</span>
+                        }
+                    </div>
+                }
             </section>
 
             @if (record.Warnings.Count > 0 || record.NeedsReview)
@@ -117,7 +328,7 @@ else
                     <div class="mt-4 grid gap-2 text-sm text-slate-700">
                         @if (record.NeedsReview)
                         {
-                            <span class="tfa-status-pill border-amber-200 bg-amber-50 text-amber-900">未解決あり</span>
+                            <span class="tfa-status-pill border-amber-200 bg-amber-50 text-amber-900">確認が必要</span>
                         }
                         @foreach (var warning in record.Warnings)
                         {
@@ -127,123 +338,5 @@ else
                 </section>
             }
         </aside>
-
-        <section class="grid gap-5">
-            <section class="tfa-card overflow-hidden">
-                <div class="tfa-card-pad border-b border-line">
-                    <h2 class="flex items-center gap-2 text-lg font-semibold">
-                        <FaIcon Name="image" Class="tfa-icon text-accent" />
-                        <span>画像プレビュー</span>
-                    </h2>
-                </div>
-                <div class="bg-slate-50 p-4">
-                    <img src="@ImageSourceUrl(file)"
-                         alt="@DisplayName(file)"
-                         class="mx-auto rounded-md border border-line bg-white"
-                         style="max-height: 680px; max-width: 100%; object-fit: contain;" />
-                </div>
-            </section>
-
-            <section class="tfa-card overflow-hidden">
-                <div class="tfa-card-pad flex flex-col gap-2 border-b border-line sm:flex-row sm:items-center sm:justify-between">
-                    <h2 class="flex items-center gap-2 text-lg font-semibold">
-                        <FaIcon Name="file-lines" Class="tfa-icon text-accent" />
-                        <span>分析結果</span>
-                    </h2>
-                    <div class="flex flex-wrap gap-2 text-xs text-slate-500">
-                        <span class="@ArtifactPillClass(file)">@ArtifactLabel(file)</span>
-                        @if (record.ContentTypes.Count > 0)
-                        {
-                            <span class="tfa-status-pill border-slate-200 bg-slate-50 text-slate-700">@string.Join(" / ", record.ContentTypes)</span>
-                        }
-                    </div>
-                </div>
-
-                @if (!_detail.ImageRecordAvailable)
-                {
-                    <div class="p-5 text-sm text-slate-600">
-                        この画像の分析結果はまだ作成されていません。
-                    </div>
-                }
-                else
-                {
-                    <div class="grid gap-4 p-5 lg:grid-cols-3">
-                        <div class="rounded-md border border-line bg-slate-50 p-4">
-                            <div class="tfa-kicker">画像種別</div>
-                            <div class="mt-2 text-lg font-semibold">@ImageKindLabel(record.ImageKind)</div>
-                        </div>
-                        <div class="rounded-md border border-line bg-slate-50 p-4">
-                            <div class="tfa-kicker">OCRブロック</div>
-                            <div class="mt-2 text-lg font-semibold">@record.OcrBlockCount 件</div>
-                        </div>
-                        <div class="rounded-md border border-line bg-slate-50 p-4">
-                            <div class="tfa-kicker">明るさ / コントラスト</div>
-                            <div class="mt-2 text-lg font-semibold">@QualityLabel(record)</div>
-                        </div>
-                    </div>
-                }
-            </section>
-
-            @if (_detail.ImageRecordAvailable)
-            {
-                <section class="tfa-card overflow-hidden">
-                    <div class="tfa-card-pad border-b border-line">
-                        <h2 class="flex items-center gap-2 text-lg font-semibold">
-                            <FaIcon Name="align-left" Class="tfa-icon text-accent" />
-                            <span>読み取った文字</span>
-                        </h2>
-                    </div>
-                    @if (string.IsNullOrWhiteSpace(record.FullText))
-                    {
-                        <div class="p-5 text-sm text-slate-600">読み取った文字はありません。</div>
-                    }
-                    else
-                    {
-                        <div class="p-5">
-                            <div class="rounded-md border border-line bg-slate-50 p-4 font-mono text-sm leading-6 text-slate-900"
-                                 style="white-space: pre-wrap; overflow-wrap: anywhere;">@record.FullText</div>
-                        </div>
-                    }
-                </section>
-
-                @if (_detail.TextBlocks.Count > 0)
-                {
-                    <details class="tfa-card overflow-hidden">
-                        <summary class="cursor-pointer list-none border-b border-line">
-                            <div class="tfa-card-pad flex items-center justify-between gap-3">
-                                <h2 class="flex items-center gap-2 text-lg font-semibold">
-                                    <FaIcon Name="table-list" Class="tfa-icon text-accent" />
-                                    <span>文字ブロック</span>
-                                </h2>
-                                <span class="text-sm text-slate-500">@_detail.TextBlocks.Count 件</span>
-                            </div>
-                        </summary>
-                        <div class="max-h-[680px] overflow-auto">
-                            <table class="tfa-table">
-                                <thead class="sticky top-0">
-                                    <tr>
-                                        <th>番号</th>
-                                        <th>文字</th>
-                                        <th>信頼度</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    @foreach (var block in _detail.TextBlocks)
-                                    {
-                                        <tr>
-                                            <td class="whitespace-nowrap font-mono text-xs text-slate-500">@block.Index</td>
-                                            <td class="max-w-[980px] break-words text-sm leading-6 text-slate-900">@BlockText(block)</td>
-                                            <td class="whitespace-nowrap">
-                                                <span class="@ConfidencePill(block.ConfidenceLevel)">@ConfidenceLabel(block)</span>
-                                            </td>
-                                        </tr>
-                                    }
-                                </tbody>
-                            </table>
-                        </div>
-                    </details>
-                }
-            }
-        </section>
     </div>
 }

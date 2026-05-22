@@ -11,7 +11,9 @@ internal static class TimelineProxyEndpoints
     {
         endpoints.MapGet("/api/audio/source", ProxyAudioSourceAsync);
         endpoints.MapGet("/api/image/source", ProxyImageSourceAsync);
+        endpoints.MapGet("/api/image/artifact", ProxyImageArtifactAsync);
         endpoints.MapGet("/api/video/source", ProxyVideoSourceAsync);
+        endpoints.MapGet("/api/video/artifact", ProxyVideoArtifactAsync);
         endpoints.MapGet("/api/download/file", ProxyDownloadFileAsync);
 
         return endpoints;
@@ -65,6 +67,28 @@ internal static class TimelineProxyEndpoints
             cancellationToken);
     }
 
+    private static async Task ProxyImageArtifactAsync(
+        HttpContext context,
+        IHttpClientFactory httpClientFactory,
+        CancellationToken cancellationToken)
+    {
+        var path = context.Request.Query["path"].ToString();
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            await WriteBadRequestAsync(context, "path is required.", cancellationToken);
+            return;
+        }
+
+        await ProxyHelperFileAsync(
+            context,
+            httpClientFactory,
+            $"products/image/files/artifact?path={Uri.EscapeDataString(path)}",
+            "Image artifact was not found.",
+            "application/octet-stream",
+            forwardContentDisposition: false,
+            cancellationToken);
+    }
+
     private static async Task ProxyVideoSourceAsync(
         HttpContext context,
         IHttpClientFactory httpClientFactory,
@@ -82,6 +106,28 @@ internal static class TimelineProxyEndpoints
             httpClientFactory,
             $"products/video/files/source?path={Uri.EscapeDataString(path)}",
             "Video source was not found.",
+            "application/octet-stream",
+            forwardContentDisposition: false,
+            cancellationToken);
+    }
+
+    private static async Task ProxyVideoArtifactAsync(
+        HttpContext context,
+        IHttpClientFactory httpClientFactory,
+        CancellationToken cancellationToken)
+    {
+        var path = context.Request.Query["path"].ToString();
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            await WriteBadRequestAsync(context, "path is required.", cancellationToken);
+            return;
+        }
+
+        await ProxyHelperFileAsync(
+            context,
+            httpClientFactory,
+            $"products/video/files/artifact?path={Uri.EscapeDataString(path)}",
+            "Video artifact was not found.",
             "application/octet-stream",
             forwardContentDisposition: false,
             cancellationToken);

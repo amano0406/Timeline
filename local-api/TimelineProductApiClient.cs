@@ -253,6 +253,10 @@ public sealed class TimelineProductApiClient
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
         }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw new InvalidOperationException($"{productName} health check timed out at {baseUrl.TrimEnd('/')}/health. The product may be busy or stopped.");
+        }
 
         throw new InvalidOperationException($"{productName} is not running. Start the product explicitly before accessing this endpoint.");
     }

@@ -21,10 +21,29 @@
     <div class="flex flex-wrap gap-2">
         <button class="tfa-button-primary gap-2" @onclick="StartRefreshAsync" disabled="@(ListBusy || _refreshing || _downloading || !CanRefresh)">
             <FaIcon Name="@(_refreshing ? "spinner" : "file-arrow-up")" Class="@($"tfa-icon {(_refreshing ? "fa-spin" : "")}")" />
-            <span>@(_refreshing ? "処理中" : "ZIPをアップロード")</span>
+            <span>@(_refreshing ? "取り込み中" : "エクスポートZIPを取り込む")</span>
         </button>
     </div>
 </div>
+
+<section class="tfa-card tfa-card-pad mb-5">
+    <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div class="min-w-0">
+            <h2 class="flex items-center gap-2 text-lg font-semibold">
+                <FaIcon Name="file-zipper" Class="tfa-icon text-accent" />
+                <span>ChatGPTの履歴を取り込む</span>
+            </h2>
+            <p class="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
+                ChatGPTからダウンロードしたエクスポートZIPを選択してください。ZIPはローカルで読み取り、元ファイルは削除・変更しません。
+                取り込み後、スキャンを実行するとTimelineの時間軸に反映されます。
+            </p>
+        </div>
+        <button class="tfa-button-primary shrink-0 gap-2" @onclick="StartRefreshAsync" disabled="@(ListBusy || _refreshing || _downloading || !CanRefresh)">
+            <FaIcon Name="@(_refreshing ? "spinner" : "file-arrow-up")" Class="@($"tfa-icon {(_refreshing ? "fa-spin" : "")}")" />
+            <span>@(_refreshing ? "取り込み中" : "ZIPを選択")</span>
+        </button>
+    </div>
+</section>
 
 @if (_error is not null)
 {

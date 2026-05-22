@@ -286,6 +286,9 @@ public sealed class TimelineVideoOverviewService
                 ["file"] = null,
                 ["videoAvailable"] = false,
                 ["timelineAvailable"] = false,
+                ["artifacts"] = NewVideoArtifacts(null, null),
+                ["activity"] = NewVideoActivity(null),
+                ["frames"] = new JsonArray(),
                 ["turns"] = new JsonArray(),
                 ["audioVerbalization"] = NewAudioVerbalizationStatus(null),
                 ["audioVerbalizationResult"] = NewAudioVerbalizationResult(
@@ -304,6 +307,9 @@ public sealed class TimelineVideoOverviewService
         var turns = GetTranscriptTurns(catalogRow);
         var audioVerbalization = NewAudioVerbalizationStatus(catalogRow);
         ApplyTranscriptTurnCounts(audioVerbalization, turns.Count);
+        var videoRecord = !string.IsNullOrEmpty(catalogRow?.VideoRecordPath)
+            ? ReadVideoJsonFile(catalogRow.VideoRecordPath)
+            : null;
 
         return new JsonObject
         {
@@ -314,10 +320,159 @@ public sealed class TimelineVideoOverviewService
             ["timelineAvailable"] = catalogRow is not null
                 && !string.IsNullOrEmpty(catalogRow.TimelinePath)
                 && File.Exists(catalogRow.TimelinePath),
+            ["artifacts"] = NewVideoArtifacts(catalogRow, videoRecord),
+            ["activity"] = NewVideoActivity(videoRecord),
+            ["frames"] = NewVideoFrames(videoRecord),
             ["turns"] = turns,
             ["audioVerbalization"] = audioVerbalization,
             ["audioVerbalizationResult"] = NewAudioVerbalizationResult(catalogRow, audioVerbalization, turns),
         };
+    }
+
+    private JsonObject NewVideoArtifacts(VideoCatalogRow? catalogRow, JsonObject? videoRecord)
+    {
+        var processing = GetObject(videoRecord, "processing");
+        var artifacts = GetObject(processing, "artifacts");
+        var contactSheetPath = ConvertVideoLocalPath(GetStringAny(
+            artifacts,
+            ["contact_sheet", "contactSheet"],
+            catalogRow is null ? string.Empty : Path.Combine(catalogRow.OutputDirectory, "artifacts", "contact_sheet.jpg")));
+        var audioArtifactPath = ConvertVideoLocalPath(GetStringAny(
+            artifacts,
+            ["audio_artifact", "audioArtifact"],
+            catalogRow is null ? string.Empty : Path.Combine(catalogRow.OutputDirectory, "artifacts", "audio", "source_audio.mp3")));
+        var framesDir = ConvertVideoLocalPath(GetStringAny(
+            artifacts,
+            ["frames_dir", "framesDir"],
+            catalogRow is null ? string.Empty : Path.Combine(catalogRow.OutputDirectory, "artifacts", "frames")));
+
+        return new JsonObject
+        {
+            ["contactSheetPath"] = contactSheetPath,
+            ["hasContactSheet"] = File.Exists(contactSheetPath),
+            ["audioArtifactPath"] = audioArtifactPath,
+            ["hasAudioArtifact"] = File.Exists(audioArtifactPath),
+            ["framesDirectory"] = framesDir,
+        };
+    }
+
+    private JsonObject NewVideoActivity(JsonObject? videoRecord)
+    {
+        var activity = GetObject(videoRecord, "activity");
+        return new JsonObject
+        {
+            ["available"] = GetBool(activity, "available", false),
+            ["strategy"] = GetString(activity, "strategy", string.Empty),
+            ["activityMapPath"] = ConvertVideoLocalPath(GetStringAny(activity, ["activityMapJson", "activity_map_json"], string.Empty)),
+            ["activeSegments"] = GetInt(activity, "activeSegments", 0),
+            ["inactiveSegments"] = GetInt(activity, "inactiveSegments", 0),
+            ["activeSec"] = GetDoubleAny(activity, ["activeSec", "active_sec"], 0) ?? 0,
+            ["inactiveSec"] = GetDoubleAny(activity, ["inactiveSec", "inactive_sec"], 0) ?? 0,
+            ["activeRatio"] = GetDoubleAny(activity, ["activeRatio", "active_ratio"], null),
+            ["estimatedReductionRatio"] = GetDoubleAny(activity, ["estimatedReductionRatio", "estimated_reduction_ratio"], null),
+            ["visualSentinels"] = GetInt(activity, "visualSentinels", 0),
+        };
+    }
+
+    private JsonArray NewVideoFrames(JsonObject? videoRecord)
+    {
+        var frames = new JsonArray();
+        foreach (var node in GetArray(videoRecord, "frames"))
+        {
+            if (node is not JsonObject frame)
+            {
+                continue;
+            }
+
+            frames.Add(NewVideoFrame(frame));
+        }
+
+        return frames;
+    }
+
+    private JsonObject NewVideoFrame(JsonObject frame)
+    {
+        var ocr = GetObject(frame, "ocr");
+        var visual = GetObject(frame, "visual");
+        var quality = GetObject(visual, "quality");
+        var artifactPath = ConvertVideoLocalPath(GetStringAny(frame, ["artifact_path", "artifactPath"], string.Empty));
+        var ocrOverlayPath = ConvertVideoLocalPath(GetStringAny(ocr, ["debug_overlay_path", "debugOverlayPath"], string.Empty));
+
+        return new JsonObject
+        {
+            ["frameId"] = GetStringAny(frame, ["frame_id", "frameId"], string.Empty),
+            ["timeSec"] = GetDoubleAny(frame, ["time_sec", "timeSec"], 0) ?? 0,
+            ["artifactPath"] = artifactPath,
+            ["hasArtifact"] = File.Exists(artifactPath),
+            ["ocrOverlayPath"] = ocrOverlayPath,
+            ["hasOcrOverlay"] = File.Exists(ocrOverlayPath),
+            ["ocr"] = new JsonObject
+            {
+                ["hasText"] = GetBool(ocr, "has_text", GetBool(ocr, "hasText", false)),
+                ["blockCount"] = GetIntAny(ocr, ["block_count", "blockCount"], 0),
+            },
+            ["visual"] = new JsonObject
+            {
+                ["available"] = GetBool(visual, "available", false),
+                ["brightness"] = GetDoubleAny(quality, ["brightness"], null),
+                ["contrast"] = GetDoubleAny(quality, ["contrast"], null),
+                ["brightnessLevel"] = GetStringAny(quality, ["brightness_level", "brightnessLevel"], string.Empty),
+                ["contrastLevel"] = GetStringAny(quality, ["contrast_level", "contrastLevel"], string.Empty),
+                ["colorPalette"] = NewVideoColorPalette(GetArray(visual, "color_palette").Count > 0
+                    ? GetArray(visual, "color_palette")
+                    : GetArray(visual, "colorPalette")),
+                ["grid"] = NewVideoGrid(GetArray(visual, "grid")),
+            },
+        };
+    }
+
+    private static JsonArray NewVideoColorPalette(JsonArray paletteNodes)
+    {
+        var palette = new JsonArray();
+        foreach (var node in paletteNodes)
+        {
+            if (node is not JsonObject color)
+            {
+                continue;
+            }
+
+            palette.Add(new JsonObject
+            {
+                ["hex"] = GetString(color, "hex", string.Empty),
+                ["rgb"] = (JsonArray)GetArray(color, "rgb").DeepClone(),
+                ["ratio"] = GetDoubleAny(color, ["ratio"], null),
+            });
+        }
+
+        return palette;
+    }
+
+    private static JsonArray NewVideoGrid(JsonArray gridNodes)
+    {
+        var grid = new JsonArray();
+        foreach (var node in gridNodes)
+        {
+            if (node is not JsonObject cell)
+            {
+                continue;
+            }
+
+            var averageColor = GetObject(cell, "average_color") ?? GetObject(cell, "averageColor");
+            grid.Add(new JsonObject
+            {
+                ["cellId"] = GetStringAny(cell, ["cell_id", "cellId"], string.Empty),
+                ["row"] = GetInt(cell, "row", 0),
+                ["col"] = GetInt(cell, "col", 0),
+                ["bboxNorm"] = (JsonArray)GetArray(cell, "bbox_norm").DeepClone(),
+                ["averageColor"] = new JsonObject
+                {
+                    ["hex"] = GetString(averageColor, "hex", string.Empty),
+                    ["rgb"] = (JsonArray)GetArray(averageColor, "rgb").DeepClone(),
+                },
+            });
+        }
+
+        return grid;
     }
 
     private JsonObject ReadVideoSettingsPayload()

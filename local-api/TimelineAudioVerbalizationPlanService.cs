@@ -87,6 +87,9 @@ public sealed class TimelineAudioVerbalizationPlanService
         WriteJsonFile(planPath, plan);
 
         var chunks = GetArray(plan, "chunks");
+        var plannedTurnCount = chunks
+            .OfType<JsonObject>()
+            .Sum(chunk => GetInt(chunk, "turnCount", 0));
         var now = DateTimeOffset.Now.ToString("o", CultureInfo.InvariantCulture);
         var plannedStatus = new JsonObject
         {
@@ -102,7 +105,7 @@ public sealed class TimelineAudioVerbalizationPlanService
             ["expectedSummarySignature"] = GetString(plan, "summarySignature", string.Empty),
             ["signatureState"] = "current",
             ["promptVersion"] = GetString(plan, "promptVersion", string.Empty),
-            ["totalTurns"] = GetInt(status, "totalTurns", GetArray(detail, "turns").Count),
+            ["totalTurns"] = plannedTurnCount,
             ["verbalizedTurns"] = 0,
             ["totalChunks"] = chunks.Count,
             ["completedChunks"] = 0,
@@ -177,6 +180,7 @@ public sealed class TimelineAudioVerbalizationPlanService
         var chunkMaxSeconds = Math.Max(60, chunkMaxMinutes * 60);
         var sortedTurns = turns
             .OfType<JsonObject>()
+            .Where(turn => !TimelineTranscriptNoiseFilter.IsLikelySilentHallucination(turn))
             .OrderBy(turn => GetDouble(turn, "startSec", 0))
             .ToList();
 
@@ -798,6 +802,11 @@ public sealed class TimelineAudioVerbalizationPlanService
 
     private static string GetReadableTranscriptText(JsonObject turn)
     {
+        if (TimelineTranscriptNoiseFilter.IsLikelySilentHallucination(turn))
+        {
+            return string.Empty;
+        }
+
         foreach (var name in new[] { "text", "transcriptText", "readableText" })
         {
             var value = GetString(turn, name, string.Empty);

@@ -1,4 +1,5 @@
 @page "/video/file-detail"
+@implements IAsyncDisposable
 @inject TimelineHelperClient Timeline
 @inject IJSRuntime JS
 
@@ -54,21 +55,20 @@ else
 {
     var videoFile = _detail.File!;
 
-    <div class="grid gap-5 xl:grid-cols-[420px_1fr]">
-        <aside class="grid gap-5">
+    <div class="tfa-video-detail-layout">
+        <aside class="grid gap-4 content-start">
             <section class="tfa-card tfa-card-pad">
-                <h2 class="flex items-center gap-2 text-lg font-semibold">
-                    <FaIcon Name="circle-info" Class="tfa-icon text-accent" />
-                    <span>ファイル情報</span>
-                </h2>
-                <dl class="mt-4 grid grid-cols-2 gap-2 text-sm">
-                    <dt class="text-slate-500">状態</dt>
-                    <dd>
-                        <span class="@StatusPill(videoFile.Status)">
-                            <FaIcon Name="@StatusIcon(videoFile.Status)" Class="tfa-icon !h-3 !w-3" />
-                            <span>@StatusLabel(videoFile.Status)</span>
-                        </span>
-                    </dd>
+                <div class="flex items-start justify-between gap-3">
+                    <h2 class="flex items-center gap-2 text-lg font-semibold">
+                        <FaIcon Name="circle-info" Class="tfa-icon text-accent" />
+                        <span>ファイル情報</span>
+                    </h2>
+                    <span class="@StatusPill(videoFile.Status)">
+                        <FaIcon Name="@StatusIcon(videoFile.Status)" Class="tfa-icon !h-3 !w-3" />
+                        <span>@StatusLabel(videoFile.Status)</span>
+                    </span>
+                </div>
+                <dl class="mt-4 grid grid-cols-[max-content_minmax(0,1fr)] gap-x-4 gap-y-2 text-sm">
                     <dt class="text-slate-500">日時</dt>
                     <dd>@UiFormat.ShortDate(videoFile.ModifiedAt)</dd>
                     <dt class="text-slate-500">記録時間</dt>
@@ -82,110 +82,234 @@ else
 
             <section class="tfa-card tfa-card-pad">
                 <h2 class="flex items-center gap-2 text-lg font-semibold">
-                    <FaIcon Name="file-lines" Class="tfa-icon text-accent" />
-                    <span>分析結果</span>
+                    <FaIcon Name="chart-simple" Class="tfa-icon text-accent" />
+                    <span>取得データ</span>
                 </h2>
-                <dl class="mt-4 grid grid-cols-2 gap-2 text-sm">
-                    <dt class="text-slate-500">フレーム</dt>
-                    <dd>@CountLabel(videoFile.FrameCount)</dd>
-                    <dt class="text-slate-500">テキスト</dt>
-                    <dd>@CountLabel(videoFile.TextBlockCount)</dd>
-                    <dt class="text-slate-500">音声区間</dt>
-                    <dd>@CountLabel(videoFile.TurnCount > 0 ? videoFile.TurnCount : videoFile.SpeechCandidateCount)</dd>
-                    <dt class="text-slate-500">文字起こし</dt>
-                    <dd>@VerbalizationLabel(_detail.AudioVerbalization)</dd>
-                </dl>
+                <div class="mt-4 grid grid-cols-2 gap-3">
+                    <div class="tfa-video-metric">
+                        <div class="tfa-video-metric-label">画面フレーム</div>
+                        <div class="tfa-video-metric-value">@CountNumber(_detail.Frames.Count)</div>
+                        <div class="tfa-video-metric-note">代表時刻</div>
+                    </div>
+                    <div class="tfa-video-metric">
+                        <div class="tfa-video-metric-label">OCR文字</div>
+                        <div class="tfa-video-metric-value">@CountNumber(videoFile.TextBlockCount)</div>
+                        <div class="tfa-video-metric-note">フレーム合計</div>
+                    </div>
+                    <div class="tfa-video-metric">
+                        <div class="tfa-video-metric-label">発話</div>
+                        <div class="tfa-video-metric-value">@CountNumber(DisplayTurns.Count)</div>
+                        <div class="tfa-video-metric-note">音声解析</div>
+                    </div>
+                    <div class="tfa-video-metric">
+                        <div class="tfa-video-metric-label">発話候補</div>
+                        <div class="tfa-video-metric-value">@CountNumber(videoFile.SpeechCandidateCount)</div>
+                        <div class="tfa-video-metric-note">音声区間</div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="tfa-card tfa-card-pad">
+                <div class="flex items-center justify-between gap-3">
+                    <h2 class="flex items-center gap-2 text-lg font-semibold">
+                        <FaIcon Name="chart-simple" Class="tfa-icon text-accent" />
+                        <span>活動区間</span>
+                    </h2>
+                    <span class="tfa-status-pill border-sky-200 bg-sky-50 text-sky-800">解析済み</span>
+                </div>
+                <div class="mt-4">
+                    <div class="tfa-video-activity-bar" aria-label="活動区間">
+                        <span class="tfa-video-activity-active" style="@ActivityActiveStyle"></span>
+                        <span class="tfa-video-activity-inactive" style="@ActivityInactiveStyle"></span>
+                    </div>
+                    <div class="mt-2 flex justify-between gap-3 text-xs text-slate-500">
+                        <span>活動 @DurationLabel(_detail.Activity.ActiveSec)</span>
+                        <span>無活動 @DurationLabel(_detail.Activity.InactiveSec)</span>
+                    </div>
+                </div>
             </section>
         </aside>
 
-        <section class="grid gap-5">
+        <main class="grid min-w-0 gap-4">
             <section class="tfa-card overflow-hidden">
-                <div class="tfa-card-pad border-b border-line">
+                <div class="tfa-card-pad flex flex-col gap-3 border-b border-line lg:flex-row lg:items-center lg:justify-between">
                     <h2 class="flex items-center gap-2 text-lg font-semibold">
                         <FaIcon Name="play" Class="tfa-icon text-accent" />
-                        <span>動画プレビュー</span>
+                        <span>動画と全体フレーム</span>
                     </h2>
+                    <div class="flex flex-wrap gap-2 text-xs">
+                        <span class="tfa-status-pill border-teal-200 bg-teal-50 text-teal-800">動画</span>
+                        <span class="tfa-status-pill border-teal-200 bg-teal-50 text-teal-800">音声</span>
+                        <span class="tfa-status-pill border-teal-200 bg-teal-50 text-teal-800">OCR</span>
+                    </div>
                 </div>
-                <div class="bg-slate-950 p-4">
-                    <video id="@VideoElementId" controls preload="metadata" class="mx-auto max-h-[680px] w-full rounded-md bg-black">
-                        <source src="@VideoSourceUrl(videoFile)" />
-                    </video>
-                </div>
-            </section>
+                <div class="tfa-card-pad">
+                    <div class="tfa-video-player-grid">
+                        @if (_detail.VideoAvailable)
+                        {
+                            <video id="@VideoElementId" controls preload="metadata" class="tfa-video-player">
+                                <source src="@VideoSourceUrl(videoFile)" />
+                            </video>
+                        }
+                        else
+                        {
+                            <div class="tfa-video-player tfa-video-player-empty">動画プレビューは利用できません。</div>
+                        }
 
-            @if (HasVerbalizedTurns)
-            {
-                <section class="tfa-card overflow-hidden">
-                    <div class="tfa-card-pad border-b border-line">
-                        <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                            <h2 class="flex items-center gap-2 text-lg font-semibold">
-                                <FaIcon Name="language" Class="tfa-icon text-accent" />
-                                <span>文字起こし</span>
-                            </h2>
-                            <div class="flex flex-wrap gap-2 text-xs text-slate-500">
-                                <span class="tfa-status-pill border-teal-200 bg-teal-50 text-teal-800">@_detail.AudioVerbalizationResult.Turns.Count 区間</span>
-                                <span class="@VerbalizationPill(_detail.AudioVerbalization.State)">
-                                    <FaIcon Name="@VerbalizationIcon(_detail.AudioVerbalization.State)" Class="tfa-icon !h-3 !w-3" />
-                                    <span>@VerbalizationStateLabel(_detail.AudioVerbalization.State)</span>
-                                </span>
+                        <div class="grid gap-3 content-start">
+                            @if (_detail.Artifacts.HasContactSheet)
+                            {
+                                <img src="@VideoArtifactUrl(_detail.Artifacts.ContactSheetPath)"
+                                     alt="動画の代表フレーム一覧"
+                                     class="tfa-video-contact-sheet" />
+                            }
+                            else
+                            {
+                                <div class="tfa-video-contact-sheet tfa-video-contact-sheet-empty">代表フレームはまだ作成されていません。</div>
+                            }
+                            <div class="tfa-video-compact-note">
+                                代表フレームを時間軸に差し込み、発話と画面変化を同じ流れで確認できます。
                             </div>
                         </div>
                     </div>
-                    <div class="max-h-[680px] overflow-auto">
-                        <table class="tfa-table">
-                            <thead class="sticky top-0">
-                                <tr>
-                                    <th>再生</th>
-                                    <th>時間</th>
-                                    <th>話者</th>
-                                    <th>内容</th>
-                                    <th>確度</th>
-                                    <th>状態</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                @foreach (var turn in _detail.AudioVerbalizationResult.Turns)
-                                {
-                                    <tr class="@ActiveTurnRowClass(turn.StartSec)">
-                                        <td>
-                                            <button class="tfa-icon-box text-accent" type="button" title="この位置から再生" @onclick="() => SeekAsync(turn.StartSec)">
-                                                <FaIcon Name="play" Class="tfa-icon !h-3.5 !w-3.5" />
-                                            </button>
-                                        </td>
-                                        <td class="whitespace-nowrap font-mono text-xs">
-                                            @DurationLabel(turn.StartSec) - @DurationLabel(turn.EndSec)
-                                        </td>
-                                        <td>
-                                            <span class="tfa-status-pill border-slate-200 bg-slate-50">@SpeakerLabel(turn.Speaker)</span>
-                                        </td>
-                                        <td class="max-w-[980px] whitespace-pre-wrap break-words text-sm leading-6 text-slate-900">
-                                            @ReadableText(turn)
-                                        </td>
-                                        <td class="whitespace-nowrap font-mono text-xs text-slate-500">
-                                            @ConfidenceLabel(turn.Confidence)
-                                        </td>
-                                        <td>
-                                            <span class="@VerbalizedTurnPill(turn.Status)">@VerbalizedTurnLabel(turn.Status)</span>
-                                        </td>
-                                    </tr>
-                                }
-                            </tbody>
-                        </table>
-                    </div>
-                </section>
-            }
-            else
-            {
-                <section class="tfa-card tfa-card-pad">
+                </div>
+            </section>
+
+            <section class="tfa-card overflow-hidden">
+                <div class="tfa-card-pad flex flex-col gap-2 border-b border-line sm:flex-row sm:items-center sm:justify-between">
                     <h2 class="flex items-center gap-2 text-lg font-semibold">
                         <FaIcon Name="language" Class="tfa-icon text-accent" />
-                        <span>文字起こし</span>
+                        <span>発話と画面の時間軸</span>
                     </h2>
-                    <div class="mt-4 text-sm leading-6 text-slate-700">
-                        この動画には文字起こし結果がまだありません。スキャンで音声解析が完了すると、ここに表示されます。
+                    <div class="flex flex-wrap gap-2 text-xs">
+                        <span class="tfa-status-pill border-sky-200 bg-sky-50 text-sky-800">発話</span>
+                        <span class="tfa-status-pill border-sky-200 bg-sky-50 text-sky-800">画面フレーム</span>
+                        <span class="tfa-status-pill border-sky-200 bg-sky-50 text-sky-800">OCR確認</span>
                     </div>
-                </section>
-            }
-        </section>
+                </div>
+                <div id="@TranscriptScrollElementId" class="tfa-video-timeline-scroll">
+                    @if (TimelineEntries.Count == 0)
+                    {
+                        <div class="p-5 text-sm text-slate-600">この動画で観察できる発話や画面フレームはまだありません。</div>
+                    }
+                    else
+                    {
+                        <div class="tfa-video-timeline">
+                            @foreach (var entry in TimelineEntries)
+                            {
+                                if (entry.Turn is { } turn)
+                                {
+                                    <article class="@TranscriptEntryClass(turn)" data-turn-start="@TurnStartDataValue(turn.StartSec)">
+                                        <button class="tfa-video-turn-play" type="button" title="この発話から再生" @onclick="() => SeekAsync(turn.StartSec)">
+                                            <FaIcon Name="@PlaybackIcon(turn.StartSec)" Class="tfa-icon !h-3 !w-3" />
+                                        </button>
+                                        <div class="tfa-video-turn">
+                                            <div class="font-mono text-xs text-slate-700">@TurnRangeLabel(turn)</div>
+                                            <div>
+                                                <span class="tfa-status-pill border-slate-200 bg-slate-50 text-slate-700">@SpeakerLabel(turn.Speaker)</span>
+                                            </div>
+                                            <div class="text-sm leading-7 text-slate-900">@ReadableText(turn)</div>
+                                            <div class="font-mono text-xs text-slate-500">@ConfidenceLabel(turn.Confidence)</div>
+                                        </div>
+                                    </article>
+                                }
+                                else if (entry.Frame is { } frame)
+                                {
+                                    <article class="tfa-video-timeline-entry tfa-video-frame-entry">
+                                        <div class="tfa-video-frame-card">
+                                            <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                                                <h3 class="text-base font-semibold">@DurationLabel(frame.TimeSec) の画面フレーム</h3>
+                                                <div class="flex flex-wrap gap-2">
+                                                    <button class="tfa-button-primary" type="button" @onclick="() => SeekAsync(frame.TimeSec)">この時刻を再生</button>
+                                                    <button class="tfa-button-secondary" type="button" @onclick="() => OpenFrameModal(frame)">OCRを確認</button>
+                                                </div>
+                                            </div>
+                                            @if (frame.HasArtifact)
+                                            {
+                                                <button type="button" class="tfa-video-frame-button" @onclick="() => OpenFrameModal(frame)">
+                                                    <img src="@VideoArtifactUrl(frame.ArtifactPath)" alt="@($"{DurationLabel(frame.TimeSec)} の画面フレーム")" />
+                                                </button>
+                                            }
+                                            <div class="mt-3 grid gap-2 text-xs text-slate-600 sm:grid-cols-4">
+                                                <span>OCR @CountLabel(frame.Ocr.BlockCount)</span>
+                                                <span>明るさ @LevelLabel(frame.Visual.BrightnessLevel)</span>
+                                                <span>コントラスト @LevelLabel(frame.Visual.ContrastLevel)</span>
+                                                <span>画面分割 @GridLabel(frame)</span>
+                                            </div>
+                                        </div>
+                                    </article>
+                                }
+                            }
+                        </div>
+                    }
+                </div>
+            </section>
+        </main>
+    </div>
+}
+
+@if (_selectedFrame is { } selectedFrame)
+{
+    <div class="tfa-video-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="video-ocr-modal-title" @onclick="CloseFrameModal">
+        <div class="tfa-video-modal" @onclick:stopPropagation="true">
+            <div class="tfa-video-modal-head">
+                <div>
+                    <h2 id="video-ocr-modal-title" class="text-lg font-semibold">@DurationLabel(selectedFrame.TimeSec) のOCR確認</h2>
+                    <p class="mt-1 text-sm text-slate-600">通常フレームとOCR検出枠付きフレームを並べて確認します。</p>
+                </div>
+                <button class="tfa-video-modal-close" type="button" aria-label="閉じる" @onclick="CloseFrameModal">×</button>
+            </div>
+            <div class="tfa-video-modal-body">
+                <div class="tfa-video-modal-grid">
+                    <figure class="tfa-video-modal-image-card">
+                        @if (selectedFrame.HasArtifact)
+                        {
+                            <img src="@VideoArtifactUrl(selectedFrame.ArtifactPath)" alt="通常フレーム" />
+                        }
+                        <figcaption>
+                            <span>通常フレーム</span>
+                            <span>@EmptyText(selectedFrame.FrameId)</span>
+                        </figcaption>
+                    </figure>
+                    <figure class="tfa-video-modal-image-card">
+                        @if (selectedFrame.HasOcrOverlay)
+                        {
+                            <img src="@VideoArtifactUrl(selectedFrame.OcrOverlayPath)" alt="OCR検出枠付きフレーム" />
+                        }
+                        else
+                        {
+                            <div class="tfa-video-modal-image-empty">OCR検出枠付きフレームはありません。</div>
+                        }
+                        <figcaption>
+                            <span>OCR検出枠</span>
+                            <span>@CountLabel(selectedFrame.Ocr.BlockCount)</span>
+                        </figcaption>
+                    </figure>
+                </div>
+                <div class="mt-4 grid gap-3 sm:grid-cols-4">
+                    <div class="tfa-video-modal-fact">
+                        <div class="text-xs text-slate-500">明るさ</div>
+                        <div class="mt-1 font-semibold">@LevelLabel(selectedFrame.Visual.BrightnessLevel)</div>
+                    </div>
+                    <div class="tfa-video-modal-fact">
+                        <div class="text-xs text-slate-500">コントラスト</div>
+                        <div class="mt-1 font-semibold">@LevelLabel(selectedFrame.Visual.ContrastLevel)</div>
+                    </div>
+                    <div class="tfa-video-modal-fact">
+                        <div class="text-xs text-slate-500">色</div>
+                        <div class="mt-2 flex gap-1">
+                            @foreach (var color in selectedFrame.Visual.ColorPalette.Take(4))
+                            {
+                                <span class="tfa-video-color-swatch" style="@PaletteStyle(color)" title="@ColorLabel(color)"></span>
+                            }
+                        </div>
+                    </div>
+                    <div class="tfa-video-modal-fact">
+                        <div class="text-xs text-slate-500">画面分割</div>
+                        <div class="mt-1 font-semibold">@GridLabel(selectedFrame)</div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 }

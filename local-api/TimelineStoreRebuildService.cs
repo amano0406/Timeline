@@ -269,7 +269,12 @@ public sealed class TimelineStoreRebuildService
                 refreshed: true,
                 skipped: false,
                 reason: string.Empty,
-                await _threadProducts.RefreshWindowsCodexAsync(cancellationToken));
+                await _threadProducts.RefreshWindowsCodexWithJobAsync(
+                    productJob => progress(
+                        "refreshing",
+                        "Refreshing " + product.DisplayName + " data through its API.",
+                        productJob),
+                    cancellationToken));
         }
         if (product.ProductId.Equals("chatgpt", StringComparison.OrdinalIgnoreCase))
         {
@@ -463,6 +468,11 @@ public sealed class TimelineStoreRebuildService
         var sequence = 0;
         foreach (var turn in turns.OfType<JsonObject>())
         {
+            if (TimelineTranscriptNoiseFilter.IsLikelySilentHallucination(turn))
+            {
+                continue;
+            }
+
             var transcriptText = GetReadableTranscriptText(turn);
             var phoneTokenText = GetStringAny(turn, ["phone_tokens", "phoneTokens", "acoustic_units", "acousticUnits"], string.Empty);
             WriteJsonLine(eventsWriter, NewEventRow(
@@ -954,6 +964,11 @@ public sealed class TimelineStoreRebuildService
 
     private static string GetReadableTranscriptText(JsonObject turn)
     {
+        if (TimelineTranscriptNoiseFilter.IsLikelySilentHallucination(turn))
+        {
+            return string.Empty;
+        }
+
         var candidates = new[]
         {
             GetStringAny(turn, ["display_text", "displayText", "text", "transcript", "transcript_text", "transcriptText"], string.Empty),

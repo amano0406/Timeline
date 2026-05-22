@@ -4,6 +4,8 @@ using System.Text.Json.Nodes;
 
 public sealed class TimelineThreadProductOverviewService
 {
+    private const int MaxThreadProductJobStatusPollFailures = 20;
+
     private readonly TimelineSettingsService _settings;
     private readonly TimelineOperationLogService _operations;
     private readonly TimelineLocalApiOptions _options;
@@ -149,18 +151,25 @@ public sealed class TimelineThreadProductOverviewService
         return InvokeWebOperationAsync(
             "TimelineForWindowsCodex",
             "windows_codex_refresh",
-            async operationId =>
-            {
-                var payload = await _api.PostJsonAsync(
-                    "windows-codex",
-                    "TimelineForWindowsCodex",
-                    "/items/refresh",
-                    new JsonObject(),
-                    900,
-                    operationId,
-                    cancellationToken);
-                return ConvertWindowsCodexCurrent(payload as JsonObject);
-            });
+            operationId => RefreshWindowsCodexCoreAsync(operationId, cancellationToken));
+    }
+
+    public Task<JsonObject> RefreshWindowsCodexWithJobAsync(
+        Action<JsonObject>? productJobProgress,
+        CancellationToken cancellationToken)
+    {
+        return InvokeWebOperationAsync(
+            "TimelineForWindowsCodex",
+            "windows_codex_refresh_job",
+            operationId => RefreshThreadProductJobCoreAsync(
+                "windows-codex",
+                "TimelineForWindowsCodex",
+                new JsonObject(),
+                productJobProgress,
+                operationId,
+                () => RefreshWindowsCodexCoreAsync(operationId, cancellationToken),
+                ConvertWindowsCodexCurrent,
+                cancellationToken));
     }
 
     public Task<JsonObject> DownloadWindowsCodexItemsAsync(JsonObject? request, CancellationToken cancellationToken)
@@ -414,6 +423,112 @@ public sealed class TimelineThreadProductOverviewService
         }
     }
 
+    private async Task<JsonObject> RefreshWindowsCodexCoreAsync(
+        string operationId,
+        CancellationToken cancellationToken)
+    {
+        var payload = await _api.PostJsonAsync(
+            "windows-codex",
+            "TimelineForWindowsCodex",
+            "/items/refresh",
+            new JsonObject(),
+            900,
+            operationId,
+            cancellationToken);
+        return ConvertWindowsCodexCurrent(payload as JsonObject);
+    }
+
+    private async Task<JsonObject> RefreshThreadProductJobCoreAsync(
+        string productId,
+        string productName,
+        JsonObject requestBody,
+        Action<JsonObject>? productJobProgress,
+        string operationId,
+        Func<Task<JsonObject>> fallback,
+        Func<JsonObject?, JsonObject> convertResult,
+        CancellationToken cancellationToken)
+    {
+        JsonObject status;
+        try
+        {
+            var payload = await _api.PostJsonAsync(
+                productId,
+                productName,
+                "/jobs",
+                new JsonObject
+                {
+                    ["type"] = "refresh",
+                    ["options"] = requestBody.DeepClone(),
+                },
+                30,
+                operationId,
+                cancellationToken);
+            status = ConvertThreadProductJobStatus(payload as JsonObject, productId, productName);
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("Endpoint not found", StringComparison.OrdinalIgnoreCase))
+        {
+            return await fallback();
+        }
+
+        productJobProgress?.Invoke(status);
+        var jobId = GetString(status, "jobId", string.Empty);
+        if (string.IsNullOrWhiteSpace(jobId))
+        {
+            if (IsThreadProductJobActive(status))
+            {
+                throw new InvalidOperationException(productName + " API did not return a job id.");
+            }
+
+            return convertResult(GetObject(status, "result"));
+        }
+
+        var pollFailures = 0;
+        while (IsThreadProductJobActive(status))
+        {
+            await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
+            try
+            {
+                var payload = await _api.GetJsonAsync(
+                    productId,
+                    productName,
+                    "/jobs/" + Uri.EscapeDataString(jobId),
+                    30,
+                    operationId,
+                    cancellationToken);
+                status = ConvertThreadProductJobStatus(payload as JsonObject, productId, productName);
+                pollFailures = 0;
+                productJobProgress?.Invoke(status);
+            }
+            catch (Exception ex) when (IsTransientThreadProductJobPollException(ex, cancellationToken))
+            {
+                pollFailures++;
+                if (pollFailures >= MaxThreadProductJobStatusPollFailures)
+                {
+                    throw new TimeoutException($"Timed out repeatedly while polling {productName} refresh job status.", ex);
+                }
+
+                productJobProgress?.Invoke(WithPollingWarning(
+                    status,
+                    productName + " status polling timed out; retrying.",
+                    pollFailures));
+            }
+        }
+
+        var state = GetString(status, "state", string.Empty);
+        if (state.Equals("failed", StringComparison.OrdinalIgnoreCase)
+            || state.Equals("interrupted", StringComparison.OrdinalIgnoreCase))
+        {
+            var error = GetString(status, "error", string.Empty);
+            throw new InvalidOperationException(string.IsNullOrWhiteSpace(error)
+                ? productName + " refresh job failed."
+                : error);
+        }
+
+        var result = convertResult(GetObject(status, "result"));
+        result["job"] = status.DeepClone();
+        return result;
+    }
+
     private async Task<JsonObject> ListThreadItemsViaApiAsync(
         string productId,
         string productName,
@@ -585,6 +700,82 @@ public sealed class TimelineThreadProductOverviewService
             ["archivePath"] = archivePath,
             ["itemIds"] = NewStringArray(itemIds),
         };
+    }
+
+    private static JsonObject ConvertThreadProductJobStatus(
+        JsonObject? payload,
+        string fallbackProductId,
+        string fallbackProductName)
+    {
+        var progress = GetObject(payload, "progress");
+        var result = GetObject(payload, "result");
+        var warnings = new JsonArray();
+        foreach (var warning in GetArray(payload, "warnings"))
+        {
+            warnings.Add(warning?.DeepClone());
+        }
+        return new JsonObject
+        {
+            ["productId"] = GetString(payload, "productId", fallbackProductId),
+            ["productName"] = GetString(payload, "productName", fallbackProductName),
+            ["type"] = GetString(payload, "type", "refresh"),
+            ["jobId"] = GetString(payload, "jobId", string.Empty),
+            ["state"] = GetString(payload, "state", string.Empty),
+            ["phase"] = GetString(payload, "phase", string.Empty),
+            ["stage"] = GetString(payload, "stage", string.Empty),
+            ["message"] = GetString(payload, "message", string.Empty),
+            ["progress"] = new JsonObject
+            {
+                ["percent"] = GetDouble(progress, "percent", 0.0),
+                ["current"] = GetIntAny(progress, ["current"], 0),
+                ["total"] = GetIntAny(progress, ["total"], 0),
+                ["unit"] = GetString(progress, "unit", "items"),
+                ["currentItem"] = GetString(progress, "currentItem", string.Empty),
+            },
+            ["startedAt"] = GetString(payload, "startedAt", string.Empty),
+            ["updatedAt"] = GetString(payload, "updatedAt", string.Empty),
+            ["completedAt"] = GetString(payload, "completedAt", string.Empty),
+            ["error"] = GetString(payload, "error", string.Empty),
+            ["warnings"] = warnings,
+            ["result"] = result?.DeepClone(),
+        };
+    }
+
+    private static bool IsThreadProductJobActive(JsonObject? status)
+    {
+        var state = GetString(status, "state", string.Empty);
+        return state.Equals("queued", StringComparison.OrdinalIgnoreCase)
+            || state.Equals("running", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsTransientThreadProductJobPollException(Exception ex, CancellationToken cancellationToken)
+    {
+        if (cancellationToken.IsCancellationRequested)
+        {
+            return false;
+        }
+
+        if (ex is OperationCanceledException or TimeoutException)
+        {
+            return true;
+        }
+
+        return ex is InvalidOperationException invalid
+            && invalid.Message.Contains("health check timed out", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static JsonObject WithPollingWarning(JsonObject status, string message, int pollFailures)
+    {
+        var clone = status.DeepClone().AsObject();
+        clone["message"] = message;
+        var warnings = new JsonArray();
+        foreach (var warning in GetArray(clone, "warnings"))
+        {
+            warnings.Add(warning?.DeepClone());
+        }
+        warnings.Add($"{message} Consecutive failures: {pollFailures}.");
+        clone["warnings"] = warnings;
+        return clone;
     }
 
     private static JsonObject ConvertThreadRemoveResult(JsonObject? payload, IReadOnlyCollection<string> requestedItemIds)
@@ -1332,6 +1523,31 @@ public sealed class TimelineThreadProductOverviewService
         }
 
         return int.TryParse(ConvertTimelineText(node), NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed)
+            ? parsed
+            : fallback;
+    }
+
+    private static double GetDouble(JsonObject? source, string name, double fallback)
+    {
+        var node = GetNode(source, name);
+        if (node is null)
+        {
+            return fallback;
+        }
+
+        try
+        {
+            if (node.GetValueKind() == JsonValueKind.Number)
+            {
+                return node.GetValue<double>();
+            }
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or FormatException)
+        {
+            return fallback;
+        }
+
+        return double.TryParse(ConvertTimelineText(node), NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed)
             ? parsed
             : fallback;
     }

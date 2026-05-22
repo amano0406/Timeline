@@ -157,24 +157,58 @@ public sealed class TimelineAudioVerbalizationExecutionService
 
             var contextPayload = ReadJsonFileRequired(contextPath);
             ApplyPreviousSummary(contextPayload, contextPath);
+            var executionChunk = CloneChunkWithoutSilentHallucinations(chunk);
+            var executionContext = CloneContextWithoutSilentHallucinations(contextPayload);
 
             try
             {
-                var llmPayload = await InvokeOllamaGenerateJsonAsync(settings, contextPayload, cancellationToken);
-                var verbalizedTurns = ConvertVerbalizedTurns(chunk, llmPayload, contextPayload);
+                if (GetArray(executionChunk, "turns").Count <= 0)
+                {
+                    var skippedChunk = NewResultChunk(
+                        executionChunk,
+                        "completed",
+                        0,
+                        contextPath,
+                        summaryPath,
+                        resultChunkPath,
+                        "Skipped silent hallucination turns.");
+                    WriteJsonFile(summaryPath, new JsonObject
+                    {
+                        ["schemaVersion"] = 1,
+                        ["chunkId"] = chunkId,
+                        ["state"] = "completed",
+                        ["summary"] = "Skipped silent hallucination turns.",
+                        ["updatedAt"] = DateTimeOffset.Now.ToString("o", CultureInfo.InvariantCulture),
+                    });
+                    WriteJsonFile(resultChunkPath, new JsonObject
+                    {
+                        ["schemaVersion"] = 1,
+                        ["chunk"] = skippedChunk.DeepClone(),
+                        ["turns"] = new JsonArray(),
+                    });
+
+                    resultChunks.Add(skippedChunk);
+                    status["completedChunks"] = resultChunks.Count;
+                    UpdateTiming(status, startedAt, resultChunks.Count, chunks.Count);
+                    progressCallback?.Invoke(CloneObject(status), resultChunks.Count, chunks.Count);
+                    continue;
+                }
+
+                var llmPayload = await InvokeOllamaGenerateJsonAsync(settings, executionContext, cancellationToken);
+                var verbalizedTurns = ConvertVerbalizedTurns(executionChunk, llmPayload, executionContext);
                 var summary = GetString(llmPayload, "summary", string.Empty);
 
-                if (GetResolvedTurnCount(verbalizedTurns) == 0 && GetArray(contextPayload, "nearbyUserTextCandidates").Count > 0)
+                if (GetResolvedTurnCount(verbalizedTurns) == 0 && GetArray(executionContext, "nearbyUserTextCandidates").Count > 0)
                 {
                     WriteOperation(operationId, "llm", "audio_verbalization_chunk_retry", "running", "Audio verbalization chunk is retrying with distilled user-text hints.", details: new JsonObject
                     {
                         ["chunkId"] = chunkId,
-                        ["userTextCandidateCount"] = GetArray(contextPayload, "nearbyUserTextCandidates").Count,
+                        ["userTextCandidateCount"] = GetArray(executionContext, "nearbyUserTextCandidates").Count,
                     });
 
-                    var retryContext = NewRetryContext(contextPayload);
+                    var retryContext = NewRetryContext(executionContext);
                     var retryPayload = await InvokeOllamaGenerateJsonAsync(settings, retryContext, cancellationToken);
-                    var retryVerbalizedTurns = ConvertVerbalizedTurns(chunk, retryPayload, retryContext);
+                    var retryVerbalizedTurns = ConvertVerbalizedTurns(executionChunk, retryPayload, retryContext);
                     if (GetResolvedTurnCount(retryVerbalizedTurns) > 0)
                     {
                         verbalizedTurns = retryVerbalizedTurns;
@@ -197,7 +231,7 @@ public sealed class TimelineAudioVerbalizationExecutionService
                     ["updatedAt"] = DateTimeOffset.Now.ToString("o", CultureInfo.InvariantCulture),
                 });
 
-                var resultChunk = NewResultChunk(chunk, "completed", verbalizedTurns.Count, contextPath, summaryPath, resultChunkPath, summary);
+                var resultChunk = NewResultChunk(executionChunk, "completed", verbalizedTurns.Count, contextPath, summaryPath, resultChunkPath, summary);
                 WriteJsonFile(resultChunkPath, new JsonObject
                 {
                     ["schemaVersion"] = 1,
@@ -224,7 +258,7 @@ public sealed class TimelineAudioVerbalizationExecutionService
             {
                 if (IsRecoverableLlmError(ex.Message))
                 {
-                    var chunkTurns = GetArray(chunk, "turns");
+                    var chunkTurns = GetArray(executionChunk, "turns");
                     var verbalizedTurns = NewUnresolvedTurns(chunkTurns, "LLM response could not be parsed as strict JSON.");
                     var summary = "Unresolved chunk. LLM response was not valid strict JSON.";
                     WriteJsonFile(summaryPath, new JsonObject
@@ -237,7 +271,7 @@ public sealed class TimelineAudioVerbalizationExecutionService
                         ["message"] = ex.Message,
                     });
 
-                    var resultChunk = NewResultChunk(chunk, "unresolved", verbalizedTurns.Count, contextPath, summaryPath, resultChunkPath, summary);
+                    var resultChunk = NewResultChunk(executionChunk, "unresolved", verbalizedTurns.Count, contextPath, summaryPath, resultChunkPath, summary);
                     resultChunk["error"] = ex.Message;
                     WriteJsonFile(resultChunkPath, new JsonObject
                     {
@@ -267,7 +301,7 @@ public sealed class TimelineAudioVerbalizationExecutionService
                     continue;
                 }
 
-                var failedChunk = NewResultChunk(chunk, "failed", GetInt(chunk, "turnCount", 0), contextPath, summaryPath, resultChunkPath, string.Empty);
+                var failedChunk = NewResultChunk(executionChunk, "failed", GetInt(executionChunk, "turnCount", 0), contextPath, summaryPath, resultChunkPath, string.Empty);
                 failedChunk["retryCount"] = 0;
                 failedChunk["error"] = ex.Message;
                 WriteJsonFile(resultChunkPath, new JsonObject
@@ -484,6 +518,59 @@ public sealed class TimelineAudioVerbalizationExecutionService
         }
 
         return result;
+    }
+
+    private static JsonObject CloneChunkWithoutSilentHallucinations(JsonObject chunk)
+    {
+        var clone = CloneObject(chunk);
+        var turns = CloneTurnsWithoutSilentHallucinations(GetArray(chunk, "turns"));
+        clone["turns"] = turns;
+        clone["turnCount"] = turns.Count;
+        if (turns.Count > 0)
+        {
+            var first = turns[0] as JsonObject;
+            var last = turns[^1] as JsonObject;
+            clone["startSec"] = CloneNode(GetNode(first, "startSec")) ?? JsonValue.Create(0);
+            clone["endSec"] = CloneNode(GetNode(last, "endSec")) ?? JsonValue.Create(0);
+        }
+
+        return clone;
+    }
+
+    private static JsonObject CloneContextWithoutSilentHallucinations(JsonObject context)
+    {
+        var clone = CloneObject(context);
+        var turns = CloneTurnsWithoutSilentHallucinations(GetArray(context, "turns"));
+        var expectedTurnIds = new JsonArray();
+        foreach (var turn in turns.OfType<JsonObject>())
+        {
+            var turnId = GetString(turn, "turnId", string.Empty);
+            if (!string.IsNullOrEmpty(turnId))
+            {
+                expectedTurnIds.Add(turnId);
+            }
+        }
+
+        clone["turns"] = turns;
+        clone["expectedTurnIds"] = expectedTurnIds;
+        clone["expectedTurnCount"] = expectedTurnIds.Count;
+        return clone;
+    }
+
+    private static JsonArray CloneTurnsWithoutSilentHallucinations(JsonArray sourceTurns)
+    {
+        var turns = new JsonArray();
+        foreach (var turn in sourceTurns.OfType<JsonObject>())
+        {
+            if (TimelineTranscriptNoiseFilter.IsLikelySilentHallucination(turn))
+            {
+                continue;
+            }
+
+            turns.Add(turn.DeepClone());
+        }
+
+        return turns;
     }
 
     private static JsonObject ConvertVerbalizedTurn(
@@ -757,8 +844,60 @@ public sealed class TimelineAudioVerbalizationExecutionService
             jsonText = jsonText[startIndex..(endIndex + 1)];
         }
 
-        return JsonNode.Parse(jsonText) as JsonObject
+        return ParseJsonObjectAllowDuplicateProperties(jsonText)
             ?? throw new InvalidOperationException("LLM response was not a JSON object.");
+    }
+
+    private static JsonObject? ParseJsonObjectAllowDuplicateProperties(string jsonText)
+    {
+        using var document = JsonDocument.Parse(jsonText);
+        return ConvertJsonElement(document.RootElement) as JsonObject;
+    }
+
+    private static JsonNode? ConvertJsonElement(JsonElement element)
+    {
+        switch (element.ValueKind)
+        {
+            case JsonValueKind.Object:
+                var result = new JsonObject();
+                foreach (var property in element.EnumerateObject())
+                {
+                    // LLM responses can contain duplicate keys. Keep the last value, matching common JSON parser behavior.
+                    result.Remove(property.Name);
+                    result[property.Name] = ConvertJsonElement(property.Value);
+                }
+
+                return result;
+            case JsonValueKind.Array:
+                var array = new JsonArray();
+                foreach (var item in element.EnumerateArray())
+                {
+                    array.Add(ConvertJsonElement(item));
+                }
+
+                return array;
+            case JsonValueKind.String:
+                return JsonValue.Create(element.GetString());
+            case JsonValueKind.Number:
+                if (element.TryGetInt64(out var longValue))
+                {
+                    return JsonValue.Create(longValue);
+                }
+                if (element.TryGetDecimal(out var decimalValue))
+                {
+                    return JsonValue.Create(decimalValue);
+                }
+
+                return JsonValue.Create(element.GetDouble());
+            case JsonValueKind.True:
+                return JsonValue.Create(true);
+            case JsonValueKind.False:
+                return JsonValue.Create(false);
+            case JsonValueKind.Null:
+            case JsonValueKind.Undefined:
+            default:
+                return null;
+        }
     }
 
     private static JsonObject? ParsePartialLlmJsonText(string text, JsonObject context)
@@ -817,14 +956,14 @@ public sealed class TimelineAudioVerbalizationExecutionService
 
             try
             {
-                var turn = JsonNode.Parse(source[start..(end + 1)]) as JsonObject;
+                var turn = ParseJsonObjectAllowDuplicateProperties(source[start..(end + 1)]);
                 if (turn is not null)
                 {
                     seen.Add(turnId);
                     turns.Add(turn);
                 }
             }
-            catch (JsonException)
+            catch (Exception ex) when (ex is JsonException or InvalidOperationException)
             {
             }
         }

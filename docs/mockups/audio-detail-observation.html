@@ -460,6 +460,11 @@
       font-weight: 650;
     }
 
+    .silence-row {
+      background: var(--slate-soft);
+      color: var(--muted);
+    }
+
     .reason {
       max-width: 430px;
       line-height: 1.55;
@@ -804,11 +809,21 @@
               <td><button class="icon-button play-turn" data-turn-id="turn-000003" aria-label="00:10 から再生">▶</button></td>
               <td class="mono">00:10 - 00:14</td>
               <td><span class="chip">SPEAKER_01</span></td>
-              <td class="diff"><span class="source">契約書を書いています これじゃなくても内容を変えるというかいい</span><span class="refined">契約書を書いています これじゃなくても内容を変えるというかいい</span></td>
+              <td class="diff"><span class="refined">契約書を書いています これじゃなくても内容を変えるというかいい</span></td>
               <td class="mono">0.95</td>
               <td class="mono">log -0.833<br>no speech 0.536</td>
               <td class="reason">Source text is readable. Punctuation added for sentence structure. / uncertainTerms / no_strong_text_hint</td>
               <td><span class="chip warn">要確認</span></td>
+            </tr>
+            <tr class="silence-row">
+              <td><button class="icon-button play-turn" aria-label="00:15 から再生">▶</button></td>
+              <td class="mono">00:15 - 00:19</td>
+              <td><span class="chip">話者なし</span></td>
+              <td class="diff"><span class="refined">無音</span></td>
+              <td class="mono">-</td>
+              <td class="mono">-</td>
+              <td class="reason">音声なし</td>
+              <td><span class="chip">無音</span></td>
             </tr>
             <tr data-turn-row="turn-000005">
               <td><button class="icon-button play-turn" data-turn-id="turn-000005" aria-label="00:20 から再生">▶</button></td>

@@ -14,12 +14,14 @@ public partial class FileDetail
     public string? RelativePath { get; set; }
 
     private const string AudioElementId = "audio-detail-player";
+    private const string TranscriptScrollElementId = "audio-transcript-scroll";
     private AudioFileDetailResult? _detail;
     private AudioVerbalizationResult? _verbalizationResult;
     private AudioFileRow? _file;
     private string? _error;
     private string? _operationMessage;
     private double? _activeTurnStartSec;
+    private bool _audioPlaying;
     private DotNetObjectReference<FileDetail>? _audioDotNetRef;
     private bool _audioWatchAttached;
     private bool _startingVerbalization;
@@ -37,6 +39,7 @@ public partial class FileDetail
         _verbalizationResult = null;
         _file = null;
         _activeTurnStartSec = null;
+        _audioPlaying = false;
         CancelVerbalizationPolling();
         if (string.IsNullOrWhiteSpace(SourceId) || string.IsNullOrWhiteSpace(RelativePath))
         {

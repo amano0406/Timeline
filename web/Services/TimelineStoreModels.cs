@@ -3,6 +3,7 @@ namespace Timeline.Web.Services;
 public sealed class TimelineExportDownloadResult
 {
     public string ArchivePath { get; set; } = "";
+    public long ArchiveSizeBytes { get; set; }
     public int ItemCount { get; set; }
     public int EventCount { get; set; }
     public List<TimelineExportProductResult> Products { get; set; } = [];

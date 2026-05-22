@@ -1209,11 +1209,25 @@ app.MapGet("/products/image/files/source", (
     return sourceFiles.GetImageSourceFile(path);
 });
 
+app.MapGet("/products/image/files/artifact", (
+    string? path,
+    TimelineProductSourceFileService sourceFiles) =>
+{
+    return sourceFiles.GetImageArtifactFile(path);
+});
+
 app.MapGet("/products/video/files/source", (
     string? path,
     TimelineProductSourceFileService sourceFiles) =>
 {
     return sourceFiles.GetVideoSourceFile(path);
+});
+
+app.MapGet("/products/video/files/artifact", (
+    string? path,
+    TimelineProductSourceFileService sourceFiles) =>
+{
+    return sourceFiles.GetVideoArtifactFile(path);
 });
 
 app.MapGet("/downloads/file", (string? path, TimelineDownloadService downloads) =>

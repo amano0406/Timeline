@@ -84,6 +84,10 @@ public sealed class ImageFileDetailResult
     public string TimelinePath { get; set; } = "";
     public string ConvertInfoPath { get; set; } = "";
     public ImageRecordSummary Record { get; set; } = new();
+    public ImageVisualDescription Visual { get; set; } = new();
+    public ImageLayoutInfo Layout { get; set; } = new();
+    public ImageArtifacts Artifacts { get; set; } = new();
+    public List<string> SearchKeywords { get; set; } = [];
     public List<ImageTextBlock> TextBlocks { get; set; } = [];
 }
 
@@ -118,8 +122,65 @@ public sealed class ImageTextBlock
     public string Text { get; set; } = "";
     public string NormalizedText { get; set; } = "";
     public string Role { get; set; } = "";
+    public List<double> BboxNorm { get; set; } = [];
     public double? ConfidenceScore { get; set; }
     public string ConfidenceLevel { get; set; } = "";
+    public string EvidenceChannel { get; set; } = "";
+    public string EvidenceStage { get; set; } = "";
+}
+
+public sealed class ImageVisualDescription
+{
+    public string Caption { get; set; } = "";
+    public string SceneSummary { get; set; } = "";
+    public List<string> Observations { get; set; } = [];
+}
+
+public sealed class ImageLayoutInfo
+{
+    public string CoordinateSystem { get; set; } = "";
+    public List<ImageColorPaletteEntry> ColorPalette { get; set; } = [];
+    public List<ImageGridCell> Grid { get; set; } = [];
+    public List<ImageTextRegion> TextRegions { get; set; } = [];
+    public int SpatialRelationCount { get; set; }
+}
+
+public sealed class ImageColorPaletteEntry
+{
+    public string Hex { get; set; } = "";
+    public List<int> Rgb { get; set; } = [];
+    public double? Ratio { get; set; }
+}
+
+public sealed class ImageGridCell
+{
+    public string CellId { get; set; } = "";
+    public int Row { get; set; }
+    public int Col { get; set; }
+    public List<double> BboxNorm { get; set; } = [];
+    public ImageColorInfo AverageColor { get; set; } = new();
+}
+
+public sealed class ImageTextRegion
+{
+    public string BlockId { get; set; } = "";
+    public string Text { get; set; } = "";
+    public List<double> BboxNorm { get; set; } = [];
+    public int ZIndex { get; set; }
+}
+
+public sealed class ImageColorInfo
+{
+    public string Hex { get; set; } = "";
+    public List<int> Rgb { get; set; } = [];
+}
+
+public sealed class ImageArtifacts
+{
+    public string NormalizedImagePath { get; set; } = "";
+    public string DebugOverlayPath { get; set; } = "";
+    public bool HasNormalizedImage { get; set; }
+    public bool HasDebugOverlay { get; set; }
 }
 
 public sealed class ImageRefreshRequest

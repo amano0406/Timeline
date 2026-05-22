@@ -4,6 +4,8 @@ using System.Text.RegularExpressions;
 
 public sealed class TimelineProductActionService
 {
+    private const int MaxProductJobStatusPollFailures = 20;
+
     private readonly TimelineSettingsService _settings;
     private readonly TimelineOperationLogService _operations;
     private readonly TimelineLocalApiOptions _options;
@@ -497,18 +499,36 @@ public sealed class TimelineProductActionService
             throw new InvalidOperationException("TimelineForVideo API did not return a job id.");
         }
 
+        var pollFailures = 0;
         while (IsProductJobActive(status))
         {
             await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
-            var payload = await _api.GetJsonAsync(
-                "video",
-                "TimelineForVideo",
-                "/jobs/" + Uri.EscapeDataString(jobId),
-                30,
-                operationId,
-                cancellationToken);
-            status = ConvertProductJobStatus(payload as JsonObject, "video", "TimelineForVideo");
-            productJobProgress?.Invoke(status);
+            try
+            {
+                var payload = await _api.GetJsonAsync(
+                    "video",
+                    "TimelineForVideo",
+                    "/jobs/" + Uri.EscapeDataString(jobId),
+                    30,
+                    operationId,
+                    cancellationToken);
+                status = ConvertProductJobStatus(payload as JsonObject, "video", "TimelineForVideo");
+                pollFailures = 0;
+                productJobProgress?.Invoke(status);
+            }
+            catch (Exception ex) when (IsTransientProductJobPollException(ex, cancellationToken))
+            {
+                pollFailures++;
+                if (pollFailures >= MaxProductJobStatusPollFailures)
+                {
+                    throw new TimeoutException("Timed out repeatedly while polling TimelineForVideo refresh job status.", ex);
+                }
+
+                productJobProgress?.Invoke(WithPollingWarning(
+                    status,
+                    "TimelineForVideo status polling timed out; retrying.",
+                    pollFailures));
+            }
         }
 
         var state = GetString(status, "state", string.Empty);
@@ -566,18 +586,36 @@ public sealed class TimelineProductActionService
             return ConvertProductJobRefreshResult(status);
         }
 
+        var pollFailures = 0;
         while (IsProductJobActive(status))
         {
             await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
-            var payload = await _api.GetJsonAsync(
-                productId,
-                productName,
-                "/jobs/" + Uri.EscapeDataString(jobId),
-                30,
-                operationId,
-                cancellationToken);
-            status = ConvertProductJobStatus(payload as JsonObject, productId, productName);
-            productJobProgress?.Invoke(status);
+            try
+            {
+                var payload = await _api.GetJsonAsync(
+                    productId,
+                    productName,
+                    "/jobs/" + Uri.EscapeDataString(jobId),
+                    30,
+                    operationId,
+                    cancellationToken);
+                status = ConvertProductJobStatus(payload as JsonObject, productId, productName);
+                pollFailures = 0;
+                productJobProgress?.Invoke(status);
+            }
+            catch (Exception ex) when (IsTransientProductJobPollException(ex, cancellationToken))
+            {
+                pollFailures++;
+                if (pollFailures >= MaxProductJobStatusPollFailures)
+                {
+                    throw new TimeoutException($"Timed out repeatedly while polling {productName} refresh job status.", ex);
+                }
+
+                productJobProgress?.Invoke(WithPollingWarning(
+                    status,
+                    productName + " status polling timed out; retrying.",
+                    pollFailures));
+            }
         }
 
         var state = GetString(status, "state", string.Empty);
@@ -904,6 +942,32 @@ public sealed class TimelineProductActionService
         var state = GetString(status, "state", string.Empty);
         return state.Equals("queued", StringComparison.OrdinalIgnoreCase)
             || state.Equals("running", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsTransientProductJobPollException(Exception ex, CancellationToken cancellationToken)
+    {
+        if (cancellationToken.IsCancellationRequested)
+        {
+            return false;
+        }
+
+        if (ex is OperationCanceledException or TimeoutException)
+        {
+            return true;
+        }
+
+        return ex is InvalidOperationException invalid
+            && invalid.Message.Contains("health check timed out", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static JsonObject WithPollingWarning(JsonObject status, string message, int pollFailures)
+    {
+        var clone = status.DeepClone().AsObject();
+        clone["message"] = message;
+        var warnings = GetArray(clone, "warnings");
+        warnings.Add($"{message} Consecutive failures: {pollFailures}.");
+        clone["warnings"] = warnings;
+        return clone;
     }
 
     private string ResolveManagedDownloadDirectory(string productId, string requestedPath)

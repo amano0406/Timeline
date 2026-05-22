@@ -71,10 +71,25 @@ public sealed class TimelineWorkerStatusService
         var text = ConvertTimelineText(jobId);
         if (!string.IsNullOrEmpty(text))
         {
-            return ReadWorkerJobStatus(text);
+            var status = ReadWorkerJobStatusObject(text);
+            if (IsWorkerJobActive(status) && !IsRebuildJobActiveInProcess(text))
+            {
+                SetStaleWorkerJobFailed(status);
+                status = ReadWorkerJobStatusObject(text);
+            }
+
+            return status;
         }
 
-        return GetLatestWorkerJobStatus();
+        var latest = GetLatestWorkerJobStatusObject();
+        var latestJobId = GetString(latest, "jobId", string.Empty);
+        if (IsWorkerJobActive(latest) && !IsRebuildJobActiveInProcess(latestJobId))
+        {
+            SetStaleWorkerJobFailed(latest);
+            latest = GetLatestWorkerJobStatusObject();
+        }
+
+        return latest;
     }
 
     public TimelineDockerWorkerStatusResponse GetStatus()

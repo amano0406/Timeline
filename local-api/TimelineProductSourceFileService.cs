@@ -36,6 +36,17 @@ public sealed class TimelineProductSourceFileService
         ".wmv",
     ];
 
+    private static readonly string[] DefaultVideoArtifactExtensions =
+    [
+        ".jpg",
+        ".jpeg",
+        ".png",
+        ".webp",
+        ".mp3",
+        ".wav",
+        ".m4a",
+    ];
+
     private readonly TimelineLocalApiOptions _options;
     private readonly TimelineSettingsService _settings;
 
@@ -82,6 +93,26 @@ public sealed class TimelineProductSourceFileService
             enableRangeProcessing: true);
     }
 
+    public IResult GetImageArtifactFile(string? artifactPath)
+    {
+        var productPath = GetProductPath("image");
+        var settings = ReadProductSettings(productPath);
+        var outputRoot = ConvertProductLocalPath(
+            GetStringAny(settings, ["outputRoot", "output_root"], string.Empty),
+            productPath);
+        var artifact = ResolveGeneratedArtifactFile(artifactPath, productPath, outputRoot, DefaultImageExtensions);
+        if (string.IsNullOrEmpty(artifact))
+        {
+            return SourceNotFound("Image artifact was not found.");
+        }
+
+        return Results.File(
+            artifact,
+            GetImageMimeType(artifact),
+            fileDownloadName: null,
+            enableRangeProcessing: true);
+    }
+
     public IResult GetVideoSourceFile(string? sourcePath)
     {
         var source = ResolveDirectSourceFile(
@@ -98,6 +129,26 @@ public sealed class TimelineProductSourceFileService
         return Results.File(
             source,
             GetVideoMimeType(source),
+            fileDownloadName: null,
+            enableRangeProcessing: true);
+    }
+
+    public IResult GetVideoArtifactFile(string? artifactPath)
+    {
+        var productPath = GetProductPath("video");
+        var settings = ReadProductSettings(productPath);
+        var outputRoot = ConvertProductLocalPath(
+            GetStringAny(settings, ["outputRoot", "output_root"], string.Empty),
+            productPath);
+        var artifact = ResolveGeneratedArtifactFile(artifactPath, productPath, outputRoot, DefaultVideoArtifactExtensions);
+        if (string.IsNullOrEmpty(artifact))
+        {
+            return SourceNotFound("Video artifact was not found.");
+        }
+
+        return Results.File(
+            artifact,
+            GetArtifactMimeType(artifact),
             fileDownloadName: null,
             enableRangeProcessing: true);
     }
@@ -149,6 +200,27 @@ public sealed class TimelineProductSourceFileService
         }
 
         return string.Empty;
+    }
+
+    private string ResolveGeneratedArtifactFile(
+        string? artifactPath,
+        string productPath,
+        string outputRoot,
+        string[] defaultExtensions)
+    {
+        var candidatePath = ConvertProductLocalPath(artifactPath, productPath);
+        if (string.IsNullOrEmpty(candidatePath) || !File.Exists(candidatePath))
+        {
+            return string.Empty;
+        }
+
+        var root = ConvertTimelineText(outputRoot);
+        if (string.IsNullOrEmpty(root) || !Directory.Exists(root))
+        {
+            return string.Empty;
+        }
+
+        return ResolveAllowedFile(candidatePath, [Path.GetFullPath(root)], GetExtensionSet(null, [], defaultExtensions));
     }
 
     private string ResolveDirectSourceFile(
@@ -377,6 +449,20 @@ public sealed class TimelineProductSourceFileService
         return node is null ? fallback : ConvertNodeToString(node);
     }
 
+    private static string GetStringAny(JsonObject? source, string[] names, string fallback)
+    {
+        foreach (var name in names)
+        {
+            var node = GetNode(source, name);
+            if (node is not null)
+            {
+                return ConvertNodeToString(node);
+            }
+        }
+
+        return fallback;
+    }
+
     private static bool GetBool(JsonObject? source, string name, bool fallback)
     {
         var node = GetNode(source, name);
@@ -470,6 +556,18 @@ public sealed class TimelineProductSourceFileService
             ".mkv" => "video/x-matroska",
             ".avi" => "video/x-msvideo",
             ".wmv" => "video/x-ms-wmv",
+            _ => "application/octet-stream",
+        };
+    }
+
+    private static string GetArtifactMimeType(string path)
+    {
+        var extension = Path.GetExtension(path).ToLowerInvariant();
+        return extension switch
+        {
+            ".jpg" or ".jpeg" or ".png" or ".webp" or ".gif" or ".bmp" or ".tif" or ".tiff" or ".heic" => GetImageMimeType(path),
+            ".mp3" or ".wav" or ".m4a" or ".aac" or ".flac" => GetAudioMimeType(path),
+            ".mp4" or ".m4v" or ".mov" or ".webm" or ".mkv" or ".avi" or ".wmv" => GetVideoMimeType(path),
             _ => "application/octet-stream",
         };
     }

@@ -303,15 +303,29 @@ public sealed class TimelineImageFileService
         var imageRecordPath = GetString(file, "imageRecordPath", string.Empty);
         var timelinePath = GetString(file, "timelinePath", string.Empty);
         var convertInfoPath = GetString(file, "convertInfoPath", string.Empty);
+        var outputDirectory = GetString(file, "outputDirectory", string.Empty);
         var imageRecord = ReadImageJsonFile(imageRecordPath);
         var timeline = ReadImageJsonFile(timelinePath);
         var convertInfo = ReadImageJsonFile(convertInfoPath);
 
         var record = new JsonObject();
+        var visual = new JsonObject();
+        var layout = new JsonObject
+        {
+            ["coordinateSystem"] = string.Empty,
+            ["colorPalette"] = new JsonArray(),
+            ["grid"] = new JsonArray(),
+            ["textRegions"] = new JsonArray(),
+            ["spatialRelationCount"] = 0,
+        };
+        var searchKeywords = new JsonArray();
         var textBlocks = new JsonArray();
         if (imageRecord is not null)
         {
             record = ConvertRecordSummary(imageRecord, timeline, convertInfo);
+            visual = ConvertVisualDescription(imageRecord);
+            layout = ConvertLayoutSummary(imageRecord);
+            searchKeywords = ConvertSearchKeywords(imageRecord);
             var text = GetObject(imageRecord, "text");
             var index = 1;
             foreach (var blockNode in GetArray(text, "blocks"))
@@ -348,6 +362,10 @@ public sealed class TimelineImageFileService
             ["timelinePath"] = timelinePath,
             ["convertInfoPath"] = convertInfoPath,
             ["record"] = record,
+            ["visual"] = visual,
+            ["layout"] = layout,
+            ["artifacts"] = ConvertImageArtifacts(outputDirectory, convertInfo),
+            ["searchKeywords"] = searchKeywords,
             ["textBlocks"] = textBlocks,
         };
     }
@@ -916,6 +934,7 @@ public sealed class TimelineImageFileService
     private static JsonObject ConvertTextBlock(JsonObject block, int index)
     {
         var confidence = GetObject(block, "confidence");
+        var evidence = GetObject(block, "evidence");
         return new JsonObject
         {
             ["index"] = index,
@@ -923,9 +942,164 @@ public sealed class TimelineImageFileService
             ["text"] = GetString(block, "text", string.Empty),
             ["normalizedText"] = GetStringAny(block, ["normalized_text", "normalizedText"], string.Empty),
             ["role"] = GetString(block, "role", string.Empty),
+            ["bboxNorm"] = GetDoubleArray(block, "bbox_norm"),
             ["confidenceScore"] = GetDoubleNode(GetNode(confidence, "score")),
             ["confidenceLevel"] = GetString(confidence, "level", string.Empty),
+            ["evidenceChannel"] = GetString(evidence, "channel", string.Empty),
+            ["evidenceStage"] = GetString(evidence, "stage", string.Empty),
         };
+    }
+
+    private static JsonObject ConvertVisualDescription(JsonObject imageRecord)
+    {
+        var visual = GetObject(imageRecord, "visual");
+        var observations = new JsonArray();
+        foreach (var node in GetArray(visual, "observations"))
+        {
+            var text = node is JsonObject obj
+                ? GetStringAny(obj, ["text", "summary", "label"], ConvertNodeToString(node))
+                : ConvertNodeToString(node);
+            if (!string.IsNullOrWhiteSpace(text))
+            {
+                observations.Add(text);
+            }
+        }
+
+        return new JsonObject
+        {
+            ["caption"] = GetString(visual, "caption", string.Empty),
+            ["sceneSummary"] = GetStringAny(visual, ["scene_summary", "sceneSummary"], string.Empty),
+            ["observations"] = observations,
+        };
+    }
+
+    private static JsonObject ConvertLayoutSummary(JsonObject imageRecord)
+    {
+        var layout = GetObject(imageRecord, "layout");
+        var colorPalette = new JsonArray();
+        foreach (var node in GetArray(layout, "color_palette"))
+        {
+            if (node is JsonObject entry)
+            {
+                colorPalette.Add(ConvertColorPaletteEntry(entry));
+            }
+        }
+
+        var grid = new JsonArray();
+        foreach (var node in GetArray(layout, "grid"))
+        {
+            if (node is JsonObject cell)
+            {
+                grid.Add(ConvertGridCell(cell));
+            }
+        }
+
+        var textRegions = new JsonArray();
+        foreach (var node in GetArray(layout, "text_regions"))
+        {
+            if (node is JsonObject region)
+            {
+                textRegions.Add(ConvertTextRegion(region));
+            }
+        }
+
+        return new JsonObject
+        {
+            ["coordinateSystem"] = GetStringAny(layout, ["coordinate_system", "coordinateSystem"], string.Empty),
+            ["colorPalette"] = colorPalette,
+            ["grid"] = grid,
+            ["textRegions"] = textRegions,
+            ["spatialRelationCount"] = GetArray(layout, "spatial_relations").Count,
+        };
+    }
+
+    private static JsonObject ConvertColorPaletteEntry(JsonObject entry)
+    {
+        return new JsonObject
+        {
+            ["hex"] = GetString(entry, "hex", string.Empty),
+            ["rgb"] = GetIntArray(entry, "rgb"),
+            ["ratio"] = GetDoubleNode(GetNode(entry, "ratio")),
+        };
+    }
+
+    private static JsonObject ConvertGridCell(JsonObject cell)
+    {
+        var averageColor = GetObject(cell, "average_color");
+        return new JsonObject
+        {
+            ["cellId"] = GetStringAny(cell, ["cell_id", "cellId"], string.Empty),
+            ["row"] = GetInt(cell, "row", 0),
+            ["col"] = GetInt(cell, "col", 0),
+            ["bboxNorm"] = GetDoubleArray(cell, "bbox_norm"),
+            ["averageColor"] = new JsonObject
+            {
+                ["hex"] = GetString(averageColor, "hex", string.Empty),
+                ["rgb"] = GetIntArray(averageColor, "rgb"),
+            },
+        };
+    }
+
+    private static JsonObject ConvertTextRegion(JsonObject region)
+    {
+        return new JsonObject
+        {
+            ["blockId"] = GetStringAny(region, ["block_id", "blockId"], string.Empty),
+            ["text"] = GetString(region, "text", string.Empty),
+            ["bboxNorm"] = GetDoubleArray(region, "bbox_norm"),
+            ["zIndex"] = GetIntAny(region, ["z_index", "zIndex"], 0),
+        };
+    }
+
+    private static JsonArray ConvertSearchKeywords(JsonObject imageRecord)
+    {
+        var search = GetObject(imageRecord, "search");
+        return NewStringArrayUnique(GetStringArray(search, "keywords"));
+    }
+
+    private static JsonObject ConvertImageArtifacts(string outputDirectory, JsonObject? convertInfo)
+    {
+        var outputs = GetObject(convertInfo, "outputs");
+        var normalizedImage = ResolveGeneratedOutputPath(
+            outputDirectory,
+            GetStringAny(outputs, ["normalized_image", "normalizedImage"], "artifacts/normalized_image.jpg"));
+        var debugOverlay = ResolveGeneratedOutputPath(
+            outputDirectory,
+            GetStringAny(outputs, ["debug_overlay", "debugOverlay"], "artifacts/debug_overlay.jpg"));
+
+        return new JsonObject
+        {
+            ["normalizedImagePath"] = normalizedImage,
+            ["debugOverlayPath"] = debugOverlay,
+            ["hasNormalizedImage"] = !string.IsNullOrEmpty(normalizedImage) && File.Exists(normalizedImage),
+            ["hasDebugOverlay"] = !string.IsNullOrEmpty(debugOverlay) && File.Exists(debugOverlay),
+        };
+    }
+
+    private static string ResolveGeneratedOutputPath(string outputDirectory, string relativeOrAbsolutePath)
+    {
+        if (string.IsNullOrWhiteSpace(outputDirectory) || string.IsNullOrWhiteSpace(relativeOrAbsolutePath))
+        {
+            return string.Empty;
+        }
+
+        try
+        {
+            var root = Path.GetFullPath(outputDirectory).TrimEnd('\\', '/');
+            var candidate = Path.IsPathRooted(relativeOrAbsolutePath)
+                ? Path.GetFullPath(relativeOrAbsolutePath)
+                : Path.GetFullPath(Path.Combine(root, relativeOrAbsolutePath.Replace("/", "\\")));
+            var candidateKey = GetNormalizedPathKey(candidate);
+            var rootKey = GetNormalizedPathKey(root);
+            return candidateKey.Equals(rootKey, StringComparison.OrdinalIgnoreCase)
+                || candidateKey.StartsWith(rootKey + "\\", StringComparison.OrdinalIgnoreCase)
+                ? candidate
+                : string.Empty;
+        }
+        catch (Exception ex) when (ex is ArgumentException or IOException or UnauthorizedAccessException or NotSupportedException)
+        {
+            return string.Empty;
+        }
     }
 
     private static JsonObject ConvertRecordSummary(
@@ -1278,6 +1452,35 @@ public sealed class TimelineImageFileService
             : fallback;
     }
 
+    private static int GetIntAny(JsonObject? source, string[] names, int fallback)
+    {
+        foreach (var name in names)
+        {
+            var node = GetNode(source, name);
+            if (node is null)
+            {
+                continue;
+            }
+
+            if (node.GetValueKind() == JsonValueKind.Number)
+            {
+                try
+                {
+                    return node.GetValue<int>();
+                }
+                catch (FormatException)
+                {
+                }
+            }
+
+            return int.TryParse(ConvertNodeToString(node), out var parsed)
+                ? parsed
+                : fallback;
+        }
+
+        return fallback;
+    }
+
     private static double? GetDoubleNode(JsonNode? node)
     {
         if (node is null)
@@ -1299,6 +1502,62 @@ public sealed class TimelineImageFileService
         return double.TryParse(ConvertNodeToString(node), NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed)
             ? parsed
             : null;
+    }
+
+    private static JsonArray GetDoubleArray(JsonObject? source, string name)
+    {
+        var result = new JsonArray();
+        if (GetNode(source, name) is not JsonArray array)
+        {
+            return result;
+        }
+
+        foreach (var node in array)
+        {
+            var value = GetDoubleNode(node);
+            if (value is double number)
+            {
+                result.Add(number);
+            }
+        }
+
+        return result;
+    }
+
+    private static JsonArray GetIntArray(JsonObject? source, string name)
+    {
+        var result = new JsonArray();
+        if (GetNode(source, name) is not JsonArray array)
+        {
+            return result;
+        }
+
+        foreach (var node in array)
+        {
+            if (node is null)
+            {
+                continue;
+            }
+
+            if (node.GetValueKind() == JsonValueKind.Number)
+            {
+                try
+                {
+                    result.Add(node.GetValue<int>());
+                    continue;
+                }
+                catch (FormatException)
+                {
+                }
+            }
+
+            if (int.TryParse(ConvertNodeToString(node), out var parsed))
+            {
+                result.Add(parsed);
+            }
+        }
+
+        return result;
     }
 
     private static IEnumerable<string> GetStringArrayAny(JsonObject? source, string[] names)

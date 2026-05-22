@@ -18,16 +18,19 @@ public sealed class TimelineAudioFileService
     private readonly TimelineSettingsService _settings;
     private readonly TimelineOperationLogService _operations;
     private readonly TimelineLocalApiOptions _options;
+    private readonly TimelineAudioVerbalizationJobRegistry _audioVerbalizationJobs;
     private JsonObject? _hardwareCache;
 
     public TimelineAudioFileService(
         TimelineSettingsService settings,
         TimelineOperationLogService operations,
-        TimelineLocalApiOptions options)
+        TimelineLocalApiOptions options,
+        TimelineAudioVerbalizationJobRegistry audioVerbalizationJobs)
     {
         _settings = settings;
         _operations = operations;
         _options = options;
+        _audioVerbalizationJobs = audioVerbalizationJobs;
     }
 
     public JsonObject GetOverview()
@@ -455,6 +458,7 @@ public sealed class TimelineAudioFileService
             .FirstOrDefault(value => !string.IsNullOrEmpty(value)) ?? string.Empty;
         var pipeline = GetObject(timeline, "pipeline");
         var sourceNode = GetObject(timeline, "source");
+        var convertInfo = ReadJsonFile(catalogRow?.ConvertInfoPath ?? string.Empty);
         var durationSec = GetDoubleAny(
             sourceNode,
             ["duration_sec", "durationSec", "duration_seconds", "durationSeconds"],
@@ -505,6 +509,7 @@ public sealed class TimelineAudioFileService
             ["pipelineVersion"] = GetStringAny(pipeline, ["pipeline_version", "pipelineVersion"], string.Empty),
             ["unitType"] = unitType,
             ["turns"] = turns,
+            ["observation"] = NewAudioObservation(convertInfo, timeline, turns),
             ["audioVerbalization"] = NewAudioVerbalizationStatus(fileRow),
         };
     }
@@ -953,6 +958,113 @@ public sealed class TimelineAudioFileService
             ["phoneTokens"] = GetStringAny(turn, ["phone_tokens", "phoneTokens", "acoustic_units", "acousticUnits"], string.Empty),
             ["unitType"] = GetStringAny(turn, ["unit_type", "unitType"], string.Empty),
             ["confidence"] = CloneValueOrNull(GetNode(turn, "confidence")),
+            ["avgLogprob"] = NumberOrNull(GetDoubleAny(turn, ["avg_logprob", "avgLogprob"], null)),
+            ["noSpeechProbability"] = NumberOrNull(GetDoubleAny(turn, ["no_speech_probability", "noSpeechProbability"], null)),
+            ["transcriptionSegmentIndex"] = NumberOrNull(GetDoubleAny(turn, ["transcription_segment_index", "transcriptionSegmentIndex"], null)),
+        };
+    }
+
+    private static JsonObject NewAudioObservation(JsonObject? convertInfo, JsonObject? timeline, JsonArray turns)
+    {
+        var convertSource = GetObject(convertInfo, "source");
+        var timelineSource = GetObject(timeline, "source");
+        var source = convertSource ?? timelineSource;
+        var convertPipeline = GetObject(convertInfo, "pipeline");
+        var timelinePipeline = GetObject(timeline, "pipeline");
+        var pipeline = convertPipeline ?? timelinePipeline;
+        var counts = GetObject(convertInfo, "counts");
+        var speechActivity = GetObject(pipeline, "speech_activity_detection");
+        var speakerDiarization = GetObject(pipeline, "speaker_diarization");
+        var transcription = GetObject(pipeline, "speech_transcription");
+        var turnObjects = turns.OfType<JsonObject>().ToList();
+
+        return new JsonObject
+        {
+            ["available"] = convertInfo is not null || timeline is not null,
+            ["source"] = new JsonObject
+            {
+                ["fileName"] = GetStringAny(source, ["file_name", "fileName"], string.Empty),
+                ["sourceHash"] = GetStringAny(source, ["source_hash", "sourceHash"], string.Empty),
+                ["durationSec"] = NumberOrNull(GetDoubleAny(source, ["duration_sec", "durationSec", "duration_seconds", "durationSeconds"], null)),
+                ["containerName"] = GetStringAny(source, ["container_name", "containerName"], string.Empty),
+                ["extension"] = GetStringAny(source, ["extension"], string.Empty),
+                ["audioCodec"] = GetStringAny(source, ["audio_codec", "audioCodec"], string.Empty),
+                ["audioChannels"] = NumberOrNull(GetDoubleAny(source, ["audio_channels", "audioChannels"], null)),
+                ["audioSampleRate"] = NumberOrNull(GetDoubleAny(source, ["audio_sample_rate", "audioSampleRate"], null)),
+                ["bitrate"] = NumberOrNull(GetDoubleAny(source, ["bitrate"], null)),
+                ["recordedAt"] = GetStringAny(source, ["recorded_at", "recordedAt"], string.Empty),
+                ["recordedAtSource"] = GetStringAny(source, ["recorded_at_source", "recordedAtSource"], string.Empty),
+                ["recordedAtTimezone"] = GetStringAny(source, ["recorded_at_timezone", "recordedAtTimezone"], string.Empty),
+            },
+            ["counts"] = new JsonObject
+            {
+                ["speechCandidateRanges"] = GetIntAny(counts, ["speech_candidate_ranges", "speechCandidateRanges"], 0),
+                ["speakerTurns"] = GetIntAny(counts, ["speaker_turns", "speakerTurns"], GetIntAny(speakerDiarization, ["turn_count", "turnCount"], 0)),
+                ["transcriptSegments"] = GetIntAny(counts, ["transcript_segments", "transcriptSegments"], turnObjects.Count),
+                ["rawTranscriptSegments"] = GetIntAny(counts, ["raw_transcript_segments", "rawTranscriptSegments"], 0),
+                ["rejectedTranscriptSegments"] = GetIntAny(counts, ["rejected_transcript_segments", "rejectedTranscriptSegments"], 0),
+                ["timelineTurns"] = turnObjects.Count,
+                ["speakerCount"] = turnObjects
+                    .Select(turn => GetStringAny(turn, ["speaker"], string.Empty))
+                    .Where(speaker => !string.IsNullOrWhiteSpace(speaker))
+                    .Distinct(StringComparer.Ordinal)
+                    .Count(),
+            },
+            ["pipeline"] = new JsonObject
+            {
+                ["pipelineVersion"] = GetStringAny(pipeline, ["pipeline_version", "pipelineVersion"], string.Empty),
+                ["generationSignature"] = GetStringAny(pipeline, ["generation_signature", "generationSignature"], string.Empty),
+                ["computeMode"] = GetStringAny(pipeline, ["compute_mode", "computeMode"], string.Empty),
+                ["speechActivityBackend"] = GetStringAny(speechActivity, ["backend"], string.Empty),
+                ["speechActivityModelId"] = GetStringAny(speechActivity, ["model_id", "modelId"], string.Empty),
+                ["speechActivityProfile"] = GetStringAny(speechActivity, ["profile"], string.Empty),
+                ["speakerBackend"] = GetStringAny(speakerDiarization, ["backend", "speaker_backend", "speakerBackend"], GetStringAny(pipeline, ["speaker_backend", "speakerBackend"], string.Empty)),
+                ["speakerModelId"] = GetStringAny(speakerDiarization, ["model_id", "modelId", "speaker_model_id", "speakerModelId"], GetStringAny(pipeline, ["speaker_model_id", "speakerModelId"], string.Empty)),
+                ["speakerStatus"] = GetStringAny(speakerDiarization, ["status"], string.Empty),
+                ["transcriptionBackend"] = GetStringAny(transcription, ["backend", "transcription_backend", "transcriptionBackend"], GetStringAny(pipeline, ["transcription_backend", "transcriptionBackend"], string.Empty)),
+                ["transcriptionModelId"] = GetStringAny(transcription, ["model_id", "modelId", "transcription_model_id", "transcriptionModelId"], GetStringAny(pipeline, ["transcription_model_id", "transcriptionModelId"], string.Empty)),
+                ["transcriptionLanguage"] = GetStringAny(transcription, ["language", "transcription_language", "transcriptionLanguage"], GetStringAny(pipeline, ["transcription_language", "transcriptionLanguage"], string.Empty)),
+                ["transcriptionDevice"] = GetStringAny(transcription, ["device", "transcription_device", "transcriptionDevice"], GetStringAny(pipeline, ["transcription_device", "transcriptionDevice"], string.Empty)),
+                ["transcriptionComputeType"] = GetStringAny(transcription, ["compute_type", "computeType", "transcription_compute_type", "transcriptionComputeType"], GetStringAny(pipeline, ["transcription_compute_type", "transcriptionComputeType"], string.Empty)),
+                ["transcriptionStatus"] = GetStringAny(transcription, ["status"], string.Empty),
+                ["transcriptionLanguageProbability"] = NumberOrNull(GetDoubleAny(transcription, ["language_probability", "languageProbability"], null)),
+            },
+            ["speakers"] = NewSpeakerDistribution(turnObjects),
+            ["metrics"] = new JsonObject
+            {
+                ["avgLogprob"] = NewDoubleRange(turnObjects.Select(turn => GetDoubleAny(turn, ["avgLogprob", "avg_logprob"], null))),
+                ["noSpeechProbability"] = NewDoubleRange(turnObjects.Select(turn => GetDoubleAny(turn, ["noSpeechProbability", "no_speech_probability"], null))),
+                ["confidence"] = NewDoubleRange(turnObjects.Select(turn => GetDoubleAny(turn, ["confidence"], null))),
+            },
+        };
+    }
+
+    private static JsonArray NewSpeakerDistribution(List<JsonObject> turns)
+    {
+        var array = new JsonArray();
+        foreach (var group in turns
+            .GroupBy(turn => GetStringAny(turn, ["speaker"], string.Empty))
+            .OrderByDescending(group => group.Count())
+            .ThenBy(group => group.Key, StringComparer.Ordinal))
+        {
+            array.Add(new JsonObject
+            {
+                ["speaker"] = string.IsNullOrWhiteSpace(group.Key) ? string.Empty : group.Key,
+                ["turnCount"] = group.Count(),
+            });
+        }
+
+        return array;
+    }
+
+    private static JsonObject NewDoubleRange(IEnumerable<double?> values)
+    {
+        var numbers = values.Where(value => value.HasValue).Select(value => value!.Value).ToList();
+        return new JsonObject
+        {
+            ["count"] = numbers.Count,
+            ["min"] = numbers.Count > 0 ? JsonValue.Create(numbers.Min()) : null,
+            ["max"] = numbers.Count > 0 ? JsonValue.Create(numbers.Max()) : null,
         };
     }
 
@@ -1035,11 +1147,30 @@ public sealed class TimelineAudioFileService
             var resultTurns = GetArray(payload, "turns");
             var resultChunks = GetArray(payload, "chunks");
             var state = GetString(status, "state", "completed").ToLowerInvariant();
-            var verbalizedTurns = resultTurns.Count;
-            var unresolvedTurns = Math.Max(0, totalTurns - verbalizedTurns);
+            var visibleResultTurns = resultTurns
+                .OfType<JsonObject>()
+                .Where(turn => !TimelineTranscriptNoiseFilter.IsLikelySilentHallucination(turn))
+                .ToList();
+            var verbalizedTurns = visibleResultTurns.Count(IsAudioVerbalizationResolvedTurn);
+            var plannedTurnCount = GetAudioVerbalizationPlanTurnCount(planPath);
+            var displayTotalTurns = plannedTurnCount > 0
+                ? plannedTurnCount
+                : GetInt(status, "totalTurns", totalTurns);
+            var unresolvedTurns = visibleResultTurns.Count - verbalizedTurns;
+            unresolvedTurns += Math.Max(0, displayTotalTurns - visibleResultTurns.Count);
             if (state == "completed" && unresolvedTurns > 0)
             {
                 state = "needs_review";
+            }
+            var jobId = GetString(status, "jobId", string.Empty);
+            var updatedAt = GetString(status, "updatedAt", string.Empty);
+            var activeJob = _audioVerbalizationJobs.IsActive(jobId);
+            var lastActivitySec = GetElapsedSinceSec(updatedAt);
+            var message = GetString(status, "message", state == "needs_review" ? "Audio verbalization has unresolved turns." : string.Empty);
+            if (IsActiveVerbalizationState(state) && !activeJob)
+            {
+                state = "stalled";
+                message = "Audio verbalization appears stopped. The worker is not active for this job.";
             }
 
             return NewAudioVerbalizationStatusObject(
@@ -1049,20 +1180,22 @@ public sealed class TimelineAudioFileService
                 sourceFileIdentity,
                 GetString(status, "language", language),
                 GetString(status, "model", model),
-                totalTurns,
+                displayTotalTurns,
                 verbalizedTurns,
                 Math.Max(GetAudioVerbalizationPlanChunkCount(planPath), resultChunks.Count),
                 planPath,
                 resultPath,
-                GetString(status, "message", state == "needs_review" ? "Audio verbalization has unresolved turns." : string.Empty),
+                message,
                 unresolvedTurns,
-                GetString(status, "jobId", string.Empty),
+                jobId,
                 GetString(status, "currentChunkId", string.Empty),
                 GetString(status, "startedAt", string.Empty),
-                GetDouble(status, "elapsedSec", 0),
+                GetElapsedSinceSec(GetString(status, "startedAt", string.Empty)) ?? GetDouble(status, "elapsedSec", 0),
                 GetDouble(status, "estimatedRemainingSec", 0),
-                GetString(status, "updatedAt", string.Empty),
-                completedChunks: resultChunks.Count);
+                updatedAt,
+                completedChunks: resultChunks.Count,
+                activeJob: activeJob,
+                lastActivitySec: lastActivitySec ?? 0);
         }
         catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
         {
@@ -1102,8 +1235,16 @@ public sealed class TimelineAudioFileService
         double elapsedSec = 0,
         double estimatedRemainingSec = 0,
         string updatedAt = "",
-        int completedChunks = 0)
+        int completedChunks = 0,
+        bool activeJob = false,
+        double lastActivitySec = 0)
     {
+        var progressPercent = totalChunks > 0
+            ? Math.Min(100, Math.Max(0, completedChunks / (double)totalChunks * 100))
+            : totalTurns > 0
+                ? Math.Min(100, Math.Max(0, verbalizedTurns / (double)totalTurns * 100))
+                : 0;
+
         return new JsonObject
         {
             ["available"] = available,
@@ -1130,6 +1271,9 @@ public sealed class TimelineAudioFileService
             ["startedAt"] = startedAt,
             ["elapsedSec"] = elapsedSec,
             ["estimatedRemainingSec"] = estimatedRemainingSec,
+            ["lastActivitySec"] = lastActivitySec,
+            ["progressPercent"] = progressPercent,
+            ["activeJob"] = activeJob,
             ["updatedAt"] = updatedAt,
             ["message"] = message,
         };
@@ -1167,10 +1311,33 @@ public sealed class TimelineAudioFileService
         {
             ["available"] = true,
             ["status"] = status.DeepClone(),
-            ["turns"] = CloneArray(payload, "turns"),
+            ["turns"] = CloneTranscriptTurnsWithoutSilentHallucinations(payload),
             ["chunks"] = CloneArray(payload, "chunks"),
             ["message"] = string.Empty,
         };
+    }
+
+    private static JsonArray CloneTranscriptTurnsWithoutSilentHallucinations(JsonObject payload)
+    {
+        var turns = new JsonArray();
+        foreach (var node in GetArray(payload, "turns"))
+        {
+            if (node is not JsonObject turn || TimelineTranscriptNoiseFilter.IsLikelySilentHallucination(turn))
+            {
+                continue;
+            }
+
+            turns.Add(turn.DeepClone());
+        }
+
+        return turns;
+    }
+
+    private static bool IsAudioVerbalizationResolvedTurn(JsonObject turn)
+    {
+        var status = GetString(turn, "status", string.Empty).ToLowerInvariant();
+        var text = ConvertTimelineText(GetString(turn, "text", string.Empty));
+        return status != "unresolved" && !string.IsNullOrEmpty(text);
     }
 
     private static JsonObject NewSourceTranscriptResultFromDetail(JsonObject detail, JsonObject status)
@@ -1186,6 +1353,12 @@ public sealed class TimelineAudioFileService
             }
 
             var index = GetInt(turn, "index", sequence + 1);
+            if (TimelineTranscriptNoiseFilter.IsLikelySilentHallucination(turn))
+            {
+                sequence++;
+                continue;
+            }
+
             var text = GetReadableTranscriptText(turn);
             resultTurns.Add(new JsonObject
             {
@@ -1227,7 +1400,9 @@ public sealed class TimelineAudioFileService
     }
 
     private static string GetReadableTranscriptText(JsonObject turn)
-        => GetStringAny(turn, ["text", "transcriptText", "readableText"], string.Empty);
+        => TimelineTranscriptNoiseFilter.IsLikelySilentHallucination(turn)
+            ? string.Empty
+            : GetStringAny(turn, ["text", "transcriptText", "readableText"], string.Empty);
 
     private JsonObject GetAudioVerbalizationFileSummary(AudioGeneratedCatalog catalog)
     {
@@ -1574,6 +1749,38 @@ public sealed class TimelineAudioFileService
         return GetArray(plan, "chunks").Count;
     }
 
+    private static int GetAudioVerbalizationPlanTurnCount(string planPath)
+    {
+        var plan = ReadJsonFile(planPath);
+        var total = 0;
+        foreach (var chunk in GetArray(plan, "chunks").OfType<JsonObject>())
+        {
+            var turns = GetArray(chunk, "turns").OfType<JsonObject>().ToList();
+            total += turns.Count > 0
+                ? turns.Count(turn => !TimelineTranscriptNoiseFilter.IsLikelySilentHallucination(turn))
+                : GetInt(chunk, "turnCount", 0);
+        }
+
+        return total;
+    }
+
+    private static bool IsActiveVerbalizationState(string state)
+        => state is "running" or "queued" or "planned" or "starting";
+
+    private static double? GetElapsedSinceSec(string value)
+    {
+        if (!DateTimeOffset.TryParse(
+                value,
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.AssumeLocal,
+                out var parsed))
+        {
+            return null;
+        }
+
+        return Math.Max(0, (DateTimeOffset.Now - parsed).TotalSeconds);
+    }
+
     private JsonArray ConvertRootArray(IEnumerable<AudioRootRow> roots)
     {
         var array = new JsonArray();
@@ -1820,6 +2027,9 @@ public sealed class TimelineAudioFileService
 
     private static JsonNode? CloneValueOrNull(JsonNode? node)
         => node?.DeepClone();
+
+    private static JsonNode? NumberOrNull(double? value)
+        => value.HasValue ? JsonValue.Create(value.Value) : null;
 
     private static JsonObject? GetObject(JsonObject? source, string name)
         => GetNode(source, name) as JsonObject;

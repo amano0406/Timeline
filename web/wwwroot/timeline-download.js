@@ -47,6 +47,9 @@ window.timelineDownload = (() => {
     const blob = await response.blob();
     const handle = handles.get(id);
     handles.delete(id);
+    if (!blob || blob.size <= 0) {
+      throw new Error("ダウンロード ZIP が空でした。再スキャン後にもう一度試してください。");
+    }
 
     if (handle) {
       const writable = await handle.createWritable();

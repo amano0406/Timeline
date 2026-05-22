@@ -1,0 +1,837 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>画像詳細 OCR 観察モック</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f3f6f8;
+      --panel: #ffffff;
+      --soft: #f8fafc;
+      --line: #d8e1ea;
+      --text: #172033;
+      --muted: #627086;
+      --teal: #0f766e;
+      --teal-soft: #e8f7f4;
+      --blue: #2563eb;
+      --amber: #b45309;
+      --amber-soft: #fff7e8;
+      --red: #b42318;
+      --red-soft: #fff1f0;
+      --slate: #475569;
+      font-family: "Segoe UI", "Meiryo", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-size: 14px;
+      letter-spacing: 0;
+    }
+
+    header {
+      padding: 18px 28px;
+      border-bottom: 1px solid var(--line);
+      background: var(--panel);
+      position: sticky;
+      top: 0;
+      z-index: 20;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 24px;
+      line-height: 1.25;
+      letter-spacing: 0;
+    }
+
+    h2 {
+      margin: 0;
+      font-size: 17px;
+      letter-spacing: 0;
+    }
+
+    h3 {
+      margin: 0;
+      font-size: 14px;
+      letter-spacing: 0;
+    }
+
+    .subhead {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 14px;
+      align-items: center;
+      margin-top: 8px;
+      color: var(--muted);
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 320px minmax(560px, 1fr) 420px;
+      gap: 16px;
+      max-width: 1680px;
+      padding: 18px 28px 36px;
+      margin: 0 auto;
+    }
+
+    .stack {
+      display: grid;
+      gap: 14px;
+      align-content: start;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+    }
+
+    .panel-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--line);
+      background: var(--soft);
+    }
+
+    .panel-body {
+      padding: 16px;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 4px 9px;
+      font-size: 12px;
+      line-height: 1.25;
+      white-space: nowrap;
+      background: #fff;
+      color: var(--slate);
+    }
+
+    .pill.good {
+      color: var(--teal);
+      background: var(--teal-soft);
+      border-color: #9bd8cf;
+    }
+
+    .pill.warn {
+      color: var(--amber);
+      background: var(--amber-soft);
+      border-color: #f0c889;
+    }
+
+    .pill.bad {
+      color: var(--red);
+      background: var(--red-soft);
+      border-color: #f2aaa3;
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .stat {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px;
+      background: var(--soft);
+    }
+
+    .stat .label {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .stat .value {
+      margin-top: 4px;
+      font-size: 22px;
+      font-weight: 700;
+    }
+
+    dl {
+      display: grid;
+      grid-template-columns: 110px 1fr;
+      gap: 9px 12px;
+      margin: 0;
+    }
+
+    dt {
+      color: var(--muted);
+    }
+
+    dd {
+      margin: 0;
+      overflow-wrap: anywhere;
+    }
+
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+
+    button {
+      border: 1px solid var(--line);
+      background: #fff;
+      color: #263445;
+      border-radius: 7px;
+      padding: 7px 10px;
+      font: inherit;
+      font-size: 13px;
+      cursor: pointer;
+    }
+
+    button.active {
+      background: var(--teal);
+      border-color: var(--teal);
+      color: #fff;
+    }
+
+    .stage-wrap {
+      padding: 16px;
+      background:
+        linear-gradient(45deg, #edf2f7 25%, transparent 25%),
+        linear-gradient(-45deg, #edf2f7 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, #edf2f7 75%),
+        linear-gradient(-45deg, transparent 75%, #edf2f7 75%);
+      background-size: 24px 24px;
+      background-position: 0 0, 0 12px, 12px -12px, -12px 0;
+    }
+
+    .stage {
+      position: relative;
+      width: min(100%, 594px);
+      aspect-ratio: 594 / 1056;
+      margin: 0 auto;
+      background: #111827;
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: 0 18px 42px rgba(15, 23, 42, 0.18);
+    }
+
+    .stage img {
+      display: block;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    }
+
+    .box-layer,
+    .grid-layer {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+    }
+
+    .ocr-box {
+      position: absolute;
+      border: 2px solid rgba(15, 118, 110, 0.95);
+      background: rgba(15, 118, 110, 0.12);
+      border-radius: 3px;
+      opacity: 0.95;
+      transition: border-color .12s, background .12s, box-shadow .12s, opacity .12s;
+    }
+
+    .ocr-box.medium {
+      border-color: rgba(180, 83, 9, 0.95);
+      background: rgba(245, 158, 11, 0.16);
+    }
+
+    .ocr-box.low {
+      border-color: rgba(180, 35, 24, 0.95);
+      background: rgba(248, 113, 113, 0.18);
+    }
+
+    .ocr-box.active {
+      border-color: #2563eb;
+      background: rgba(37, 99, 235, 0.18);
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.25);
+      z-index: 5;
+    }
+
+    .ocr-label {
+      position: absolute;
+      left: -2px;
+      bottom: calc(100% + 2px);
+      max-width: 180px;
+      padding: 2px 5px;
+      border-radius: 4px;
+      background: rgba(15, 23, 42, 0.88);
+      color: #fff;
+      font-size: 10px;
+      line-height: 1.25;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .stage.hide-labels .ocr-label {
+      display: none;
+    }
+
+    .grid-cell {
+      position: absolute;
+      border: 1px dashed rgba(37, 99, 235, 0.75);
+      background: rgba(37, 99, 235, 0.08);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 8px;
+      color: #0f172a;
+      font-weight: 700;
+      text-shadow: 0 1px 0 rgba(255, 255, 255, .7);
+    }
+
+    .grid-cell.empty {
+      border-color: rgba(180, 35, 24, 0.95);
+      background: rgba(248, 113, 113, 0.2);
+      color: #7f1d1d;
+    }
+
+    .grid-cell .small {
+      display: block;
+      margin-top: 4px;
+      font-size: 11px;
+      font-weight: 500;
+    }
+
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      padding: 10px 16px 14px;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      background: #fff;
+    }
+
+    .legend-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+
+    .swatches {
+      display: grid;
+      gap: 8px;
+    }
+
+    .swatch-row {
+      display: grid;
+      grid-template-columns: 28px 76px 1fr 44px;
+      gap: 8px;
+      align-items: center;
+      font-size: 12px;
+    }
+
+    .swatch {
+      width: 28px;
+      height: 22px;
+      border-radius: 5px;
+      border: 1px solid rgba(0, 0, 0, .12);
+    }
+
+    .bar {
+      height: 8px;
+      border-radius: 999px;
+      background: #e5eaf1;
+      overflow: hidden;
+    }
+
+    .bar > span {
+      display: block;
+      height: 100%;
+      background: var(--teal);
+    }
+
+    .note {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.6;
+    }
+
+    .keywords {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .keyword {
+      padding: 4px 8px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: var(--soft);
+      font-size: 12px;
+      color: #334155;
+    }
+
+    .mono {
+      font-family: Consolas, "Cascadia Mono", monospace;
+    }
+
+    pre {
+      margin: 0;
+      max-height: 260px;
+      overflow: auto;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #0f172a;
+      color: #e2e8f0;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      font-family: Consolas, "Cascadia Mono", monospace;
+      font-size: 12px;
+      line-height: 1.55;
+    }
+
+    .visual-description {
+      display: grid;
+      gap: 12px;
+      line-height: 1.7;
+    }
+
+    .visual-description p {
+      margin: 0;
+    }
+
+    .empty-box {
+      border: 1px dashed #cbd5e1;
+      border-radius: 8px;
+      background: #f8fafc;
+      padding: 14px;
+      color: var(--muted);
+    }
+
+    @media (max-width: 1300px) {
+      .layout {
+        grid-template-columns: 300px 1fr;
+      }
+
+      .right {
+        grid-column: 1 / -1;
+      }
+    }
+
+    @media (max-width: 860px) {
+      .layout {
+        grid-template-columns: 1fr;
+        padding: 14px;
+      }
+
+      header {
+        padding: 14px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>画像詳細 OCR 観察モック</h1>
+    <div class="subhead">
+      <span class="pill good">画像レコード作成済み</span>
+      <span class="pill warn">要確認あり</span>
+      <span class="mono">image-c15d1645b6ce4244</span>
+      <span>スクリーンショット 2026-05-13 100514.png</span>
+    </div>
+  </header>
+
+  <main class="layout">
+    <aside class="stack">
+      <section class="panel">
+        <div class="panel-head">
+          <h2>取得状況</h2>
+        </div>
+        <div class="panel-body">
+          <div class="stats">
+            <div class="stat">
+              <div class="label">OCR検出</div>
+              <div class="value" id="statBlocks">80</div>
+            </div>
+            <div class="stat">
+              <div class="label">低信頼</div>
+              <div class="value" id="statLow">2</div>
+            </div>
+            <div class="stat">
+              <div class="label">画像サイズ</div>
+              <div class="value">594 x 1056</div>
+            </div>
+            <div class="stat">
+              <div class="label">種別</div>
+              <div class="value" style="font-size:18px;">文書/画面</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>ファイル情報</h2>
+        </div>
+        <div class="panel-body">
+          <dl>
+            <dt>相対パス</dt>
+            <dd>スクリーンショット 2026-05-13 100514.png</dd>
+            <dt>形式</dt>
+            <dd>PNG</dd>
+            <dt>明るさ</dt>
+            <dd>37.174 <span class="pill warn">dark</span></dd>
+            <dt>コントラスト</dt>
+            <dd>25.745 <span class="pill">normal</span></dd>
+            <dt>内容種別</dt>
+            <dd><span class="pill">image</span> <span class="pill">text</span></dd>
+            <dt>警告</dt>
+            <dd>撮影時刻なし。更新時刻を使用。</dd>
+          </dl>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>色の分布</h2>
+        </div>
+        <div class="panel-body">
+          <div class="swatches" id="swatches"></div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>検索キーワード</h2>
+        </div>
+        <div class="panel-body">
+          <div class="keywords" id="keywords"></div>
+        </div>
+      </section>
+    </aside>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2>画像プレビュー</h2>
+        <div class="toolbar">
+          <button type="button" class="active" data-mode="ocr">OCRボックス</button>
+          <button type="button" data-mode="gap">OCRなし領域</button>
+          <button type="button" data-mode="debug">生成済みオーバーレイ</button>
+          <button type="button" data-mode="plain">画像のみ</button>
+          <button type="button" id="toggleLabels">ラベル非表示</button>
+        </div>
+      </div>
+      <div class="stage-wrap">
+        <div class="stage" id="stage">
+          <img id="previewImage" alt="画像プレビュー" src="file:///C:/apps/Timeline/data/to_text/image/items/image-c15d1645b6ce4244/artifacts/normalized_image.jpg">
+          <div class="box-layer" id="boxLayer"></div>
+          <div class="grid-layer" id="gridLayer" hidden></div>
+        </div>
+      </div>
+      <div class="legend">
+        <span class="pill"><span class="legend-dot" style="background:#0f766e"></span>高信頼</span>
+        <span class="pill"><span class="legend-dot" style="background:#b45309"></span>中信頼</span>
+        <span class="pill"><span class="legend-dot" style="background:#b42318"></span>低信頼</span>
+        <span class="note">OCRなし領域は「文字がない」断定ではなく、OCR座標が存在しない領域です。</span>
+      </div>
+    </section>
+
+    <aside class="stack right">
+      <section class="panel">
+        <div class="panel-head">
+          <h2>画像説明</h2>
+          <span class="pill warn">未取得</span>
+        </div>
+        <div class="panel-body visual-description">
+          <div class="empty-box">
+            この画像レコードでは、画像説明データがまだ入っていません。
+          </div>
+          <dl>
+            <dt>caption</dt>
+            <dd class="mono">visual.caption</dd>
+            <dt>scene_summary</dt>
+            <dd class="mono">visual.scene_summary</dd>
+            <dt>observations</dt>
+            <dd class="mono">visual.observations</dd>
+          </dl>
+          <p class="note">ここには、TimelineForImage が既に出力した画像説明だけを表示します。画面表示のために Timeline 側で新しくLLM要約は作りません。</p>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>OCR全文</h2>
+        </div>
+        <div class="panel-body">
+          <pre>2 新しいチャット
+Q 検索
+
+88 プラグイン
+
+© オートメーション
+
+ピン留め
+ 製品 Timeline                      fe)
+ 製品 TimelineForAudio             9時間
+め 製品 TimelineForlmage             9時間
+ 製品 TimelineForVideo             9時間
+ 製品 TimelineForChatGPT           9時間
+プロジェクト
+© GMail
+
+Gmailの自作ラベルを全削除             1時間
+© timeline
+選 案件獲得
+
+案件獲得                            14分
+チャット                     = @
+
+開いているタブを確認                           17分</pre>
+        </div>
+      </section>
+    </aside>
+  </main>
+
+  <script>
+    const normalizedImage = "file:///C:/apps/Timeline/data/to_text/image/items/image-c15d1645b6ce4244/artifacts/normalized_image.jpg";
+    const debugImage = "file:///C:/apps/Timeline/data/to_text/image/items/image-c15d1645b6ce4244/artifacts/debug_overlay.jpg";
+
+    const palette = [
+      ["#202020", 0.706], ["#2f2f2f", 0.0577], ["#191919", 0.0443], ["#686868", 0.0424],
+      ["#242424", 0.0413], ["#3c3c3c", 0.039], ["#1f1f1f", 0.0373], ["#1e1e1e", 0.0321]
+    ];
+
+    const keywords = [
+      "14分", "17分", "1時間", "88", "9時間", "GMail", "Gmailの自作ラベルを全削除",
+      "Timeline", "TimelineForAudio", "TimelineForChatGPT", "TimelineForVideo", "TimelineForlmage",
+      "fe)", "png", "timeline", "オートメーション", "チャット", "案件獲得"
+    ];
+
+    const blockRows = `ocr_0001|medium|0.55|0.045455,0.041667,0.075758,0.058712|2
+ocr_0002|high|0.96|0.102694,0.041667,0.343434,0.060606|新しい
+ocr_0003|high|0.93|0.227273,0.036932,0.284512,0.068182|チャ
+ocr_0004|high|0.92|0.282828,0.036932,0.313131,0.068182|ッ
+ocr_0005|high|0.93|0.311448,0.036932,0.350168,0.068182|ト
+ocr_0006|high|0.89|0.038721,0.082386,0.058923,0.11553|Q
+ocr_0007|high|0.96|0.10101,0.087121,0.170034,0.106061|検索
+ocr_0008|high|0.89|0.045455,0.132576,0.075758,0.149621|88
+ocr_0009|high|0.96|0.124579,0.132576,0.16835,0.150568|プラ
+ocr_0010|high|0.93|0.181818,0.132576,0.237374,0.151515|グイ
+ocr_0011|high|0.93|0.247475,0.135417,0.276094,0.150568|ン
+ocr_0012|high|0.89|0.043771,0.177083,0.077441,0.196023|©
+ocr_0013|high|0.95|0.114478,0.178977,0.16835,0.196023|オー
+ocr_0014|high|0.96|0.183502,0.179924,0.239057,0.196023|トメ
+ocr_0015|high|0.96|0.245791,0.179924,0.380471,0.196023|ーション
+ocr_0016|high|0.95|0.047138,0.241477,0.107744,0.257576|ピン
+ocr_0017|high|0.94|0.122896,0.241477,0.178451,0.258523|留め
+ocr_0018|high|0.91|0.109428,0.285985,0.188552,0.305871|製品
+ocr_0019|high|0.91|0.19697,0.282197,0.318182,0.313447|Timeline
+ocr_0020|low|0.45|0.885522,0.286932,0.909091,0.302083|fe)
+ocr_0021|medium|0.77|0.111111,0.331439,0.186869,0.351326|製品
+ocr_0022|medium|0.77|0.186869,0.331439,0.461279,0.351326|TimelineForAudio
+ocr_0023|high|0.96|0.83165,0.33428,0.846801,0.347538|9
+ocr_0024|high|0.93|0.850168,0.332386,0.910774,0.349432|時
+ocr_0025|high|0.91|0.885522,0.328598,0.915825,0.356061|間
+ocr_0026|medium|0.62|0.047138,0.377841,0.075758,0.393939|め
+ocr_0027|high|0.96|0.112795,0.376894,0.186869,0.39678|製品
+ocr_0028|medium|0.65|0.186869,0.378788,0.464646,0.398674|TimelineForlmage
+ocr_0029|high|0.96|0.83165,0.379735,0.846801,0.392992|9
+ocr_0030|high|0.93|0.850168,0.377841,0.910774,0.394886|時
+ocr_0031|high|0.91|0.885522,0.374053,0.915825,0.401515|間
+ocr_0032|high|0.91|0.111111,0.422348,0.186869,0.442235|製品
+ocr_0033|high|0.91|0.186869,0.422348,0.457912,0.442235|TimelineForVideo
+ocr_0034|high|0.96|0.83165,0.425189,0.846801,0.438447|9
+ocr_0035|high|0.93|0.850168,0.423295,0.910774,0.440341|時
+ocr_0036|high|0.91|0.885522,0.419508,0.915825,0.44697|間
+ocr_0037|high|0.87|0.111111,0.467803,0.186869,0.487689|製品
+ocr_0038|high|0.87|0.186869,0.467803,0.503367,0.487689|TimelineForChatGPT
+ocr_0039|high|0.96|0.83165,0.470644,0.846801,0.483902|9
+ocr_0040|high|0.93|0.850168,0.46875,0.910774,0.485795|時
+ocr_0041|high|0.91|0.885522,0.464962,0.915825,0.492424|間
+ocr_0042|high|0.96|0.045455,0.53125,0.106061,0.547348|プロ
+ocr_0043|high|0.96|0.116162,0.532197,0.176768,0.547348|ジェ
+ocr_0044|high|0.96|0.228956,0.532197,0.245791,0.547348|クト
+ocr_0045|high|0.95|0.043771,0.575758,0.079125,0.592803|©
+ocr_0046|high|0.95|0.102694,0.577652,0.190236,0.592803|GMail
+ocr_0047|high|0.96|0.102694,0.625,0.188552,0.640152|Gmail
+ocr_0048|high|0.95|0.20202,0.625947,0.223906,0.641098|の
+ocr_0049|high|0.96|0.234007,0.623106,0.323232,0.642045|自作
+ocr_0050|high|0.93|0.333333,0.619318,0.373737,0.650568|ラベ
+ocr_0051|high|0.93|0.373737,0.625,0.397306,0.641098|ル
+ocr_0052|high|0.93|0.405724,0.624053,0.429293,0.641098|を
+ocr_0053|high|0.91|0.439394,0.623106,0.473064,0.641098|全
+ocr_0054|high|0.88|0.474747,0.623106,0.506734,0.642045|削
+ocr_0055|high|0.92|0.521886,0.623106,0.543771,0.642045|除
+ocr_0056|high|0.96|0.835017,0.625947,0.843434,0.639205|1
+ocr_0057|high|0.93|0.858586,0.624053,0.880471,0.641098|時
+ocr_0058|high|0.93|0.885522,0.624053,0.910774,0.641098|間
+ocr_0059|high|0.96|0.043771,0.67803,0.079125,0.695076|©
+ocr_0060|high|0.96|0.10101,0.679924,0.225589,0.695076|timeline
+ocr_0061|low|0.44|0.043771,0.766098,0.079125,0.783144|選
+ocr_0062|high|0.96|0.102694,0.766098,0.170034,0.785038|案件
+ocr_0063|high|0.96|0.180135,0.766098,0.240741,0.785038|獲得
+ocr_0064|high|0.96|0.10101,0.813447,0.170034,0.832386|案件
+ocr_0065|high|0.96|0.180135,0.813447,0.240741,0.832386|獲得
+ocr_0066|high|0.86|0.850168,0.814394,0.912458,0.831439|14
+ocr_0067|high|0.92|0.888889,0.809659,0.917508,0.840909|分
+ocr_0068|high|0.93|0.043771,0.888258,0.106061,0.905303|チャ
+ocr_0069|high|0.93|0.117845,0.892045,0.138047,0.904356|ッ
+ocr_0070|high|0.92|0.158249,0.888258,0.175084,0.903409|ト
+ocr_0071|medium|0.65|0.813131,0.890152,0.843434,0.901515|=
+ocr_0072|medium|0.65|0.885522,0.888258,0.912458,0.903409|@
+ocr_0073|medium|0.8|0.047138,0.933712,0.146465,0.951705|開い
+ocr_0074|high|0.96|0.154882,0.935606,0.170034,0.949811|て
+ocr_0075|high|0.95|0.173401,0.934659,0.217172,0.950758|いる
+ocr_0076|high|0.96|0.225589,0.932765,0.284512,0.950758|タブ
+ocr_0077|high|0.96|0.294613,0.933712,0.323232,0.950758|を
+ocr_0078|high|0.95|0.329966,0.932765,0.397306,0.951705|確認
+ocr_0079|high|0.93|0.850168,0.933712,0.912458,0.950758|17
+ocr_0080|high|0.9|0.890572,0.927083,0.920875,0.95928|分`;
+
+    const blocks = blockRows.trim().split("\n").map((line) => {
+      const [id, level, score, bbox, ...textParts] = line.split("|");
+      return {
+        id,
+        level,
+        score: Number(score),
+        bbox: bbox.split(",").map(Number),
+        text: textParts.join("|")
+      };
+    });
+
+    const grid = [
+      ["grid_0_0", 0, 0, 0.333333, 0.333333],
+      ["grid_0_1", 0.333333, 0, 0.666667, 0.333333],
+      ["grid_0_2", 0.666667, 0, 1, 0.333333],
+      ["grid_1_0", 0, 0.333333, 0.333333, 0.666667],
+      ["grid_1_1", 0.333333, 0.333333, 0.666667, 0.666667],
+      ["grid_1_2", 0.666667, 0.333333, 1, 0.666667],
+      ["grid_2_0", 0, 0.666667, 0.333333, 1],
+      ["grid_2_1", 0.333333, 0.666667, 0.666667, 1],
+      ["grid_2_2", 0.666667, 0.666667, 1, 1]
+    ];
+
+    const stage = document.getElementById("stage");
+    const previewImage = document.getElementById("previewImage");
+    const boxLayer = document.getElementById("boxLayer");
+    const gridLayer = document.getElementById("gridLayer");
+
+    function confidenceLabel(block) {
+      const labels = { high: "高", medium: "中", low: "低" };
+      return `${labels[block.level] || "-"} ${(block.score * 100).toFixed(0)}%`;
+    }
+
+    function renderBoxes() {
+      boxLayer.innerHTML = "";
+      for (const block of blocks) {
+        const [x1, y1, x2, y2] = block.bbox;
+        const box = document.createElement("div");
+        box.className = `ocr-box ${block.level}`;
+        box.dataset.id = block.id;
+        box.style.left = `${x1 * 100}%`;
+        box.style.top = `${y1 * 100}%`;
+        box.style.width = `${(x2 - x1) * 100}%`;
+        box.style.height = `${(y2 - y1) * 100}%`;
+        const label = document.createElement("span");
+        label.className = "ocr-label";
+        label.textContent = `${block.text} ${confidenceLabel(block)}`;
+        box.appendChild(label);
+        boxLayer.appendChild(box);
+      }
+    }
+
+    function blockCenter(block) {
+      const [x1, y1, x2, y2] = block.bbox;
+      return [(x1 + x2) / 2, (y1 + y2) / 2];
+    }
+
+    function renderGrid() {
+      gridLayer.innerHTML = "";
+      for (const [id, x1, y1, x2, y2] of grid) {
+        const count = blocks.filter((block) => {
+          const [cx, cy] = blockCenter(block);
+          return cx >= x1 && cx < x2 && cy >= y1 && cy < y2;
+        }).length;
+        const cell = document.createElement("div");
+        cell.className = `grid-cell ${count === 0 ? "empty" : ""}`;
+        cell.style.left = `${x1 * 100}%`;
+        cell.style.top = `${y1 * 100}%`;
+        cell.style.width = `${(x2 - x1) * 100}%`;
+        cell.style.height = `${(y2 - y1) * 100}%`;
+        cell.innerHTML = count === 0
+          ? `OCRなし<span class="small">${id}</span>`
+          : `${count}件検出<span class="small">${id}</span>`;
+        gridLayer.appendChild(cell);
+      }
+    }
+
+    function activateBlock(id) {
+      document.querySelectorAll(".ocr-box.active").forEach((node) => node.classList.remove("active"));
+      const box = document.querySelector(`.ocr-box[data-id="${id}"]`);
+      if (box) box.classList.add("active");
+    }
+
+    function setMode(mode) {
+      document.querySelectorAll("[data-mode]").forEach((button) => button.classList.toggle("active", button.dataset.mode === mode));
+      previewImage.src = mode === "debug" ? debugImage : normalizedImage;
+      boxLayer.hidden = mode !== "ocr";
+      gridLayer.hidden = mode !== "gap";
+    }
+
+    function renderMeta() {
+      document.getElementById("statBlocks").textContent = blocks.length;
+      document.getElementById("statLow").textContent = blocks.filter((block) => block.level === "low").length;
+
+      const swatches = document.getElementById("swatches");
+      for (const [hex, ratio] of palette) {
+        const row = document.createElement("div");
+        row.className = "swatch-row";
+        row.innerHTML = `
+          <span class="swatch" style="background:${hex}"></span>
+          <span class="mono">${hex}</span>
+          <span class="bar"><span style="width:${ratio * 100}%"></span></span>
+          <span>${(ratio * 100).toFixed(1)}%</span>
+        `;
+        swatches.appendChild(row);
+      }
+
+      const keywordBox = document.getElementById("keywords");
+      for (const word of keywords) {
+        const item = document.createElement("span");
+        item.className = "keyword";
+        item.textContent = word;
+        keywordBox.appendChild(item);
+      }
+    }
+
+    document.querySelectorAll("[data-mode]").forEach((button) => {
+      button.addEventListener("click", () => setMode(button.dataset.mode));
+    });
+
+    document.getElementById("toggleLabels").addEventListener("click", (event) => {
+      const hidden = stage.classList.toggle("hide-labels");
+      event.currentTarget.textContent = hidden ? "ラベル表示" : "ラベル非表示";
+    });
+
+    renderBoxes();
+    renderGrid();
+    renderMeta();
+    setMode("ocr");
+  </script>
+</body>
+</html>

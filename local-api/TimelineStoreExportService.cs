@@ -90,6 +90,11 @@ public sealed class TimelineStoreExportService
 
         ZipFile.CreateFromDirectory(packagePath, archivePath, CompressionLevel.Optimal, includeBaseDirectory: false);
         var archive = new FileInfo(archivePath);
+        if (archive.Length <= 0)
+        {
+            throw new InvalidOperationException("Timeline store ZIP was empty. Rebuild the Timeline store.");
+        }
+
         var result = new TimelineStoreDownloadResponse
         {
             ArchivePath = archivePath,

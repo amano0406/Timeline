@@ -61,7 +61,7 @@ public partial class ChatGpt
         {
             filePath = await Js.InvokeAsync<string?>(
                 "timelineDirectoryPicker.pickFile",
-                "ChatGPT export ZIPを選択",
+                "ChatGPTエクスポートZIPを選択",
                 "",
                 "ZIP files (*.zip)|*.zip|All files (*.*)|*.*");
         }
@@ -85,8 +85,8 @@ public partial class ChatGpt
                 FilePath = filePath,
             });
             _operationMessage = result.Available
-                ? $"更新が完了しました。処理 {result.Processed} 件、スキップ {result.Skipped} 件。"
-                : "更新を実行しました。";
+                ? $"取り込みが完了しました。処理 {result.Processed} 件、スキップ {result.Skipped} 件。Timelineへ反映するにはスキャンを実行してください。"
+                : "取り込みを実行しました。Timelineへ反映するにはスキャンを実行してください。";
             await LoadAsync();
         }
         catch (Exception ex)

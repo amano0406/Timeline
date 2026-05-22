@@ -669,7 +669,9 @@ else
     private bool _audioSettingsLoading;
     private bool _imageSettingsLoading;
     private bool _videoSettingsLoading;
+    private bool _chatGptImporting;
     private string? _error;
+    private string? _chatGptImportMessage;
     private string? _tokenDraft;
     private string? _tokenToSave;
     private string? _tokenValidationError;
@@ -704,6 +706,7 @@ else
     private bool HasInstalledProducts => _runtime.Products.Any(IsInstalledProduct);
     private bool IsProductRunning(string productId) => RuntimeFor(productId)?.Running == true;
     private bool HardwareDevicesLoaded => _audioOverview is not null;
+    private bool IsChatGptRunning => IsProductRunning("chatgpt");
     private string NormalModeAriaSelected => _proMode ? "false" : "true";
     private string ProModeAriaSelected => _proMode ? "true" : "false";
     private IReadOnlyList<string> CpuDevices => _audioOverview?.CpuDevices ?? [];
@@ -1451,6 +1454,52 @@ else
         _videoOutputRoot.DisplayName = string.IsNullOrWhiteSpace(_videoOutputRoot.DisplayName) ? "Output" : _videoOutputRoot.DisplayName;
         await ValidateDirectoryPathAsync(_videoOutputRoot.Path);
         _saved = false;
+    }
+
+    private async Task ImportChatGptZipAsync()
+    {
+        _error = null;
+        _chatGptImportMessage = null;
+
+        string? filePath;
+        try
+        {
+            filePath = await Js.InvokeAsync<string?>(
+                "timelineDirectoryPicker.pickFile",
+                "ChatGPTエクスポートZIPを選択",
+                "",
+                "ZIP files (*.zip)|*.zip|All files (*.*)|*.*");
+        }
+        catch (JSException ex)
+        {
+            _error = ex.Message;
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(filePath))
+        {
+            return;
+        }
+
+        _chatGptImporting = true;
+        try
+        {
+            var result = await Timeline.RefreshChatGptAsync(new ChatGptRefreshRequest
+            {
+                FilePath = filePath,
+            });
+            _chatGptImportMessage = result.Available
+                ? $"取り込みが完了しました。処理 {result.Processed} 件、スキップ {result.Skipped} 件。Timelineへ反映するにはスキャンを実行してください。"
+                : "取り込みを実行しました。Timelineへ反映するにはスキャンを実行してください。";
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _chatGptImporting = false;
+        }
     }
 
     private async Task AddAudioInputRootAsync()
@@ -2286,7 +2335,7 @@ else
         "image" => _imageOverview?.ProductFound == true ? ImageProductSettings() : ProductSettingsStopped("TimelineForImage"),
         "video" => VideoProductSettings(),
         "windows-codex" => ProductSettingsPending("TimelineForWindowsCodex"),
-        "chatgpt" => ProductSettingsPending("TimelineForChatGPT"),
+        "chatgpt" => ChatGptProductSettings(),
         "pc" => ProductSettingsPending("TimelineForPC"),
         _ => ProductSettingsPending(productId),
     };
@@ -2340,6 +2389,48 @@ else
 
         @InputRootSection("読み込み場所", _videoInputRoots.Select(DirectoryDisplay).ToList(), "追加", AddVideoInputRootAsync, RemoveVideoInputRootByDisplay)
         @OutputRootSection("生成データの保存先", _videoOutputRoot.Path, PickVideoOutputRootAsync)
+    </div>;
+
+    private RenderFragment ChatGptProductSettings() => @<div class="grid gap-4">
+        <div class="rounded-md border border-line bg-slate-50 p-4">
+            <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                <div class="min-w-0">
+                    <h3 class="text-base font-semibold">ChatGPTエクスポートZIP</h3>
+                    <p class="mt-2 text-sm leading-6 text-slate-700">
+                        ChatGPTは入力ディレクトリを常時監視せず、ChatGPTからダウンロードしたエクスポートZIPを取り込み時に選択します。
+                        ZIPは設定として保存せず、元ファイルも削除・変更しません。
+                    </p>
+                    <p class="mt-2 text-sm leading-6 text-slate-600">
+                        取り込み後、スキャンを実行するとChatGPTの会話がTimelineの時間軸に反映されます。
+                    </p>
+                    @if (!string.IsNullOrWhiteSpace(_chatGptImportMessage))
+                    {
+                        <div class="mt-3 rounded-md border border-sky-200 bg-sky-50 p-3 text-sm text-sky-900">
+                            @_chatGptImportMessage
+                        </div>
+                    }
+                    @if (!IsProductRunning("chatgpt"))
+                    {
+                        <div class="mt-3 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                            TimelineForChatGPT が起動していない場合は、製品管理で起動してから取り込んでください。
+                        </div>
+                    }
+                </div>
+                <div class="flex shrink-0 flex-wrap gap-2">
+                    <button type="button"
+                            class="tfa-button-primary gap-2"
+                            @onclick="ImportChatGptZipAsync"
+                            disabled="@(_chatGptImporting || !IsChatGptRunning)">
+                        <FaIcon Name="@(_chatGptImporting ? "spinner" : "file-arrow-up")" Class="@($"tfa-icon {(_chatGptImporting ? "fa-spin" : "")}")" />
+                        <span>@(_chatGptImporting ? "取り込み中" : "ZIPを選んで取り込む")</span>
+                    </button>
+                    <a class="tfa-button-secondary gap-2" href="chatgpt">
+                        <FaIcon Name="comments" Class="tfa-icon" />
+                        <span>スレッド一覧を開く</span>
+                    </a>
+                </div>
+            </div>
+        </div>
     </div>;
 
     private RenderFragment ProductTokenStatus(string productId, bool hasToken, string? preview) => @<div class="rounded-md border border-line bg-slate-50 p-4">

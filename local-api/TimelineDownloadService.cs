@@ -56,6 +56,7 @@ public sealed class TimelineDownloadService
         {
             var fullPath = Path.GetFullPath(path);
             if (!File.Exists(fullPath)
+                || new FileInfo(fullPath).Length <= 0
                 || !Path.GetExtension(fullPath).Equals(".zip", StringComparison.OrdinalIgnoreCase))
             {
                 return false;
