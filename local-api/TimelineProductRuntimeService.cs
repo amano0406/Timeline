@@ -33,7 +33,7 @@ public sealed class TimelineProductRuntimeService
             ["chatgpt"] = ("TimelineForChatGPT", "chatgpt", "chatgpt"),
             ["image"] = ("TimelineForImage", "image", "image"),
             ["video"] = ("TimelineForVideo", "video", "video"),
-            ["pc"] = ("TimelineForPC", "pc", "pc"),
+            ["pc"] = ("TimelineForPcInfo", "pc", "pc"),
         };
 
     private readonly TimelineSettingsService _settings;

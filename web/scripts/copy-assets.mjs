@@ -45,3 +45,8 @@ const twElements = findFile(join("node_modules", "tw-elements"), "tw-elements.um
 if (twElements) {
   copyFile(twElements, join("wwwroot", "vendor", "tw-elements", "tw-elements.umd.min.js"));
 }
+
+copyFile(
+  join("node_modules", "chart.js", "dist", "chart.umd.js"),
+  join("wwwroot", "vendor", "chart.js", "chart.umd.js"),
+);

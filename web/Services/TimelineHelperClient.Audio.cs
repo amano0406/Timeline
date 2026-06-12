@@ -16,8 +16,8 @@ public sealed partial class TimelineHelperClient
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to load TimelineForAudio overview.");
-            return OfflineOverview("補助サーバーに接続できません。start.bat から起動してください。");
+            LogOptionalHelperReadFailure(ex, "Failed to load TimelineForAudio overview.");
+            return _localStore.GetAudioOverviewFallback();
         }
     }
 
@@ -48,7 +48,7 @@ public sealed partial class TimelineHelperClient
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to load TimelineForAudio file detail.");
+            LogOptionalHelperReadFailure(ex, "Failed to load TimelineForAudio file detail.");
             return new AudioFileDetailResult { Message = "音声詳細を取得できませんでした。" };
         }
     }
@@ -70,7 +70,7 @@ public sealed partial class TimelineHelperClient
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to load audio verbalization status.");
+            LogOptionalHelperReadFailure(ex, "Failed to load audio verbalization status.");
             return new AudioVerbalizationStatus { State = "unknown", Message = "言語化状態を取得できませんでした。" };
         }
     }
@@ -92,7 +92,7 @@ public sealed partial class TimelineHelperClient
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to load audio verbalization result.");
+            LogOptionalHelperReadFailure(ex, "Failed to load audio verbalization result.");
             return new AudioVerbalizationResult { Message = "言語化結果を取得できませんでした。" };
         }
     }
@@ -132,7 +132,7 @@ public sealed partial class TimelineHelperClient
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to load audio verbalization bulk status.");
+            LogOptionalHelperReadFailure(ex, "Failed to load audio verbalization bulk status.");
             return new AudioVerbalizationBulkStatus { State = "unknown", Message = "一括言語化の状態を取得できませんでした。" };
         }
     }
@@ -150,7 +150,7 @@ public sealed partial class TimelineHelperClient
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to load audio verbalization bulk targets.");
+            LogOptionalHelperReadFailure(ex, "Failed to load audio verbalization bulk targets.");
             return new AudioVerbalizationBulkTargetSummary { Message = "一括言語化の対象を取得できませんでした。" };
         }
     }
@@ -168,6 +168,26 @@ public sealed partial class TimelineHelperClient
 
         return await response.Content.ReadFromJsonAsync<AudioVerbalizationBulkStatus>(JsonOptions, cancellationToken)
             ?? new AudioVerbalizationBulkStatus { Message = "一括言語化の状態を取得できませんでした。" };
+    }
+
+    public async Task<AudioVerbalizationBulkStatus> CancelAudioVerbalizationBulkAsync(
+        string jobId = "",
+        CancellationToken cancellationToken = default)
+    {
+        var response = await _http.PostAsJsonAsync(
+            "timeline/audio-verbalization/bulk/cancel",
+            new { jobId },
+            JsonOptions,
+            cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            throw new InvalidOperationException(ErrorMessageFromBody(body)
+                ?? $"Audio verbalization bulk cancel failed. HTTP {(int)response.StatusCode}");
+        }
+
+        return await response.Content.ReadFromJsonAsync<AudioVerbalizationBulkStatus>(JsonOptions, cancellationToken)
+            ?? new AudioVerbalizationBulkStatus();
     }
 
     public async Task<AudioVerbalizationOllamaStatus> GetAudioVerbalizationOllamaStatusAsync(
@@ -190,7 +210,7 @@ public sealed partial class TimelineHelperClient
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to load Ollama status.");
+            LogOptionalHelperReadFailure(ex, "Failed to load Ollama status.");
             return new AudioVerbalizationOllamaStatus { Message = "Ollama の状態を取得できませんでした。" };
         }
     }
@@ -207,7 +227,7 @@ public sealed partial class TimelineHelperClient
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to load TimelineForAudio model inventory.");
+            LogOptionalHelperReadFailure(ex, "Failed to load TimelineForAudio model inventory.");
             return OfflineModels("TimelineForAudio API からモデル一覧を取得できませんでした。");
         }
     }

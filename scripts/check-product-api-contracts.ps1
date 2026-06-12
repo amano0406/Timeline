@@ -51,7 +51,7 @@ if (-not $ChatGptProductPath) {
     $ChatGptProductPath = Resolve-ProductPath -SpecifiedPath $ChatGptProductPath -AppDirectoryName "TimelineForChatGPT"
 }
 if (-not $PcProductPath) {
-    $PcProductPath = Resolve-ProductPath -SpecifiedPath $PcProductPath -AppDirectoryName "TimelineForPC"
+    $PcProductPath = Resolve-ProductPath -SpecifiedPath $PcProductPath -AppDirectoryName "TimelineForPcInfo"
 }
 if (-not $DownloadRoot) {
     $DownloadRoot = Join-Path (Join-Path (Join-Path $repoRoot "data") "work") "product-api-contract-smoke"
@@ -372,7 +372,7 @@ Test-ProductApi -Product "TimelineForVideo" -ProductPath $VideoProductPath -Fall
 Test-ProductApi -Product "TimelineForImage" -ProductPath $ImageProductPath -FallbackPort 19400 -HasFiles $true -HasModels $true -HasSettingsSave $true -SupportsDownloadTo $true
 Test-ProductApi -Product "TimelineForWindowsCodex" -ProductPath $WindowsCodexProductPath -FallbackPort 19200 -HasFiles $false -HasModels $false -HasSettingsSave $false -SupportsDownloadTo $true
 Test-ProductApi -Product "TimelineForChatGPT" -ProductPath $ChatGptProductPath -FallbackPort 19300 -HasFiles $false -HasModels $false -HasSettingsSave $false -SupportsDownloadTo $true
-Test-ProductApi -Product "TimelineForPC" -ProductPath $PcProductPath -FallbackPort 19600 -HasFiles $false -HasModels $false -HasSettingsSave $true -SupportsDownloadTo $true
+Test-ProductApi -Product "TimelineForPcInfo" -ProductPath $PcProductPath -FallbackPort 19600 -HasFiles $false -HasModels $false -HasSettingsSave $true -SupportsDownloadTo $true
 
 if ($script:Failures.Count -gt 0) {
     Write-Host ""

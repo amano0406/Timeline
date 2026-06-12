@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Net;
 using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
@@ -82,7 +83,7 @@ public sealed class TimelineAudioVerbalizationExecutionService
                     ["resultPath"] = resultPath,
                 });
 
-            return await ExecuteAsync(plan, directory, initialStatus, resultPath, progressCallback, cancellationToken);
+            return await ExecuteAsync(plan, directory, initialStatus, resultPath, resultPayload, progressCallback, cancellationToken);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -95,6 +96,7 @@ public sealed class TimelineAudioVerbalizationExecutionService
         string directory,
         JsonObject initialStatus,
         string resultPath,
+        JsonObject existingResultPayload,
         Action<JsonObject, int, int>? progressCallback,
         CancellationToken cancellationToken)
     {
@@ -114,6 +116,8 @@ public sealed class TimelineAudioVerbalizationExecutionService
         Directory.CreateDirectory(resultsDirectory);
         var contextDirectory = Path.Combine(directory, "context");
         var chunks = GetArray(plan, "chunks").OfType<JsonObject>().ToList();
+        var existingResultChunks = GetReusableResultChunks(existingResultPayload);
+        var existingTurns = GetReusableResultTurns(existingResultPayload);
         var resultChunks = new JsonArray();
         var allTurns = new JsonArray();
         var startedAt = DateTimeOffset.Now;
@@ -142,6 +146,20 @@ public sealed class TimelineAudioVerbalizationExecutionService
             var contextPath = Path.Combine(contextDirectory, $"{chunkId}.context.json");
             var summaryPath = Path.Combine(contextDirectory, $"{chunkId}.summary.json");
             var resultChunkPath = Path.Combine(resultsDirectory, $"{chunkId}.result.json");
+
+            if (TryReuseResultChunk(chunk, existingResultChunks, existingTurns, resultChunks, allTurns))
+            {
+                status["currentChunkId"] = chunkId;
+                status["completedChunks"] = resultChunks.Count;
+                status["verbalizedTurns"] = GetResolvedTurnCount(allTurns);
+                status["unresolvedTurns"] = GetUnresolvedTurnCount(allTurns);
+                status["updatedAt"] = DateTimeOffset.Now.ToString("o", CultureInfo.InvariantCulture);
+                status["message"] = "Audio verbalization resumed from a saved chunk.";
+                UpdateTiming(status, startedAt, resultChunks.Count, chunks.Count);
+                WriteResultPayload(resultPath, status, resultChunks, allTurns);
+                progressCallback?.Invoke(CloneObject(status), resultChunks.Count, chunks.Count);
+                continue;
+            }
 
             status["currentChunkId"] = chunkId;
             status["updatedAt"] = DateTimeOffset.Now.ToString("o", CultureInfo.InvariantCulture);
@@ -198,12 +216,16 @@ public sealed class TimelineAudioVerbalizationExecutionService
                 var verbalizedTurns = ConvertVerbalizedTurns(executionChunk, llmPayload, executionContext);
                 var summary = GetString(llmPayload, "summary", string.Empty);
 
-                if (GetResolvedTurnCount(verbalizedTurns) == 0 && GetArray(executionContext, "nearbyUserTextCandidates").Count > 0)
+                var nearbyUserTextCandidateCount = GetArray(executionContext, "nearbyUserTextCandidates").Count;
+                var nearbyEvidenceCandidateCount = GetArray(executionContext, "nearbyEvidenceCandidates").Count;
+                if (GetResolvedTurnCount(verbalizedTurns) == 0
+                    && (nearbyUserTextCandidateCount > 0 || nearbyEvidenceCandidateCount > 0))
                 {
-                    WriteOperation(operationId, "llm", "audio_verbalization_chunk_retry", "running", "Audio verbalization chunk is retrying with distilled user-text hints.", details: new JsonObject
+                    WriteOperation(operationId, "llm", "audio_verbalization_chunk_retry", "running", "Audio verbalization chunk is retrying with distilled Timeline evidence.", details: new JsonObject
                     {
                         ["chunkId"] = chunkId,
-                        ["userTextCandidateCount"] = GetArray(executionContext, "nearbyUserTextCandidates").Count,
+                        ["userTextCandidateCount"] = nearbyUserTextCandidateCount,
+                        ["evidenceCandidateCount"] = nearbyEvidenceCandidateCount,
                     });
 
                     var retryContext = NewRetryContext(executionContext);
@@ -481,31 +503,64 @@ public sealed class TimelineAudioVerbalizationExecutionService
         var client = _httpClientFactory.CreateClient();
         client.Timeout = TimeSpan.FromSeconds(900);
         var url = baseUrl.TrimEnd('/') + "/api/generate";
-        try
+        Exception? lastException = null;
+        var lastFailure = string.Empty;
+        const int maxAttempts = 3;
+        for (var attempt = 1; attempt <= maxAttempts; attempt++)
         {
-            using var content = new StringContent(body.ToJsonString(CompactJsonOptions), Encoding.UTF8, "application/json");
-            using var response = await client.PostAsync(url, content, cancellationToken);
-            var text = await response.Content.ReadAsStringAsync(cancellationToken);
-            if (!response.IsSuccessStatusCode)
+            try
             {
-                throw new InvalidOperationException("Ollama request failed. Make sure Ollama is running at "
-                    + baseUrl
-                    + " and model '"
-                    + GetString(body, "model", string.Empty)
-                    + "' is available.");
-            }
+                using var content = new StringContent(body.ToJsonString(CompactJsonOptions), Encoding.UTF8, "application/json");
+                using var response = await client.PostAsync(url, content, cancellationToken);
+                var text = await response.Content.ReadAsStringAsync(cancellationToken);
+                if (!response.IsSuccessStatusCode)
+                {
+                    lastFailure = $"HTTP {(int)response.StatusCode} {response.ReasonPhrase}".Trim();
+                    if (attempt < maxAttempts && IsTransientOllamaStatusCode(response.StatusCode))
+                    {
+                        await Task.Delay(TimeSpan.FromSeconds(attempt * 2), cancellationToken);
+                        continue;
+                    }
 
-            return JsonNode.Parse(text) as JsonObject
-                ?? throw new InvalidOperationException("Ollama response was not a JSON object.");
+                    throw new InvalidOperationException(NewOllamaRequestFailedMessage(baseUrl, body, lastFailure));
+                }
+
+                return JsonNode.Parse(text) as JsonObject
+                    ?? throw new InvalidOperationException("Ollama response was not a JSON object.");
+            }
+            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException)
+            {
+                lastException = ex;
+                lastFailure = ex.Message;
+                if (attempt < maxAttempts)
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(attempt * 2), cancellationToken);
+                    continue;
+                }
+            }
         }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException)
-        {
-            throw new InvalidOperationException("Ollama request failed. Make sure Ollama is running at "
-                + baseUrl
-                + " and model '"
-                + GetString(body, "model", string.Empty)
-                + "' is available.");
-        }
+
+        throw new InvalidOperationException(NewOllamaRequestFailedMessage(baseUrl, body, lastFailure), lastException);
+    }
+
+    private static bool IsTransientOllamaStatusCode(HttpStatusCode statusCode)
+        => statusCode is HttpStatusCode.RequestTimeout
+            or HttpStatusCode.TooManyRequests
+            or HttpStatusCode.BadGateway
+            or HttpStatusCode.ServiceUnavailable
+            or HttpStatusCode.GatewayTimeout
+            || (int)statusCode >= 500;
+
+    private static string NewOllamaRequestFailedMessage(string baseUrl, JsonObject body, string detail)
+    {
+        var message = "Ollama request failed. Make sure Ollama is running at "
+            + baseUrl
+            + " and model '"
+            + GetString(body, "model", string.Empty)
+            + "' is available.";
+        return string.IsNullOrWhiteSpace(detail)
+            ? message
+            : message + " Detail: " + ConvertTimelineText(detail);
     }
 
     private static JsonArray ConvertVerbalizedTurns(JsonObject chunk, JsonObject llmPayload, JsonObject context)
@@ -535,6 +590,68 @@ public sealed class TimelineAudioVerbalizationExecutionService
         }
 
         return clone;
+    }
+
+    private static Dictionary<string, JsonObject> GetReusableResultChunks(JsonObject payload)
+    {
+        var result = new Dictionary<string, JsonObject>(StringComparer.Ordinal);
+        foreach (var chunk in GetArray(payload, "chunks").OfType<JsonObject>())
+        {
+            var chunkId = GetString(chunk, "chunkId", string.Empty);
+            if (string.IsNullOrEmpty(chunkId))
+            {
+                continue;
+            }
+
+            var state = GetString(chunk, "state", string.Empty).ToLowerInvariant();
+            if (state is "completed" or "unresolved")
+            {
+                result[chunkId] = chunk;
+            }
+        }
+
+        return result;
+    }
+
+    private static Dictionary<string, JsonObject> GetReusableResultTurns(JsonObject payload)
+    {
+        var result = new Dictionary<string, JsonObject>(StringComparer.Ordinal);
+        foreach (var turn in GetArray(payload, "turns").OfType<JsonObject>())
+        {
+            var turnId = GetString(turn, "turnId", string.Empty);
+            if (!string.IsNullOrEmpty(turnId))
+            {
+                result[turnId] = turn;
+            }
+        }
+
+        return result;
+    }
+
+    private static bool TryReuseResultChunk(
+        JsonObject sourceChunk,
+        IReadOnlyDictionary<string, JsonObject> existingResultChunks,
+        IReadOnlyDictionary<string, JsonObject> existingTurns,
+        JsonArray resultChunks,
+        JsonArray allTurns)
+    {
+        var chunkId = GetString(sourceChunk, "chunkId", string.Empty);
+        if (string.IsNullOrEmpty(chunkId) || !existingResultChunks.TryGetValue(chunkId, out var resultChunk))
+        {
+            return false;
+        }
+
+        resultChunks.Add(CloneObject(resultChunk));
+        foreach (var sourceTurn in GetArray(sourceChunk, "turns").OfType<JsonObject>())
+        {
+            var turnId = GetString(sourceTurn, "turnId", string.Empty);
+            if (!string.IsNullOrEmpty(turnId) && existingTurns.TryGetValue(turnId, out var existingTurn))
+            {
+                allTurns.Add(CloneObject(existingTurn));
+            }
+        }
+
+        return true;
     }
 
     private static JsonObject CloneContextWithoutSilentHallucinations(JsonObject context)
@@ -683,9 +800,43 @@ public sealed class TimelineAudioVerbalizationExecutionService
             ["source"] = CloneNode(GetNode(context, "source")),
             ["timeRange"] = CloneNode(GetNode(context, "timeRange")),
             ["rollingContext"] = CloneNode(GetNode(context, "rollingContext")),
+            ["nearbyEvidenceCandidates"] = CopyCompactEvidenceCandidates(GetArray(context, "nearbyEvidenceCandidates"), 260),
             ["nearbyUserTextCandidates"] = CopyCompactHints(GetArray(context, "nearbyUserTextCandidates"), 260),
             ["turns"] = turns,
         };
+    }
+
+    private static JsonArray CopyCompactEvidenceCandidates(JsonArray candidates, int maxChars)
+    {
+        var result = new JsonArray();
+        foreach (var candidate in candidates.OfType<JsonObject>())
+        {
+            var contentPreview = ConvertHintText(GetString(candidate, "contentPreview", string.Empty), maxChars);
+            if (string.IsNullOrEmpty(contentPreview))
+            {
+                continue;
+            }
+
+            result.Add(new JsonObject
+            {
+                ["evidenceId"] = GetString(candidate, "evidenceId", string.Empty),
+                ["sourceProduct"] = GetString(candidate, "sourceProduct", string.Empty),
+                ["sourceProductName"] = GetString(candidate, "sourceProductName", string.Empty),
+                ["evidenceType"] = GetString(candidate, "evidenceType", string.Empty),
+                ["trustLevel"] = GetString(candidate, "trustLevel", string.Empty),
+                ["trustScore"] = CloneNode(GetNode(candidate, "trustScore")),
+                ["allowedUse"] = GetString(candidate, "allowedUse", string.Empty),
+                ["distanceBucket"] = GetString(candidate, "distanceBucket", string.Empty),
+                ["occurredAt"] = GetString(candidate, "occurredAt", string.Empty),
+                ["deltaSec"] = CloneNode(GetNode(candidate, "deltaSec")),
+                ["actorLabel"] = GetString(candidate, "actorLabel", string.Empty),
+                ["contentKind"] = GetString(candidate, "contentKind", string.Empty),
+                ["contentPreview"] = contentPreview,
+                ["itemId"] = GetString(candidate, "itemId", string.Empty),
+            });
+        }
+
+        return result;
     }
 
     private static JsonArray CopyCompactHints(JsonArray hints, int maxChars)
@@ -1491,17 +1642,21 @@ Legacy turns may contain phoneTokens and phoneTextHint instead of sourceText. Us
 Use context.language as the target language.
 For ja-JP, write natural Japanese in normal kanji/kana text. Do not write romaji-only output. Do not write katakana-only output unless the specific word is normally written in katakana.
 For other languages, write ordinary readable text in that language.
-Use file name, timestamps, speaker labels, rolling context, nearbyTimelineHints, and nearbyUserTextCandidates as context hints.
+Use file name, timestamps, speaker labels, rolling context, nearbyEvidenceCandidates, nearbyTimelineHints, and nearbyUserTextCandidates as context hints.
+nearbyEvidenceCandidates is the structured view of surrounding Timeline context. It contains evidenceType, trustLevel, trustScore, allowedUse, and distanceBucket.
+Prefer strong evidence over medium evidence, and medium evidence over weak evidence.
+Weak evidence, especially speech_derived_transcript from audio or video, must not override readable sourceText. Use weak evidence only as vocabulary or context hints.
+Use evidence allowedUse as a hard boundary: do not use weak_context_only or context_hint_only evidence to create words that are not acoustically supported.
 nearbyUserTextCandidates may contain a text message created from the same dictated audio shortly after the recording. Treat these candidates as high priority hints.
 Do not summarize the conversation, infer intent, or write a topic label.
 For each turn, write the most likely words spoken in that turn.
 The text field must be an utterance-level transcript refinement, not a summary.
 Preserve the original meaning, speaker granularity, and timeline order. Do not merge turns or add content from another turn.
-Use nearbyTimelineHints and nearbyUserTextCandidates only for vocabulary, proper nouns, service names, and ambiguity resolution.
+Use nearbyEvidenceCandidates, nearbyTimelineHints, and nearbyUserTextCandidates only for vocabulary, proper nouns, service names, and ambiguity resolution.
 Correct obvious ASR errors, spacing, punctuation, and proper nouns only when sourceText or nearby hints support the correction.
 If sourceText is readable and there is no strong correction, copy it with only light punctuation or spacing cleanup.
 Do not use world knowledge, background facts, explanations, histories, product descriptions, or topic expansion.
-Do not invent names, dates, model numbers, places, or facts that are not directly supported by sourceText, phoneTextHint, or nearbyUserTextCandidates.
+Do not invent names, dates, model numbers, places, or facts that are not directly supported by sourceText, phoneTextHint, nearbyEvidenceCandidates, or nearbyUserTextCandidates.
 If the only clue is phoneTextHint, keep the output conservative. Prefer needs_review with low confidence, or unresolved when the clue is too weak.
 If phoneTextHint is short, mostly noise, or cannot support a readable utterance, return unresolved.
 If a nearby user text plausibly matches the audio time range, align its matching words to the listed turns in timeline order.
@@ -1509,7 +1664,7 @@ Include exactly one item for every turnId in context.expectedTurnIds. If context
 Do not output any turnId that is not listed in context.expectedTurnIds.
 Do not continue the nearby text beyond the listed turnIds.
 If ambiguous, prefer a best-effort candidate with status needs_review and low confidence.
-Do not mark a turn unresolved only because nearbyTimelineHints or nearbyUserTextCandidates are empty.
+Do not mark a turn unresolved only because nearbyEvidenceCandidates, nearbyTimelineHints, or nearbyUserTextCandidates are empty.
 When sourceText is present, use unresolved only when sourceText is empty, unusable, or clearly not speech.
 When status is unresolved, text must be an empty string.
 Do not use placeholder text such as pause, silence, unclear, unknown, gap, or interval.

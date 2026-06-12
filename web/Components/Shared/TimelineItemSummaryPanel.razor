@@ -1,0 +1,142 @@
+<section class="@SectionClass">
+    <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <h2 class="flex items-center gap-2 text-lg font-semibold">
+            <FaIcon Name="file-lines" Class="tfa-icon text-accent" />
+            <span>素材概要</span>
+        </h2>
+
+        @if (Summary?.Available == true && HasSummaryText)
+        {
+            <div class="flex flex-wrap gap-2 text-xs">
+                <span class="tfa-status-pill border-teal-200 bg-teal-50 text-teal-800">生成済み</span>
+                <span class="tfa-status-pill border-slate-200 bg-slate-50 text-slate-700">@GenerationModeLabel(Summary.GenerationMode)</span>
+            </div>
+        }
+    </div>
+
+    @if (Loading)
+    {
+        <div class="mt-4 flex items-center gap-2 text-sm text-slate-600">
+            <FaIcon Name="spinner" Class="tfa-icon fa-spin text-accent" />
+            <span>素材概要を読み込んでいます。</span>
+        </div>
+    }
+    else if (Summary?.Available == true && IsFailedSummary)
+    {
+        <div class="mt-4 rounded-md border border-red-200 bg-red-50 p-4 text-sm leading-6 text-red-900">
+            <div class="flex items-start gap-2 font-semibold">
+                <FaIcon Name="triangle-exclamation" Class="tfa-icon mt-0.5" />
+                <span>素材概要の生成に失敗しています。</span>
+            </div>
+            <p class="mt-2 break-words">@EmptyText(Summary.Error, "詳細な理由は記録されていません。")</p>
+        </div>
+    }
+    else if (Summary?.Available == true && HasSummaryText)
+    {
+        var summary = Summary;
+        <div class="mt-4 grid gap-4 lg:grid-cols-2">
+            <div class="rounded-md border border-line bg-slate-50 p-4">
+                <div class="tfa-kicker">短い概要</div>
+                <p class="mt-2 whitespace-pre-wrap text-base leading-7 text-slate-900">@EmptyText(summary.BriefSummary)</p>
+            </div>
+            <div class="rounded-md border border-line bg-white p-4">
+                <div class="tfa-kicker">詳しい概要</div>
+                <div class="mt-2 text-sm leading-7 text-slate-800">
+                    <MarkdownText Text="@EmptyText(summary.CompressedSummary)" />
+                </div>
+            </div>
+        </div>
+
+        <dl class="mt-4 grid gap-x-4 gap-y-1 text-xs text-slate-500 sm:grid-cols-[max-content_minmax(0,1fr)_max-content_minmax(0,1fr)]">
+            <dt>生成日時</dt>
+            <dd>@UiFormat.ShortDate(summary.GeneratedAt)</dd>
+            <dt>モデル</dt>
+            <dd class="break-all font-mono">@ModelLabel(summary)</dd>
+            <dt>入力</dt>
+            <dd>@SummarySourceLabel(summary)</dd>
+            <dt>概要文字数</dt>
+            <dd>@SummaryLengthLabel(summary)</dd>
+        </dl>
+
+        @if (!string.IsNullOrWhiteSpace(summary.Notice))
+        {
+            <p class="mt-3 text-xs leading-5 text-slate-500">@summary.Notice</p>
+        }
+    }
+    else
+    {
+        <p class="mt-3 text-sm leading-6 text-slate-600">
+            @EmptyText(Summary?.Message, MissingMessage)
+        </p>
+    }
+</section>
+
+@code {
+    [Parameter]
+    public TimelineItemSummary? Summary { get; set; }
+
+    [Parameter]
+    public bool Loading { get; set; }
+
+    [Parameter]
+    public string MissingMessage { get; set; } = "素材概要はまだ作成されていません。スキャン後の素材概要生成が完了すると表示されます。";
+
+    [Parameter]
+    public string Class { get; set; } = "";
+
+    private bool HasSummaryText =>
+        !string.IsNullOrWhiteSpace(Summary?.BriefSummary)
+        || !string.IsNullOrWhiteSpace(Summary?.CompressedSummary);
+
+    private bool IsFailedSummary =>
+        Summary?.State.Equals("failed", StringComparison.OrdinalIgnoreCase) == true
+        || !string.IsNullOrWhiteSpace(Summary?.Error);
+
+    private string SectionClass =>
+        string.IsNullOrWhiteSpace(Class)
+            ? "tfa-card tfa-card-pad"
+            : $"tfa-card tfa-card-pad {Class}";
+
+    private static string EmptyText(string? value, string fallback = "-") =>
+        string.IsNullOrWhiteSpace(value) ? fallback : value;
+
+    private static string GenerationModeLabel(string? mode) =>
+        (mode ?? "").Trim().ToLowerInvariant() switch
+        {
+            "full" => "全体処理",
+            "chunked" => "分割処理",
+            "sampled" => "抜粋処理",
+            "sampled_fallback" => "抜粋処理",
+            "extractive_fallback" => "抽出処理",
+            "" => "概要生成",
+            var value => value,
+        };
+
+    private static string ModelLabel(TimelineItemSummary summary)
+    {
+        var provider = EmptyText(summary.Provider);
+        var model = EmptyText(summary.Model);
+        return provider == "-" && model == "-" ? "-" : $"{provider} / {model}";
+    }
+
+    private static string SummarySourceLabel(TimelineItemSummary summary)
+    {
+        var chars = summary.Compression.SourceChars > 0
+            ? $"{summary.Compression.SourceChars:N0} 文字"
+            : "-";
+        return summary.Source.EventCount > 0
+            ? $"{chars} / {summary.Source.EventCount:N0} イベント"
+            : chars;
+    }
+
+    private static string SummaryLengthLabel(TimelineItemSummary summary)
+    {
+        var compressed = summary.Compression.CompressedCharCount > 0
+            ? summary.Compression.CompressedCharCount
+            : summary.CompressedSummary.Length;
+        var brief = summary.Compression.BriefCharCount > 0
+            ? summary.Compression.BriefCharCount
+            : summary.BriefSummary.Length;
+        return $"短い概要 {brief:N0} 文字 / 詳しい概要 {compressed:N0} 文字";
+    }
+}

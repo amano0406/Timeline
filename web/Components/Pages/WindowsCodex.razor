@@ -90,7 +90,16 @@ else if (_overview is not null)
             <span class="text-sm text-slate-500">@ThreadListStatusLabel</span>
         </div>
 
-        @if (Threads.Count == 0)
+        @if (ListBusy && Threads.Count == 0)
+        {
+            <div class="p-5 text-sm text-slate-600">
+                <div class="flex items-center gap-3">
+                    <FaIcon Name="spinner" Class="tfa-icon fa-spin text-accent" />
+                    <span>スレッドを読み込んでいます。</span>
+                </div>
+            </div>
+        }
+        else if (Threads.Count == 0)
         {
             <div class="p-5 text-sm text-slate-600">スレッドはありません。</div>
         }
@@ -133,6 +142,8 @@ else if (_overview is not null)
                             </th>
                             <th>タイトル</th>
                             <th>メッセージ</th>
+                            <th>文字数</th>
+                            <th>概要生成</th>
                             <th>作成日時</th>
                             <th>更新日時</th>
                         </tr>
@@ -156,6 +167,12 @@ else if (_overview is not null)
                                     </a>
                                 </td>
                                 <td class="whitespace-nowrap">@thread.MessageCount 件</td>
+                                <td class="whitespace-nowrap">@_itemSummaryList.TextCharCountLabel(thread.ItemId)</td>
+                                <td class="whitespace-nowrap">
+                                    <span class="@_itemSummaryList.SummaryStatusPillClass(thread.ItemId)">
+                                        @_itemSummaryList.SummaryStatusLabel(thread.ItemId)
+                                    </span>
+                                </td>
                                 <td class="whitespace-nowrap">@ShortDate(thread.CreatedAt)</td>
                                 <td class="whitespace-nowrap">@ShortDate(thread.UpdatedAt)</td>
                             </tr>

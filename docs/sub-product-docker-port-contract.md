@@ -11,7 +11,7 @@ It is based on the current README and Docker Compose files in:
 - `C:\apps\TimelineForChatGPT`
 - `C:\apps\TimelineForImage`
 - `C:\apps\TimelineForVideo`
-- `C:\apps\TimelineForPC`
+- `C:\apps\TimelineForPcInfo`
 
 ## Current facts
 
@@ -25,7 +25,7 @@ As of this check:
 | TimelineForChatGPT | Docker Compose worker with worker-hosted API | yes | yes | no |
 | TimelineForImage | resident Docker worker with API | yes | yes | no |
 | TimelineForVideo | resident Docker worker with worker-hosted API | yes | yes | no |
-| TimelineForPC | Windows host Python API | no | yes | no |
+| TimelineForPcInfo | Windows host Python API | no | yes | no |
 
 Current Timeline defaults:
 
@@ -98,7 +98,7 @@ Default sub-product blocks:
 | TimelineForChatGPT | `19300-19399` | `19300` |
 | TimelineForImage | `19400-19499` | `19400` |
 | TimelineForVideo | `19500-19599` | `19500` |
-| TimelineForPC | `19600-19699` | `19600` |
+| TimelineForPcInfo | `19600-19699` | `19600` |
 
 Within each sub-product block:
 
@@ -327,7 +327,7 @@ Recommended future settings shape:
 
 The default API ports are the `+00` ports from the portfolio port map.
 
-TimelineForPC runs on the Windows host and uses `19600` as its default primary
+TimelineForPcInfo runs on the Windows host and uses `19600` as its default primary
 API port.
 
 ## Ollama
@@ -446,7 +446,7 @@ For Docker-based sub-products:
 10. Make local API and any published host ports configurable.
 11. Do not add Ollama settings unless the product actually uses Ollama.
 
-For host-only sub-products such as TimelineForPC:
+For host-only sub-products such as TimelineForPcInfo:
 
 1. Do not add Docker settings just for consistency.
 2. Keep host execution explicit.

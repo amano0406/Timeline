@@ -121,7 +121,7 @@ completed checklists, dated run logs, or screenshot inventories:
 - `docs/operation-log-web-test-checklist.md`
 - `docs/scan-timeline-integration-todo.md`
 - `docs/settings-unification-todo.md`
-- `docs/timeline-for-pc-integration-todo.md`
+- `docs/timeline-for-pc-info-integration-todo.md`
 - `docs/timeline-for-video-integration-todo.md`
 
 The following old HTML design/prototype notes were also removed because their

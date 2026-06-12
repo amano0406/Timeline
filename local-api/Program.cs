@@ -25,10 +25,12 @@ builder.Services.AddSingleton(new TimelineLocalApiOptions(
     webPort,
     timelineProductPath,
     windowsCodexProductPath));
+builder.Services.AddSingleton<TimelineStartupRegistrationService>();
 builder.Services.AddSingleton<TimelineSettingsService>();
 builder.Services.AddSingleton<TimelineWorkerStatusService>();
 builder.Services.AddTransient<TimelineStoreRebuildService>();
 builder.Services.AddSingleton<TimelineStoreService>();
+builder.Services.AddSingleton<TimelineDashboardStatsService>();
 builder.Services.AddSingleton<TimelineAudioVerbalizationJobRegistry>();
 builder.Services.AddSingleton<TimelineAudioVerbalizationPlanService>();
 builder.Services.AddSingleton<TimelineAudioVerbalizationExecutionService>();
@@ -37,6 +39,7 @@ builder.Services.AddHttpClient();
 builder.Services.AddSingleton<TimelineDownloadService>();
 builder.Services.AddSingleton<TimelineOperationLogService>();
 builder.Services.AddSingleton<TimelineLlmInputPreviewService>();
+builder.Services.AddSingleton<TimelineItemSummaryService>();
 builder.Services.AddSingleton<TimelineProductSourceFileService>();
 builder.Services.AddSingleton<TimelineProductSettingsService>();
 builder.Services.AddSingleton<TimelineStoreExportService>();
@@ -110,6 +113,22 @@ app.MapGet("/timeline/worker/status", (TimelineWorkerStatusService workerStatus)
     return TypedResults.Json(workerStatus.GetStatus());
 });
 
+app.MapPost("/timeline/worker/repair", async (
+    TimelineWorkerStatusService workerStatus,
+    CancellationToken cancellationToken) =>
+{
+    try
+    {
+        return Results.Json(await workerStatus.RepairDockerWorkerAsync(cancellationToken));
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(
+            new { message = ex.Message, ok = false },
+            statusCode: StatusCodes.Status500InternalServerError);
+    }
+});
+
 app.MapGet("/timeline/rebuild/status", (string? jobId, TimelineWorkerStatusService workerStatus) =>
 {
     return Results.Json(workerStatus.GetRebuildStatus(jobId));
@@ -120,13 +139,52 @@ app.MapGet("/timeline/store/overview", (TimelineStoreService store) =>
     return TypedResults.Json(store.GetOverview());
 });
 
+app.MapGet("/timeline/dashboard/stats", (HttpContext context, TimelineDashboardStatsService stats) =>
+{
+    var days = GetQueryInt(context, "days", 30);
+    var range = ConvertTimelineText(context.Request.Query["range"].ToString());
+    var bucket = ConvertTimelineText(context.Request.Query["bucket"].ToString());
+    return TypedResults.Json(stats.GetStats(range, bucket, days));
+});
+
 app.MapPost("/timeline/rebuild", async (
+    HttpContext context,
     TimelineWorkerStatusService workerStatus,
     CancellationToken cancellationToken) =>
 {
     try
     {
-        return Results.Json(await workerStatus.StartRebuildAsync(cancellationToken));
+        JsonObject? request = null;
+        if ((context.Request.ContentLength ?? 0) > 0)
+        {
+            request = await context.Request.ReadFromJsonAsync<JsonObject>(cancellationToken);
+        }
+
+        return Results.Json(await workerStatus.StartRebuildAsync(request, cancellationToken));
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(
+            new { message = ex.Message, ok = false },
+            statusCode: StatusCodes.Status500InternalServerError);
+    }
+});
+
+app.MapPost("/timeline/rebuild/cancel", async (
+    HttpContext context,
+    TimelineWorkerStatusService workerStatus,
+    CancellationToken cancellationToken) =>
+{
+    try
+    {
+        JsonObject? request = null;
+        if ((context.Request.ContentLength ?? 0) > 0)
+        {
+            request = await context.Request.ReadFromJsonAsync<JsonObject>(cancellationToken);
+        }
+
+        var jobId = ConvertTimelineText(request?["jobId"]);
+        return Results.Json(workerStatus.CancelRebuild(jobId));
     }
     catch (Exception ex)
     {
@@ -224,6 +282,95 @@ app.MapGet("/timeline/llm-input/preview", (HttpContext context, TimelineLlmInput
         countTotal));
 });
 
+app.MapGet("/timeline/item-summaries/status", (string? jobId, TimelineItemSummaryService summaries) =>
+{
+    return Results.Json(summaries.GetStatus(jobId));
+});
+
+app.MapGet("/timeline/item-summaries/targets", (
+    HttpContext context,
+    TimelineItemSummaryService summaries) =>
+{
+    var request = new JsonObject();
+    var product = ConvertTimelineText(context.Request.Query["product"].ToString());
+    var products = ConvertTimelineText(context.Request.Query["products"].ToString());
+    var itemId = ConvertTimelineText(context.Request.Query["itemId"].ToString());
+    var maxItems = GetQueryInt(context, "maxItems", 0);
+
+    if (!string.IsNullOrEmpty(product))
+    {
+        request["product"] = product;
+    }
+
+    if (!string.IsNullOrEmpty(products))
+    {
+        request["products"] = products;
+    }
+
+    if (!string.IsNullOrEmpty(itemId))
+    {
+        request["itemId"] = itemId;
+    }
+
+    if (maxItems > 0)
+    {
+        request["maxItems"] = maxItems;
+    }
+
+    return Results.Json(summaries.GetTargets(request));
+});
+
+app.MapGet("/timeline/item-summaries/item", (string? product, string? itemId, TimelineItemSummaryService summaries) =>
+{
+    return Results.Json(summaries.GetSummary(product, itemId));
+});
+
+app.MapPost("/timeline/item-summaries/start", async (
+    HttpContext context,
+    TimelineItemSummaryService summaries,
+    CancellationToken cancellationToken) =>
+{
+    try
+    {
+        JsonObject? request = null;
+        if ((context.Request.ContentLength ?? 0) > 0)
+        {
+            request = await context.Request.ReadFromJsonAsync<JsonObject>(cancellationToken);
+        }
+
+        return Results.Json(summaries.Start(request));
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(
+            new { message = ex.Message, ok = false },
+            statusCode: StatusCodes.Status500InternalServerError);
+    }
+});
+
+app.MapPost("/timeline/item-summaries/cancel", async (
+    HttpContext context,
+    TimelineItemSummaryService summaries,
+    CancellationToken cancellationToken) =>
+{
+    try
+    {
+        JsonObject? request = null;
+        if ((context.Request.ContentLength ?? 0) > 0)
+        {
+            request = await context.Request.ReadFromJsonAsync<JsonObject>(cancellationToken);
+        }
+
+        return Results.Json(summaries.Cancel(ConvertTimelineText(request?["jobId"])));
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(
+            new { message = ex.Message, ok = false },
+            statusCode: StatusCodes.Status500InternalServerError);
+    }
+});
+
 app.MapGet("/timeline/audio-verbalization/ollama/status", async (
     string? baseUrl,
     string? model,
@@ -303,6 +450,30 @@ app.MapPost("/timeline/audio-verbalization/bulk/start", (
     {
         var baseUrl = $"{context.Request.Scheme}://{context.Request.Host}";
         return Results.Json(verbalization.StartBulk(baseUrl));
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(
+            new { message = ex.Message, ok = false },
+            statusCode: StatusCodes.Status500InternalServerError);
+    }
+});
+
+app.MapPost("/timeline/audio-verbalization/bulk/cancel", async (
+    HttpContext context,
+    TimelineAudioVerbalizationService verbalization,
+    CancellationToken cancellationToken) =>
+{
+    try
+    {
+        JsonObject? request = null;
+        if ((context.Request.ContentLength ?? 0) > 0)
+        {
+            request = await context.Request.ReadFromJsonAsync<JsonObject>(cancellationToken);
+        }
+
+        var jobId = ConvertTimelineText(request?["jobId"]);
+        return Results.Json(verbalization.CancelBulk(jobId));
     }
     catch (Exception ex)
     {
@@ -945,11 +1116,13 @@ app.MapPost("/products/windows-codex/settings", async (
     }
 });
 
-app.MapGet("/products/chatgpt/overview", (TimelineThreadProductOverviewService threadProducts) =>
+app.MapGet("/products/chatgpt/overview", async (
+    TimelineThreadProductOverviewService threadProducts,
+    CancellationToken cancellationToken) =>
 {
     try
     {
-        return Results.Json(threadProducts.GetChatGptOverview());
+        return Results.Json(await threadProducts.GetChatGptOverviewAsync(cancellationToken));
     }
     catch (Exception ex)
     {
@@ -1059,7 +1232,7 @@ app.MapPost("/products/chatgpt/settings", async (
     {
         var request = await context.Request.ReadFromJsonAsync<JsonObject>(cancellationToken);
         productSettings.SaveChatGptSettings(request);
-        return Results.Json(threadProducts.GetChatGptOverview());
+        return Results.Json(await threadProducts.GetChatGptOverviewAsync(cancellationToken));
     }
     catch (Exception ex)
     {

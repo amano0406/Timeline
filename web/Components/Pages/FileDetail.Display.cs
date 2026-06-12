@@ -1,4 +1,5 @@
 using System.Globalization;
+using Timeline.Web.Components.Shared;
 using Timeline.Web.Services;
 
 namespace Timeline.Web.Components.Pages;
@@ -11,6 +12,18 @@ public partial class FileDetail
         seconds is > 0 ? UiFormat.Duration(seconds.Value) : "-";
 
     private IReadOnlyList<AudioTranscriptDisplayRow> TranscriptRows => BuildTranscriptRows();
+
+    private static IReadOnlyList<TextVolumeChartPoint> BuildTextVolumePoints(
+        IReadOnlyList<AudioTranscriptDisplayRow> rows,
+        double? durationSec) =>
+        TextVolumeChartBuilder.Build(
+            rows
+                .Where(row => !row.IsSilence && row.Turn is not null)
+                .Select(row => new TextVolumeSegment(
+                    row.StartSec,
+                    row.EndSec,
+                    row.Turn!.Text)),
+            durationSec);
 
     private IReadOnlyList<AudioTranscriptDisplayRow> BuildTranscriptRows()
     {

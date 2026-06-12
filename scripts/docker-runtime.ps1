@@ -480,12 +480,17 @@ function Start-TimelineLocalApiServer {
     $stdoutLog = Join-Path $logDir "local-api-$Port.stdout.log"
     $stderrLog = Join-Path $logDir "local-api-$Port.stderr.log"
     $buildLog = Join-Path $logDir "local-api-$Port.build.log"
-    $buildDir = Join-Path $logDir "local-api-build-$Port"
+    $buildRoot = Join-Path $RepoRoot "data\work"
+    $buildDir = Join-Path $buildRoot "local-api-build-$Port"
     Remove-Item -LiteralPath $stdoutLog, $stderrLog, $buildLog -ErrorAction SilentlyContinue
 
-    $logDirFull = [System.IO.Path]::GetFullPath($logDir).TrimEnd([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar)
+    if (-not (Test-Path -LiteralPath $buildRoot)) {
+        New-Item -ItemType Directory -Path $buildRoot | Out-Null
+    }
+
+    $buildRootFull = [System.IO.Path]::GetFullPath($buildRoot).TrimEnd([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar)
     $buildDirFull = [System.IO.Path]::GetFullPath($buildDir).TrimEnd([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar)
-    $expectedPrefix = $logDirFull + [System.IO.Path]::DirectorySeparatorChar
+    $expectedPrefix = $buildRootFull + [System.IO.Path]::DirectorySeparatorChar
     if ((Test-Path -LiteralPath $buildDirFull) -and $buildDirFull.StartsWith($expectedPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
         Remove-Item -LiteralPath $buildDirFull -Recurse -Force
     }

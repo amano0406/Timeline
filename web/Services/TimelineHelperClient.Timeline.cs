@@ -16,7 +16,7 @@ public sealed partial class TimelineHelperClient
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to load Timeline settings.");
+            LogOptionalHelperReadFailure(ex, "Failed to load Timeline settings.");
             return new TimelineAppSettings();
         }
     }
@@ -69,7 +69,7 @@ public sealed partial class TimelineHelperClient
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to validate path: {Path}", path);
+            LogOptionalHelperReadFailure(ex, "Failed to validate path: {Path}", path);
             return new PathStatusResult
             {
                 Ok = false,
@@ -92,8 +92,63 @@ public sealed partial class TimelineHelperClient
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to load Timeline store overview.");
+            LogOptionalHelperReadFailure(ex, "Failed to load Timeline store overview.");
             return new TimelineStoreOverview { Message = "補助サーバーから時間軸の状態を取得できませんでした。" };
+        }
+    }
+
+    public async Task<TimelineDashboardStats> GetTimelineDashboardStatsAsync(
+        int days = 30,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            return await _http.GetFromJsonAsync<TimelineDashboardStats>(
+                    $"timeline/dashboard/stats?days={Math.Clamp(days, 7, 90)}",
+                    JsonOptions,
+                    cancellationToken)
+                ?? new TimelineDashboardStats { Message = "ダッシュボード統計を取得できませんでした。" };
+        }
+        catch (Exception ex)
+        {
+            LogOptionalHelperReadFailure(ex, "Failed to load Timeline dashboard stats.");
+            return new TimelineDashboardStats { Message = "補助サーバーからダッシュボード統計を取得できませんでした。" };
+        }
+    }
+
+    public async Task<TimelineDashboardStats> GetTimelineDashboardStatsAsync(
+        string range,
+        string bucket = "auto",
+        int days = 0,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var query = new List<string>();
+            if (!string.IsNullOrWhiteSpace(range))
+            {
+                query.Add($"range={Uri.EscapeDataString(range)}");
+            }
+            if (!string.IsNullOrWhiteSpace(bucket))
+            {
+                query.Add($"bucket={Uri.EscapeDataString(bucket)}");
+            }
+            if (days > 0)
+            {
+                query.Add($"days={Math.Clamp(days, 7, 365)}");
+            }
+
+            var queryText = query.Count == 0 ? string.Empty : $"?{string.Join("&", query)}";
+            return await _http.GetFromJsonAsync<TimelineDashboardStats>(
+                    $"timeline/dashboard/stats{queryText}",
+                    JsonOptions,
+                    cancellationToken)
+                ?? new TimelineDashboardStats { Message = "Dashboard stats were empty." };
+        }
+        catch (Exception ex)
+        {
+            LogOptionalHelperReadFailure(ex, "Failed to load Timeline dashboard stats.");
+            return new TimelineDashboardStats { Message = "Dashboard stats could not be loaded." };
         }
     }
 
@@ -112,7 +167,7 @@ public sealed partial class TimelineHelperClient
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to load Timeline events.");
+            LogOptionalHelperReadFailure(ex, "Failed to load Timeline events.");
             return new TimelineEventListResult { Message = "補助サーバーから時間軸一覧を取得できませんでした。" };
         }
     }
@@ -161,14 +216,20 @@ public sealed partial class TimelineHelperClient
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to load Timeline LLM input preview.");
+            LogOptionalHelperReadFailure(ex, "Failed to load Timeline LLM input preview.");
             return new TimelineLlmInputPreviewResult { Message = "補助サーバーからLLM入力データを取得できませんでした。" };
         }
     }
 
-    public async Task<TimelineWorkerJobStatus> RebuildTimelineStoreAsync(CancellationToken cancellationToken = default)
+    public async Task<TimelineWorkerJobStatus> RebuildTimelineStoreAsync(
+        TimelineRebuildRequest? request = null,
+        CancellationToken cancellationToken = default)
     {
-        var response = await _http.PostAsync("timeline/rebuild", content: null, cancellationToken);
+        var response = await _http.PostAsJsonAsync(
+            "timeline/rebuild",
+            request ?? new TimelineRebuildRequest(),
+            JsonOptions,
+            cancellationToken);
         if (!response.IsSuccessStatusCode)
         {
             var body = await response.Content.ReadAsStringAsync(cancellationToken);
@@ -199,9 +260,82 @@ public sealed partial class TimelineHelperClient
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to load Timeline rebuild status.");
+            LogOptionalHelperReadFailure(ex, "Failed to load Timeline rebuild status.");
             return new TimelineWorkerJobStatus { State = "unknown", Message = "時間軸再構築の状態を取得できませんでした。" };
         }
+    }
+
+    public async Task<TimelineWorkerJobStatus> CancelTimelineRebuildAsync(
+        string jobId = "",
+        CancellationToken cancellationToken = default)
+    {
+        var response = await _http.PostAsJsonAsync(
+            "timeline/rebuild/cancel",
+            new { jobId },
+            JsonOptions,
+            cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            throw new InvalidOperationException(ErrorMessageFromBody(body)
+                ?? $"Timeline rebuild cancel failed. HTTP {(int)response.StatusCode}");
+        }
+
+        return await response.Content.ReadFromJsonAsync<TimelineWorkerJobStatus>(JsonOptions, cancellationToken)
+            ?? new TimelineWorkerJobStatus();
+    }
+
+    public async Task<TimelineItemSummaryJobStatus> StartTimelineItemSummariesAsync(
+        bool force = false,
+        bool runAll = false,
+        int maxItems = 20,
+        CancellationToken cancellationToken = default)
+    {
+        var response = await _http.PostAsJsonAsync(
+            "timeline/item-summaries/start",
+            new { force, runAll, maxItems },
+            JsonOptions,
+            cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            throw new InvalidOperationException(ErrorMessageFromBody(body)
+                ?? $"素材概要の生成を開始できませんでした。HTTP {(int)response.StatusCode}");
+        }
+
+        return await response.Content.ReadFromJsonAsync<TimelineItemSummaryJobStatus>(JsonOptions, cancellationToken)
+            ?? new TimelineItemSummaryJobStatus();
+    }
+
+    public Task<TimelineItemSummaryJobStatus> GetTimelineItemSummaryStatusAsync(
+        string jobId = "",
+        CancellationToken cancellationToken = default)
+        => Task.FromResult(_localStore.GetItemSummaryStatus(jobId));
+
+    public Task<TimelineItemSummary> GetTimelineItemSummaryAsync(
+        string product,
+        string itemId,
+        CancellationToken cancellationToken = default)
+        => Task.FromResult(_localStore.GetItemSummary(product, itemId));
+
+    public async Task<TimelineItemSummaryJobStatus> CancelTimelineItemSummariesAsync(
+        string jobId = "",
+        CancellationToken cancellationToken = default)
+    {
+        var response = await _http.PostAsJsonAsync(
+            "timeline/item-summaries/cancel",
+            new { jobId },
+            JsonOptions,
+            cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            throw new InvalidOperationException(ErrorMessageFromBody(body)
+                ?? $"素材概要の生成を停止できませんでした。HTTP {(int)response.StatusCode}");
+        }
+
+        return await response.Content.ReadFromJsonAsync<TimelineItemSummaryJobStatus>(JsonOptions, cancellationToken)
+            ?? new TimelineItemSummaryJobStatus();
     }
 
     public async Task<TimelineDockerWorkerStatus> GetTimelineWorkerStatusAsync(CancellationToken cancellationToken = default)
@@ -212,13 +346,27 @@ public sealed partial class TimelineHelperClient
                     "timeline/worker/status",
                     JsonOptions,
                     cancellationToken)
-                ?? new TimelineDockerWorkerStatus { Message = "Timeline worker の状態を取得できませんでした。" };
+                ?? new TimelineDockerWorkerStatus { State = "unknown" };
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to load Timeline worker status.");
-            return new TimelineDockerWorkerStatus { State = "unknown", Message = "Timeline worker の状態を取得できませんでした。" };
+            LogOptionalHelperReadFailure(ex, "Failed to load Timeline worker status.");
+            return new TimelineDockerWorkerStatus { State = "unknown" };
         }
+    }
+
+    public async Task<TimelineWorkerRepairResult> RepairTimelineWorkerAsync(CancellationToken cancellationToken = default)
+    {
+        var response = await _http.PostAsync("timeline/worker/repair", content: null, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            throw new InvalidOperationException(ErrorMessageFromBody(body)
+                ?? $"Timeline worker を復旧できませんでした。HTTP {(int)response.StatusCode}");
+        }
+
+        return await response.Content.ReadFromJsonAsync<TimelineWorkerRepairResult>(JsonOptions, cancellationToken)
+            ?? new TimelineWorkerRepairResult { Message = "Timeline worker の復旧結果が空でした。" };
     }
 
     public async Task<TimelineExportDownloadResult> DownloadTimelineExportAsync(CancellationToken cancellationToken = default)

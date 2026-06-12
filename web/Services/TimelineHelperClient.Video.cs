@@ -19,8 +19,8 @@ public sealed partial class TimelineHelperClient
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to load TimelineForVideo overview.");
-            return OfflineVideoOverview("補助サーバーに接続できません。start.bat から起動してください。");
+            LogOptionalHelperReadFailure(ex, "Failed to load TimelineForVideo overview.");
+            return _localStore.GetVideoOverviewFallback();
         }
     }
 
@@ -49,7 +49,7 @@ public sealed partial class TimelineHelperClient
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to load TimelineForVideo file detail.");
+            LogOptionalHelperReadFailure(ex, "Failed to load TimelineForVideo file detail.");
             return new VideoFileDetailResult { Message = "動画詳細を取得できませんでした。" };
         }
     }

@@ -15,10 +15,14 @@ public sealed class TimelineSettingsService
     ];
 
     private readonly TimelineLocalApiOptions _options;
+    private readonly TimelineStartupRegistrationService _startup;
 
-    public TimelineSettingsService(TimelineLocalApiOptions options)
+    public TimelineSettingsService(
+        TimelineLocalApiOptions options,
+        TimelineStartupRegistrationService startup)
     {
         _options = options;
+        _startup = startup;
     }
 
     public TimelineSettingsResponse ReadSettings()
@@ -47,6 +51,7 @@ public sealed class TimelineSettingsService
             WorkDirectory = Path.Combine(resolvedDataRoot, "work"),
             StoreDirectory = Path.Combine(resolvedDataRoot, "to_timeline"),
             Runtime = runtime,
+            Startup = ResolveStartupSettings(payload, includeStatus: true),
             CommonAi = ResolveCommonAiSettingsForResponse(payload),
             ProductRegistry = ResolveProductRegistry(payload, resolvedDataRoot),
             AudioVerbalization = ResolveAudioVerbalizationSettings(displayLanguageId, GetRuntimeOllamaBaseUrl(runtime)),
@@ -101,6 +106,25 @@ public sealed class TimelineSettingsService
         var requestCommonAi = GetObject(request, "commonAi");
         var commonAi = ResolveCommonAiSettingsForSave(requestCommonAi, GetObject(current, "commonAi"));
         var audioVerbalization = ResolveAudioVerbalizationSettings(displayLanguageId, GetRuntimeOllamaBaseUrl(runtime));
+        var currentStartup = ResolveStartupSettings(current, includeStatus: false);
+        var requestStartup = GetObject(request, "startup");
+        var startup = requestStartup is null
+            ? currentStartup
+            : ResolveStartupSettings(new JsonObject { ["startup"] = requestStartup.DeepClone() }, includeStatus: false);
+        var startupStatus = _startup.GetStatus();
+        if (requestStartup is not null
+            && (startup.StartWithOperatingSystem != currentStartup.StartWithOperatingSystem
+                || startup.StartWithOperatingSystem != startupStatus.Registered))
+        {
+            startupStatus = _startup.ApplyDesiredState(startup.StartWithOperatingSystem);
+            if (startupStatus.State.Equals("failed", StringComparison.OrdinalIgnoreCase)
+                || (startup.StartWithOperatingSystem && !startupStatus.Registered))
+            {
+                throw new InvalidOperationException(string.IsNullOrWhiteSpace(startupStatus.Message)
+                    ? "OS起動時の自動起動設定を反映できませんでした。"
+                    : startupStatus.Message);
+            }
+        }
 
         var payload = new JsonObject
         {
@@ -109,6 +133,7 @@ public sealed class TimelineSettingsService
             ["displayLanguageId"] = displayLanguageId,
             ["timeZoneId"] = timeZoneId,
             ["runtime"] = ToJsonObject(runtime),
+            ["startup"] = ToStartupSettingsJsonObject(startup),
             ["commonAi"] = commonAi,
             ["productRegistry"] = ToJsonObject(productRegistry),
             ["audioVerbalization"] = ToJsonObject(audioVerbalization),
@@ -317,6 +342,18 @@ public sealed class TimelineSettingsService
         };
     }
 
+    private TimelineStartupSettingsResponse ResolveStartupSettings(JsonObject? payload, bool includeStatus)
+    {
+        var source = GetObject(payload, "startup");
+        return new TimelineStartupSettingsResponse
+        {
+            StartWithOperatingSystem = GetBool(GetNode(source, "startWithOperatingSystem"), false),
+            Status = includeStatus
+                ? _startup.GetStatus()
+                : new TimelineStartupRegistrationStatusResponse(),
+        };
+    }
+
     private TimelineCommonAiSettingsResponse ResolveCommonAiSettingsForResponse(JsonObject? payload)
     {
         var source = GetObject(payload, "commonAi");
@@ -411,7 +448,7 @@ public sealed class TimelineSettingsService
             NewProductDefault("chatgpt", "TimelineForChatGPT", Path.Combine(productsRoot, "TimelineForChatGPT"), "https://github.com/amano0406/TimelineForChatGPT"),
             NewProductDefault("image", "TimelineForImage", Path.Combine(productsRoot, "TimelineForImage"), "https://github.com/amano0406/TimelineForImage"),
             NewProductDefault("video", "TimelineForVideo", Path.Combine(productsRoot, "TimelineForVideo"), "https://github.com/amano0406/TimelineForVideo"),
-            NewProductDefault("pc", "TimelineForPC", Path.Combine(productsRoot, "TimelineForPC"), "https://github.com/amano0406/TimelineForPC"),
+            NewProductDefault("pc", "TimelineForPcInfo", Path.Combine(productsRoot, "TimelineForPcInfo"), "https://github.com/amano0406/TimelineForPcInfo"),
         ];
     }
 
@@ -683,6 +720,12 @@ public sealed class TimelineSettingsService
         return JsonSerializer.SerializeToNode(value) as JsonObject ?? new JsonObject();
     }
 
+    private static JsonObject ToStartupSettingsJsonObject(TimelineStartupSettingsResponse value)
+        => new()
+        {
+            ["startWithOperatingSystem"] = value.StartWithOperatingSystem,
+        };
+
     private static readonly List<TimelineDisplayLanguageOptionResponse> DisplayLanguageOptions =
     [
         new() { Id = "ja-JP", Label = "\u65e5\u672c\u8a9e" },
@@ -730,6 +773,9 @@ public sealed class TimelineSettingsResponse
 
     [JsonPropertyName("runtime")]
     public TimelineRuntimeSettingsResponse Runtime { get; set; } = new();
+
+    [JsonPropertyName("startup")]
+    public TimelineStartupSettingsResponse Startup { get; set; } = new();
 
     [JsonPropertyName("commonAi")]
     public TimelineCommonAiSettingsResponse CommonAi { get; set; } = new();
@@ -787,6 +833,15 @@ public sealed class TimelineRuntimeSettingsResponse
 
     [JsonPropertyName("ollamaVolumeName")]
     public string OllamaVolumeName { get; set; } = "";
+}
+
+public sealed class TimelineStartupSettingsResponse
+{
+    [JsonPropertyName("startWithOperatingSystem")]
+    public bool StartWithOperatingSystem { get; set; }
+
+    [JsonPropertyName("status")]
+    public TimelineStartupRegistrationStatusResponse Status { get; set; } = new();
 }
 
 public sealed class TimelineCommonAiSettingsResponse

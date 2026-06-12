@@ -103,7 +103,7 @@ public partial class Pc
 
     private async Task DownloadAsync()
     {
-        var suggestedName = $"TimelineForPC-items-{DateTime.Now:yyyyMMdd-HHmmss}.zip";
+        var suggestedName = $"TimelineForPcInfo-items-{DateTime.Now:yyyyMMdd-HHmmss}.zip";
         var save = await BrowserDownload.BeginSaveAsync(Js, suggestedName);
         if (!save.Accepted)
         {

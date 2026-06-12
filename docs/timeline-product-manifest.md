@@ -11,7 +11,7 @@ Timeline は複数のサブ製品を扱います。
 - TimelineForVideo
 - TimelineForWindowsCodex
 - TimelineForChatGPT
-- TimelineForPC
+- TimelineForPcInfo
 
 これらを Timeline 側が推測で扱うと、以下の問題が起きます。
 
@@ -299,7 +299,7 @@ Timeline 側で使う製品 ID です。
 | TimelineForVideo | video |
 | TimelineForWindowsCodex | windows-codex |
 | TimelineForChatGPT | chatgpt |
-| TimelineForPC | pc |
+| TimelineForPcInfo | pc |
 
 ### displayName
 
@@ -585,7 +585,7 @@ productId の候補:
 - TimelineForVideo: `video`
 - TimelineForWindowsCodex: `windows-codex`
 - TimelineForChatGPT: `chatgpt`
-- TimelineForPC: `pc`
+- TimelineForPcInfo: `pc`
 
 作業後に確認してほしいこと:
 - JSON として壊れていないこと

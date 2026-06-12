@@ -13,6 +13,11 @@ public partial class TimelineIndex
                 return "文字起こし補正";
             }
 
+            if (ItemSummaryActive || _summarizing)
+            {
+                return "素材概要生成";
+            }
+
             return RebuildStageGroup(_workerStatus?.Stage ?? "") switch
             {
                 "collect" => "製品データの取り込み",
@@ -24,6 +29,11 @@ public partial class TimelineIndex
         }
     }
 
+    private string ScanOperationTitle =>
+        ItemSummaryActive && !RebuildActive && !AudioVerbalizationActive && !_verbalizing
+            ? "素材概要をバックグラウンド生成中です"
+            : "スキャンを実行中です";
+
     private string CurrentScanPhaseDetail
     {
         get
@@ -31,6 +41,11 @@ public partial class TimelineIndex
             if (AudioVerbalizationActive || _verbalizing)
             {
                 return AudioVerbalizationStepDetail;
+            }
+
+            if (ItemSummaryActive || _summarizing)
+            {
+                return ItemSummaryStepDetail;
             }
 
             return RebuildStageGroup(_workerStatus?.Stage ?? "") switch
@@ -106,6 +121,12 @@ public partial class TimelineIndex
             return "動画ファイル";
         }
 
+        if (job.ProductId.Equals("chatgpt", StringComparison.OrdinalIgnoreCase)
+            || job.ProductName.Equals("TimelineForChatGPT", StringComparison.OrdinalIgnoreCase))
+        {
+            return "ChatGPT";
+        }
+
         return string.IsNullOrWhiteSpace(job.ProductName) ? job.ProductId : job.ProductName;
     }
 
@@ -140,6 +161,8 @@ public partial class TimelineIndex
             "refresh" => "記録更新",
             "completed" => "完了",
             "failed" => "失敗",
+            "parse_conversations" => "会話解析",
+            "extract_zip" => "ZIP展開",
             _ => string.IsNullOrWhiteSpace(stage) ? "処理中" : stage,
         };
 
@@ -150,7 +173,11 @@ public partial class TimelineIndex
             return "";
         }
 
-        var unit = progress.Unit.Equals("files", StringComparison.OrdinalIgnoreCase) ? "件" : progress.Unit;
+        var unit = progress.Unit.Equals("files", StringComparison.OrdinalIgnoreCase)
+            || progress.Unit.Equals("items", StringComparison.OrdinalIgnoreCase)
+            || progress.Unit.Equals("conversations", StringComparison.OrdinalIgnoreCase)
+            ? "件"
+            : progress.Unit;
         return $" / {progress.Current:N0} / {progress.Total:N0} {unit}";
     }
 
@@ -218,7 +245,17 @@ public partial class TimelineIndex
         var normalizedPhase = phase.Trim().ToLowerInvariant();
         if (AudioVerbalizationActive || _verbalizing)
         {
-            return normalizedPhase == "verbalize" ? "running" : "completed";
+            return normalizedPhase switch
+            {
+                "verbalize" => "running",
+                "summarize" => "waiting",
+                _ => "completed",
+            };
+        }
+
+        if (ItemSummaryActive || _summarizing)
+        {
+            return normalizedPhase == "summarize" ? "running" : "completed";
         }
 
         if (string.Equals(_workerStatus?.State, "failed", StringComparison.OrdinalIgnoreCase))
@@ -236,6 +273,7 @@ public partial class TimelineIndex
                 "normalize" => group == "normalize" ? "running" : group == "publish" ? "completed" : "waiting",
                 "publish" => group == "publish" ? "running" : "waiting",
                 "verbalize" => "waiting",
+                "summarize" => "waiting",
                 _ => "waiting",
             };
         }
@@ -247,7 +285,12 @@ public partial class TimelineIndex
                 return "completed";
             }
 
-            return AudioVerbalizationStepState;
+            if (normalizedPhase == "verbalize")
+            {
+                return AudioVerbalizationStepState;
+            }
+
+            return ItemSummaryStepState;
         }
 
         return "waiting";
@@ -331,6 +374,11 @@ public partial class TimelineIndex
             return AudioVerbalizationStepDetail;
         }
 
+        if (normalizedPhase == "summarize")
+        {
+            return ItemSummaryStepDetail;
+        }
+
         return "";
     }
 
@@ -364,6 +412,8 @@ public partial class TimelineIndex
         {
             "queued" => "待機中",
             "running" => "処理中",
+            "canceling" => "停止中",
+            "canceled" => "停止",
             "completed" => "完了",
             "failed" => "失敗",
             _ => status.State,
@@ -378,6 +428,8 @@ public partial class TimelineIndex
             "importing" => $"取得したデータを Timeline 形式へ整えています{ProductNameSuffix(status.Message)}。",
             "sorting" => "時間順に並べています。",
             "publishing" => "画面で使う時間軸へ反映しています。",
+            "canceling" => "停止要求を受け付けました。AI系の処理は停止し、未確定の結果は反映しません。",
+            "canceled" => "スキャンを停止しました。完了済みの結果は残っています。",
             "completed" => "自動処理が完了しました。",
             "failed" => "自動処理に失敗しました。",
             _ => "自動処理を進めています。",
@@ -414,7 +466,7 @@ public partial class TimelineIndex
         {
             return "ChatGPT";
         }
-        if (text.Contains("TimelineForPC", StringComparison.OrdinalIgnoreCase))
+        if (text.Contains("TimelineForPcInfo", StringComparison.OrdinalIgnoreCase))
         {
             return "PC状態";
         }
@@ -430,6 +482,7 @@ public partial class TimelineIndex
         new("normalize", "正規化", "shuffle"),
         new("publish", "時間軸保存", "timeline"),
         new("verbalize", "文字起こし補正", "language"),
+        new("summarize", "素材概要生成", "file-lines"),
     ];
 
     private static string RunDurationLabel(double seconds) =>

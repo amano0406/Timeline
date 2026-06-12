@@ -241,7 +241,9 @@ else
                     <div role="columnheader">日時</div>
                     <div role="columnheader">記録時間</div>
                     <div role="columnheader">サイズ</div>
-                    <div role="columnheader">生成物</div>
+                    <div role="columnheader">文字数</div>
+                    <div role="columnheader">言語化</div>
+                    <div role="columnheader">概要生成</div>
                 </div>
 
                 @foreach (var row in BuildTreeRows(Files))
@@ -284,6 +286,8 @@ else
                             <div role="gridcell"></div>
                             <div role="gridcell"></div>
                             <div role="gridcell"></div>
+                            <div role="gridcell"></div>
+                            <div role="gridcell"></div>
                         }
                         else
                         {
@@ -298,44 +302,17 @@ else
                             <div class="tfa-file-tree-meta" role="gridcell">@DurationLabel(file.DurationSec)</div>
                             <div class="tfa-file-tree-meta" role="gridcell">@UiFormat.Bytes(file.SizeBytes)</div>
                             <div class="tfa-file-tree-meta" role="gridcell">
-                                <div class="flex flex-col items-end gap-1">
-                                    @if (file.HasTimeline && HasGeneratedItem(file))
-                                    {
-                                        <span class="tfa-file-tree-result">
-                                            <FaIcon Name="file-lines" Class="tfa-icon text-teal-700" />
-                                            <span>@ArtifactLabel(file)</span>
-                                        </span>
-                                    }
-                                    else if (file.HasTimeline)
-                                    {
-                                        <span class="tfa-file-tree-result tfa-file-tree-result-muted">
-                                            <FaIcon Name="spinner" Class="tfa-icon" />
-                                            <span>分析中</span>
-                                        </span>
-                                    }
-                                    else if (file.HasAudio)
-                                    {
-                                        <span class="tfa-file-tree-result tfa-file-tree-result-muted">
-                                            <FaIcon Name="file-audio" Class="tfa-icon" />
-                                            <span>@(IsProcessingStatus(file.Status) ? "分析中" : "音声あり")</span>
-                                        </span>
-                                    }
-                                    else
-                                    {
-                                        <span class="tfa-file-tree-result tfa-file-tree-result-muted">
-                                            <FaIcon Name="circle-minus" Class="tfa-icon" />
-                                            <span>未作成</span>
-                                        </span>
-                                    }
-
-                                    @if (ShouldShowVerbalizationStatus(file))
-                                    {
-                                        <span class="@VerbalizationPill(file.AudioVerbalization.State)">
-                                            <FaIcon Name="@VerbalizationIcon(file.AudioVerbalization.State)" Class="@($"tfa-icon !h-3 !w-3 {VerbalizationIconSpin(file.AudioVerbalization.State)}")" />
-                                            <span>@VerbalizationLabel(file.AudioVerbalization)</span>
-                                        </span>
-                                    }
-                                </div>
+                                @TextCharCountLabel(file)
+                            </div>
+                            <div class="tfa-file-tree-meta" role="gridcell">
+                                <span class="@VerbalizationListPill(file)">
+                                    @VerbalizationListLabel(file)
+                                </span>
+                            </div>
+                            <div class="tfa-file-tree-meta" role="gridcell">
+                                <span class="@SummaryStatusPill(file)">
+                                    @SummaryStatusLabel(file)
+                                </span>
                             </div>
                         }
                     </div>

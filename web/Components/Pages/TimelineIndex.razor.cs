@@ -12,26 +12,34 @@ public partial class TimelineIndex
     private TimelineDockerWorkerStatus? _dockerWorkerStatus;
     private AudioVerbalizationBulkStatus? _audioVerbalizationStatus;
     private AudioVerbalizationBulkTargetSummary? _audioVerbalizationTargetSummary;
+    private TimelineItemSummaryJobStatus? _itemSummaryStatus;
     private bool _loading = true;
     private bool _rebuilding;
     private bool _downloading;
     private bool _verbalizing;
+    private bool _summarizing;
+    private bool _cancelingScan;
     private bool _pollingRebuildStatus;
     private bool _pollingAudioVerbalization;
+    private bool _pollingItemSummaries;
     private bool _loadingAudioVerbalizationTargets;
     private bool _audioVerbalizationDetailsOpen;
     private bool _continueAudioAfterRebuild;
+    private bool _scanStartModalOpen;
+    private bool _includeChatGptExportInScan;
     private bool _disposed;
     private string? _error;
     private string? _operationMessage;
+    private string _chatGptExportZipPath = "";
     private TimelineWorkerJobStatus? _workerStatus;
     private CancellationTokenSource? _pollingCts;
     private CancellationTokenSource? _operationMessageAutoClearCts;
 
-    private bool Busy => _loading || _rebuilding || _downloading || _verbalizing;
+    private bool Busy => _loading || _rebuilding || _downloading || _verbalizing || _summarizing || _cancelingScan;
     private bool ShouldShowOperationMessage => !string.IsNullOrWhiteSpace(_operationMessage);
     private bool CanDownload => _overview?.Available == true;
-    private bool ScanActive => _rebuilding || _verbalizing || RebuildActive || AudioVerbalizationActive;
+    private bool ScanActive => _rebuilding || _verbalizing || _summarizing || RebuildActive || AudioVerbalizationActive || ItemSummaryActive;
+    private bool CanCancelScan => ScanActive && !_cancelingScan;
     private string ScanButtonLabel => ScanActive ? "処理中" : "スキャン";
     private string ScanButtonIcon => ScanActive ? "spinner" : "arrows-rotate";
     private string ScanButtonIconSpin => ScanActive ? "fa-spin" : "";
@@ -40,8 +48,12 @@ public partial class TimelineIndex
     private string StoreMessage => _overview?.Available == true
         ? ""
         : "スキャンを始めると、各製品の取り込み結果を集めて Timeline の時間軸を作成します。作成後、ダッシュボードや各詳細画面で確認できます。";
-    private IReadOnlyList<MaterialProductLink> InstalledMaterialLinks =>
-        AllMaterialProductLinks.Where(link => IsInstalledProduct(link.ProductId)).ToList();
+    private bool ScanStartNeedsChatGptZip =>
+        _includeChatGptExportInScan && string.IsNullOrWhiteSpace(_chatGptExportZipPath);
+    private string ChatGptExportZipLabel =>
+        string.IsNullOrWhiteSpace(_chatGptExportZipPath)
+            ? "未選択"
+            : _chatGptExportZipPath;
     private string DockerWorkerStatusLabel => _dockerWorkerStatus switch
     {
         { Available: true, State: "running" } => "稼働中",
@@ -87,6 +99,7 @@ public partial class TimelineIndex
         {
             _ = PollTimelineRebuildAsync(pollingToken);
             _ = PollAudioVerbalizationAsync(pollingToken);
+            _ = PollItemSummariesAsync(pollingToken);
         }
     }
 
@@ -97,17 +110,20 @@ public partial class TimelineIndex
         SetOperationMessage(null);
         try
         {
-            var overviewTask = Timeline.GetTimelineStoreOverviewAsync();
+            var overviewTask = Timeline.GetTimelineStoreOverviewWithLocalFallbackAsync();
             var workerTask = Timeline.GetTimelineWorkerStatusAsync();
             var rebuildTask = Timeline.GetTimelineRebuildStatusAsync();
             var verbalizationTask = Timeline.GetAudioVerbalizationBulkStatusAsync();
+            var summaryTask = Timeline.GetTimelineItemSummaryStatusAsync();
             var runtimeTask = Timeline.GetProductRuntimeOverviewAsync();
-            await Task.WhenAll(overviewTask, workerTask, rebuildTask, verbalizationTask, runtimeTask);
+            await Task.WhenAll(overviewTask, workerTask, rebuildTask, verbalizationTask, summaryTask, runtimeTask);
             _overview = await overviewTask;
             _dockerWorkerStatus = await workerTask;
             _workerStatus = await rebuildTask;
             _audioVerbalizationStatus = await verbalizationTask;
+            _itemSummaryStatus = await summaryTask;
             _runtime = await runtimeTask;
+            await LoadScanDataSourcesAsync();
             _continueAudioAfterRebuild = IsWorkerActive(_workerStatus);
             if (IsWorkerActive(_workerStatus))
             {
@@ -116,6 +132,10 @@ public partial class TimelineIndex
             else if (AudioVerbalizationActive)
             {
                 SetOperationMessage(AudioVerbalizationStatusMessage(_audioVerbalizationStatus));
+            }
+            else if (ItemSummaryActive)
+            {
+                SetOperationMessage(ItemSummaryStatusMessage(_itemSummaryStatus));
             }
             if (AudioVerbalizationActive)
             {
@@ -132,10 +152,103 @@ public partial class TimelineIndex
         }
     }
 
-    private async Task ScanAsync()
+    private void OpenScanStartModal()
+    {
+        if (ScanActive || _loading || _downloading)
+        {
+            return;
+        }
+
+        _error = null;
+        _scanStartModalOpen = true;
+    }
+
+    private void CloseScanStartModal()
+    {
+        _scanStartModalOpen = false;
+    }
+
+    private async Task PickChatGptExportZipAsync()
+    {
+        try
+        {
+            var filePath = await Js.InvokeAsync<string?>(
+                "timelineDirectoryPicker.pickFile",
+                "ChatGPTエクスポートZIPを選択",
+                "",
+                "ZIP files (*.zip)|*.zip|All files (*.*)|*.*");
+            if (!string.IsNullOrWhiteSpace(filePath))
+            {
+                _chatGptExportZipPath = filePath;
+            }
+        }
+        catch (JSException ex)
+        {
+            _error = ex.Message;
+            _scanStartModalOpen = false;
+        }
+    }
+
+    private async Task ConfirmScanStartAsync()
+    {
+        if (ScanStartNeedsChatGptZip)
+        {
+            return;
+        }
+
+        var request = new TimelineRebuildRequest
+        {
+            ChatGptExportZipPath = _includeChatGptExportInScan ? _chatGptExportZipPath : "",
+        };
+        _scanStartModalOpen = false;
+        await ScanAsync(request);
+    }
+
+    private async Task CancelScanAsync()
+    {
+        if (!ScanActive || _cancelingScan)
+        {
+            return;
+        }
+
+        _cancelingScan = true;
+        _continueAudioAfterRebuild = false;
+        _error = null;
+        SetOperationMessage("停止要求を送信しています。現在の処理を中断します。");
+        try
+        {
+            if (RebuildActive)
+            {
+                _workerStatus = await Timeline.CancelTimelineRebuildAsync(_workerStatus?.JobId ?? "");
+            }
+
+            if (AudioVerbalizationActive || _verbalizing)
+            {
+                _audioVerbalizationStatus = await Timeline.CancelAudioVerbalizationBulkAsync(_audioVerbalizationStatus?.JobId ?? "");
+            }
+
+            if (ItemSummaryActive || _summarizing)
+            {
+                _itemSummaryStatus = await Timeline.CancelTimelineItemSummariesAsync(_itemSummaryStatus?.JobId ?? "");
+            }
+
+            SetOperationMessage("停止要求を送信しました。完了済みの結果は残し、処理中の項目は中断します。");
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _cancelingScan = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task ScanAsync(TimelineRebuildRequest? request = null)
     {
         _continueAudioAfterRebuild = true;
-        var rebuilt = await RebuildAsync();
+        var rebuilt = await RebuildAsync(request ?? new TimelineRebuildRequest());
         if (!rebuilt || AudioVerbalizationActive || _disposed)
         {
             return;
@@ -143,6 +256,10 @@ public partial class TimelineIndex
 
         _continueAudioAfterRebuild = false;
         await StartAudioVerbalizationBulkAsync(showPrerequisiteError: false);
+        if (!AudioVerbalizationActive && !_disposed && string.IsNullOrWhiteSpace(_error))
+        {
+            await ContinueScanAfterAudioVerbalizationAsync();
+        }
     }
 
     private async Task PollTimelineRebuildAsync(CancellationToken cancellationToken)
@@ -184,13 +301,20 @@ public partial class TimelineIndex
             if (hadActive)
             {
                 _dockerWorkerStatus = await Timeline.GetTimelineWorkerStatusAsync();
-                _overview = await Timeline.GetTimelineStoreOverviewAsync();
+                _overview = await Timeline.GetTimelineStoreOverviewWithLocalFallbackAsync();
                 if (string.Equals(_workerStatus.State, "failed", StringComparison.OrdinalIgnoreCase))
                 {
                     _continueAudioAfterRebuild = false;
                     _error = string.IsNullOrWhiteSpace(_workerStatus.Error)
                         ? WorkerStatusLabel(_workerStatus)
                         : _workerStatus.Error;
+                    return;
+                }
+
+                if (string.Equals(_workerStatus.State, "canceled", StringComparison.OrdinalIgnoreCase))
+                {
+                    _continueAudioAfterRebuild = false;
+                    SetOperationMessage("スキャンを停止しました。完了済みの結果は残っています。", TimeSpan.FromSeconds(10));
                     return;
                 }
 
@@ -215,14 +339,14 @@ public partial class TimelineIndex
         }
     }
 
-    private async Task<bool> RebuildAsync()
+    private async Task<bool> RebuildAsync(TimelineRebuildRequest? request = null)
     {
         _rebuilding = true;
         _error = null;
         SetOperationMessage("各プロダクトの API からデータを取得し、時間軸で使える状態に整えています。");
         try
         {
-            _workerStatus = await Timeline.RebuildTimelineStoreAsync();
+            _workerStatus = await Timeline.RebuildTimelineStoreAsync(request ?? new TimelineRebuildRequest());
             SetOperationMessage(WorkerStatusLabel(_workerStatus));
             while (IsWorkerActive(_workerStatus))
             {
@@ -239,10 +363,17 @@ public partial class TimelineIndex
                     : _workerStatus.Error);
             }
 
+            if (string.Equals(_workerStatus.State, "canceled", StringComparison.OrdinalIgnoreCase))
+            {
+                _continueAudioAfterRebuild = false;
+                SetOperationMessage("スキャンを停止しました。完了済みの結果は残っています。", TimeSpan.FromSeconds(10));
+                return false;
+            }
+
             var itemCount = _workerStatus.Result?.ItemCount ?? _workerStatus.ItemCount;
             var eventCount = _workerStatus.Result?.EventCount ?? _workerStatus.EventCount;
             SetOperationMessage($"自動処理で使える状態に整えました。{itemCount:N0} 件 / {eventCount:N0} イベント");
-            _overview = await Timeline.GetTimelineStoreOverviewAsync();
+            _overview = await Timeline.GetTimelineStoreOverviewWithLocalFallbackAsync();
             return true;
         }
         catch (Exception ex)

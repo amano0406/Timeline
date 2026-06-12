@@ -25,8 +25,8 @@ public sealed partial class TimelineHelperClient
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to load TimelineForWindowsCodex overview.");
-            return OfflineWindowsCodexOverview("補助サーバーに接続できません。start.bat から起動してください。");
+            LogOptionalHelperReadFailure(ex, "Failed to load TimelineForWindowsCodex overview.");
+            return _localStore.GetWindowsCodexOverviewFallback();
         }
     }
 
@@ -58,7 +58,7 @@ public sealed partial class TimelineHelperClient
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to load TimelineForWindowsCodex thread {ItemId}.", itemId);
+            LogOptionalHelperReadFailure(ex, "Failed to load TimelineForWindowsCodex thread {ItemId}.", itemId);
             return new WindowsCodexThreadDetail
             {
                 ItemId = itemId,
@@ -127,8 +127,8 @@ public sealed partial class TimelineHelperClient
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to load TimelineForChatGPT overview.");
-            return OfflineChatGptOverview("補助サーバーに接続できません。start.bat から起動してください。");
+            LogOptionalHelperReadFailure(ex, "Failed to load TimelineForChatGPT overview.");
+            return _localStore.GetChatGptOverviewFallback();
         }
     }
 
@@ -155,7 +155,7 @@ public sealed partial class TimelineHelperClient
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to load TimelineForChatGPT thread {ItemId}.", itemId);
+            LogOptionalHelperReadFailure(ex, "Failed to load TimelineForChatGPT thread {ItemId}.", itemId);
             return new ChatGptThreadDetail
             {
                 ItemId = itemId,

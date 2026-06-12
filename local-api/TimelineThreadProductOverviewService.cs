@@ -64,57 +64,18 @@ public sealed class TimelineThreadProductOverviewService
         return InvokeWebOperation(
             "TimelineForChatGPT",
             "chatgpt_overview",
-            () =>
-            {
-                var productPath = GetProductPath("chatgpt");
-                var productFound = !string.IsNullOrEmpty(productPath) && Directory.Exists(productPath);
-                var settings = ReadChatGptSettings(productPath);
-                var outputRoot = ConvertChatGptDirectoryRoot(
-                    GetObject(settings, "outputRoot") ?? new JsonObject(),
-                    "output",
-                    "Output",
-                    productPath);
-                var stateRoot = ConvertChatGptDirectoryRoot(
-                    GetObject(settings, "stateRoot") ?? new JsonObject(),
-                    "state",
-                    "State",
-                    productPath);
-                var outputLocalPath = GetString(outputRoot, "displayPath", string.Empty);
-                var itemCount = CountThreadDirectories(outputLocalPath);
-                var messages = new List<string>();
-                if (!productFound)
-                {
-                    messages.Add("TimelineForChatGPT was not found.");
-                }
-                if (!GetBool(settings, "settingsFound", false))
-                {
-                    messages.Add("settings.json was not found.");
-                }
-                if (string.IsNullOrEmpty(GetString(outputRoot, "path", string.Empty)))
-                {
-                    messages.Add("Output root is not configured.");
-                }
+            () => BuildChatGptOverview(new JsonArray()));
+    }
 
-                return new JsonObject
-                {
-                    ["productFound"] = productFound,
-                    ["productPath"] = productPath,
-                    ["settingsFound"] = GetBool(settings, "settingsFound", false),
-                    ["settingsPath"] = GetString(settings, "path", string.Empty),
-                    ["settingsValid"] = productFound && GetBool(settings, "settingsFound", false) && !string.IsNullOrEmpty(GetString(outputRoot, "path", string.Empty)),
-                    ["inputRoots"] = new JsonArray(),
-                    ["masterRoot"] = outputRoot.DeepClone(),
-                    ["outputRoot"] = outputRoot,
-                    ["stateRoot"] = stateRoot,
-                    ["recursive"] = GetBool(settings, "recursive", false),
-                    ["profile"] = GetString(settings, "profile", string.Empty),
-                    ["processableInputCount"] = itemCount,
-                    ["itemCount"] = itemCount,
-                    ["latestRefresh"] = NewChatGptRefreshSummary(),
-                    ["threads"] = new JsonArray(),
-                    ["jobs"] = new JsonArray(),
-                    ["message"] = string.Join(" ", messages.Where(message => !string.IsNullOrEmpty(message))),
-                };
+    public Task<JsonObject> GetChatGptOverviewAsync(CancellationToken cancellationToken)
+    {
+        return InvokeWebOperationAsync(
+            "TimelineForChatGPT",
+            "chatgpt_overview",
+            async operationId =>
+            {
+                var jobs = await GetChatGptActiveJobsAsync(operationId, cancellationToken);
+                return BuildChatGptOverview(jobs);
             });
     }
 
@@ -254,38 +215,18 @@ public sealed class TimelineThreadProductOverviewService
         return InvokeWebOperationAsync(
             "TimelineForChatGPT",
             "chatgpt_refresh",
-            async operationId =>
-            {
-                var filePath = GetString(request, "filePath", string.Empty);
-                if (string.IsNullOrEmpty(filePath))
-                {
-                    throw new InvalidOperationException("ChatGPT export ZIP is required.");
-                }
+            operationId => RefreshChatGptCoreWithJobAsync(request, null, operationId, cancellationToken));
+    }
 
-                var requestBody = new JsonObject
-                {
-                    ["filePath"] = filePath,
-                };
-                var downloadTo = GetString(request, "downloadTo", string.Empty);
-                if (!string.IsNullOrEmpty(downloadTo))
-                {
-                    requestBody["downloadTo"] = downloadTo;
-                }
-                if (GetBool(request, "overwrite", false))
-                {
-                    requestBody["overwrite"] = true;
-                }
-
-                var payload = await _api.PostJsonAsync(
-                    "chatgpt",
-                    "TimelineForChatGPT",
-                    "/items/refresh",
-                    requestBody,
-                    1800,
-                    operationId,
-                    cancellationToken);
-                return ConvertChatGptRefreshSummary(payload as JsonObject);
-            });
+    public Task<JsonObject> RefreshChatGptWithJobAsync(
+        JsonObject? request,
+        Action<JsonObject>? productJobProgress,
+        CancellationToken cancellationToken)
+    {
+        return InvokeWebOperationAsync(
+            "TimelineForChatGPT",
+            "chatgpt_refresh_job",
+            operationId => RefreshChatGptCoreWithJobAsync(request, productJobProgress, operationId, cancellationToken));
     }
 
     public Task<JsonObject> DownloadChatGptItemsAsync(JsonObject? request, CancellationToken cancellationToken)
@@ -438,6 +379,65 @@ public sealed class TimelineThreadProductOverviewService
         return ConvertWindowsCodexCurrent(payload as JsonObject);
     }
 
+    private async Task<JsonObject> RefreshChatGptCoreWithJobAsync(
+        JsonObject? request,
+        Action<JsonObject>? productJobProgress,
+        string operationId,
+        CancellationToken cancellationToken)
+    {
+        var requestBody = BuildChatGptRefreshRequest(request);
+        return await RefreshThreadProductJobCoreAsync(
+            "chatgpt",
+            "TimelineForChatGPT",
+            requestBody,
+            productJobProgress,
+            operationId,
+            () => RefreshChatGptCoreAsync(requestBody, operationId, cancellationToken),
+            ConvertChatGptRefreshSummary,
+            cancellationToken);
+    }
+
+    private async Task<JsonObject> RefreshChatGptCoreAsync(
+        JsonObject requestBody,
+        string operationId,
+        CancellationToken cancellationToken)
+    {
+        var payload = await _api.PostJsonAsync(
+            "chatgpt",
+            "TimelineForChatGPT",
+            "/items/refresh",
+            requestBody,
+            1800,
+            operationId,
+            cancellationToken);
+        return ConvertChatGptRefreshSummary(payload as JsonObject);
+    }
+
+    private static JsonObject BuildChatGptRefreshRequest(JsonObject? request)
+    {
+        var filePath = GetString(request, "filePath", string.Empty);
+        if (string.IsNullOrEmpty(filePath))
+        {
+            throw new InvalidOperationException("ChatGPT export ZIP is required.");
+        }
+
+        var requestBody = new JsonObject
+        {
+            ["filePath"] = filePath,
+        };
+        var downloadTo = GetString(request, "downloadTo", string.Empty);
+        if (!string.IsNullOrEmpty(downloadTo))
+        {
+            requestBody["downloadTo"] = downloadTo;
+        }
+        if (GetBool(request, "overwrite", false))
+        {
+            requestBody["overwrite"] = true;
+        }
+
+        return requestBody;
+    }
+
     private async Task<JsonObject> RefreshThreadProductJobCoreAsync(
         string productId,
         string productName,
@@ -483,40 +483,49 @@ public sealed class TimelineThreadProductOverviewService
         }
 
         var pollFailures = 0;
-        while (IsThreadProductJobActive(status))
+        try
         {
-            await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
-            try
+            while (IsThreadProductJobActive(status))
             {
-                var payload = await _api.GetJsonAsync(
-                    productId,
-                    productName,
-                    "/jobs/" + Uri.EscapeDataString(jobId),
-                    30,
-                    operationId,
-                    cancellationToken);
-                status = ConvertThreadProductJobStatus(payload as JsonObject, productId, productName);
-                pollFailures = 0;
-                productJobProgress?.Invoke(status);
-            }
-            catch (Exception ex) when (IsTransientThreadProductJobPollException(ex, cancellationToken))
-            {
-                pollFailures++;
-                if (pollFailures >= MaxThreadProductJobStatusPollFailures)
+                await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
+                try
                 {
-                    throw new TimeoutException($"Timed out repeatedly while polling {productName} refresh job status.", ex);
+                    var payload = await _api.GetJsonAsync(
+                        productId,
+                        productName,
+                        "/jobs/" + Uri.EscapeDataString(jobId),
+                        30,
+                        operationId,
+                        cancellationToken);
+                    status = ConvertThreadProductJobStatus(payload as JsonObject, productId, productName);
+                    pollFailures = 0;
+                    productJobProgress?.Invoke(status);
                 }
+                catch (Exception ex) when (IsTransientThreadProductJobPollException(ex, cancellationToken))
+                {
+                    pollFailures++;
+                    if (pollFailures >= MaxThreadProductJobStatusPollFailures)
+                    {
+                        throw new TimeoutException($"Timed out repeatedly while polling {productName} refresh job status.", ex);
+                    }
 
-                productJobProgress?.Invoke(WithPollingWarning(
-                    status,
-                    productName + " status polling timed out; retrying.",
-                    pollFailures));
+                    productJobProgress?.Invoke(WithPollingWarning(
+                        status,
+                        productName + " status polling timed out; retrying.",
+                        pollFailures));
+                }
             }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            await TryCancelThreadProductJobAsync(productId, productName, jobId, operationId);
+            throw;
         }
 
         var state = GetString(status, "state", string.Empty);
         if (state.Equals("failed", StringComparison.OrdinalIgnoreCase)
-            || state.Equals("interrupted", StringComparison.OrdinalIgnoreCase))
+            || state.Equals("interrupted", StringComparison.OrdinalIgnoreCase)
+            || state.Equals("canceled", StringComparison.OrdinalIgnoreCase))
         {
             var error = GetString(status, "error", string.Empty);
             throw new InvalidOperationException(string.IsNullOrWhiteSpace(error)
@@ -606,6 +615,34 @@ public sealed class TimelineThreadProductOverviewService
             cancellationToken);
 
         return ConvertThreadDetailResult(payload as JsonObject, itemId);
+    }
+
+    private async Task<JsonArray> GetChatGptActiveJobsAsync(
+        string operationId,
+        CancellationToken cancellationToken)
+    {
+        var jobs = new JsonArray();
+        try
+        {
+            var payload = await _api.GetJsonAsync(
+                "chatgpt",
+                "TimelineForChatGPT",
+                "/jobs/active",
+                10,
+                operationId,
+                cancellationToken);
+            var job = ConvertThreadProductJobStatus(payload as JsonObject, "chatgpt", "TimelineForChatGPT");
+            if (IsThreadProductJobActive(job))
+            {
+                jobs.Add(ConvertChatGptJobRow(job));
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            return jobs;
+        }
+
+        return jobs;
     }
 
     private JsonObject ConvertThreadDetailResult(JsonObject? payload, string fallbackItemId)
@@ -738,6 +775,7 @@ public sealed class TimelineThreadProductOverviewService
             ["error"] = GetString(payload, "error", string.Empty),
             ["warnings"] = warnings,
             ["result"] = result?.DeepClone(),
+            ["details"] = GetObject(payload, "details")?.DeepClone(),
         };
     }
 
@@ -745,7 +783,44 @@ public sealed class TimelineThreadProductOverviewService
     {
         var state = GetString(status, "state", string.Empty);
         return state.Equals("queued", StringComparison.OrdinalIgnoreCase)
-            || state.Equals("running", StringComparison.OrdinalIgnoreCase);
+            || state.Equals("running", StringComparison.OrdinalIgnoreCase)
+            || state.Equals("canceling", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private async Task TryCancelThreadProductJobAsync(string productId, string productName, string jobId, string operationId)
+    {
+        if (string.IsNullOrWhiteSpace(jobId))
+        {
+            return;
+        }
+
+        try
+        {
+            await _api.PostJsonAsync(
+                productId,
+                productName,
+                "/jobs/" + Uri.EscapeDataString(jobId) + "/cancel",
+                new JsonObject(),
+                30,
+                operationId,
+                CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            _operations.WriteOperationEvent(
+                operationId,
+                "worker",
+                productName,
+                "thread_product_job_cancel",
+                "warning",
+                "Thread product job cancellation request failed.",
+                stderr: ex.Message,
+                details: new JsonObject
+                {
+                    ["productId"] = productId,
+                    ["jobId"] = jobId,
+                });
+        }
     }
 
     private static bool IsTransientThreadProductJobPollException(Exception ex, CancellationToken cancellationToken)
@@ -815,6 +890,59 @@ public sealed class TimelineThreadProductOverviewService
         }
 
         return itemIds;
+    }
+
+    private JsonObject BuildChatGptOverview(JsonArray jobs)
+    {
+        var productPath = GetProductPath("chatgpt");
+        var productFound = !string.IsNullOrEmpty(productPath) && Directory.Exists(productPath);
+        var settings = ReadChatGptSettings(productPath);
+        var outputRoot = ConvertChatGptDirectoryRoot(
+            GetObject(settings, "outputRoot") ?? new JsonObject(),
+            "output",
+            "Output",
+            productPath);
+        var stateRoot = ConvertChatGptDirectoryRoot(
+            GetObject(settings, "stateRoot") ?? new JsonObject(),
+            "state",
+            "State",
+            productPath);
+        var outputLocalPath = GetString(outputRoot, "displayPath", string.Empty);
+        var itemCount = CountThreadDirectories(outputLocalPath);
+        var messages = new List<string>();
+        if (!productFound)
+        {
+            messages.Add("TimelineForChatGPT was not found.");
+        }
+        if (!GetBool(settings, "settingsFound", false))
+        {
+            messages.Add("settings.json was not found.");
+        }
+        if (string.IsNullOrEmpty(GetString(outputRoot, "path", string.Empty)))
+        {
+            messages.Add("Output root is not configured.");
+        }
+
+        return new JsonObject
+        {
+            ["productFound"] = productFound,
+            ["productPath"] = productPath,
+            ["settingsFound"] = GetBool(settings, "settingsFound", false),
+            ["settingsPath"] = GetString(settings, "path", string.Empty),
+            ["settingsValid"] = productFound && GetBool(settings, "settingsFound", false) && !string.IsNullOrEmpty(GetString(outputRoot, "path", string.Empty)),
+            ["inputRoots"] = new JsonArray(),
+            ["masterRoot"] = outputRoot.DeepClone(),
+            ["outputRoot"] = outputRoot,
+            ["stateRoot"] = stateRoot,
+            ["recursive"] = GetBool(settings, "recursive", false),
+            ["profile"] = GetString(settings, "profile", string.Empty),
+            ["processableInputCount"] = itemCount,
+            ["itemCount"] = itemCount,
+            ["latestRefresh"] = NewChatGptRefreshSummary(),
+            ["threads"] = new JsonArray(),
+            ["jobs"] = jobs,
+            ["message"] = string.Join(" ", messages.Where(message => !string.IsNullOrEmpty(message))),
+        };
     }
 
     private JsonObject ReadWindowsCodexSettings(string productPath)
@@ -1057,6 +1185,35 @@ public sealed class TimelineThreadProductOverviewService
             ["missing"] = 0,
             ["duplicates"] = 0,
             ["durationSeconds"] = 0,
+        };
+    }
+
+    private static JsonObject ConvertChatGptJobRow(JsonObject job)
+    {
+        var progress = GetObject(job, "progress");
+        var result = GetObject(job, "result");
+        var current = GetObject(result, "current");
+        var runResult = GetObject(result, "result") ?? result;
+        var details = GetObject(job, "details");
+        return new JsonObject
+        {
+            ["jobId"] = GetString(job, "jobId", string.Empty),
+            ["state"] = GetString(job, "state", string.Empty),
+            ["currentStage"] = GetStringAny(job, ["stage", "phase"], string.Empty),
+            ["message"] = GetString(job, "message", string.Empty),
+            ["updatedAt"] = GetString(job, "updatedAt", string.Empty),
+            ["completedAt"] = GetString(job, "completedAt", string.Empty),
+            ["conversationsTotal"] = GetIntAny(progress, ["total"], 0),
+            ["conversationsDone"] = GetIntAny(progress, ["current"], 0),
+            ["progressPercent"] = GetDouble(progress, "percent", 0.0),
+            ["processedCount"] = GetIntAny(runResult, ["processed_count", "processedCount"], GetIntAny(progress, ["current"], 0)),
+            ["errorCount"] = GetIntAny(runResult, ["error_count", "errorCount"], GetIntAny(details, ["conversationsFailed"], 0)),
+            ["batchCount"] = GetIntAny(runResult, ["batch_count", "batchCount"], 0),
+            ["inputPath"] = GetString(details, "inputPath", string.Empty),
+            ["archivePath"] = GetStringAny(current, ["download_zip_path", "downloadZipPath"], GetStringAny(runResult, ["archive_path", "archivePath"], string.Empty)),
+            ["archiveSizeBytes"] = 0,
+            ["runDirectory"] = GetString(details, "runDirectory", GetStringAny(current, ["run_dir", "runDir"], GetStringAny(runResult, ["run_dir", "runDir"], string.Empty))),
+            ["currentConversation"] = GetString(progress, "currentItem", string.Empty),
         };
     }
 

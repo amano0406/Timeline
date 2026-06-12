@@ -14,7 +14,7 @@ product command launchers are not part of the normal integration contract.
 | TimelineForChatGPT | `http://localhost:19300` | start / stop | API |
 | TimelineForImage | `http://localhost:19400` | start / stop | API |
 | TimelineForVideo | `http://localhost:19500` | start / stop | API |
-| TimelineForPC | `http://localhost:19600` | start / stop / service setup | API |
+| TimelineForPcInfo | `http://localhost:19600` | start / stop / service setup | API |
 
 ## Checks
 
@@ -37,7 +37,7 @@ product command launchers are not part of the normal integration contract.
 TimelineForAudio, TimelineForChatGPT, TimelineForImage, TimelineForVideo, and
 TimelineForWindowsCodex now serve their normal local API directly from the
 resident worker container, so those paths no longer spawn a Python operation
-process per API request. TimelineForPC serves its normal local API from a
+process per API request. TimelineForPcInfo serves its normal local API from a
 resident Python process on the Windows host and calls the capture / item
 functions in-process. The normal Timeline integration path no longer uses
 product command runners; start / stop remains the manifest launcher
@@ -52,7 +52,7 @@ probing or Windows PC collection, not Timeline-to-product command dispatch.
 ## Host-only product boundary
 
 Host-only products are allowed only when the source data cannot be collected
-from a Docker worker. TimelineForPC is the current example because it captures
+from a Docker worker. TimelineForPcInfo is the current example because it captures
 the current Windows machine state and current-user autostart state.
 
 For those products:

@@ -8,6 +8,8 @@ RUN npm run build:assets
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src/web
 COPY web/ ./
+COPY shared/TimelineDashboardStatsService.cs /src/shared/TimelineDashboardStatsService.cs
+COPY shared/TimelineStoreExportService.cs /src/shared/TimelineStoreExportService.cs
 COPY --from=assets /src/web/wwwroot/vendor ./wwwroot/vendor
 RUN dotnet restore Timeline.Web.csproj
 RUN dotnet publish Timeline.Web.csproj -c Release -o /app/publish --no-restore

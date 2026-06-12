@@ -14,7 +14,7 @@ $productNames = @(
     "TimelineForVideo",
     "TimelineForChatGPT",
     "TimelineForWindowsCodex",
-    "TimelineForPC"
+    "TimelineForPcInfo"
 )
 
 function Add-ProductRootIfExists {

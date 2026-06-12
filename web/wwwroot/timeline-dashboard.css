@@ -1,0 +1,83 @@
+.tfa-dashboard-chart-grid {
+    display: grid;
+    gap: 1.25rem;
+}
+
+.tfa-dashboard-periodbar {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    justify-content: space-between;
+}
+
+.tfa-dashboard-periodbuttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .5rem;
+}
+
+.tfa-dashboard-periodbutton {
+    border: 1px solid #cbd5e1;
+    border-radius: .5rem;
+    color: #334155;
+    font-size: .875rem;
+    font-weight: 700;
+    line-height: 1;
+    min-height: 2.25rem;
+    padding: .55rem .75rem;
+    transition: background-color .15s ease, border-color .15s ease, color .15s ease;
+}
+
+.tfa-dashboard-periodbutton:hover:not(:disabled) {
+    background: #f8fafc;
+    border-color: #94a3b8;
+}
+
+.tfa-dashboard-periodbutton:disabled {
+    cursor: wait;
+    opacity: .65;
+}
+
+.tfa-dashboard-periodbutton-active {
+    background: #0f766e;
+    border-color: #0f766e;
+    color: #fff;
+}
+
+.tfa-summary-chart-layout {
+    display: grid;
+    gap: 1rem;
+}
+
+.tfa-chart-box {
+    position: relative;
+    height: 260px;
+}
+
+.tfa-chart-box-sm {
+    height: 180px;
+}
+
+.tfa-chart-box-md {
+    height: 220px;
+}
+
+.tfa-chart-box canvas {
+    display: block;
+    width: 100% !important;
+    height: 100% !important;
+}
+
+@media (min-width: 768px) {
+    .tfa-summary-chart-layout {
+        grid-template-columns: 180px minmax(0, 1fr);
+        align-items: center;
+    }
+}
+
+@media (min-width: 1280px) {
+    .tfa-dashboard-chart-grid {
+        grid-template-columns: minmax(0, 1.1fr) minmax(0, .9fr);
+    }
+}

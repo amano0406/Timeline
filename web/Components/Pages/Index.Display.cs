@@ -21,9 +21,47 @@ public partial class Index
             + (_chatGpt?.ItemCount ?? 0)
             + (_pc?.ItemCount ?? 0);
 
-    private int TotalProductCount => _runtime?.Products.Count ?? 0;
-    private int AvailableProductCount => _runtime?.Products.Count(product => product.ProductFound && product.ComposeFound) ?? 0;
-    private bool HasInstalledProducts => AvailableProductCount > 0;
+    private bool RuntimeStatusKnown => _runtime?.Products.Count > 0;
+    private bool WorkerStatusKnown => _worker?.Available == true;
+    private int TotalProductCount => RuntimeStatusKnown ? _runtime!.Products.Count : (_store?.ProductCount ?? _store?.Products.Count ?? 0);
+    private int AvailableProductCount => RuntimeStatusKnown
+        ? _runtime!.Products.Count(product => product.ProductFound && product.ComposeFound)
+        : (_store?.Products.Count(product => product.Included || product.ItemCount > 0 || product.EventCount > 0) ?? 0);
+    private bool HasInstalledProducts => RuntimeStatusKnown ? AvailableProductCount > 0 : _store?.Available == true && AvailableProductCount > 0;
+    private bool HasDashboardStats => _dashboardStats?.Available == true && _dashboardStats.DailyItems.Count > 0;
+    private bool HasProductDashboardStats => _dashboardStats?.Available == true && _dashboardStats.ProductTotals.Count > 0;
+    private int SummaryPendingItems => Math.Max(0, (_dashboardStats?.SummaryTargetItems ?? 0) - (_dashboardStats?.SummaryCompletedItems ?? 0) - (_dashboardStats?.SummaryFailedItems ?? 0));
+    private double SummaryCompletionPercent => (_dashboardStats?.SummaryTargetItems ?? 0) <= 0
+        ? 0
+        : Math.Clamp((_dashboardStats?.SummaryCompletedItems ?? 0) / (double)_dashboardStats!.SummaryTargetItems * 100, 0, 100);
+    private string DashboardStatsGeneratedAt => FormatDateTime(_dashboardStats?.GeneratedAt);
+    private string DashboardBucketLabel => _dashboardStats?.Bucket switch
+    {
+        "week" => "週ごと",
+        "month" => "月ごと",
+        _ => "日ごと",
+    };
+    private string DashboardRangeDateLabel
+    {
+        get
+        {
+            var from = FormatDate(_dashboardStats?.From);
+            var to = FormatDate(_dashboardStats?.To);
+            if (from.Length == 0 && to.Length == 0)
+            {
+                return "全期間";
+            }
+            if (from.Length == 0)
+            {
+                return $"{to} まで";
+            }
+            if (to.Length == 0)
+            {
+                return $"{from} から";
+            }
+            return $"{from} - {to}";
+        }
+    }
 
     private int AlertLevel => _alerts.Any(alert => alert.Severity == "danger")
         ? 2
@@ -40,7 +78,7 @@ public partial class Index
     {
         2 => "設定不足や製品未検出など、先に解消した方がよい項目があります。",
         1 => "データは利用できますが、スキャンや言語化など確認した方がよい項目があります。",
-        _ => "大きな問題は見つかっていません。必要に応じてスキャンや分析に進めます。",
+        _ => "大きな問題は見つかっていません。下のグラフで蓄積状況を確認できます。",
     };
 
     private string DashboardIcon => AlertLevel switch
@@ -66,11 +104,15 @@ public partial class Index
 
     private DashboardAlert? PrimaryAlert => _alerts.FirstOrDefault();
 
-    private string NextActionTitle => PrimaryAlert?.Title ?? "スキャンで最新化";
-    private string NextActionText => PrimaryAlert?.Message ?? "新しい素材が増えている場合は、スキャン画面で取り込み状態を最新化できます。";
-    private string NextActionButton => PrimaryAlert?.ActionLabel ?? "スキャンを開く";
+    private string NextActionTitle => PrimaryAlert?.Title
+        ?? (_loadingDetails ? "素材の状態を確認中" : "現時点で優先タスクはありません");
+    private string NextActionText => PrimaryAlert?.Message
+        ?? (_loadingDetails
+            ? "各サブ製品の件数と Timeline への反映状況を確認しています。"
+            : "未反映の素材や停止中の処理は見つかっていません。必要なときだけスキャン画面から手動で更新できます。");
+    private string NextActionButton => PrimaryAlert?.ActionLabel ?? (_loadingDetails ? "確認中" : "");
     private string NextActionHref => PrimaryAlert?.Href ?? "scan";
-    private string NextActionKind => PrimaryAlert?.ActionKind ?? "link";
+    private string NextActionKind => PrimaryAlert?.ActionKind ?? (_loadingDetails ? "loading" : "none");
 
     private string VerbalizationStateLabel
     {
@@ -109,10 +151,14 @@ public partial class Index
         _loadingDetails && detailMissing ? "確認中" : value;
 
     private bool RuntimeProductFound(string productId) =>
-        _runtime?.Products.Any(product =>
-            string.Equals(product.Id, productId, StringComparison.OrdinalIgnoreCase)
-            && product.ProductFound
-            && product.ComposeFound) == true;
+        RuntimeStatusKnown
+            ? _runtime!.Products.Any(product =>
+                string.Equals(product.Id, productId, StringComparison.OrdinalIgnoreCase)
+                && product.ProductFound
+                && product.ComposeFound)
+            : _store?.Products.Any(product =>
+                string.Equals(product.ProductId, productId, StringComparison.OrdinalIgnoreCase)
+                && (product.Included || product.ItemCount > 0 || product.EventCount > 0)) == true;
 
     private static string SourceState(bool productFound, int itemCount)
     {
@@ -146,6 +192,23 @@ public partial class Index
 
     private static string FormatNumber(int value) => value.ToString("N0", CultureInfo.GetCultureInfo("ja-JP"));
 
+    private static string FormatNumber(long value) => value.ToString("N0", CultureInfo.GetCultureInfo("ja-JP"));
+
+    private static string FormatCompactNumber(long value)
+    {
+        var culture = CultureInfo.GetCultureInfo("ja-JP");
+        var absolute = Math.Abs(value);
+        if (absolute >= 100_000_000)
+        {
+            return $"{value / 100_000_000d:0.#}億";
+        }
+        if (absolute >= 10_000)
+        {
+            return $"{value / 10_000d:0.#}万";
+        }
+        return value.ToString("N0", culture);
+    }
+
     private int StoreEventCount(string productId)
     {
         return _store?.Products.FirstOrDefault(product => string.Equals(product.ProductId, productId, StringComparison.OrdinalIgnoreCase))?.EventCount ?? 0;
@@ -166,25 +229,18 @@ public partial class Index
         return date is null ? "未取得" : date.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture);
     }
 
+    private static string FormatDate(string? value)
+    {
+        return DateOnly.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.None, out var date)
+            ? date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)
+            : string.Empty;
+    }
+
     private static DateTimeOffset? ParseDateTime(string? value)
     {
         return DateTimeOffset.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.AssumeLocal, out var date)
             ? date
             : null;
-    }
-
-    private static string AgeText(DateTimeOffset value)
-    {
-        var span = DateTimeOffset.Now - value;
-        if (span.TotalDays >= 1)
-        {
-            return $"{Math.Floor(span.TotalDays):N0}日";
-        }
-        if (span.TotalHours >= 1)
-        {
-            return $"{Math.Floor(span.TotalHours):N0}時間";
-        }
-        return $"{Math.Max(0, Math.Floor(span.TotalMinutes)):N0}分";
     }
 
     private int ContributionWidth(int eventCount)
@@ -200,6 +256,25 @@ public partial class Index
     private string ContributionBarStyle(int eventCount) =>
         $"width: {ContributionWidth(eventCount)}%;";
 
+    private static bool HasAlertAction(DashboardAlert alert) =>
+        !string.IsNullOrWhiteSpace(alert.ActionLabel)
+        && !string.Equals(alert.ActionKind, "none", StringComparison.OrdinalIgnoreCase);
+
+    private static string AlertActionHref(DashboardAlert alert)
+    {
+        if (!string.IsNullOrWhiteSpace(alert.Href))
+        {
+            return alert.Href;
+        }
+
+        return alert.ActionKind switch
+        {
+            "settings" => "timeline/settings",
+            "products" => "timeline/products",
+            _ => "scan",
+        };
+    }
+
     private static string DisplayProductName(string productId, string displayName)
     {
         if (!string.IsNullOrWhiteSpace(displayName))
@@ -213,12 +288,14 @@ public partial class Index
             "image" => "TimelineForImage",
             "chatgpt" => "TimelineForChatGPT",
             "windows-codex" => "TimelineForWindowsCodex",
-            "pc" => "TimelineForPC",
+            "pc" => "TimelineForPcInfo",
             _ => productId,
         };
     }
 
     private sealed record DashboardAlert(string Severity, string Title, string Message, string ActionLabel, string Href, string ActionKind);
+
+    private sealed record ScanUpdateCandidate(string Name, string Reason);
 
     private sealed record DataSourceSummary(
         string Name,

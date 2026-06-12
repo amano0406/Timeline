@@ -13,7 +13,9 @@ public partial class WindowsCodexThreadDetail
 
     private Timeline.Web.Services.WindowsCodexThreadDetail? _thread;
     private TimelineAppSettings? _timelineSettings;
+    private TimelineItemSummary? _itemSummary;
     private bool _loading = true;
+    private bool _itemSummaryLoading;
     private string? _error;
 
     private string TitleLabel => string.IsNullOrWhiteSpace(_thread?.Title) ? "スレッド詳細" : _thread.Title;
@@ -23,8 +25,10 @@ public partial class WindowsCodexThreadDetail
     protected override async Task OnParametersSetAsync()
     {
         _loading = true;
+        _itemSummaryLoading = false;
         _error = null;
         _thread = null;
+        _itemSummary = null;
 
         if (string.IsNullOrWhiteSpace(ItemId))
         {
@@ -37,7 +41,8 @@ public partial class WindowsCodexThreadDetail
         {
             var threadTask = Timeline.GetWindowsCodexThreadAsync(ItemId);
             var settingsTask = Timeline.GetTimelineSettingsAsync();
-            await Task.WhenAll(threadTask, settingsTask);
+            var summaryTask = LoadItemSummaryAsync("windows-codex", ItemId);
+            await Task.WhenAll(threadTask, settingsTask, summaryTask);
             _thread = await threadTask;
             _timelineSettings = await settingsTask;
             if (!_thread.Available && !string.IsNullOrWhiteSpace(_thread.Message))
@@ -48,6 +53,19 @@ public partial class WindowsCodexThreadDetail
         finally
         {
             _loading = false;
+        }
+    }
+
+    private async Task LoadItemSummaryAsync(string product, string itemId)
+    {
+        _itemSummaryLoading = true;
+        try
+        {
+            _itemSummary = await Timeline.GetTimelineItemSummaryAsync(product, itemId);
+        }
+        finally
+        {
+            _itemSummaryLoading = false;
         }
     }
 

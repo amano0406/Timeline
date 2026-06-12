@@ -27,8 +27,19 @@ services:
       ASPNETCORE_URLS: http://+:8080
       Timeline__HelperBaseUrl: http://host.docker.internal:${TIMELINE_HELPER_PORT:-19001}
       Timeline__HelperPublicBaseUrl: http://127.0.0.1:${TIMELINE_HELPER_PORT:-19001}
+      Timeline__WorkDirectory: /data/work
+      Timeline__StoreDirectory: /data/store
+      TIMELINE_WORK_DIRECTORY: /data/work
+      TIMELINE_STORE_DIRECTORY: /data/store
     ports:
       - "127.0.0.1:${TIMELINE_WEB_PORT:-19000}:8080"
+    volumes:
+      - type: bind
+        source: ${TIMELINE_WORK_SOURCE:-./data/work}
+        target: /data/work
+      - type: bind
+        source: ${TIMELINE_STORE_SOURCE:-./data/to_timeline}
+        target: /data/store
 
   worker:
     image: timeline-worker:${TIMELINE_IMAGE_TAG:-latest}

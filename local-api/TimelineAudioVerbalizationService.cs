@@ -6,6 +6,8 @@ using System.Globalization;
 
 public sealed class TimelineAudioVerbalizationService
 {
+    private static readonly TimeSpan BulkWorkerLostAfter = TimeSpan.FromMinutes(2);
+
     private readonly TimelineSettingsService _settings;
     private readonly TimelineLocalApiOptions _options;
     private readonly TimelineOperationLogService _operations;
@@ -52,7 +54,8 @@ public sealed class TimelineAudioVerbalizationService
         try
         {
             var status = JsonNode.Parse(File.ReadAllText(path)) as JsonObject;
-            return NormalizeBulkStatus(status);
+            return ClearStaleWorkerLostBulkFailureIfNeeded(
+                MarkBulkWorkerLostIfNeeded(NormalizeBulkStatus(status)));
         }
         catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
         {
@@ -196,6 +199,30 @@ public sealed class TimelineAudioVerbalizationService
         }
     }
 
+    public JsonObject CancelBulk(string? jobId)
+    {
+        var status = GetBulkStatus(jobId);
+        var effectiveJobId = GetString(status, "jobId", ConvertTimelineText(jobId));
+        if (string.IsNullOrWhiteSpace(effectiveJobId) || !IsBulkActive(status))
+        {
+            return status;
+        }
+
+        _jobs.Cancel(effectiveJobId);
+        status["state"] = "canceling";
+        status["message"] = "Audio verbalization bulk cancellation was requested.";
+        status["updatedAt"] = DateTimeOffset.Now.ToString("o", CultureInfo.InvariantCulture);
+        WriteBulkStatus(status);
+        _operations.WriteOperationEvent(
+            effectiveJobId,
+            "worker",
+            "Timeline",
+            "audio_verbalization_bulk_cancel",
+            "canceling",
+            "Audio verbalization bulk cancellation was requested.");
+        return status;
+    }
+
     public Task<JsonObject> StartSingleAsync(
         JsonObject? request,
         string localApiBaseUrl,
@@ -305,6 +332,7 @@ public sealed class TimelineAudioVerbalizationService
         WriteBulkStatus(status);
         try
         {
+            _jobs.EnsureCancellationToken(jobId);
             StartBulkWorker(jobId, localApiBaseUrl);
         }
         catch (Exception ex)
@@ -389,7 +417,8 @@ public sealed class TimelineAudioVerbalizationService
                 ["worker"] = "local-api-background-task",
             });
 
-        _ = Task.Run(() => RunBulkAsync(jobId, localApiBaseUrl));
+        var cancellationToken = _jobs.EnsureCancellationToken(jobId);
+        _ = Task.Run(() => RunBulkAsync(jobId, localApiBaseUrl, cancellationToken));
 
         _operations.WriteOperationEvent(
             jobId,
@@ -404,7 +433,7 @@ public sealed class TimelineAudioVerbalizationService
             });
     }
 
-    private async Task RunBulkAsync(string jobId, string localApiBaseUrl)
+    private async Task RunBulkAsync(string jobId, string localApiBaseUrl, CancellationToken cancellationToken)
     {
         using var lease = _jobs.MarkActive(jobId, "_bulk");
         var status = GetBulkStatus(jobId);
@@ -415,6 +444,7 @@ public sealed class TimelineAudioVerbalizationService
 
         try
         {
+            cancellationToken.ThrowIfCancellationRequested();
             status["state"] = "running";
             status["message"] = "Audio verbalization bulk job is collecting targets.";
             if (string.IsNullOrEmpty(GetString(status, "startedAt", string.Empty)))
@@ -432,6 +462,7 @@ public sealed class TimelineAudioVerbalizationService
                 "Audio verbalization bulk execution started.");
 
             var targets = GetBulkTargets(localApiBaseUrl);
+            cancellationToken.ThrowIfCancellationRequested();
             var totalTurns = targets.Sum(target => GetInt(target.Status, "totalTurns", 0));
             var totalChunks = targets.Sum(target => GetInt(target.Status, "totalChunks", 0));
             status["totalItems"] = targets.Count;
@@ -467,6 +498,7 @@ public sealed class TimelineAudioVerbalizationService
 
             foreach (var target in targets)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 status["currentAudioItemId"] = target.AudioItemId;
                 status["currentFileName"] = target.FileName;
                 status["currentRelativePath"] = target.RelativePath;
@@ -514,6 +546,7 @@ public sealed class TimelineAudioVerbalizationService
 
                     void Progress(JsonObject fileStatus, int completedChunks, int currentTotalChunks)
                     {
+                        cancellationToken.ThrowIfCancellationRequested();
                         status["currentChunkId"] = GetString(fileStatus, "currentChunkId", string.Empty);
                         status["currentItemCompletedChunks"] = completedChunks;
                         status["currentItemTotalChunks"] = currentTotalChunks;
@@ -528,7 +561,7 @@ public sealed class TimelineAudioVerbalizationService
                         context.AudioItemId,
                         jobId,
                         Progress,
-                        CancellationToken.None);
+                        cancellationToken);
 
                     var finalState = GetString(finalItemStatus, "state", string.Empty).ToLowerInvariant();
                     var finalCompletedChunks = GetInt(finalItemStatus, "completedChunks", 0);
@@ -549,6 +582,10 @@ public sealed class TimelineAudioVerbalizationService
                     {
                         failedItems++;
                     }
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    throw;
                 }
                 catch (Exception ex)
                 {
@@ -613,6 +650,21 @@ public sealed class TimelineAudioVerbalizationService
                     ["verbalizedTurns"] = verbalizedTurnsBase,
                     ["unresolvedTurns"] = unresolvedTurnsBase,
                 });
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            status["state"] = "canceled";
+            status["message"] = "Audio verbalization bulk job was canceled.";
+            status["completedAt"] = DateTimeOffset.Now.ToString("o", CultureInfo.InvariantCulture);
+            status["estimatedRemainingSec"] = 0;
+            WriteBulkStatus(status);
+            _operations.WriteOperationEvent(
+                jobId,
+                "worker",
+                "Timeline",
+                "audio_verbalization_bulk",
+                "canceled",
+                "Audio verbalization bulk job was canceled.");
         }
         catch (Exception ex)
         {
@@ -849,6 +901,146 @@ public sealed class TimelineAudioVerbalizationService
         WriteJsonFile(GetBulkStatusPath(string.Empty), normalized);
     }
 
+    private JsonObject MarkBulkWorkerLostIfNeeded(JsonObject status)
+    {
+        if (!IsBulkActive(status))
+        {
+            return status;
+        }
+
+        var jobId = GetString(status, "jobId", string.Empty);
+        if (string.IsNullOrWhiteSpace(jobId) || _jobs.IsActive(jobId))
+        {
+            return status;
+        }
+
+        if (!BulkStatusLooksStale(status))
+        {
+            return status;
+        }
+
+        if (GetString(status, "state", string.Empty).Equals("canceling", StringComparison.OrdinalIgnoreCase))
+        {
+            status["state"] = "canceled";
+            status["completedAt"] = DateTimeOffset.Now.ToString("o", CultureInfo.InvariantCulture);
+            status["estimatedRemainingSec"] = 0;
+            status["message"] = "Audio verbalization bulk job was canceled after the stop request.";
+            WriteBulkStatus(status);
+            _operations.WriteOperationEvent(
+                jobId,
+                "worker",
+                "Timeline",
+                "audio_verbalization_bulk",
+                "canceled",
+                GetString(status, "message", string.Empty));
+            return NormalizeBulkStatus(status);
+        }
+
+        status["state"] = "failed";
+        status["completedAt"] = DateTimeOffset.Now.ToString("o", CultureInfo.InvariantCulture);
+        status["estimatedRemainingSec"] = 0;
+        status["message"] = "音声由来イベントの補正ジョブは停止しています。処理プロセスが見つからないため、再実行できる状態に戻しました。";
+        WriteBulkStatus(status);
+        _operations.WriteOperationEvent(
+            jobId,
+            "worker",
+            "Timeline",
+            "audio_verbalization_bulk",
+            "failed",
+            GetString(status, "message", string.Empty));
+        return NormalizeBulkStatus(status);
+    }
+
+    private JsonObject ClearStaleWorkerLostBulkFailureIfNeeded(JsonObject status)
+    {
+        if (!IsStaleWorkerLostBulkFailure(status))
+        {
+            return status;
+        }
+
+        var previousJobId = GetString(status, "jobId", string.Empty);
+        status["state"] = "not_started";
+        status["jobId"] = string.Empty;
+        status["totalItems"] = 0;
+        status["completedItems"] = 0;
+        status["reviewItems"] = 0;
+        status["failedItems"] = 0;
+        status["skippedItems"] = 0;
+        status["totalTurns"] = 0;
+        status["verbalizedTurns"] = 0;
+        status["unresolvedTurns"] = 0;
+        status["totalChunks"] = 0;
+        status["completedChunks"] = 0;
+        status["currentAudioItemId"] = string.Empty;
+        status["currentFileName"] = string.Empty;
+        status["currentRelativePath"] = string.Empty;
+        status["currentChunkId"] = string.Empty;
+        status["currentItemCompletedChunks"] = 0;
+        status["currentItemTotalChunks"] = 0;
+        status["startedAt"] = string.Empty;
+        status["completedAt"] = string.Empty;
+        status["estimatedRemainingSec"] = 0;
+        status["progressPercent"] = 0;
+        status["updatedAt"] = DateTimeOffset.Now.ToString("o", CultureInfo.InvariantCulture);
+        status["message"] = "音声由来イベントの前回ジョブ停止状態を解除しました。未処理の対象があれば再実行できます。";
+        WriteBulkStatus(status);
+
+        if (!string.IsNullOrWhiteSpace(previousJobId))
+        {
+            _operations.WriteOperationEvent(
+                previousJobId,
+                "worker",
+                "Timeline",
+                "audio_verbalization_bulk",
+                "cleared",
+                GetString(status, "message", string.Empty));
+        }
+
+        return NormalizeBulkStatus(status);
+    }
+
+    private bool IsStaleWorkerLostBulkFailure(JsonObject status)
+    {
+        if (!GetString(status, "state", string.Empty).Equals("failed", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var jobId = GetString(status, "jobId", string.Empty);
+        if (!string.IsNullOrWhiteSpace(jobId) && _jobs.IsActive(jobId))
+        {
+            return false;
+        }
+
+        if (!BulkStatusLooksStale(status))
+        {
+            return false;
+        }
+
+        var message = GetString(status, "message", string.Empty);
+        return message.Contains("worker was not found", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("process was not found", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("処理プロセス", StringComparison.Ordinal)
+            || message.Contains("再実行できる状態", StringComparison.Ordinal);
+    }
+
+    private static bool BulkStatusLooksStale(JsonObject status)
+    {
+        var updatedAtText = GetString(status, "updatedAt", string.Empty);
+        if (DateTimeOffset.TryParse(updatedAtText, out var updatedAt))
+        {
+            return DateTimeOffset.Now - updatedAt > BulkWorkerLostAfter;
+        }
+
+        var startedAtText = GetString(status, "startedAt", string.Empty);
+        if (DateTimeOffset.TryParse(startedAtText, out var startedAt))
+        {
+            return DateTimeOffset.Now - startedAt > BulkWorkerLostAfter;
+        }
+
+        return true;
+    }
+
     private static JsonObject NewBulkStatus(string jobId, string state, string message)
     {
         var now = DateTimeOffset.Now.ToString("o");
@@ -886,7 +1078,7 @@ public sealed class TimelineAudioVerbalizationService
     private static bool IsBulkActive(JsonObject status)
     {
         var state = GetString(status, "state", string.Empty).ToLowerInvariant();
-        return state is "starting" or "queued" or "running";
+        return state is "starting" or "queued" or "running" or "canceling";
     }
 
     private static string NewBulkJobId()

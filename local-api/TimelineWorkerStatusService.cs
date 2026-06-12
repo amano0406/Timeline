@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -7,23 +8,26 @@ using Microsoft.Extensions.DependencyInjection;
 
 public sealed class TimelineWorkerStatusService
 {
-    private static readonly ConcurrentDictionary<string, byte> ActiveRebuildJobs = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly ConcurrentDictionary<string, RebuildJobController> ActiveRebuildJobs = new(StringComparer.OrdinalIgnoreCase);
 
     private readonly TimelineSettingsService _settings;
     private readonly TimelineOperationLogService _operations;
     private readonly IServiceScopeFactory _scopeFactory;
+    private readonly TimelineLocalApiOptions _options;
 
     public TimelineWorkerStatusService(
         TimelineSettingsService settings,
         TimelineOperationLogService operations,
-        IServiceScopeFactory scopeFactory)
+        IServiceScopeFactory scopeFactory,
+        TimelineLocalApiOptions options)
     {
         _settings = settings;
         _operations = operations;
         _scopeFactory = scopeFactory;
+        _options = options;
     }
 
-    public async Task<JsonObject> StartRebuildAsync(CancellationToken cancellationToken)
+    public async Task<JsonObject> StartRebuildAsync(JsonObject? request, CancellationToken cancellationToken)
     {
         var operationId = _operations.NewOperationId("web");
         var startedAt = DateTimeOffset.Now;
@@ -37,7 +41,7 @@ public sealed class TimelineWorkerStatusService
 
         try
         {
-            var result = await StartRebuildCoreAsync(cancellationToken);
+            var result = await StartRebuildCoreAsync(request, cancellationToken);
             var durationMs = (int)(DateTimeOffset.Now - startedAt).TotalMilliseconds;
             _operations.WriteOperationEvent(
                 operationId,
@@ -92,6 +96,50 @@ public sealed class TimelineWorkerStatusService
         return latest;
     }
 
+    public JsonObject CancelRebuild(string? jobId)
+    {
+        var requestedJobId = ConvertTimelineText(jobId);
+        var status = string.IsNullOrWhiteSpace(requestedJobId)
+            ? GetLatestWorkerJobStatusObject()
+            : ReadWorkerJobStatusObject(requestedJobId);
+        var effectiveJobId = GetString(status, "jobId", requestedJobId);
+        if (string.IsNullOrWhiteSpace(effectiveJobId))
+        {
+            return NewWorkerJobStatus(
+                string.Empty,
+                "none",
+                "none",
+                "No active Timeline rebuild job exists.",
+                string.Empty,
+                string.Empty,
+                DateTimeOffset.Now.ToString("o"),
+                string.Empty,
+                0,
+                0,
+                null);
+        }
+
+        if (!IsWorkerJobActive(status))
+        {
+            return status;
+        }
+
+        var now = DateTimeOffset.Now.ToString("o");
+        status["state"] = "canceling";
+        status["stage"] = "canceling";
+        status["message"] = "Timeline rebuild cancellation was requested.";
+        status["updatedAt"] = now;
+        status["completedAt"] = string.Empty;
+        WriteWorkerJobStatus(status);
+
+        if (ActiveRebuildJobs.TryGetValue(effectiveJobId, out var controller))
+        {
+            controller.Cancel();
+        }
+
+        return status;
+    }
+
     public TimelineDockerWorkerStatusResponse GetStatus()
     {
         var path = Path.Combine(_settings.GetWorkerDirectory(), "docker-worker-heartbeat.json");
@@ -117,12 +165,32 @@ public sealed class TimelineWorkerStatusService
         try
         {
             var payload = JsonNode.Parse(File.ReadAllText(path)) as JsonObject;
+            var updatedAt = GetString(payload, "updatedAt", string.Empty);
+            if (IsHeartbeatStale(updatedAt))
+            {
+                return new TimelineDockerWorkerStatusResponse
+                {
+                    Available = false,
+                    Worker = GetString(payload, "worker", "timeline-worker"),
+                    State = "stale",
+                    UpdatedAt = updatedAt,
+                    WorkDirectory = GetString(payload, "workDirectory", string.Empty),
+                    StoreDirectory = GetString(payload, "storeDirectory", string.Empty),
+                    StoreAvailable = GetBool(payload, "storeAvailable", false),
+                    RebuildId = GetString(payload, "rebuildId", string.Empty),
+                    CreatedAt = GetString(payload, "createdAt", string.Empty),
+                    ItemCount = GetInt(payload, "itemCount", 0),
+                    EventCount = GetInt(payload, "eventCount", 0),
+                    Message = "Timeline Docker worker heartbeat is stale.",
+                };
+            }
+
             return new TimelineDockerWorkerStatusResponse
             {
                 Available = true,
                 Worker = GetString(payload, "worker", "timeline-worker"),
                 State = GetString(payload, "state", string.Empty),
-                UpdatedAt = GetString(payload, "updatedAt", string.Empty),
+                UpdatedAt = updatedAt,
                 WorkDirectory = GetString(payload, "workDirectory", string.Empty),
                 StoreDirectory = GetString(payload, "storeDirectory", string.Empty),
                 StoreAvailable = GetBool(payload, "storeAvailable", false),
@@ -153,7 +221,86 @@ public sealed class TimelineWorkerStatusService
         }
     }
 
-    private async Task<JsonObject> StartRebuildCoreAsync(CancellationToken cancellationToken)
+    public async Task<JsonObject> RepairDockerWorkerAsync(CancellationToken cancellationToken)
+    {
+        var operationId = _operations.NewOperationId("web");
+        var startedAt = DateTimeOffset.Now;
+        _operations.WriteOperationEvent(
+            operationId,
+            "worker",
+            "Timeline",
+            "timeline_worker_repair",
+            "started",
+            "Timeline worker repair started.");
+
+        try
+        {
+            var root = Path.GetFullPath(_options.TimelineProductPath);
+            var scriptPath = Path.Combine(root, "scripts", "repair-worker.ps1");
+            if (!File.Exists(scriptPath))
+            {
+                throw new InvalidOperationException($"Timeline worker repair script was not found: {scriptPath}");
+            }
+
+            var result = await RunRepairScriptAsync(root, scriptPath, cancellationToken);
+            var status = GetStatus();
+            var ok = result.ExitCode == 0 && status.Available && status.State.Equals("running", StringComparison.OrdinalIgnoreCase);
+            var message = ok
+                ? "Timeline worker を復旧しました。"
+                : "Timeline worker の復旧結果を確認できませんでした。";
+
+            var payload = new JsonObject
+            {
+                ["ok"] = ok,
+                ["exitCode"] = result.ExitCode,
+                ["message"] = message,
+                ["stdout"] = result.Stdout,
+                ["stderr"] = result.Stderr,
+                ["worker"] = JsonSerializer.SerializeToNode(status),
+            };
+
+            var durationMs = (int)(DateTimeOffset.Now - startedAt).TotalMilliseconds;
+            _operations.WriteOperationEvent(
+                operationId,
+                "worker",
+                "Timeline",
+                "timeline_worker_repair",
+                ok ? "completed" : "failed",
+                message,
+                durationMs: durationMs,
+                stdout: result.Stdout,
+                stderr: result.Stderr,
+                details: new JsonObject
+                {
+                    ["exitCode"] = result.ExitCode,
+                    ["workerState"] = status.State,
+                    ["workerAvailable"] = status.Available,
+                });
+
+            if (!ok)
+            {
+                throw new InvalidOperationException(BuildRepairFailureMessage(message, result.Stderr));
+            }
+
+            return payload;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+        {
+            var durationMs = (int)(DateTimeOffset.Now - startedAt).TotalMilliseconds;
+            _operations.WriteOperationEvent(
+                operationId,
+                "worker",
+                "Timeline",
+                "timeline_worker_repair",
+                "failed",
+                ex.Message,
+                durationMs: durationMs,
+                stderr: ex.Message);
+            throw;
+        }
+    }
+
+    private async Task<JsonObject> StartRebuildCoreAsync(JsonObject? request, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
 
@@ -185,14 +332,32 @@ public sealed class TimelineWorkerStatusService
             null);
         WriteWorkerJobStatus(status);
 
-        ActiveRebuildJobs[jobId] = 0;
+        var controller = new RebuildJobController();
+        ActiveRebuildJobs[jobId] = controller;
+        var rebuildRequest = request?.DeepClone() as JsonObject;
         _ = Task.Run(async () =>
         {
             try
             {
                 using var scope = _scopeFactory.CreateScope();
                 var rebuild = scope.ServiceProvider.GetRequiredService<TimelineStoreRebuildService>();
-                await rebuild.RunRebuildJobAsync(jobId, CancellationToken.None);
+                await rebuild.RunRebuildJobAsync(jobId, rebuildRequest, controller.Token);
+            }
+            catch (OperationCanceledException) when (controller.Token.IsCancellationRequested)
+            {
+                var canceledAt = DateTimeOffset.Now.ToString("o");
+                WriteWorkerJobStatus(NewWorkerJobStatus(
+                    jobId,
+                    "canceled",
+                    "canceled",
+                    "Timeline store rebuild was canceled.",
+                    string.Empty,
+                    now,
+                    canceledAt,
+                    canceledAt,
+                    0,
+                    0,
+                    null));
             }
             catch (Exception ex)
             {
@@ -212,7 +377,10 @@ public sealed class TimelineWorkerStatusService
             }
             finally
             {
-                ActiveRebuildJobs.TryRemove(jobId, out _);
+                if (ActiveRebuildJobs.TryRemove(jobId, out var removed))
+                {
+                    removed.Dispose();
+                }
             }
         });
 
@@ -251,6 +419,82 @@ public sealed class TimelineWorkerStatusService
                 0,
                 0,
                 null);
+    }
+
+    private static async Task<RepairScriptResult> RunRepairScriptAsync(
+        string root,
+        string scriptPath,
+        CancellationToken cancellationToken)
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(TimeSpan.FromMinutes(5));
+
+        using var process = new Process();
+        process.StartInfo = new ProcessStartInfo
+        {
+            FileName = "powershell.exe",
+            Arguments = $"-NoProfile -ExecutionPolicy Bypass -File {QuoteArgument(scriptPath)} -RepoRoot {QuoteArgument(root)}",
+            WorkingDirectory = root,
+            CreateNoWindow = true,
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+        };
+
+        if (!process.Start())
+        {
+            throw new InvalidOperationException("Timeline worker repair process could not be started.");
+        }
+
+        var stdoutTask = process.StandardOutput.ReadToEndAsync(timeout.Token);
+        var stderrTask = process.StandardError.ReadToEndAsync(timeout.Token);
+        try
+        {
+            await process.WaitForExitAsync(timeout.Token);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            TryKillProcess(process);
+            throw new TimeoutException("Timeline worker repair timed out.");
+        }
+
+        var stdout = await stdoutTask;
+        var stderr = await stderrTask;
+        return new RepairScriptResult(process.ExitCode, stdout, stderr);
+    }
+
+    private static void TryKillProcess(Process process)
+    {
+        try
+        {
+            if (!process.HasExited)
+            {
+                process.Kill(entireProcessTree: true);
+            }
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or NotSupportedException or System.ComponentModel.Win32Exception)
+        {
+        }
+    }
+
+    private static string QuoteArgument(string value)
+        => "\"" + value.Replace("\"", "\\\"", StringComparison.Ordinal) + "\"";
+
+    private static string BuildRepairFailureMessage(string message, string detail)
+    {
+        var normalized = ConvertTimelineText(detail);
+        if (string.IsNullOrEmpty(normalized))
+        {
+            return message;
+        }
+
+        const int maxDetailLength = 500;
+        if (normalized.Length > maxDetailLength)
+        {
+            normalized = "..." + normalized[^maxDetailLength..];
+        }
+
+        return $"{message} {normalized}";
     }
 
     private JsonObject GetLatestWorkerJobStatusObject()
@@ -320,6 +564,25 @@ public sealed class TimelineWorkerStatusService
         }
 
         var now = DateTimeOffset.Now.ToString("o");
+        var currentState = GetString(status, "state", string.Empty);
+        if (currentState.Equals("canceling", StringComparison.OrdinalIgnoreCase))
+        {
+            var canceled = NewWorkerJobStatus(
+                jobId,
+                "canceled",
+                "canceled",
+                "Timeline rebuild was canceled after the stop request.",
+                string.Empty,
+                GetString(status, "startedAt", string.Empty),
+                now,
+                now,
+                GetInt(status, "itemCount", 0),
+                GetInt(status, "eventCount", 0),
+                CloneNode(GetNode(status, "result")));
+            WriteWorkerJobStatus(canceled);
+            return;
+        }
+
         var failed = NewWorkerJobStatus(
             jobId,
             "failed",
@@ -368,7 +631,23 @@ public sealed class TimelineWorkerStatusService
     {
         var state = GetString(status, "state", string.Empty);
         return state.Equals("queued", StringComparison.OrdinalIgnoreCase)
-            || state.Equals("running", StringComparison.OrdinalIgnoreCase);
+            || state.Equals("running", StringComparison.OrdinalIgnoreCase)
+            || state.Equals("canceling", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsHeartbeatStale(string updatedAt)
+    {
+        if (string.IsNullOrWhiteSpace(updatedAt))
+        {
+            return true;
+        }
+
+        if (!DateTimeOffset.TryParse(updatedAt, out var timestamp))
+        {
+            return true;
+        }
+
+        return (DateTimeOffset.Now - timestamp).TotalSeconds > 30;
     }
 
     private static string NewWorkerJobId()
@@ -619,6 +898,31 @@ public sealed class TimelineWorkerStatusService
             _ => value.ToString()?.Trim() ?? string.Empty,
         };
     }
+
+    private sealed class RebuildJobController : IDisposable
+    {
+        private readonly CancellationTokenSource _cancellation = new();
+
+        public CancellationToken Token => _cancellation.Token;
+
+        public void Cancel()
+        {
+            if (!_cancellation.IsCancellationRequested)
+            {
+                _cancellation.Cancel();
+            }
+        }
+
+        public void Dispose()
+        {
+            _cancellation.Dispose();
+        }
+    }
+
+    private sealed record RepairScriptResult(
+        int ExitCode,
+        string Stdout,
+        string Stderr);
 }
 
 public sealed class TimelineDockerWorkerStatusResponse

@@ -11,6 +11,7 @@ public partial class AudioFiles
     private TimelineProductOverview? _overview;
     private AudioFileListResult? _files;
     private readonly HashSet<string> _selectedFileKeys = new(StringComparer.OrdinalIgnoreCase);
+    private readonly TimelineItemSummaryListState _itemSummaryList = new();
     private bool _loading = true;
     private bool _refreshing;
     private bool _downloading;
@@ -119,6 +120,7 @@ public partial class AudioFiles
         {
             _overview = await Timeline.GetAudioOverviewAsync();
             _files = new AudioFileListResult();
+            _itemSummaryList.Clear();
             _currentFilePage = 1;
             await InvokeAsync(StateHasChanged);
             await LoadFilePageAsync(1, reset: true);
@@ -142,6 +144,8 @@ public partial class AudioFiles
         _lastLoadedAt = DateTime.Now;
         _currentFilePage = Math.Max(1, result.Pagination.Page);
         RemoveMissingSelections();
+        await InvokeAsync(StateHasChanged);
+        await _itemSummaryList.LoadAsync(Timeline, "audio", Files.Select(file => file.ItemId));
         await InvokeAsync(StateHasChanged);
     }
 
@@ -263,6 +267,42 @@ public partial class AudioFiles
 
         return "JSONあり";
     }
+
+    private string SummaryStatusLabel(AudioFileRow file) =>
+        file.HasTimeline ? _itemSummaryList.SummaryStatusLabel(file.ItemId) : "未作成";
+
+    private string SummaryStatusPill(AudioFileRow file) =>
+        file.HasTimeline
+            ? _itemSummaryList.SummaryStatusPillClass(file.ItemId)
+            : "tfa-status-pill border-slate-200 bg-slate-50 text-slate-700";
+
+    private string TextCharCountLabel(AudioFileRow file) =>
+        file.HasTimeline ? _itemSummaryList.TextCharCountLabel(file.ItemId) : "-";
+
+    private static string VerbalizationListLabel(AudioFileRow file)
+    {
+        if (!file.HasTimeline || file.TurnCount <= 0)
+        {
+            return "未作成";
+        }
+
+        return file.AudioVerbalization.State.ToLowerInvariant() switch
+        {
+            "completed" => "作成済み",
+            "running" => "作成中",
+            "planned" => "待機中",
+            "needs_review" => "一部未解決",
+            "stale" => "再作成必要",
+            "failed" => "失敗",
+            "unreadable" => "読取不可",
+            _ => "未作成",
+        };
+    }
+
+    private static string VerbalizationListPill(AudioFileRow file) =>
+        file.HasTimeline && file.TurnCount > 0
+            ? VerbalizationPill(file.AudioVerbalization.State)
+            : "tfa-status-pill border-slate-200 bg-slate-50 text-slate-700";
 
     private static bool ShouldShowVerbalizationStatus(AudioFileRow file) =>
         file.HasTimeline && file.AudioVerbalization is not null;

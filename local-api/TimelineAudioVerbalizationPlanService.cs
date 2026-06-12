@@ -81,9 +81,28 @@ public sealed class TimelineAudioVerbalizationPlanService
         Directory.CreateDirectory(contextDirectory);
         Directory.CreateDirectory(resultsDirectory);
 
-        var plan = NewAudioVerbalizationPlan(detail, verbalizationSettings);
         var planPath = Path.Combine(directory, "verbalization-plan.json");
         var resultPath = Path.Combine(directory, "audio-verbalization.json");
+        if (!force)
+        {
+            var resumeContext = TryCreateResumeExecutionContext(
+                detail,
+                sourceId,
+                relativePath,
+                jobId,
+                initialMessage,
+                status,
+                directory,
+                planPath,
+                resultPath,
+                audioItemId);
+            if (resumeContext is not null)
+            {
+                return resumeContext;
+            }
+        }
+
+        var plan = NewAudioVerbalizationPlan(detail, verbalizationSettings);
         WriteJsonFile(planPath, plan);
 
         var chunks = GetArray(plan, "chunks");
@@ -141,6 +160,97 @@ public sealed class TimelineAudioVerbalizationPlanService
             AudioItemId: audioItemId,
             FileName: GetString(GetObject(detail, "file"), "fileName", string.Empty),
             Reason: string.Empty);
+    }
+
+    private TimelineAudioVerbalizationExecutionContext? TryCreateResumeExecutionContext(
+        JsonObject detail,
+        string sourceId,
+        string relativePath,
+        string jobId,
+        string initialMessage,
+        JsonObject currentStatus,
+        string directory,
+        string planPath,
+        string resultPath,
+        string audioItemId)
+    {
+        var currentState = GetString(currentStatus, "state", string.Empty).ToLowerInvariant();
+        if (currentState is "completed" or "needs_review" or "not_started" or "source_transcript" or "planned")
+        {
+            return null;
+        }
+        if (!File.Exists(planPath) || !File.Exists(resultPath))
+        {
+            return null;
+        }
+
+        var plan = ReadJsonFile(planPath);
+        var result = ReadJsonFile(resultPath);
+        if (plan is null || result is null)
+        {
+            return null;
+        }
+
+        var resultStatus = GetObject(result, "status") ?? new JsonObject();
+        var resultState = GetString(resultStatus, "state", string.Empty).ToLowerInvariant();
+        if (resultState is "completed" or "needs_review" or "not_started" or "source_transcript" or "planned")
+        {
+            return null;
+        }
+
+        var planChunks = GetArray(plan, "chunks").OfType<JsonObject>().ToList();
+        if (planChunks.Count == 0)
+        {
+            return null;
+        }
+
+        var resultChunks = GetArray(result, "chunks")
+            .OfType<JsonObject>()
+            .Where(chunk =>
+            {
+                var state = GetString(chunk, "state", string.Empty).ToLowerInvariant();
+                return state is "completed" or "unresolved";
+            })
+            .ToDictionary(
+                chunk => GetString(chunk, "chunkId", string.Empty),
+                chunk => chunk,
+                StringComparer.Ordinal);
+
+        var nextChunkId = planChunks
+            .Select(chunk => GetString(chunk, "chunkId", string.Empty))
+            .FirstOrDefault(chunkId => !string.IsNullOrEmpty(chunkId) && !resultChunks.ContainsKey(chunkId))
+            ?? string.Empty;
+
+        var now = DateTimeOffset.Now.ToString("o", CultureInfo.InvariantCulture);
+        var resumeStatus = CloneObject(resultStatus);
+        resumeStatus["available"] = true;
+        resumeStatus["state"] = "queued";
+        resumeStatus["jobId"] = jobId;
+        resumeStatus["currentChunkId"] = nextChunkId;
+        resumeStatus["updatedAt"] = now;
+        resumeStatus["message"] = string.IsNullOrEmpty(initialMessage)
+            ? "音声由来イベントの補正ジョブを再開します。保存済みの進捗を再利用します。"
+            : initialMessage;
+
+        WriteJsonFile(resultPath, new JsonObject
+        {
+            ["schemaVersion"] = 1,
+            ["status"] = resumeStatus.DeepClone(),
+            ["turns"] = CloneArray(GetArray(result, "turns")),
+            ["chunks"] = CloneArray(GetArray(result, "chunks")),
+        });
+
+        return new TimelineAudioVerbalizationExecutionContext(
+            CanRun: true,
+            Status: resumeStatus,
+            Plan: plan,
+            Directory: directory,
+            ResultPath: resultPath,
+            SourceId: sourceId,
+            RelativePath: relativePath,
+            AudioItemId: audioItemId,
+            FileName: GetString(GetObject(detail, "file"), "fileName", string.Empty),
+            Reason: "resume");
     }
 
     private JsonObject NewAudioVerbalizationPlan(JsonObject detail, JsonObject verbalizationSettings)
@@ -336,6 +446,8 @@ public sealed class TimelineAudioVerbalizationPlanService
         }
 
         var nearbyHints = GetNearbyHints(plan, chunk, settings, hintCandidates);
+        var nearbyUserTextCandidates = GetTextCandidateHints(nearbyHints);
+        var nearbyEvidenceCandidates = GetEvidenceCandidateHints(nearbyHints);
         return new JsonObject
         {
             ["schemaVersion"] = 1,
@@ -364,7 +476,8 @@ public sealed class TimelineAudioVerbalizationPlanService
                 ["useUnconfirmedVerbalizationAsWeakHint"] = GetBool(settings, "useUnconfirmedVerbalizationAsWeakHint", true),
             },
             ["nearbyTimelineHints"] = nearbyHints,
-            ["nearbyUserTextCandidates"] = GetTextCandidateHints(nearbyHints),
+            ["nearbyEvidenceCandidates"] = nearbyEvidenceCandidates,
+            ["nearbyUserTextCandidates"] = nearbyUserTextCandidates,
             ["turns"] = CloneArray(turns),
         };
     }
@@ -536,6 +649,221 @@ public sealed class TimelineAudioVerbalizationPlanService
             ["contentPreview"] = ConvertHintText(GetString(content, "value", string.Empty), maxChars),
             ["itemId"] = GetString(entry, "itemId", string.Empty),
         };
+    }
+
+    private static JsonArray GetEvidenceCandidateHints(JsonArray hints)
+    {
+        var candidates = new JsonArray();
+        var sequence = 1;
+        foreach (var hint in hints.OfType<JsonObject>())
+        {
+            var contentPreview = GetString(hint, "contentPreview", string.Empty);
+            if (string.IsNullOrEmpty(contentPreview))
+            {
+                continue;
+            }
+
+            var classification = ClassifyEvidenceCandidate(hint);
+            candidates.Add(new JsonObject
+            {
+                ["evidenceId"] = $"evidence-{sequence:D4}",
+                ["sourceProduct"] = GetString(hint, "product", string.Empty),
+                ["sourceProductName"] = GetString(hint, "productName", string.Empty),
+                ["evidenceType"] = GetString(classification, "evidenceType", "other"),
+                ["trustLevel"] = GetString(classification, "trustLevel", "weak"),
+                ["trustScore"] = CloneNode(GetNode(classification, "trustScore")),
+                ["allowedUse"] = GetString(classification, "allowedUse", "context_only"),
+                ["distanceBucket"] = GetString(classification, "distanceBucket", "context_window"),
+                ["basis"] = CloneNode(GetNode(classification, "basis")),
+                ["eventType"] = GetString(hint, "eventType", string.Empty),
+                ["occurredAt"] = GetString(hint, "occurredAt", string.Empty),
+                ["deltaSec"] = CloneNode(GetNode(hint, "deltaSec")),
+                ["actorType"] = GetString(hint, "actorType", string.Empty),
+                ["actorLabel"] = GetString(hint, "actorLabel", string.Empty),
+                ["contentKind"] = GetString(hint, "contentKind", string.Empty),
+                ["contentPreview"] = contentPreview,
+                ["itemId"] = GetString(hint, "itemId", string.Empty),
+            });
+            sequence++;
+        }
+
+        return candidates;
+    }
+
+    private static JsonObject ClassifyEvidenceCandidate(JsonObject hint)
+    {
+        var product = GetString(hint, "product", string.Empty).ToLowerInvariant();
+        var contentKind = GetString(hint, "contentKind", string.Empty).ToLowerInvariant();
+        var eventType = GetString(hint, "eventType", string.Empty).ToLowerInvariant();
+        var actorLabel = GetString(hint, "actorLabel", string.Empty).ToLowerInvariant();
+        var evidenceType = GetEvidenceType(product, contentKind, eventType, actorLabel);
+        var score = GetEvidenceBaseScore(product, contentKind, eventType, actorLabel) + GetDistanceScoreModifier(hint);
+        score = Math.Clamp(score, 0.05, 0.98);
+        var trustLevel = score >= 0.75
+            ? "strong"
+            : score >= 0.5
+                ? "medium"
+                : "weak";
+
+        return new JsonObject
+        {
+            ["evidenceType"] = evidenceType,
+            ["trustLevel"] = trustLevel,
+            ["trustScore"] = Math.Round(score, 2),
+            ["allowedUse"] = GetAllowedEvidenceUse(evidenceType, trustLevel),
+            ["distanceBucket"] = GetDistanceBucket(hint),
+            ["basis"] = NewStringArray(GetEvidenceBasis(product, contentKind, eventType, actorLabel, evidenceType, trustLevel)),
+        };
+    }
+
+    private static string GetEvidenceType(string product, string contentKind, string eventType, string actorLabel)
+    {
+        if (product is "audio")
+        {
+            return "speech_derived_transcript";
+        }
+        if (product is "video" && (contentKind is "transcript_text" || eventType.Contains("audio", StringComparison.Ordinal)))
+        {
+            return "speech_derived_transcript";
+        }
+        if (product is "video")
+        {
+            return "video_observation";
+        }
+        if (product is "image" && (contentKind.Contains("ocr", StringComparison.Ordinal) || contentKind.Contains("text", StringComparison.Ordinal)))
+        {
+            return "image_ocr";
+        }
+        if (product is "image")
+        {
+            return "image_observation";
+        }
+        if (product is "pc")
+        {
+            return "pc_activity";
+        }
+        if ((product is "chatgpt" or "windows-codex") && actorLabel == "user")
+        {
+            return "user_authored_text";
+        }
+        if (product is "chatgpt" or "windows-codex")
+        {
+            return "conversation_text";
+        }
+        if (contentKind is "text" or "markdown")
+        {
+            return "timeline_text";
+        }
+
+        return "other";
+    }
+
+    private static double GetEvidenceBaseScore(string product, string contentKind, string eventType, string actorLabel)
+    {
+        var evidenceType = GetEvidenceType(product, contentKind, eventType, actorLabel);
+        return evidenceType switch
+        {
+            "user_authored_text" => 0.88,
+            "timeline_text" => 0.78,
+            "pc_activity" => 0.74,
+            "image_ocr" => 0.68,
+            "image_observation" => 0.58,
+            "conversation_text" => actorLabel == "assistant" ? 0.52 : 0.46,
+            "video_observation" => 0.46,
+            "speech_derived_transcript" => 0.36,
+            _ => 0.42,
+        };
+    }
+
+    private static string GetAllowedEvidenceUse(string evidenceType, string trustLevel)
+        => evidenceType switch
+        {
+            "user_authored_text" => "proper_noun_and_reference_resolution",
+            "timeline_text" => "proper_noun_and_reference_resolution",
+            "pc_activity" => "reference_resolution",
+            "image_ocr" => "vocabulary_and_reference_hint",
+            "image_observation" => "context_hint_only",
+            "conversation_text" => trustLevel == "medium" ? "vocabulary_and_reference_hint" : "weak_context_only",
+            "speech_derived_transcript" => "weak_context_only",
+            _ => "context_hint_only",
+        };
+
+    private static IEnumerable<string> GetEvidenceBasis(
+        string product,
+        string contentKind,
+        string eventType,
+        string actorLabel,
+        string evidenceType,
+        string trustLevel)
+    {
+        yield return $"source_product:{product}";
+        yield return $"evidence_type:{evidenceType}";
+        yield return $"trust:{trustLevel}";
+        if (!string.IsNullOrEmpty(contentKind))
+        {
+            yield return $"content_kind:{contentKind}";
+        }
+        if (!string.IsNullOrEmpty(eventType))
+        {
+            yield return $"event_type:{eventType}";
+        }
+        if (!string.IsNullOrEmpty(actorLabel))
+        {
+            yield return $"actor:{actorLabel}";
+        }
+    }
+
+    private static double GetDistanceScoreModifier(JsonObject hint)
+    {
+        var distanceSec = GetDistanceSec(hint);
+        if (distanceSec is null)
+        {
+            return -0.08;
+        }
+        if (distanceSec <= 15 * 60)
+        {
+            return 0.06;
+        }
+        if (distanceSec <= 2 * 60 * 60)
+        {
+            return 0;
+        }
+
+        return -0.06;
+    }
+
+    private static string GetDistanceBucket(JsonObject hint)
+    {
+        var distanceSec = GetDistanceSec(hint);
+        if (distanceSec is null)
+        {
+            return "unknown";
+        }
+        if (distanceSec <= 5 * 60)
+        {
+            return "same_moment";
+        }
+        if (distanceSec <= 60 * 60)
+        {
+            return "nearby_hour";
+        }
+        if (distanceSec <= 6 * 60 * 60)
+        {
+            return "same_day_near";
+        }
+
+        return "context_window";
+    }
+
+    private static double? GetDistanceSec(JsonObject hint)
+    {
+        var node = GetNode(hint, "deltaSec");
+        if (node is null || node.GetValueKind() == JsonValueKind.Null)
+        {
+            return null;
+        }
+
+        return Math.Abs(GetDouble(hint, "deltaSec", 0));
     }
 
     private static JsonArray GetTextCandidateHints(JsonArray hints)
@@ -869,7 +1197,7 @@ public sealed class TimelineAudioVerbalizationPlanService
             "video" => "TimelineForVideo",
             "chatgpt" => "TimelineForChatGPT",
             "windows-codex" => "TimelineForWindowsCodex",
-            "pc" => "TimelineForPC",
+            "pc" => "TimelineForPcInfo",
             _ => ConvertTimelineText(productId),
         };
 
@@ -884,14 +1212,26 @@ public sealed class TimelineAudioVerbalizationPlanService
             Directory.CreateDirectory(directory);
         }
 
-        File.WriteAllText(
-            path,
-            payload.ToJsonString(new JsonSerializerOptions
-            {
-                WriteIndented = true,
-                Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
-            }) + Environment.NewLine,
-            new UTF8Encoding(false));
+        var json = payload.ToJsonString(new JsonSerializerOptions
+        {
+            WriteIndented = true,
+            Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+        }) + Environment.NewLine;
+        JsonNode.Parse(json);
+        File.WriteAllText(path, json, new UTF8Encoding(false));
+        JsonNode.Parse(File.ReadAllText(path));
+    }
+
+    private static JsonObject? ReadJsonFile(string path)
+    {
+        try
+        {
+            return JsonNode.Parse(File.ReadAllText(path)) as JsonObject;
+        }
+        catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
     }
 
     private static string GetZipSafeSegment(string value)
@@ -927,6 +1267,20 @@ public sealed class TimelineAudioVerbalizationPlanService
 
     private static JsonNode? CloneNode(JsonNode? node)
         => node?.DeepClone();
+
+    private static JsonArray NewStringArray(IEnumerable<string> values)
+    {
+        var result = new JsonArray();
+        foreach (var value in values)
+        {
+            if (!string.IsNullOrEmpty(value))
+            {
+                result.Add(value);
+            }
+        }
+
+        return result;
+    }
 
     private static JsonNode? GetNode(JsonObject? source, string name)
     {

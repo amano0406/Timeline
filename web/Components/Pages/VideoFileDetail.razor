@@ -55,6 +55,8 @@ else
 {
     var videoFile = _detail.File!;
 
+    <TimelineItemSummaryPanel Summary="@_itemSummary" Loading="@_itemSummaryLoading" Class="mb-4" />
+
     <div class="tfa-video-detail-layout">
         <aside class="grid gap-4 content-start">
             <section class="tfa-card tfa-card-pad">
@@ -174,6 +176,12 @@ else
                     </div>
                 </div>
             </section>
+
+            @if (DisplayTurns.Count > 0)
+            {
+                <TextVolumeChart Points="@TextVolumePoints"
+                                 Description="動画内音声の文字起こし文字数を時間帯ごとに集計します。発話量の偏りと画面変化を見るための補助情報です。" />
+            }
 
             <section class="tfa-card overflow-hidden">
                 <div class="tfa-card-pad flex flex-col gap-2 border-b border-line sm:flex-row sm:items-center sm:justify-between">

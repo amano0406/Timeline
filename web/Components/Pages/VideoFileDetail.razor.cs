@@ -1,6 +1,7 @@
 using System.Globalization;
 using Microsoft.AspNetCore.Components;
 using Microsoft.JSInterop;
+using Timeline.Web.Components.Shared;
 using Timeline.Web.Services;
 
 namespace Timeline.Web.Components.Pages;
@@ -14,7 +15,9 @@ public partial class VideoFileDetail
     public string SourcePath { get; set; } = "";
 
     private VideoFileDetailResult? _detail;
+    private TimelineItemSummary? _itemSummary;
     private bool _loading = true;
+    private bool _itemSummaryLoading;
     private string? _error;
     private double? _activeTurnStartSec;
     private bool _videoPlaying;
@@ -25,6 +28,11 @@ public partial class VideoFileDetail
     private IReadOnlyList<VideoTimelineTurn> DisplayTurns => BuildDisplayTurns();
 
     private IReadOnlyList<VideoTimelineEntry> TimelineEntries => BuildTimelineEntries();
+
+    private IReadOnlyList<TextVolumeChartPoint> TextVolumePoints =>
+        TextVolumeChartBuilder.Build(
+            DisplayTurns.Select(turn => new TextVolumeSegment(turn.StartSec, turn.EndSec, turn.Text)),
+            _detail?.File?.DurationSec);
 
     private string ActivityActiveStyle
     {
@@ -60,8 +68,10 @@ public partial class VideoFileDetail
     {
         await UnwatchVideoAsync();
         _loading = true;
+        _itemSummaryLoading = false;
         _error = null;
         _detail = null;
+        _itemSummary = null;
         _activeTurnStartSec = null;
         _videoPlaying = false;
         _selectedFrame = null;
@@ -77,6 +87,11 @@ public partial class VideoFileDetail
             _detail = await Timeline.GetVideoFileDetailAsync(SourcePath);
             if (_detail.Available)
             {
+                if (_detail.File is not null)
+                {
+                    await LoadItemSummaryAsync("video", _detail.File.ItemId);
+                }
+
                 return;
             }
 
@@ -91,6 +106,25 @@ public partial class VideoFileDetail
         finally
         {
             _loading = false;
+        }
+    }
+
+    private async Task LoadItemSummaryAsync(string product, string itemId)
+    {
+        if (string.IsNullOrWhiteSpace(itemId))
+        {
+            _itemSummary = new TimelineItemSummary { Product = product, Message = "素材概要の対象が指定されていません。" };
+            return;
+        }
+
+        _itemSummaryLoading = true;
+        try
+        {
+            _itemSummary = await Timeline.GetTimelineItemSummaryAsync(product, itemId);
+        }
+        finally
+        {
+            _itemSummaryLoading = false;
         }
     }
 

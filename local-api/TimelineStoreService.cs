@@ -199,7 +199,7 @@ public sealed class TimelineStoreService
             "chatgpt" => "TimelineForChatGPT",
             "image" => "TimelineForImage",
             "video" => "TimelineForVideo",
-            "pc" => "TimelineForPC",
+            "pc" => "TimelineForPcInfo",
             _ => productId,
         };
     }

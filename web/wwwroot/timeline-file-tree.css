@@ -165,12 +165,12 @@
 }
 
 .tfa-file-tree {
-  min-width: 1030px;
+  min-width: 1260px;
   font-size: 0.875rem;
 }
 
 .tfa-file-tree-video {
-  min-width: 1060px;
+  min-width: 1260px;
 }
 
 .tfa-file-tree-image {
@@ -180,7 +180,7 @@
 .tfa-file-tree-header,
 .tfa-file-tree-row {
   display: grid;
-  grid-template-columns: 2.25rem minmax(360px, 1fr) 118px 150px 104px 104px 150px;
+  grid-template-columns: 2.25rem minmax(320px, 1fr) 108px 132px 96px 92px 120px 120px 120px;
   column-gap: 0.75rem;
   align-items: center;
 }
@@ -205,7 +205,7 @@
 
 .tfa-file-tree-video .tfa-file-tree-header,
 .tfa-file-tree-video .tfa-file-tree-row {
-  grid-template-columns: 2.25rem minmax(330px, 1fr) 96px 126px 90px 84px 210px;
+  grid-template-columns: 2.25rem minmax(320px, 1fr) 96px 126px 90px 84px 120px 120px 120px;
 }
 
 .tfa-file-tree-image .tfa-file-tree-header,

@@ -13,6 +13,7 @@
     <link rel="stylesheet" href="timeline-file-tree.css" />
     <link rel="stylesheet" href="timeline-export.css" />
     <link rel="stylesheet" href="timeline-product-management.css" />
+    <link rel="stylesheet" href="timeline-dashboard.css" />
     <link rel="stylesheet" href="timeline-responsive.css" />
     <link rel="icon" type="image/svg+xml" href="favicon.svg" />
     <HeadOutlet @rendermode="@(new InteractiveServerRenderMode(prerender: false))" />
@@ -24,10 +25,12 @@
         window.timelineHelperBaseUrl = @HelperPublicBaseUrlJson;
     </script>
     <script src="vendor/tw-elements/tw-elements.umd.min.js"></script>
+    <script src="vendor/chart.js/chart.umd.js"></script>
     <script src="timeline-directory-picker.js"></script>
     <script src="timeline-list-layout.js"></script>
     <script src="timeline-audio-player.js"></script>
     <script src="timeline-download.js"></script>
+    <script src="timeline-dashboard-charts.js"></script>
     <script src="_framework/blazor.web.js"></script>
 </body>
 

@@ -16,8 +16,8 @@ public sealed partial class TimelineHelperClient
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to load TimelineForPC overview.");
-            return OfflinePcOverview("補助サーバーに接続できません。start.bat から起動してください。");
+            LogOptionalHelperReadFailure(ex, "Failed to load TimelineForPcInfo overview.");
+            return _localStore.GetPcOverviewFallback();
         }
     }
 

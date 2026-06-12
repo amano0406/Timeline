@@ -147,15 +147,7 @@ public partial class TimelineIndex
             _audioVerbalizationStatus = await Timeline.GetAudioVerbalizationBulkStatusAsync(_audioVerbalizationStatus?.JobId ?? "");
             if (hadActive && !AudioVerbalizationActive)
             {
-                if (ShouldRebuildTimelineAfterAudioVerbalization(_audioVerbalizationStatus))
-                {
-                    await RebuildTimelineAfterAudioVerbalizationAsync();
-                }
-                else
-                {
-                    var message = AudioVerbalizationStatusMessage(_audioVerbalizationStatus);
-                    SetOperationMessage(message, AudioVerbalizationMessageAutoClearDelay(_audioVerbalizationStatus));
-                }
+                await ContinueScanAfterAudioVerbalizationAsync();
                 QueueAudioVerbalizationTargetSummaryLoad();
             }
         }
@@ -170,11 +162,38 @@ public partial class TimelineIndex
         }
     }
 
-    private async Task RebuildTimelineAfterAudioVerbalizationAsync()
+    private async Task ContinueScanAfterAudioVerbalizationAsync()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        if (ShouldRebuildTimelineAfterAudioVerbalization(_audioVerbalizationStatus))
+        {
+            var rebuilt = await RebuildTimelineAfterAudioVerbalizationAsync();
+            if (!rebuilt)
+            {
+                return;
+            }
+        }
+        else
+        {
+            var message = AudioVerbalizationStatusMessage(_audioVerbalizationStatus);
+            SetOperationMessage(message, AudioVerbalizationMessageAutoClearDelay(_audioVerbalizationStatus));
+        }
+
+        if (CanStartItemSummaryAfterAudioVerbalization(_audioVerbalizationStatus))
+        {
+            await StartItemSummaryGenerationAsync();
+        }
+    }
+
+    private async Task<bool> RebuildTimelineAfterAudioVerbalizationAsync()
     {
         if (_disposed || _rebuilding)
         {
-            return;
+            return false;
         }
 
         SetOperationMessage("文字起こし補正の結果を時間軸へ反映しています。");
@@ -183,6 +202,7 @@ public partial class TimelineIndex
         {
             SetOperationMessage("文字起こし補正の結果を時間軸へ反映しました。", TimeSpan.FromSeconds(10));
         }
+        return rebuilt;
     }
 
     private void ToggleAudioVerbalizationDetails() => _audioVerbalizationDetailsOpen = !_audioVerbalizationDetailsOpen;
@@ -225,7 +245,8 @@ public partial class TimelineIndex
     {
         var state = status?.State ?? "";
         return string.Equals(state, "queued", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(state, "running", StringComparison.OrdinalIgnoreCase);
+            || string.Equals(state, "running", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(state, "canceling", StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool IsActiveAudioVerbalization(AudioVerbalizationBulkStatus? status) =>
@@ -234,6 +255,7 @@ public partial class TimelineIndex
             status.State.Equals("running", StringComparison.OrdinalIgnoreCase)
             || status.State.Equals("queued", StringComparison.OrdinalIgnoreCase)
             || status.State.Equals("starting", StringComparison.OrdinalIgnoreCase)
+            || status.State.Equals("canceling", StringComparison.OrdinalIgnoreCase)
         );
 
     private static bool IsFailedAudioVerbalization(AudioVerbalizationBulkStatus? status) =>
@@ -261,6 +283,11 @@ public partial class TimelineIndex
             return "未補正の音声・動画はありませんでした。";
         }
 
+        if (status.State.Equals("canceling", StringComparison.OrdinalIgnoreCase))
+        {
+            return "文字起こし補正の停止要求を受け付けました。処理中のAI呼び出しを止め、未確定の結果は反映しません。";
+        }
+
         if (IsActiveAudioVerbalization(status))
         {
             return "未補正の音声・動画を周辺情報を使って順番に補正しています。";
@@ -271,6 +298,11 @@ public partial class TimelineIndex
             return string.IsNullOrWhiteSpace(status.Message)
                 ? "文字起こし補正に失敗しました。"
                 : status.Message;
+        }
+
+        if (status.State.Equals("canceled", StringComparison.OrdinalIgnoreCase))
+        {
+            return "文字起こし補正を停止しました。完了済みの結果は残っています。";
         }
 
         if (status.FailedItems > 0)

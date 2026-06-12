@@ -14,7 +14,7 @@ public sealed class TimelineStoreRebuildService
         new("chatgpt", "TimelineForChatGPT"),
         new("image", "TimelineForImage"),
         new("video", "TimelineForVideo"),
-        new("pc", "TimelineForPC"),
+        new("pc", "TimelineForPcInfo"),
     ];
 
     private readonly TimelineSettingsService _settings;
@@ -43,7 +43,7 @@ public sealed class TimelineStoreRebuildService
         _pcSnapshots = pcSnapshots;
     }
 
-    public async Task RunRebuildJobAsync(string jobId, CancellationToken cancellationToken)
+    public async Task RunRebuildJobAsync(string jobId, JsonObject? request, CancellationToken cancellationToken)
     {
         var startedAt = DateTimeOffset.Now.ToString("o");
         var lastStage = "collecting";
@@ -69,6 +69,7 @@ public sealed class TimelineStoreRebuildService
             var result = await RebuildStoreAsync(
                 jobId,
                 startedAt,
+                request,
                 WriteProgress,
                 cancellationToken);
 
@@ -81,6 +82,16 @@ public sealed class TimelineStoreRebuildService
                 result: result,
                 itemCount: GetInt(result, "itemCount", 0),
                 eventCount: GetInt(result, "eventCount", 0));
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            WriteJobStatus(
+                jobId,
+                "canceled",
+                "canceled",
+                "Timeline store rebuild was canceled.",
+                startedAt,
+                productJob: lastProductJob);
         }
         catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
@@ -100,6 +111,7 @@ public sealed class TimelineStoreRebuildService
     private async Task<JsonObject> RebuildStoreAsync(
         string jobId,
         string startedAt,
+        JsonObject? request,
         Action<string, string, JsonObject?> progress,
         CancellationToken cancellationToken)
     {
@@ -134,10 +146,12 @@ public sealed class TimelineStoreRebuildService
                     cancellationToken.ThrowIfCancellationRequested();
 
                     progress("refreshing", "Refreshing " + product.DisplayName + " data through its API.", null);
-                    refreshResults.Add(await RefreshProductForScanAsync(product, progress, cancellationToken));
+                    refreshResults.Add(await RefreshProductForScanAsync(product, request, progress, cancellationToken));
+                    cancellationToken.ThrowIfCancellationRequested();
 
                     progress("downloading", "Downloading " + product.DisplayName + " data through its API.", null);
                     var download = await DownloadProductForExportAsync(product, cancellationToken);
+                    cancellationToken.ThrowIfCancellationRequested();
 
                     progress("importing", "Importing " + product.DisplayName + " data into the Timeline store.", null);
                     productResults.Add(AddProductArchive(
@@ -244,6 +258,7 @@ public sealed class TimelineStoreRebuildService
 
     private async Task<JsonObject> RefreshProductForScanAsync(
         TimelineStoreProduct product,
+        JsonObject? request,
         Action<string, string, JsonObject?> progress,
         CancellationToken cancellationToken)
     {
@@ -278,6 +293,29 @@ public sealed class TimelineStoreRebuildService
         }
         if (product.ProductId.Equals("chatgpt", StringComparison.OrdinalIgnoreCase))
         {
+            var chatGptExportZipPath = GetStringAny(
+                request,
+                ["chatGptExportZipPath", "chatgptExportZipPath", "chatGptZipPath", "chatgptZipPath"],
+                string.Empty);
+            if (!string.IsNullOrWhiteSpace(chatGptExportZipPath))
+            {
+                return NewRefreshResult(
+                    product,
+                    refreshed: true,
+                    skipped: false,
+                    reason: string.Empty,
+                    await _threadProducts.RefreshChatGptWithJobAsync(
+                        new JsonObject
+                        {
+                            ["filePath"] = chatGptExportZipPath,
+                        },
+                        productJob => progress(
+                            "refreshing",
+                            "Refreshing " + product.DisplayName + " data through its API.",
+                            productJob),
+                        cancellationToken));
+            }
+
             return NewRefreshResult(
                 product,
                 refreshed: false,
@@ -308,7 +346,10 @@ public sealed class TimelineStoreRebuildService
                 skipped: false,
                 reason: string.Empty,
                 await _productActions.RefreshVideoWithJobAsync(
-                    new JsonObject(),
+                    new JsonObject
+                    {
+                        ["audioModelMode"] = "off",
+                    },
                     productJob => progress(
                         "refreshing",
                         "Refreshing " + product.DisplayName + " data through its API.",
@@ -838,7 +879,7 @@ public sealed class TimelineStoreRebuildService
             ["error"] = error,
             ["startedAt"] = startedAt,
             ["updatedAt"] = now,
-            ["completedAt"] = state is "completed" or "failed" ? now : string.Empty,
+            ["completedAt"] = state is "completed" or "failed" or "canceled" ? now : string.Empty,
             ["itemCount"] = itemCount,
             ["eventCount"] = eventCount,
             ["productJob"] = productJob?.DeepClone(),

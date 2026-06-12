@@ -17,6 +17,7 @@ public partial class FileDetail
     private const string TranscriptScrollElementId = "audio-transcript-scroll";
     private AudioFileDetailResult? _detail;
     private AudioVerbalizationResult? _verbalizationResult;
+    private TimelineItemSummary? _itemSummary;
     private AudioFileRow? _file;
     private string? _error;
     private string? _operationMessage;
@@ -25,6 +26,7 @@ public partial class FileDetail
     private DotNetObjectReference<FileDetail>? _audioDotNetRef;
     private bool _audioWatchAttached;
     private bool _startingVerbalization;
+    private bool _itemSummaryLoading;
     private CancellationTokenSource? _verbalizationPollingCts;
     private Task? _verbalizationPollingTask;
 
@@ -37,9 +39,11 @@ public partial class FileDetail
         _operationMessage = null;
         _detail = null;
         _verbalizationResult = null;
+        _itemSummary = null;
         _file = null;
         _activeTurnStartSec = null;
         _audioPlaying = false;
+        _itemSummaryLoading = false;
         CancelVerbalizationPolling();
         if (string.IsNullOrWhiteSpace(SourceId) || string.IsNullOrWhiteSpace(RelativePath))
         {
@@ -53,7 +57,9 @@ public partial class FileDetail
             if (_detail.Available && _detail.File is not null)
             {
                 _file = _detail.File;
-                await LoadVerbalizationResultAsync();
+                await Task.WhenAll(
+                    LoadVerbalizationResultAsync(),
+                    LoadItemSummaryAsync("audio", _file.ItemId));
                 StartVerbalizationPollingIfNeeded();
                 return;
             }
@@ -75,6 +81,25 @@ public partial class FileDetail
             _audioDotNetRef ??= DotNetObjectReference.Create(this);
             await JS.InvokeVoidAsync("timelineAudioPlayer.watch", AudioElementId, _audioDotNetRef);
             _audioWatchAttached = true;
+        }
+    }
+
+    private async Task LoadItemSummaryAsync(string product, string itemId)
+    {
+        if (string.IsNullOrWhiteSpace(itemId))
+        {
+            _itemSummary = new TimelineItemSummary { Product = product, Message = "素材概要の対象が指定されていません。" };
+            return;
+        }
+
+        _itemSummaryLoading = true;
+        try
+        {
+            _itemSummary = await Timeline.GetTimelineItemSummaryAsync(product, itemId);
+        }
+        finally
+        {
+            _itemSummaryLoading = false;
         }
     }
 

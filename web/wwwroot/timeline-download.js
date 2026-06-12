@@ -30,10 +30,21 @@ window.timelineDownload = (() => {
       if (error && error.name === "AbortError") {
         return { id: "", accepted: false, message: "" };
       }
+
+      const message = error && error.message ? error.message : "";
+      if (
+        error &&
+        error.name === "NotAllowedError" &&
+        /user gesture|user activation|gesture/i.test(message)
+      ) {
+        handles.set(id, null);
+        return { id, accepted: true, message: "" };
+      }
+
       return {
         id: "",
         accepted: false,
-        message: error && error.message ? error.message : "保存先を選択できませんでした。",
+        message: message || "保存先を選択できませんでした。",
       };
     }
   }
@@ -48,7 +59,7 @@ window.timelineDownload = (() => {
     const handle = handles.get(id);
     handles.delete(id);
     if (!blob || blob.size <= 0) {
-      throw new Error("ダウンロード ZIP が空でした。再スキャン後にもう一度試してください。");
+      throw new Error("ダウンロード ZIP が空でした。スキャン後にもう一度試してください。");
     }
 
     if (handle) {

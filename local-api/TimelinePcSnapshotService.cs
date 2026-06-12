@@ -34,7 +34,7 @@ public sealed class TimelinePcSnapshotService
                         ["settingsValid"] = false,
                         ["settings"] = new JsonObject(),
                         ["itemCount"] = 0,
-                        ["message"] = "TimelineForPC was not found.",
+                        ["message"] = "TimelineForPcInfo was not found.",
                     };
                 }
 
@@ -81,7 +81,7 @@ public sealed class TimelinePcSnapshotService
         _operations.WriteOperationEvent(
             operationId,
             "web",
-            "TimelineForPC",
+            "TimelineForPcInfo",
             action,
             "started",
             "Web operation started.");
@@ -93,7 +93,7 @@ public sealed class TimelinePcSnapshotService
             _operations.WriteOperationEvent(
                 operationId,
                 "web",
-                "TimelineForPC",
+                "TimelineForPcInfo",
                 action,
                 "completed",
                 "Web operation completed.",
@@ -112,7 +112,7 @@ public sealed class TimelinePcSnapshotService
             _operations.WriteOperationEvent(
                 operationId,
                 "web",
-                "TimelineForPC",
+                "TimelineForPcInfo",
                 action,
                 "failed",
                 ex.Message,
@@ -132,7 +132,7 @@ public sealed class TimelinePcSnapshotService
         var effectivePageSize = Math.Max(1, pageSize);
         var payload = await _api.PostJsonAsync(
             "pc",
-            "TimelineForPC",
+            "TimelineForPcInfo",
             "/items/list",
             new JsonObject
             {
@@ -162,7 +162,7 @@ public sealed class TimelinePcSnapshotService
     {
         return await _api.PostJsonAsync(
             "pc",
-            "TimelineForPC",
+            "TimelineForPcInfo",
             "/settings/status",
             new JsonObject(),
             60,

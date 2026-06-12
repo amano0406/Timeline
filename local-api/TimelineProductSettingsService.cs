@@ -122,11 +122,11 @@ public sealed class TimelineProductSettingsService
     public void SavePcSettings(JsonObject? request)
     {
         InvokeSaveOperation(
-            "TimelineForPC",
+            "TimelineForPcInfo",
             "pc_settings_save",
             () =>
             {
-                var productPath = GetRequiredProductPath("pc", "TimelineForPC");
+                var productPath = GetRequiredProductPath("pc", "TimelineForPcInfo");
                 var current = ReadSettingsPayload(productPath);
                 var payload = CloneObject(current);
                 payload["schemaVersion"] = 1;
@@ -157,7 +157,7 @@ public sealed class TimelineProductSettingsService
     public Task<JsonObject> SavePcSettingsAsync(JsonObject? request, CancellationToken cancellationToken)
     {
         return InvokeSaveOperationAsync(
-            "TimelineForPC",
+            "TimelineForPcInfo",
             "pc_settings_save",
             operationId => SavePcSettingsCoreAsync(request, operationId, cancellationToken));
     }
@@ -333,7 +333,7 @@ public sealed class TimelineProductSettingsService
 
         var payload = await _api.PostJsonAsync(
             "pc",
-            "TimelineForPC",
+            "TimelineForPcInfo",
             "/settings/save",
             body,
             60,

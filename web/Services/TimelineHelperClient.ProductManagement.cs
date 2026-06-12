@@ -16,8 +16,8 @@ public sealed partial class TimelineHelperClient
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to load product runtime overview.");
-            return new ProductRuntimeOverview { Message = "補助サーバーに接続できません。start.bat から起動してください。" };
+            LogOptionalHelperReadFailure(ex, "Failed to load product runtime overview.");
+            return _localStore.GetProductRuntimeOverviewFallback();
         }
     }
 

@@ -36,6 +36,22 @@
                     <span class="tfa-sidebar-label">スキャン</span>
                 </a>
             </div>
+
+            <div class="grid gap-1">
+                <div class="tfa-sidebar-label px-3 pt-2 text-xs font-semibold text-slate-400">
+                    素材別の確認
+                </div>
+                @foreach (var link in MaterialLinks)
+                {
+                    <a class="@MaterialLinkClass(link)"
+                       href="@link.Href"
+                       title="@link.Label"
+                       @onclick="NotifyNavigateAsync">
+                        <FaIcon Name="@link.Icon" Class="tfa-icon" />
+                        <span class="tfa-sidebar-label">@link.Label</span>
+                    </a>
+                }
+            </div>
         </nav>
 
         <div class="mt-auto border-t border-white/10 p-3 text-sm">
@@ -69,6 +85,16 @@
 
     private const string NavItemClass = "flex w-full items-center gap-2 rounded-md px-3 py-2 text-left hover:bg-white/10 hover:text-white";
 
+    private static readonly MaterialNavLink[] MaterialLinks =
+    [
+        new("音声ファイル", "file-audio", "audio/files", ["audio/files", "audio/file-detail"]),
+        new("動画ファイル", "video", "video", ["video", "video/*"]),
+        new("画像ファイル", "image", "image", ["image", "image/file-detail"]),
+        new("ChatGPT", "comments", "chatgpt", ["chatgpt", "chatgpt/thread/*"]),
+        new("Windows Codex", "terminal", "windows-codex", ["windows-codex", "windows-codex/thread/*"]),
+        new("PC状態", "desktop", "pc", ["pc", "pc/*"]),
+    ];
+
     private string CurrentPath
     {
         get
@@ -91,19 +117,10 @@
     private string ScanLinkClass()
         => LinkClass(
             "scan",
-            "timeline",
-            "audio/files",
-            "audio/file-detail",
-            "windows-codex",
-            "windows-codex/thread/*",
-            "chatgpt",
-            "chatgpt/thread/*",
-            "image",
-            "image/file-detail",
-            "video",
-            "video/*",
-            "pc",
-            "pc/*");
+            "timeline");
+
+    private string MaterialLinkClass(MaterialNavLink link)
+        => LinkClass(link.ActivePaths);
 
     private string SettingsLinkClass()
         => LinkClass(
@@ -164,4 +181,10 @@
     {
         Navigation.LocationChanged -= HandleLocationChanged;
     }
+
+    private sealed record MaterialNavLink(
+        string Label,
+        string Icon,
+        string Href,
+        string[] ActivePaths);
 }

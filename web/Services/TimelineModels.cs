@@ -20,6 +20,7 @@ public sealed class TimelineAppSettings
     public string WorkDirectory { get; set; } = "";
     public string StoreDirectory { get; set; } = "";
     public TimelineRuntimeSettings Runtime { get; set; } = new();
+    public TimelineStartupSettings Startup { get; set; } = new();
     public TimelineCommonAiSettings CommonAi { get; set; } = new();
     public TimelineProductRegistry ProductRegistry { get; set; } = new();
     public TimelineAudioVerbalizationSettings AudioVerbalization { get; set; } = new();
@@ -33,6 +34,7 @@ public sealed class TimelineAppSettingsSaveRequest
     public string WorkDirectory { get; set; } = "";
     public string StoreDirectory { get; set; } = "";
     public TimelineRuntimeSettings? Runtime { get; set; }
+    public TimelineStartupSettings? Startup { get; set; }
     public TimelineCommonAiSettings? CommonAi { get; set; }
     public TimelineProductRegistry? ProductRegistry { get; set; }
 }
@@ -48,6 +50,23 @@ public sealed class TimelineRuntimeSettings
     public string OllamaModel { get; set; } = "qwen3.5:9b";
     public bool ShareOllamaVolume { get; set; } = true;
     public string OllamaVolumeName { get; set; } = "timeline-ollama";
+}
+
+public sealed class TimelineStartupSettings
+{
+    public bool StartWithOperatingSystem { get; set; }
+    public TimelineStartupStatus Status { get; set; } = new();
+}
+
+public sealed class TimelineStartupStatus
+{
+    public string Platform { get; set; } = "";
+    public bool Supported { get; set; }
+    public bool Registered { get; set; }
+    public string State { get; set; } = "";
+    public string Kind { get; set; } = "";
+    public string Target { get; set; } = "";
+    public string Message { get; set; } = "";
 }
 
 public sealed class TimelineCommonAiSettings

@@ -54,6 +54,8 @@
 else if (_file is not null)
 {
     var file = _file;
+    <TimelineItemSummaryPanel Summary="@_itemSummary" Loading="@_itemSummaryLoading" Class="mb-5" />
+
     <div class="grid gap-5 xl:grid-cols-[360px_1fr]">
         <aside class="tfa-file-detail-aside grid gap-5">
             <section class="tfa-card tfa-card-pad">
@@ -216,6 +218,11 @@ else if (_file is not null)
             @if (HasVerbalizedTurns)
             {
                 var transcriptRows = TranscriptRows;
+                var textVolumePoints = BuildTextVolumePoints(transcriptRows, file.DurationSec);
+
+                <TextVolumeChart Points="@textVolumePoints"
+                                 Description="音声の文字起こし文字数を時間帯ごとに集計します。発話量の偏りや、会話が集中している時間帯を確認できます。" />
+
                 <div class="tfa-card overflow-hidden">
                     <div class="tfa-card-pad border-b border-line">
                         <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">

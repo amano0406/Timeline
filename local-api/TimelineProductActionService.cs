@@ -144,7 +144,7 @@ public sealed class TimelineProductActionService
     public Task<JsonObject> RefreshPcAsync(CancellationToken cancellationToken)
     {
         return InvokeWebOperationAsync(
-            "TimelineForPC",
+            "TimelineForPcInfo",
             "pc_refresh",
             operationId => RefreshPcCoreAsync(operationId, cancellationToken));
     }
@@ -152,7 +152,7 @@ public sealed class TimelineProductActionService
     public Task<JsonObject> DownloadPcItemsAsync(JsonObject? request, CancellationToken cancellationToken)
     {
         return InvokeWebOperationAsync(
-            "TimelineForPC",
+            "TimelineForPcInfo",
             "pc_items_download",
             operationId => DownloadPcItemsCoreAsync(request, operationId, cancellationToken));
     }
@@ -500,39 +500,49 @@ public sealed class TimelineProductActionService
         }
 
         var pollFailures = 0;
-        while (IsProductJobActive(status))
+        try
         {
-            await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
-            try
+            while (IsProductJobActive(status))
             {
-                var payload = await _api.GetJsonAsync(
-                    "video",
-                    "TimelineForVideo",
-                    "/jobs/" + Uri.EscapeDataString(jobId),
-                    30,
-                    operationId,
-                    cancellationToken);
-                status = ConvertProductJobStatus(payload as JsonObject, "video", "TimelineForVideo");
-                pollFailures = 0;
-                productJobProgress?.Invoke(status);
-            }
-            catch (Exception ex) when (IsTransientProductJobPollException(ex, cancellationToken))
-            {
-                pollFailures++;
-                if (pollFailures >= MaxProductJobStatusPollFailures)
+                await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
+                try
                 {
-                    throw new TimeoutException("Timed out repeatedly while polling TimelineForVideo refresh job status.", ex);
+                    var payload = await _api.GetJsonAsync(
+                        "video",
+                        "TimelineForVideo",
+                        "/jobs/" + Uri.EscapeDataString(jobId),
+                        30,
+                        operationId,
+                        cancellationToken);
+                    status = ConvertProductJobStatus(payload as JsonObject, "video", "TimelineForVideo");
+                    pollFailures = 0;
+                    productJobProgress?.Invoke(status);
                 }
+                catch (Exception ex) when (IsTransientProductJobPollException(ex, cancellationToken))
+                {
+                    pollFailures++;
+                    if (pollFailures >= MaxProductJobStatusPollFailures)
+                    {
+                        throw new TimeoutException("Timed out repeatedly while polling TimelineForVideo refresh job status.", ex);
+                    }
 
-                productJobProgress?.Invoke(WithPollingWarning(
-                    status,
-                    "TimelineForVideo status polling timed out; retrying.",
-                    pollFailures));
+                    productJobProgress?.Invoke(WithPollingWarning(
+                        status,
+                        "TimelineForVideo status polling timed out; retrying.",
+                        pollFailures));
+                }
             }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            await TryCancelProductJobAsync("video", "TimelineForVideo", jobId, operationId);
+            throw;
         }
 
         var state = GetString(status, "state", string.Empty);
-        if (state.Equals("failed", StringComparison.OrdinalIgnoreCase))
+        if (state.Equals("failed", StringComparison.OrdinalIgnoreCase)
+            || state.Equals("canceled", StringComparison.OrdinalIgnoreCase)
+            || state.Equals("interrupted", StringComparison.OrdinalIgnoreCase))
         {
             var error = GetString(status, "error", string.Empty);
             throw new InvalidOperationException(string.IsNullOrWhiteSpace(error)
@@ -587,39 +597,49 @@ public sealed class TimelineProductActionService
         }
 
         var pollFailures = 0;
-        while (IsProductJobActive(status))
+        try
         {
-            await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
-            try
+            while (IsProductJobActive(status))
             {
-                var payload = await _api.GetJsonAsync(
-                    productId,
-                    productName,
-                    "/jobs/" + Uri.EscapeDataString(jobId),
-                    30,
-                    operationId,
-                    cancellationToken);
-                status = ConvertProductJobStatus(payload as JsonObject, productId, productName);
-                pollFailures = 0;
-                productJobProgress?.Invoke(status);
-            }
-            catch (Exception ex) when (IsTransientProductJobPollException(ex, cancellationToken))
-            {
-                pollFailures++;
-                if (pollFailures >= MaxProductJobStatusPollFailures)
+                await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
+                try
                 {
-                    throw new TimeoutException($"Timed out repeatedly while polling {productName} refresh job status.", ex);
+                    var payload = await _api.GetJsonAsync(
+                        productId,
+                        productName,
+                        "/jobs/" + Uri.EscapeDataString(jobId),
+                        30,
+                        operationId,
+                        cancellationToken);
+                    status = ConvertProductJobStatus(payload as JsonObject, productId, productName);
+                    pollFailures = 0;
+                    productJobProgress?.Invoke(status);
                 }
+                catch (Exception ex) when (IsTransientProductJobPollException(ex, cancellationToken))
+                {
+                    pollFailures++;
+                    if (pollFailures >= MaxProductJobStatusPollFailures)
+                    {
+                        throw new TimeoutException($"Timed out repeatedly while polling {productName} refresh job status.", ex);
+                    }
 
-                productJobProgress?.Invoke(WithPollingWarning(
-                    status,
-                    productName + " status polling timed out; retrying.",
-                    pollFailures));
+                    productJobProgress?.Invoke(WithPollingWarning(
+                        status,
+                        productName + " status polling timed out; retrying.",
+                        pollFailures));
+                }
             }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            await TryCancelProductJobAsync(productId, productName, jobId, operationId);
+            throw;
         }
 
         var state = GetString(status, "state", string.Empty);
-        if (state.Equals("failed", StringComparison.OrdinalIgnoreCase))
+        if (state.Equals("failed", StringComparison.OrdinalIgnoreCase)
+            || state.Equals("canceled", StringComparison.OrdinalIgnoreCase)
+            || state.Equals("interrupted", StringComparison.OrdinalIgnoreCase))
         {
             var error = GetString(status, "error", string.Empty);
             throw new InvalidOperationException(string.IsNullOrWhiteSpace(error)
@@ -645,6 +665,11 @@ public sealed class TimelineProductActionService
         if (samplesPerVideo is > 0)
         {
             requestBody["samplesPerVideo"] = samplesPerVideo.Value;
+        }
+        var audioModelMode = GetStringAny(request, ["audioModelMode", "audio_model_mode"], string.Empty);
+        if (!string.IsNullOrWhiteSpace(audioModelMode))
+        {
+            requestBody["audioModelMode"] = audioModelMode;
         }
         return requestBody;
     }
@@ -696,7 +721,7 @@ public sealed class TimelineProductActionService
     {
         var payload = await _api.PostJsonAsync(
             "pc",
-            "TimelineForPC",
+            "TimelineForPcInfo",
             "/items/refresh",
             new JsonObject(),
             900,
@@ -726,7 +751,7 @@ public sealed class TimelineProductActionService
 
         var payload = await _api.PostJsonAsync(
             "pc",
-            "TimelineForPC",
+            "TimelineForPcInfo",
             "/items/download",
             new JsonObject
             {
@@ -741,11 +766,11 @@ public sealed class TimelineProductActionService
             GetStringAny(payload as JsonObject, ["archive_path", "archivePath", "download_path", "downloadPath", "destination_path", "destinationPath"], string.Empty));
         if (string.IsNullOrEmpty(archivePath) || !File.Exists(archivePath))
         {
-            throw new InvalidOperationException("TimelineForPC API did not create a download ZIP.");
+            throw new InvalidOperationException("TimelineForPcInfo API did not create a download ZIP.");
         }
         if (!IsDownloadFileAllowed(archivePath))
         {
-            throw new InvalidOperationException("TimelineForPC API does not support Timeline-managed download destination yet.");
+            throw new InvalidOperationException("TimelineForPcInfo API does not support Timeline-managed download destination yet.");
         }
 
         return new JsonObject
@@ -941,7 +966,44 @@ public sealed class TimelineProductActionService
     {
         var state = GetString(status, "state", string.Empty);
         return state.Equals("queued", StringComparison.OrdinalIgnoreCase)
-            || state.Equals("running", StringComparison.OrdinalIgnoreCase);
+            || state.Equals("running", StringComparison.OrdinalIgnoreCase)
+            || state.Equals("canceling", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private async Task TryCancelProductJobAsync(string productId, string productName, string jobId, string operationId)
+    {
+        if (string.IsNullOrWhiteSpace(jobId))
+        {
+            return;
+        }
+
+        try
+        {
+            await _api.PostJsonAsync(
+                productId,
+                productName,
+                "/jobs/" + Uri.EscapeDataString(jobId) + "/cancel",
+                new JsonObject(),
+                30,
+                operationId,
+                CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            _operations.WriteOperationEvent(
+                operationId,
+                "worker",
+                productName,
+                "product_job_cancel",
+                "warning",
+                "Product job cancellation request failed.",
+                stderr: ex.Message,
+                details: new JsonObject
+                {
+                    ["productId"] = productId,
+                    ["jobId"] = jobId,
+                });
+        }
     }
 
     private static bool IsTransientProductJobPollException(Exception ex, CancellationToken cancellationToken)

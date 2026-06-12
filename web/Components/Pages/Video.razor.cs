@@ -37,6 +37,7 @@ public partial class Video
     private const int PageSize = 25;
     private VideoOverview? _overview;
     private VideoFileListResult? _files;
+    private readonly TimelineItemSummaryListState _itemSummaryList = new();
     private bool _loading = true;
     private bool _loadingPage;
     private bool _overviewLoading;
@@ -88,6 +89,7 @@ public partial class Video
         try
         {
             _currentPage = 1;
+            _itemSummaryList.Clear();
             await InvokeAsync(StateHasChanged);
             await LoadPageAsync(_currentPage, forceRefresh);
             _ = LoadOverviewLaterAsync(forceRefresh);
@@ -143,6 +145,8 @@ public partial class Video
             _files = await Timeline.GetVideoFilesAsync(page, PageSize, forceRefresh);
             _currentPage = Math.Max(1, _files.Pagination.Page);
             _lastLoadedAt = DateTime.Now;
+            await InvokeAsync(StateHasChanged);
+            await _itemSummaryList.LoadAsync(Timeline, "video", Files.Select(file => file.ItemId));
         }
         catch (Exception ex)
         {
@@ -273,8 +277,54 @@ public partial class Video
         return labels.Count == 0 ? "作成済み" : string.Join(" / ", labels);
     }
 
+    private string SummaryStatusLabel(VideoFileRow file) =>
+        file.HasTimeline ? _itemSummaryList.SummaryStatusLabel(file.ItemId) : "未作成";
+
+    private string SummaryStatusPill(VideoFileRow file) =>
+        file.HasTimeline
+            ? _itemSummaryList.SummaryStatusPillClass(file.ItemId)
+            : "tfa-status-pill border-slate-200 bg-slate-50 text-slate-700";
+
+    private string TextCharCountLabel(VideoFileRow file) =>
+        file.HasTimeline ? _itemSummaryList.TextCharCountLabel(file.ItemId) : "-";
+
+    private static string VerbalizationListLabel(VideoFileRow file)
+    {
+        if (!file.HasTimeline || file.TurnCount <= 0)
+        {
+            return "未作成";
+        }
+
+        return file.AudioVerbalization.State.ToLowerInvariant() switch
+        {
+            "completed" => "作成済み",
+            "running" => "作成中",
+            "planned" => "待機中",
+            "needs_review" => "一部未解決",
+            "stale" => "再作成必要",
+            "failed" => "失敗",
+            "unreadable" => "読取不可",
+            _ => "未作成",
+        };
+    }
+
+    private static string VerbalizationListPill(VideoFileRow file) =>
+        file.HasTimeline && file.TurnCount > 0
+            ? VerbalizationPill(file.AudioVerbalization.State)
+            : "tfa-status-pill border-slate-200 bg-slate-50 text-slate-700";
+
     private static string DurationLabel(double? seconds) =>
         seconds is > 0 ? UiFormat.Duration(seconds.Value) : "-";
+
+    private static string VerbalizationPill(string state) =>
+        state.ToLowerInvariant() switch
+        {
+            "completed" => "tfa-status-pill border-teal-200 bg-teal-50 text-teal-800",
+            "running" => "tfa-status-pill border-sky-200 bg-sky-50 text-sky-800",
+            "planned" or "needs_review" or "stale" => "tfa-status-pill border-amber-200 bg-amber-50 text-amber-900",
+            "failed" or "unreadable" => "tfa-status-pill border-red-200 bg-red-50 text-red-800",
+            _ => "tfa-status-pill border-slate-200 bg-slate-50 text-slate-700",
+        };
 
     private static bool IsFullyVerbalized(VideoFileRow file) =>
         file.HasTimeline

@@ -73,7 +73,7 @@ Default sub-products:
 - TimelineForImage
 - TimelineForWindowsCodex
 - TimelineForChatGPT
-- TimelineForPC
+- TimelineForPcInfo
 
 Sub-products are expected to expose a stable local API plus start/stop launchers. Newer
 products should also ship `timeline-product.json` so Timeline can avoid
@@ -95,6 +95,7 @@ data\products\<sub-product>
 data\work
 data\to_text\<sub-product>
 data\to_timeline
+data\to_timeline\derived
 data\logs
 data\backups
 data\test
@@ -107,15 +108,39 @@ to_timeline\manifest.json
 to_timeline\items.jsonl
 to_timeline\events.jsonl
 to_timeline\rebuilds\<rebuild-id>\
+to_timeline\derived\item_summaries\
 ```
 
 `settings.json` lives in the Timeline product directory. The `dataRoot` setting
 controls the data root.
 
+## Timeline-Derived Data
+
+Timeline does more than collect product outputs. During scan and post-scan
+processing, Timeline creates derived data that is easier for humans and LLMs to
+use while keeping the original product data as the source of truth.
+
+- Speech-derived events can be verbalized with nearby Timeline context. Audio
+  and video speech segments are not treated as complete truth by themselves;
+  Timeline can use surrounding events, files, threads, PC activity, and other
+  speech-derived records as hints before storing a refined text candidate.
+- Item summaries are stored as Timeline-owned derived data. Audio files, video
+  files, ChatGPT threads, Windows Codex threads, and other supported items can
+  have a short summary and a detailed summary so later search or LLM workflows
+  can inspect the summary before reading the full item.
+- Derived data must keep provenance. A summary or verbalized text is useful
+  input, but it is not the original source file, raw transcript, OCR result, or
+  thread body.
+- Timeline store downloads include the rebuilt Timeline store and derived data.
+  They do not include the original large media/source files unless a
+  sub-product explicitly exported them.
+
 ## Main Operations
 
 - Dashboard: current state, warnings, next actions, and Timeline growth.
 - Scan: refresh product data through product APIs and rebuild Timeline data.
+- Post-scan derived processing: create speech verbalization and item summaries
+  for later search, review, and LLM workflows.
 - Settings: Timeline settings and product-specific settings.
 - Product management: install, uninstall, start, stop, restart, and runtime
   status through product launchers.

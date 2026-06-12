@@ -732,7 +732,7 @@ public sealed class TimelineLlmInputPreviewService
             "chatgpt" => "TimelineForChatGPT",
             "image" => "TimelineForImage",
             "video" => "TimelineForVideo",
-            "pc" => "TimelineForPC",
+            "pc" => "TimelineForPcInfo",
             _ => productId,
         };
     }

@@ -16,7 +16,7 @@ public sealed partial class TimelineHelperClient
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to load TimelineForImage model inventory.");
+            LogOptionalHelperReadFailure(ex, "Failed to load TimelineForImage model inventory.");
             return OfflineModels("TimelineForImage API からモデル一覧を取得できませんでした。");
         }
     }
@@ -33,8 +33,8 @@ public sealed partial class TimelineHelperClient
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to load TimelineForImage overview.");
-            return OfflineImageOverview("補助サーバーに接続できません。start.bat から起動してください。");
+            LogOptionalHelperReadFailure(ex, "Failed to load TimelineForImage overview.");
+            return _localStore.GetImageOverviewFallback();
         }
     }
 
@@ -71,7 +71,7 @@ public sealed partial class TimelineHelperClient
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to load TimelineForImage file detail.");
+            LogOptionalHelperReadFailure(ex, "Failed to load TimelineForImage file detail.");
             return new ImageFileDetailResult { Message = "画像詳細を取得できませんでした。" };
         }
     }

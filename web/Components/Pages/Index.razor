@@ -1,6 +1,7 @@
 @page "/"
 @using System.Globalization
 @inject TimelineHelperClient Timeline
+@inject IJSRuntime Js
 @implements IDisposable
 
 <PageTitle>Timeline</PageTitle>
@@ -32,6 +33,14 @@
     </div>
 }
 
+@if (_workerRepairMessage is not null)
+{
+    <div class="tfa-alert-info mb-5 flex items-start gap-2">
+        <FaIcon Name="@(_repairingWorker ? "spinner" : "circle-info")" Class="@($"tfa-icon mt-0.5 {(_repairingWorker ? "fa-spin" : "")}")" />
+        <span>@_workerRepairMessage</span>
+    </div>
+}
+
 @if (_loading && _store is null)
 {
     <section class="tfa-card tfa-card-pad flex items-center gap-3">
@@ -41,95 +50,9 @@
 }
 else
 {
-    <section class="@($"tfa-card tfa-card-pad mb-5 border-l-4 {DashboardToneClass}")">
-        <div class="grid gap-5 xl:grid-cols-[minmax(0,1.5fr)_minmax(280px,.8fr)] xl:items-center">
-            <div class="min-w-0">
-                <div class="flex flex-wrap items-center gap-3">
-                    <span class="@($"tfa-icon-box {DashboardIconToneClass}")">
-                        <FaIcon Name="@DashboardIcon" Class="tfa-icon" />
-                    </span>
-                    <div>
-                        <div class="text-sm font-semibold text-slate-500">今日の状態</div>
-                        <div class="text-2xl font-bold text-slate-950">@DashboardHeadline</div>
-                    </div>
-                </div>
-                <p class="mt-3 max-w-3xl text-sm leading-7 text-slate-600">@DashboardMessage</p>
-            </div>
-
-            <div class="rounded-md border border-line bg-slate-50 p-4">
-                <div class="text-sm font-semibold text-slate-500">次のおすすめ</div>
-                <div class="mt-1 text-lg font-bold text-slate-950">@NextActionTitle</div>
-                <p class="mt-2 text-sm leading-6 text-slate-600">@NextActionText</p>
-                <div class="mt-4">
-                    @if (NextActionKind == "settings")
-                    {
-                        <a class="tfa-button-primary gap-2" href="timeline/settings">
-                            <FaIcon Name="sliders" Class="tfa-icon" />
-                            <span>@NextActionButton</span>
-                        </a>
-                    }
-                    else if (NextActionKind == "products")
-                    {
-                        <a class="tfa-button-primary gap-2" href="timeline/products">
-                            <FaIcon Name="boxes-stacked" Class="tfa-icon" />
-                            <span>@NextActionButton</span>
-                        </a>
-                    }
-                    else
-                    {
-                        <a class="tfa-button-primary gap-2" href="@NextActionHref">
-                            <FaIcon Name="arrow-right" Class="tfa-icon" />
-                            <span>@NextActionButton</span>
-                        </a>
-                    }
-                </div>
-            </div>
-        </div>
-    </section>
-
-    <section class="mb-5 grid gap-5 xl:grid-cols-3">
-        <div class="tfa-card tfa-card-pad">
-            <div class="flex items-start justify-between gap-3">
-                <div>
-                    <div class="text-sm font-semibold text-slate-500">時間軸イベント</div>
-                    <div class="mt-2 text-3xl font-bold text-slate-950">@FormatNumber(_store?.EventCount ?? 0)</div>
-                    <div class="mt-1 text-sm text-slate-500">項目 @FormatNumber(_store?.ItemCount ?? 0) 件</div>
-                </div>
-                <span class="tfa-icon-box text-teal-700">
-                    <FaIcon Name="timeline" Class="tfa-icon" />
-                </span>
-            </div>
-        </div>
-
-        <div class="tfa-card tfa-card-pad">
-            <div class="flex items-start justify-between gap-3">
-                <div>
-                    <div class="text-sm font-semibold text-slate-500">取り込み済み素材</div>
-                    <div class="mt-2 text-3xl font-bold text-slate-950">@FormatNumber(TotalImportedItems)</div>
-                    <div class="mt-1 text-sm text-slate-500">サブ製品 @FormatNumber(AvailableProductCount) / @FormatNumber(TotalProductCount)</div>
-                </div>
-                <span class="tfa-icon-box text-indigo-700">
-                    <FaIcon Name="database" Class="tfa-icon" />
-                </span>
-            </div>
-        </div>
-
-        <div class="tfa-card tfa-card-pad">
-            <div class="flex items-start justify-between gap-3">
-                <div>
-                    <div class="text-sm font-semibold text-slate-500">言語化待ち</div>
-                    <div class="mt-2 text-3xl font-bold text-slate-950">@VerbalizationTargetDisplay</div>
-                    <div class="mt-1 text-sm text-slate-500">@VerbalizationStateLabel</div>
-                </div>
-                <span class="tfa-icon-box text-amber-700">
-                    <FaIcon Name="language" Class="tfa-icon" />
-                </span>
-            </div>
-        </div>
-    </section>
-
-    <div class="grid gap-5 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,.95fr)]">
-        <section class="tfa-card">
+    @if (_alerts.Count > 0)
+    {
+        <section class="tfa-card mb-5">
             <div class="tfa-card-pad border-b border-line">
                 <h2 class="flex items-center gap-2 text-xl font-bold text-slate-950">
                     <FaIcon Name="list-check" Class="tfa-icon text-accent" />
@@ -137,32 +60,220 @@ else
                 </h2>
             </div>
             <div class="tfa-card-pad">
-                @if (_alerts.Count == 0)
-                {
-                    <div class="rounded-md border border-teal-200 bg-teal-50 p-4 text-sm text-teal-900">
-                        すぐに対応が必要な項目はありません。
-                    </div>
-                }
-                else
-                {
-                    <div class="grid gap-3">
-                        @foreach (var alert in _alerts)
-                        {
-                            <div class="@($"rounded-md border p-4 {AlertClass(alert.Severity)}")">
-                                <div class="flex items-start gap-3">
+                <div class="grid gap-3">
+                    @foreach (var alert in _alerts)
+                    {
+                        <div class="@($"rounded-md border p-4 {AlertClass(alert.Severity)}")">
+                            <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                                <div class="flex min-w-0 items-start gap-3">
                                     <FaIcon Name="@AlertIcon(alert.Severity)" Class="tfa-icon mt-0.5 shrink-0" />
                                     <div class="min-w-0">
                                         <div class="font-semibold">@alert.Title</div>
                                         <div class="mt-1 text-sm leading-6">@alert.Message</div>
                                     </div>
                                 </div>
+                                @if (HasAlertAction(alert))
+                                {
+                                    <div class="shrink-0">
+                                        @if (alert.ActionKind == "worker-repair")
+                                        {
+                                            <button class="tfa-button-primary gap-2" @onclick="RepairWorkerAsync" disabled="@(_repairingWorker || _loading)">
+                                                <FaIcon Name="@(_repairingWorker ? "spinner" : "wrench")" Class="@($"tfa-icon {(_repairingWorker ? "fa-spin" : "")}")" />
+                                                <span>@(_repairingWorker ? "復旧中" : alert.ActionLabel)</span>
+                                            </button>
+                                        }
+                                        else if (alert.ActionKind == "loading")
+                                        {
+                                            <button class="tfa-button-secondary gap-2" disabled>
+                                                <FaIcon Name="spinner" Class="tfa-icon fa-spin" />
+                                                <span>@alert.ActionLabel</span>
+                                            </button>
+                                        }
+                                        else
+                                        {
+                                            <a class="tfa-button-primary gap-2" href="@AlertActionHref(alert)">
+                                                <FaIcon Name="arrow-right" Class="tfa-icon" />
+                                                <span>@alert.ActionLabel</span>
+                                            </a>
+                                        }
+                                    </div>
+                                }
                             </div>
-                        }
+                        </div>
+                    }
+                </div>
+            </div>
+        </section>
+    }
+
+    <section class="tfa-card tfa-card-pad mb-5">
+        <div class="tfa-dashboard-periodbar">
+            <div class="min-w-0">
+                <div class="text-sm font-semibold text-slate-500">グラフの表示期間</div>
+                <div class="mt-1 text-lg font-bold text-slate-950">@(_dashboardStats?.RangeLabel ?? "直近90日")</div>
+            </div>
+            <div class="tfa-dashboard-periodbuttons">
+                @foreach (var option in DashboardRangeOptions)
+                {
+                    <button class="@($"tfa-dashboard-periodbutton {(_dashboardRange == option.Value ? "tfa-dashboard-periodbutton-active" : "")}")"
+                            @onclick="() => ChangeDashboardRangeAsync(option.Value)"
+                            disabled="@(_loadingDashboardStats || _loading)">
+                        @option.Label
+                    </button>
+                }
+            </div>
+        </div>
+        <div class="mt-3 flex flex-wrap items-center gap-2 text-sm text-slate-500">
+            @if (_loadingDashboardStats)
+            {
+                <span class="inline-flex items-center gap-2">
+                    <FaIcon Name="spinner" Class="tfa-icon fa-spin" />
+                    <span>グラフを更新しています</span>
+                </span>
+            }
+            else
+            {
+                <span>集計単位: @DashboardBucketLabel</span>
+                @if (!string.IsNullOrWhiteSpace(_dashboardStats?.From) || !string.IsNullOrWhiteSpace(_dashboardStats?.To))
+                {
+                    <span>対象: @DashboardRangeDateLabel</span>
+                }
+            }
+        </div>
+    </section>
+
+    @if (!string.IsNullOrWhiteSpace(_dashboardChartWarning))
+    {
+        <div class="tfa-alert-info mb-5 flex items-start gap-2">
+            <FaIcon Name="circle-info" Class="tfa-icon mt-0.5" />
+            <span>@_dashboardChartWarning</span>
+        </div>
+    }
+
+    <section class="tfa-dashboard-chart-grid mb-5">
+        <div class="tfa-card">
+            <div class="tfa-card-pad border-b border-line">
+                <div class="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                        <h2 class="flex items-center gap-2 text-xl font-bold text-slate-950">
+                            <FaIcon Name="chart-column" Class="tfa-icon text-accent" />
+                            <span>日別の蓄積量</span>
+                        </h2>
+                        <p class="mt-1 text-sm leading-6 text-slate-500">素材がどの日にどれだけ増えているかを確認します。</p>
+                    </div>
+                    <span class="tfa-status-pill border-teal-200 bg-teal-50 text-teal-800">直近 @(_dashboardStats?.DailyItems.Count ?? 0) 記録日</span>
+                </div>
+            </div>
+            <div class="tfa-card-pad">
+                @if (!HasDashboardStats)
+                {
+                    <div class="rounded-md border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+                        グラフ化できる時間軸データはまだありません。
+                    </div>
+                }
+                else
+                {
+                    <div class="tfa-chart-box">
+                        <canvas id="timeline-daily-items-chart" aria-label="日別の蓄積量"></canvas>
                     </div>
                 }
             </div>
-        </section>
+        </div>
 
+        <div class="tfa-card">
+            <div class="tfa-card-pad border-b border-line">
+                <h2 class="flex items-center gap-2 text-xl font-bold text-slate-950">
+                    <FaIcon Name="circle-nodes" Class="tfa-icon text-accent" />
+                    <span>概要化の完成率</span>
+                </h2>
+                <p class="mt-1 text-sm leading-6 text-slate-500">あとでAIに渡しやすい形に整った素材の割合です。</p>
+            </div>
+            <div class="tfa-card-pad">
+                @if ((_dashboardStats?.SummaryTargetItems ?? 0) == 0)
+                {
+                    <div class="rounded-md border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+                        概要化の対象データはまだありません。
+                    </div>
+                }
+                else
+                {
+                    <div class="tfa-summary-chart-layout">
+                        <div class="tfa-chart-box tfa-chart-box-sm">
+                            <canvas id="timeline-summary-completion-chart" aria-label="概要化の完成率"></canvas>
+                        </div>
+                        <div class="grid gap-3">
+                            <div>
+                                <div class="text-sm font-semibold text-slate-500">概要生成済み</div>
+                                <div class="mt-1 text-3xl font-bold text-slate-950">@SummaryCompletionPercent.ToString("0.#", CultureInfo.InvariantCulture)%</div>
+                            </div>
+                            <div class="grid grid-cols-3 gap-2 text-sm">
+                                <div class="rounded-md border border-line bg-slate-50 p-3">
+                                    <div class="font-semibold text-slate-500">作成済み</div>
+                                    <div class="mt-1 font-bold text-slate-950">@FormatNumber(_dashboardStats?.SummaryCompletedItems ?? 0)</div>
+                                </div>
+                                <div class="rounded-md border border-line bg-slate-50 p-3">
+                                    <div class="font-semibold text-slate-500">未作成</div>
+                                    <div class="mt-1 font-bold text-slate-950">@FormatNumber(SummaryPendingItems)</div>
+                                </div>
+                                <div class="rounded-md border border-line bg-slate-50 p-3">
+                                    <div class="font-semibold text-slate-500">失敗</div>
+                                    <div class="mt-1 font-bold text-slate-950">@FormatNumber(_dashboardStats?.SummaryFailedItems ?? 0)</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+    </section>
+
+    <section class="tfa-card mb-5">
+        <div class="tfa-card-pad border-b border-line">
+            <div class="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                    <h2 class="flex items-center gap-2 text-xl font-bold text-slate-950">
+                        <FaIcon Name="chart-line" Class="tfa-icon text-accent" />
+                        <span>AIに渡せる文脈量</span>
+                    </h2>
+                    <p class="mt-1 text-sm leading-6 text-slate-500">概要生成時に読めた本文量を、蓄積する知識資産として見ます。</p>
+                </div>
+                <div class="text-right text-sm text-slate-500">
+                    <div>集計: @DashboardStatsGeneratedAt</div>
+                    <div>概要文字数 @FormatCompactNumber(_dashboardStats?.SummaryTextChars ?? 0) 字</div>
+                </div>
+            </div>
+        </div>
+        <div class="tfa-card-pad">
+            @if (!HasDashboardStats)
+            {
+                <div class="rounded-md border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+                    文脈量を表示できるデータはまだありません。
+                </div>
+            }
+            else
+            {
+                <div class="mb-4 grid gap-3 sm:grid-cols-3">
+                    <div class="rounded-md border border-line bg-slate-50 p-3">
+                        <div class="text-xs font-semibold text-slate-500">概要化済み本文</div>
+                        <div class="mt-1 text-xl font-bold text-slate-950">@FormatCompactNumber(_dashboardStats?.SummarizedContextChars ?? 0) 字</div>
+                    </div>
+                    <div class="rounded-md border border-line bg-slate-50 p-3">
+                        <div class="text-xs font-semibold text-slate-500">イベント</div>
+                        <div class="mt-1 text-xl font-bold text-slate-950">@FormatCompactNumber(_dashboardStats?.TotalEvents ?? 0) 件</div>
+                    </div>
+                    <div class="rounded-md border border-line bg-slate-50 p-3">
+                        <div class="text-xs font-semibold text-slate-500">素材</div>
+                        <div class="mt-1 text-xl font-bold text-slate-950">@FormatNumber(_dashboardStats?.TotalItems ?? 0) 件</div>
+                    </div>
+                </div>
+                <div class="tfa-chart-box">
+                    <canvas id="timeline-cumulative-context-chart" aria-label="AIに渡せる文脈量"></canvas>
+                </div>
+            }
+        </div>
+    </section>
+
+    <div class="grid gap-5 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,.95fr)]">
         <section class="tfa-card">
             <div class="tfa-card-pad border-b border-line">
                 <h2 class="flex items-center gap-2 text-xl font-bold text-slate-950">
@@ -199,51 +310,34 @@ else
                 </div>
             </div>
         </section>
-    </div>
 
-    <section class="tfa-card mt-5">
-        <div class="tfa-card-pad border-b border-line">
-            <h2 class="flex items-center gap-2 text-xl font-bold text-slate-950">
-                <FaIcon Name="layer-group" Class="tfa-icon text-accent" />
-                <span>素材別の状況</span>
-            </h2>
-        </div>
-        @if (DataSources.Count == 0)
-        {
-            <div class="p-4">
-                <div class="rounded-md border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
-                    製品をインストールすると、取り込み状況をここで確認できます。
+        <section class="tfa-card">
+            <div class="tfa-card-pad border-b border-line">
+                <div class="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                        <h2 class="flex items-center gap-2 text-xl font-bold text-slate-950">
+                            <FaIcon Name="chart-bar" Class="tfa-icon text-accent" />
+                            <span>素材別の文脈量</span>
+                        </h2>
+                        <p class="mt-1 text-sm leading-6 text-slate-500">概要化できた本文量を素材別に比較します。</p>
+                    </div>
+                    <span class="tfa-status-pill border-teal-200 bg-teal-50 text-teal-800">@FormatNumber(_dashboardStats?.ProductTotals.Count ?? 0) 種類</span>
                 </div>
             </div>
-        }
-        else
-        {
-            <div class="grid gap-4 p-4 lg:grid-cols-2">
-                @foreach (var source in DataSources)
+            <div class="tfa-card-pad">
+                @if (!HasProductDashboardStats)
                 {
-                    <div class="rounded-md border border-line bg-slate-50 p-4">
-                        <div class="flex items-start justify-between gap-3">
-                            <div class="min-w-0">
-                                <div class="flex items-center gap-2 font-bold text-slate-950">
-                                    <FaIcon Name="@source.Icon" Class="tfa-icon text-accent" />
-                                    <span>@source.Name</span>
-                                </div>
-                                <div class="mt-2 text-sm text-slate-500">@source.Description</div>
-                            </div>
-                            <span class="@($"tfa-status-pill {SourceStateClass(source)}")">@source.StateLabel</span>
-                        </div>
-                        <div class="mt-4 grid grid-cols-2 gap-3">
-                            @foreach (var metric in source.Metrics)
-                            {
-                                <div class="rounded-md border border-line bg-white p-3">
-                                    <div class="text-xs font-semibold text-slate-500">@metric.Label</div>
-                                    <div class="mt-1 text-lg font-bold text-slate-950">@metric.Value</div>
-                                </div>
-                            }
-                        </div>
+                    <div class="rounded-md border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+                        素材別に比較できる文脈量はまだありません。
+                    </div>
+                }
+                else
+                {
+                    <div class="tfa-chart-box tfa-chart-box-md">
+                        <canvas id="timeline-product-context-chart" aria-label="素材別の文脈量"></canvas>
                     </div>
                 }
             </div>
-        }
-    </section>
+        </section>
+    </div>
 }

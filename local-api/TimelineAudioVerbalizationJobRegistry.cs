@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 public sealed class TimelineAudioVerbalizationJobRegistry
 {
     private readonly ConcurrentDictionary<string, int> _activeJobs = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, CancellationTokenSource> _cancellations = new(StringComparer.Ordinal);
 
     public bool IsActive(string? jobId)
     {
@@ -18,8 +19,41 @@ public sealed class TimelineAudioVerbalizationJobRegistry
             return new EmptyLease();
         }
 
+        _cancellations.GetOrAdd(value, _ => new CancellationTokenSource());
         _activeJobs.AddOrUpdate(value, 1, (_, current) => current + 1);
-        return new Lease(_activeJobs, value);
+        return new Lease(_activeJobs, _cancellations, value);
+    }
+
+    public CancellationToken EnsureCancellationToken(string jobId)
+    {
+        var value = ConvertTimelineText(jobId);
+        if (string.IsNullOrEmpty(value))
+        {
+            return CancellationToken.None;
+        }
+
+        return _cancellations.GetOrAdd(value, _ => new CancellationTokenSource()).Token;
+    }
+
+    public bool Cancel(string? jobId)
+    {
+        var value = ConvertTimelineText(jobId);
+        if (string.IsNullOrEmpty(value))
+        {
+            return false;
+        }
+
+        if (!_cancellations.TryGetValue(value, out var source))
+        {
+            return false;
+        }
+
+        if (!source.IsCancellationRequested)
+        {
+            source.Cancel();
+        }
+
+        return true;
     }
 
     private static string ConvertTimelineText(object? value)
@@ -35,12 +69,17 @@ public sealed class TimelineAudioVerbalizationJobRegistry
     private sealed class Lease : IDisposable
     {
         private readonly ConcurrentDictionary<string, int> _activeJobs;
+        private readonly ConcurrentDictionary<string, CancellationTokenSource> _cancellations;
         private readonly string _jobId;
         private bool _disposed;
 
-        public Lease(ConcurrentDictionary<string, int> activeJobs, string jobId)
+        public Lease(
+            ConcurrentDictionary<string, int> activeJobs,
+            ConcurrentDictionary<string, CancellationTokenSource> cancellations,
+            string jobId)
         {
             _activeJobs = activeJobs;
+            _cancellations = cancellations;
             _jobId = jobId;
         }
 
@@ -58,6 +97,10 @@ public sealed class TimelineAudioVerbalizationJobRegistry
             if (_activeJobs.TryGetValue(_jobId, out var count) && count <= 0)
             {
                 _activeJobs.TryRemove(_jobId, out _);
+                if (_cancellations.TryRemove(_jobId, out var source))
+                {
+                    source.Dispose();
+                }
             }
             _disposed = true;
         }

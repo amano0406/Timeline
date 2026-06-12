@@ -4,4 +4,8 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\shared\TimelineDashboardStatsService.cs" Link="Services\TimelineDashboardStatsService.cs" />
+    <Compile Include="..\shared\TimelineStoreExportService.cs" Link="Services\TimelineStoreExportService.cs" />
+  </ItemGroup>
 </Project>

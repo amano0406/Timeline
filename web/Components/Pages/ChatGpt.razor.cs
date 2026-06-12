@@ -16,6 +16,7 @@ public partial class ChatGpt
     private TimelinePagination? _pagination;
     private readonly List<TimelineThreadRow> _threads = [];
     private readonly HashSet<string> _selectedThreadIds = new(StringComparer.OrdinalIgnoreCase);
+    private readonly TimelineItemSummaryListState _itemSummaryList = new();
     private bool _loading = true;
     private bool _loadingMoreThreads;
     private bool _refreshing;
@@ -62,6 +63,7 @@ public partial class ChatGpt
             _overview = await overviewTask;
             _timelineSettings = await settingsTask;
             _threads.Clear();
+            _itemSummaryList.Clear();
             _currentThreadPage = 1;
             await InvokeAsync(StateHasChanged);
             await LoadThreadPageAsync(1, reset: true);
@@ -83,6 +85,7 @@ public partial class ChatGpt
         if (reset)
         {
             _threads.Clear();
+            _itemSummaryList.Clear();
         }
         _threads.AddRange(result.Threads);
 
@@ -91,6 +94,8 @@ public partial class ChatGpt
         _lastLoadedAt = DateTime.Now;
         _currentThreadPage = Math.Max(1, result.Pagination.Page);
         RemoveMissingSelections();
+        await InvokeAsync(StateHasChanged);
+        await _itemSummaryList.LoadAsync(Timeline, "chatgpt", _threads.Select(thread => thread.ItemId));
         await InvokeAsync(StateHasChanged);
     }
 
