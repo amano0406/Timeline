@@ -100,6 +100,9 @@ public sealed class TimelineRebuildResult
 public sealed class TimelineRebuildRequest
 {
     public string ChatGptExportZipPath { get; set; } = "";
+    public int MaxItems { get; set; }
+    public int SamplesPerVideo { get; set; }
+    public bool ReprocessDuplicates { get; set; }
 }
 
 public sealed class TimelineWorkerJobStatus

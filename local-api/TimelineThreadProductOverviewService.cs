@@ -109,13 +109,26 @@ public sealed class TimelineThreadProductOverviewService
 
     public Task<JsonObject> RefreshWindowsCodexAsync(CancellationToken cancellationToken)
     {
+        return RefreshWindowsCodexAsync(null, cancellationToken);
+    }
+
+    public Task<JsonObject> RefreshWindowsCodexAsync(JsonObject? request, CancellationToken cancellationToken)
+    {
         return InvokeWebOperationAsync(
             "TimelineForWindowsCodex",
             "windows_codex_refresh",
-            operationId => RefreshWindowsCodexCoreAsync(operationId, cancellationToken));
+            operationId => RefreshWindowsCodexCoreAsync(request, operationId, cancellationToken));
     }
 
     public Task<JsonObject> RefreshWindowsCodexWithJobAsync(
+        Action<JsonObject>? productJobProgress,
+        CancellationToken cancellationToken)
+    {
+        return RefreshWindowsCodexWithJobAsync(null, productJobProgress, cancellationToken);
+    }
+
+    public Task<JsonObject> RefreshWindowsCodexWithJobAsync(
+        JsonObject? request,
         Action<JsonObject>? productJobProgress,
         CancellationToken cancellationToken)
     {
@@ -125,10 +138,10 @@ public sealed class TimelineThreadProductOverviewService
             operationId => RefreshThreadProductJobCoreAsync(
                 "windows-codex",
                 "TimelineForWindowsCodex",
-                new JsonObject(),
+                BuildWindowsCodexRefreshRequest(request),
                 productJobProgress,
                 operationId,
-                () => RefreshWindowsCodexCoreAsync(operationId, cancellationToken),
+                () => RefreshWindowsCodexCoreAsync(request, operationId, cancellationToken),
                 ConvertWindowsCodexCurrent,
                 cancellationToken));
     }
@@ -365,18 +378,40 @@ public sealed class TimelineThreadProductOverviewService
     }
 
     private async Task<JsonObject> RefreshWindowsCodexCoreAsync(
+        JsonObject? request,
         string operationId,
         CancellationToken cancellationToken)
     {
+        var requestBody = BuildWindowsCodexRefreshRequest(request);
         var payload = await _api.PostJsonAsync(
             "windows-codex",
             "TimelineForWindowsCodex",
             "/items/refresh",
-            new JsonObject(),
+            requestBody,
             900,
             operationId,
             cancellationToken);
         return ConvertWindowsCodexCurrent(payload as JsonObject);
+    }
+
+    private static JsonObject BuildWindowsCodexRefreshRequest(JsonObject? request)
+    {
+        var requestBody = new JsonObject();
+        var itemIds = GetRequestItemIds(request);
+        if (itemIds.Count > 0)
+        {
+            requestBody["itemIds"] = NewStringArray(itemIds);
+        }
+        var maxItems = GetInt(request, "maxItems", 0);
+        if (maxItems > 0)
+        {
+            requestBody["maxItems"] = maxItems;
+        }
+        if (GetBool(request, "reprocessDuplicates", false))
+        {
+            requestBody["reprocessDuplicates"] = true;
+        }
+        return requestBody;
     }
 
     private async Task<JsonObject> RefreshChatGptCoreWithJobAsync(
@@ -549,18 +584,26 @@ public sealed class TimelineThreadProductOverviewService
     {
         var effectivePage = Math.Max(1, page);
         var effectivePageSize = Math.Max(1, pageSize);
-        var payload = await _api.PostJsonAsync(
-            productId,
-            productName,
-            "/items/list",
-            new JsonObject
-            {
-                ["page"] = effectivePage,
-                ["pageSize"] = effectivePageSize,
-            },
-            120,
-            operationId,
-            cancellationToken);
+        JsonNode? payload;
+        try
+        {
+            payload = await _api.PostJsonAsync(
+                productId,
+                productName,
+                "/items/list",
+                new JsonObject
+                {
+                    ["page"] = effectivePage,
+                    ["pageSize"] = effectivePageSize,
+                },
+                120,
+                operationId,
+                cancellationToken);
+        }
+        catch (InvalidOperationException ex) when (IsProductNotRunning(ex, productName))
+        {
+            return NewUnavailableThreadList(productName, effectivePage, effectivePageSize);
+        }
 
         return ConvertThreadListResult(payload as JsonObject, rootPath, effectivePage, effectivePageSize);
     }
@@ -1432,13 +1475,24 @@ public sealed class TimelineThreadProductOverviewService
             ["text"] = GetString(message, "text", string.Empty),
         };
 
-    private static JsonObject NewThreadListResult(JsonArray threads, JsonObject pagination, int total)
+    private static JsonObject NewThreadListResult(JsonArray threads, JsonObject pagination, int total, string message = "")
         => new()
         {
             ["total"] = total,
             ["pagination"] = pagination,
             ["threads"] = threads,
+            ["message"] = message,
         };
+
+    private static JsonObject NewUnavailableThreadList(string productName, int page, int pageSize)
+        => NewThreadListResult(
+            new JsonArray(),
+            NewPagination(page, pageSize, 0, 0),
+            0,
+            productName + " \u306f\u505c\u6b62\u4e2d\u3067\u3059\u3002\u88fd\u54c1\u7ba1\u7406\u3067\u8d77\u52d5\u3059\u308b\u3068\u3001\u30b9\u30ec\u30c3\u30c9\u4e00\u89a7\u3092\u53d6\u5f97\u3067\u304d\u307e\u3059\u3002");
+
+    private static bool IsProductNotRunning(InvalidOperationException ex, string productName)
+        => ex.Message.Contains(productName + " is not running.", StringComparison.OrdinalIgnoreCase);
 
     private static JsonObject NewUnavailableThreadDetail(
         string itemId,
@@ -1659,6 +1713,9 @@ public sealed class TimelineThreadProductOverviewService
 
         return fallback;
     }
+
+    private static int GetInt(JsonObject? source, string name, int fallback)
+        => ConvertTimelineInt(GetNode(source, name), fallback);
 
     private static int ConvertTimelineInt(JsonNode? node, int fallback)
     {

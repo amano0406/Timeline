@@ -264,13 +264,14 @@ public sealed class TimelineStoreRebuildService
     {
         if (product.ProductId.Equals("audio", StringComparison.OrdinalIgnoreCase))
         {
+            var requestBody = BuildProductRefreshRequestBody(request);
             return NewRefreshResult(
                 product,
                 refreshed: true,
                 skipped: false,
                 reason: string.Empty,
                 await _productActions.RefreshAudioWithJobAsync(
-                    new JsonObject(),
+                    requestBody,
                     productJob => progress(
                         "refreshing",
                         "Refreshing " + product.DisplayName + " data through its API.",
@@ -279,12 +280,14 @@ public sealed class TimelineStoreRebuildService
         }
         if (product.ProductId.Equals("windows-codex", StringComparison.OrdinalIgnoreCase))
         {
+            var requestBody = BuildProductRefreshRequestBody(request);
             return NewRefreshResult(
                 product,
                 refreshed: true,
                 skipped: false,
                 reason: string.Empty,
                 await _threadProducts.RefreshWindowsCodexWithJobAsync(
+                    requestBody,
                     productJob => progress(
                         "refreshing",
                         "Refreshing " + product.DisplayName + " data through its API.",
@@ -325,13 +328,14 @@ public sealed class TimelineStoreRebuildService
         }
         if (product.ProductId.Equals("image", StringComparison.OrdinalIgnoreCase))
         {
+            var requestBody = BuildProductRefreshRequestBody(request);
             return NewRefreshResult(
                 product,
                 refreshed: true,
                 skipped: false,
                 reason: string.Empty,
                 await _productActions.RefreshImageWithJobAsync(
-                    new JsonObject(),
+                    requestBody,
                     productJob => progress(
                         "refreshing",
                         "Refreshing " + product.DisplayName + " data through its API.",
@@ -340,16 +344,15 @@ public sealed class TimelineStoreRebuildService
         }
         if (product.ProductId.Equals("video", StringComparison.OrdinalIgnoreCase))
         {
+            var requestBody = BuildProductRefreshRequestBody(request);
+            requestBody["audioModelMode"] = "off";
             return NewRefreshResult(
                 product,
                 refreshed: true,
                 skipped: false,
                 reason: string.Empty,
                 await _productActions.RefreshVideoWithJobAsync(
-                    new JsonObject
-                    {
-                        ["audioModelMode"] = "off",
-                    },
+                    requestBody,
                     productJob => progress(
                         "refreshing",
                         "Refreshing " + product.DisplayName + " data through its API.",
@@ -369,6 +372,30 @@ public sealed class TimelineStoreRebuildService
         throw new InvalidOperationException("Unsupported product: " + product.ProductId);
     }
 
+    private static JsonObject BuildProductRefreshRequestBody(JsonObject? request)
+    {
+        var requestBody = new JsonObject();
+
+        var maxItems = GetInt(request, "maxItems", 0);
+        if (maxItems > 0)
+        {
+            requestBody["maxItems"] = maxItems;
+        }
+
+        var samplesPerVideo = GetInt(request, "samplesPerVideo", 0);
+        if (samplesPerVideo > 0)
+        {
+            requestBody["samplesPerVideo"] = samplesPerVideo;
+        }
+
+        if (GetBool(request, "reprocessDuplicates", false))
+        {
+            requestBody["reprocessDuplicates"] = true;
+        }
+
+        return requestBody;
+    }
+
     private async Task<ProductDownloadResult> DownloadProductForExportAsync(
         TimelineStoreProduct product,
         CancellationToken cancellationToken)
@@ -383,6 +410,11 @@ public sealed class TimelineStoreRebuildService
         }
         if (product.ProductId.Equals("chatgpt", StringComparison.OrdinalIgnoreCase))
         {
+            if (GetInt(await _threadProducts.GetChatGptOverviewAsync(cancellationToken), "itemCount", 0) <= 0)
+            {
+                return new ProductDownloadResult(product.ProductId, product.DisplayName, string.Empty);
+            }
+
             return NewDownloadResult(product, await _threadProducts.DownloadChatGptItemsAsync(new JsonObject(), cancellationToken));
         }
         if (product.ProductId.Equals("image", StringComparison.OrdinalIgnoreCase))
@@ -1255,6 +1287,26 @@ public sealed class TimelineStoreRebuildService
         return int.TryParse(ConvertTimelineText(node, string.Empty), NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed)
             ? parsed
             : fallback;
+    }
+
+    private static bool GetBool(JsonObject? source, string name, bool fallback)
+    {
+        var node = GetNode(source, name);
+        if (node is null)
+        {
+            return fallback;
+        }
+        if (node.GetValueKind() == JsonValueKind.True)
+        {
+            return true;
+        }
+        if (node.GetValueKind() == JsonValueKind.False)
+        {
+            return false;
+        }
+
+        var text = ConvertTimelineText(node, string.Empty);
+        return bool.TryParse(text, out var parsed) ? parsed : fallback;
     }
 
     private static double? GetNumberAny(JsonObject? source, string[] names)
