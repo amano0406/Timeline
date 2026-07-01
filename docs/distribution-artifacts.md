@@ -128,9 +128,15 @@ runtime remains present for diagnostics and fallback.
 As of `Timeline-macos-arm64-0.0.0-kan50-mac-app-4a60a4e.zip`, the ZIP contains:
 
 - `Timeline/Timeline.app/Contents/Info.plist`;
+- `Timeline/Timeline.app/Contents/PkgInfo`;
 - `Timeline/Timeline.app/Contents/MacOS/Timeline.Launcher.Tray`;
 - executable metadata on both the `.app` Launcher executable and the raw
   `launcher-tray/Timeline.Launcher.Tray`.
+
+The `.app` metadata identifies Timeline as a productivity application and uses
+the C# resident Launcher as `CFBundleExecutable`. The bundle is still unsigned
+and not notarized, so first-run security behavior must be verified on a real
+Mac.
 
 ### Required contents
 

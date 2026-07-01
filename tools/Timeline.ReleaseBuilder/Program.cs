@@ -124,6 +124,7 @@ static void CreateMacAppBundle(string productRoot, string hostRuntime, string ve
 
     CopyDirectory(launcherTrayDirectory, macOsDirectory);
     File.WriteAllText(Path.Combine(contentsDirectory, "Info.plist"), BuildMacAppInfoPlist(version), System.Text.Encoding.UTF8);
+    File.WriteAllText(Path.Combine(contentsDirectory, "PkgInfo"), "APPL????", System.Text.Encoding.ASCII);
 }
 
 static string BuildMacAppInfoPlist(string version)
@@ -144,15 +145,21 @@ static string BuildMacAppInfoPlist(string version)
          <string>6.0</string>
          <key>CFBundleName</key>
          <string>Timeline</string>
+         <key>CFBundleDisplayName</key>
+         <string>Timeline</string>
          <key>CFBundlePackageType</key>
          <string>APPL</string>
          <key>CFBundleShortVersionString</key>
          <string>{bundleVersion}</string>
          <key>CFBundleVersion</key>
          <string>{bundleVersion}</string>
+         <key>LSApplicationCategoryType</key>
+         <string>public.app-category.productivity</string>
          <key>LSMinimumSystemVersion</key>
          <string>13.0</string>
          <key>LSUIElement</key>
+         <true/>
+         <key>NSHighResolutionCapable</key>
          <true/>
        </dict>
        </plist>
