@@ -83,6 +83,65 @@ public sealed class ProductUninstallRequest
     public bool RemoveGeneratedData { get; set; }
 }
 
+public sealed class ProductUpdatePlan
+{
+    public string ProductId { get; set; } = "";
+    public string DisplayName { get; set; } = "";
+    public string State { get; set; } = "";
+    public string DistributionMode { get; set; } = "";
+    public string InstalledVersion { get; set; } = "";
+    public string LatestVersion { get; set; } = "";
+    public bool UpdateAvailable { get; set; }
+    public bool SourceArchiveUpdateAvailable { get; set; }
+    public string BuiltArtifactStatus { get; set; } = "";
+    public string BuiltArtifactMessage { get; set; } = "";
+    public string BuiltArtifactVersion { get; set; } = "";
+    public string BuiltArtifactName { get; set; } = "";
+    public string BuiltArtifactRuntime { get; set; } = "";
+    public bool BuiltArtifactUpdateAvailable { get; set; }
+    public bool CanUseBuiltArtifactUpdater { get; set; }
+    public bool Running { get; set; }
+    public bool ProductFound { get; set; }
+    public bool ComposeFound { get; set; }
+    public bool AppManagedByTimeline { get; set; }
+    public List<ProductUpdatePathPlan> Preserve { get; set; } = [];
+    public List<ProductUpdatePathPlan> Replace { get; set; } = [];
+    public List<ProductUpdateStepPlan> Steps { get; set; } = [];
+    public List<ProductUpdatePlanMessage> Blockers { get; set; } = [];
+    public List<ProductUpdatePlanMessage> Warnings { get; set; } = [];
+    public string GeneratedAt { get; set; } = "";
+}
+
+public sealed class ProductUpdatePathPlan
+{
+    public string Id { get; set; } = "";
+    public string Kind { get; set; } = "";
+    public string Path { get; set; } = "";
+    public bool Exists { get; set; }
+    public bool WillPreserve { get; set; }
+    public bool WillReplace { get; set; }
+    public string Reason { get; set; } = "";
+}
+
+public sealed class ProductUpdateStepPlan
+{
+    public int Order { get; set; }
+    public string Code { get; set; } = "";
+    public string Message { get; set; } = "";
+}
+
+public sealed class ProductUpdatePlanMessage
+{
+    public string Code { get; set; } = "";
+    public string Message { get; set; } = "";
+}
+
+public sealed class ProductLatestUpdateRequest
+{
+    public bool Confirm { get; set; }
+    public string OperationId { get; set; } = "";
+}
+
 public sealed class ProductUninstallPlan
 {
     public string ProductId { get; set; } = "";

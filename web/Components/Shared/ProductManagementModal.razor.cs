@@ -21,6 +21,9 @@ public partial class ProductManagementModal
     private bool _uninstallPlanLoading;
     private string? _uninstallPlanError;
     private ProductUninstallPlan? _uninstallPlan;
+    private string? _updatePlanLoadingProductId;
+    private readonly Dictionary<string, ProductUpdatePlan> _updatePlans = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, string> _updatePlanErrors = new(StringComparer.OrdinalIgnoreCase);
     private ProductActionCompletion? _completion;
     private readonly Dictionary<string, bool> _installRestoreSettings = new(StringComparer.OrdinalIgnoreCase);
 

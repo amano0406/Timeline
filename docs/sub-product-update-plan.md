@@ -91,6 +91,18 @@ When only a newer source archive exists, the overview can expose
 `sourceArchiveUpdateAvailable=true` so the UI can show that a built artifact is
 still required.
 
+The product management UI can request the per-product update plan explicitly.
+When `canUseBuiltArtifactUpdater=true`, the UI may call:
+
+```text
+POST http://127.0.0.1:19001/products/runtime/<productId>/update-artifact/apply-latest
+```
+
+The endpoint requires `confirm=true`, downloads the latest built artifact from
+the Release asset URL, validates it with the same artifact validator, and then
+uses the existing built artifact apply flow. It does not use the source archive
+updater.
+
 ## Built artifact validation
 
 Downloaded or locally generated artifacts can be validated before update:

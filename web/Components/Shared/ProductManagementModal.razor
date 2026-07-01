@@ -176,6 +176,83 @@
                                         </div>
                                     </div>
                                 }
+
+                                @if (IsUpdatePlanLoading(product))
+                                {
+                                    <div class="mt-3 rounded-md border border-sky-200 bg-sky-50 p-3 text-sm text-sky-900">
+                                        <div class="flex items-center gap-2 font-semibold">
+                                            <FaIcon Name="spinner" Class="tfa-icon !h-4 !w-4 fa-spin" />
+                                            <span>更新計画を確認しています</span>
+                                        </div>
+                                    </div>
+                                }
+
+                                @if (!string.IsNullOrWhiteSpace(UpdatePlanError(product)))
+                                {
+                                    <div class="mt-3 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-900">
+                                        <div class="flex items-start gap-2">
+                                            <FaIcon Name="triangle-exclamation" Class="tfa-icon !h-4 !w-4 mt-0.5" />
+                                            <span>@UpdatePlanError(product)</span>
+                                        </div>
+                                    </div>
+                                }
+
+                                @if (UpdatePlanFor(product) is { } updatePlan)
+                                {
+                                    <div class="mt-3 rounded-md border border-line bg-white p-3 text-sm text-slate-700">
+                                        <div class="flex flex-wrap items-center justify-between gap-2">
+                                            <div class="font-semibold text-slate-900">更新計画</div>
+                                            <span class="@UpdatePlanPillClass(updatePlan)">
+                                                <FaIcon Name="circle-info" Class="tfa-icon !h-3 !w-3" />
+                                                <span>@UpdatePlanStateLabel(updatePlan)</span>
+                                            </span>
+                                        </div>
+                                        <dl class="mt-3 grid gap-2 sm:grid-cols-2">
+                                            <div>
+                                                <dt class="text-xs font-semibold text-slate-500">現在</dt>
+                                                <dd>@VersionText(updatePlan.InstalledVersion)</dd>
+                                            </div>
+                                            <div>
+                                                <dt class="text-xs font-semibold text-slate-500">ビルド済み成果物</dt>
+                                                <dd class="break-all">@BuiltArtifactStatusText(updatePlan)</dd>
+                                            </div>
+                                            <div>
+                                                <dt class="text-xs font-semibold text-slate-500">配布方式</dt>
+                                                <dd>@EmptyText(updatePlan.DistributionMode)</dd>
+                                            </div>
+                                            <div>
+                                                <dt class="text-xs font-semibold text-slate-500">対象ランタイム</dt>
+                                                <dd>@EmptyText(updatePlan.BuiltArtifactRuntime)</dd>
+                                            </div>
+                                        </dl>
+
+                                        @if (updatePlan.Blockers.Count > 0)
+                                        {
+                                            <div class="mt-3 rounded-md border border-red-200 bg-red-50 p-2 text-red-900">
+                                                <div class="font-semibold">更新できない理由</div>
+                                                <ul class="mt-1 list-disc space-y-1 pl-5">
+                                                    @foreach (var blocker in updatePlan.Blockers)
+                                                    {
+                                                        <li>@blocker.Message</li>
+                                                    }
+                                                </ul>
+                                            </div>
+                                        }
+
+                                        @if (updatePlan.Warnings.Count > 0)
+                                        {
+                                            <div class="mt-3 rounded-md border border-amber-200 bg-amber-50 p-2 text-amber-900">
+                                                <div class="font-semibold">注意点</div>
+                                                <ul class="mt-1 list-disc space-y-1 pl-5">
+                                                    @foreach (var warning in updatePlan.Warnings)
+                                                    {
+                                                        <li>@warning.Message</li>
+                                                    }
+                                                </ul>
+                                            </div>
+                                        }
+                                    </div>
+                                }
                             </div>
                         </div>
 
@@ -210,17 +287,24 @@
                                     <FaIcon Name="rotate" Class="@($"tfa-icon {(IsBusy(product) ? "fa-spin" : "")}")" />
                                     <span>再起動</span>
                                 </button>
-                                @if (product.UpdateAvailable)
+                                <button type="button"
+                                        class="tfa-button-secondary gap-2"
+                                        @onclick="@(() => LoadProductUpdatePlanAsync(product))"
+                                        disabled="@(!CanRequestUpdatePlan(product))">
+                                    <FaIcon Name="list-check" Class="@($"tfa-icon {(IsUpdatePlanLoading(product) ? "fa-spin" : "")}")" />
+                                    <span>更新計画</span>
+                                </button>
+                                @if (UpdatePlanFor(product) is { CanUseBuiltArtifactUpdater: true } safeUpdatePlan)
                                 {
                                     <button type="button"
                                             class="tfa-button-primary gap-2"
-                                            @onclick="@(() => UpdateProductAsync(product))"
-                                            disabled="@(!CanUpdate(product))">
+                                            @onclick="@(() => ApplyLatestProductUpdateArtifactAsync(product))"
+                                            disabled="@(!CanApplyLatestProductUpdate(product, safeUpdatePlan))">
                                         <FaIcon Name="cloud-arrow-down" Class="@($"tfa-icon {(IsBusy(product) ? "fa-spin" : "")}")" />
-                                        <span>更新</span>
+                                        <span>成果物で更新</span>
                                     </button>
                                 }
-                                else if (product.SourceArchiveUpdateAvailable)
+                                @if (product.SourceArchiveUpdateAvailable)
                                 {
                                     <span class="tfa-status-pill border-amber-200 bg-amber-50 text-amber-900"
                                           title="GitHub source archive には新しい版がありますが、通常更新にはビルド済み成果物が必要です。">

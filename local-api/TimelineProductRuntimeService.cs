@@ -665,6 +665,65 @@ public sealed class TimelineProductRuntimeService
             staged);
     }
 
+    public async Task<ProductRuntimeRowResponse> ApplyLatestProductUpdateArtifactAsync(
+        string productId,
+        string? operationId,
+        bool confirm,
+        CancellationToken cancellationToken)
+    {
+        if (!confirm)
+        {
+            throw new InvalidOperationException("Built artifact update requires confirm=true.");
+        }
+
+        var definition = GetProductDefinition(productId);
+        var plan = await GetProductUpdatePlanAsync(productId, cancellationToken);
+        if (!plan.CanUseBuiltArtifactUpdater)
+        {
+            throw new InvalidOperationException("A usable built product artifact is not available.");
+        }
+
+        if (string.IsNullOrWhiteSpace(plan.BuiltArtifactUrl))
+        {
+            throw new InvalidOperationException("Built product artifact URL is empty.");
+        }
+
+        var normalizedOperationId = GetProductUpdateOperationId(definition.Id, operationId);
+        var downloadRoot = Path.GetFullPath(Path.Combine(
+            _settings.GetWorkDirectory(),
+            "product-updates",
+            normalizedOperationId,
+            "downloads"));
+        Directory.CreateDirectory(downloadRoot);
+
+        var artifactName = Path.GetFileName(plan.BuiltArtifactName);
+        if (string.IsNullOrWhiteSpace(artifactName))
+        {
+            artifactName = $"{definition.DisplayName}-{plan.BuiltArtifactRuntime}-{plan.BuiltArtifactVersion}.zip";
+        }
+
+        var artifactPath = Path.Combine(downloadRoot, artifactName);
+        if (File.Exists(artifactPath))
+        {
+            File.Delete(artifactPath);
+        }
+
+        using (var response = await _http.GetAsync(plan.BuiltArtifactUrl, cancellationToken))
+        {
+            response.EnsureSuccessStatusCode();
+            await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+            await using var file = File.Create(artifactPath);
+            await stream.CopyToAsync(file, cancellationToken);
+        }
+
+        return await ApplyProductUpdateArtifactAsync(
+            productId,
+            artifactPath,
+            normalizedOperationId,
+            confirm: true,
+            cancellationToken);
+    }
+
     public async Task<ProductRuntimeRowResponse> ApplyProductUpdateArtifactAsync(
         string productId,
         string artifactPath,

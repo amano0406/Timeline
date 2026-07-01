@@ -41,15 +41,6 @@ public partial class ProductManagementModal
         && _actionProductId is null
         && !string.IsNullOrWhiteSpace(product.SourceUrl);
 
-    private bool CanUpdate(ProductRuntimeRow product) =>
-        IsInstalled(product)
-        && product.SupportedOnCurrentOperatingSystem
-        && CanModifyProductFiles(product)
-        && product.UpdateAvailable
-        && _actionProductId is null
-        && !IsBusy(product)
-        && !string.IsNullOrWhiteSpace(product.SourceUrl);
-
     private bool CanRequestUninstall(ProductRuntimeRow product) =>
         IsInstalled(product)
         && CanModifyProductFiles(product)

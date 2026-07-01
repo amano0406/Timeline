@@ -1725,6 +1725,31 @@ app.MapPost("/products/runtime/{productId}/update-artifact/apply", async (
     }
 });
 
+app.MapPost("/products/runtime/{productId}/update-artifact/apply-latest", async (
+    HttpContext context,
+    string productId,
+    TimelineProductRuntimeService runtime,
+    CancellationToken cancellationToken) =>
+{
+    try
+    {
+        var request = await ReadOptionalJsonObjectAsync(context.Request, cancellationToken);
+        var operationId = GetString(request, "operationId", string.Empty);
+        var confirm = GetBool(request, "confirm", false);
+        return Results.Json(await runtime.ApplyLatestProductUpdateArtifactAsync(
+            productId,
+            operationId,
+            confirm,
+            cancellationToken));
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(
+            new { message = ex.Message, ok = false },
+            statusCode: StatusCodes.Status500InternalServerError);
+    }
+});
+
 app.MapPost("/products/runtime/{productId}/uninstall-plan", async (
     HttpContext context,
     string productId,

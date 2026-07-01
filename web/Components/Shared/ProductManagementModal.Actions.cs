@@ -38,10 +38,45 @@ public partial class ProductManagementModal
         }
     }
 
-    private async Task UpdateProductAsync(ProductRuntimeRow product)
+    private async Task LoadProductUpdatePlanAsync(ProductRuntimeRow product)
+    {
+        _updatePlanLoadingProductId = product.Id;
+        _updatePlanErrors.Remove(product.Id);
+        try
+        {
+            _updatePlans[product.Id] = await Timeline.GetProductUpdatePlanAsync(product.Id);
+        }
+        catch (Exception ex)
+        {
+            _updatePlans.Remove(product.Id);
+            _updatePlanErrors[product.Id] = RuntimeDisplayText.ProductActionFailure(
+                DisplayName(product),
+                "更新計画の確認",
+                ex.Message);
+        }
+        finally
+        {
+            _updatePlanLoadingProductId = null;
+        }
+    }
+
+    private async Task ApplyLatestProductUpdateArtifactAsync(ProductRuntimeRow product)
     {
         _completion = null;
-        await RunProductActionAsync(product, "更新", () => Timeline.UpdateProductAsync(product.Id));
+        await RunProductActionAsync(
+            product,
+            "ビルド済み成果物で更新",
+            () => Timeline.ApplyLatestProductUpdateArtifactAsync(
+                product.Id,
+                new ProductLatestUpdateRequest
+                {
+                    Confirm = true,
+                    OperationId = $"web-product-update-{product.Id}-{DateTimeOffset.UtcNow:yyyyMMddHHmmss}",
+                }));
+        if (_messageIsSuccess)
+        {
+            await LoadProductUpdatePlanAsync(product);
+        }
     }
 
     private async Task RunProductActionAsync(ProductRuntimeRow product, string label, Func<Task<ProductRuntimeRow>> action)

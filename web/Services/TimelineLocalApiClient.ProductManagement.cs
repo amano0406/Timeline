@@ -52,6 +52,35 @@ public sealed partial class TimelineLocalApiClient
         CancellationToken cancellationToken = default)
         => await PostProductRuntimeActionAsync(productId, "update", cancellationToken);
 
+    public async Task<ProductUpdatePlan> GetProductUpdatePlanAsync(
+        string productId,
+        CancellationToken cancellationToken = default)
+    {
+        return await _http.GetFromJsonAsync<ProductUpdatePlan>(
+                $"products/runtime/{Uri.EscapeDataString(productId)}/update-plan",
+                JsonOptions,
+                cancellationToken)
+            ?? new ProductUpdatePlan { ProductId = productId };
+    }
+
+    public async Task<ProductRuntimeRow> ApplyLatestProductUpdateArtifactAsync(
+        string productId,
+        ProductLatestUpdateRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var path = $"products/runtime/{Uri.EscapeDataString(productId)}/update-artifact/apply-latest";
+        var response = await _http.PostAsJsonAsync(path, request, JsonOptions, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            throw new InvalidOperationException(ErrorMessageFromBody(body)
+                ?? $"更新を実行できませんでした。HTTP {(int)response.StatusCode}");
+        }
+
+        return await response.Content.ReadFromJsonAsync<ProductRuntimeRow>(JsonOptions, cancellationToken)
+            ?? new ProductRuntimeRow { Id = productId, Message = "更新しましたが、状態を読み取れませんでした。" };
+    }
+
     public async Task<ProductUninstallPlan> GetProductUninstallPlanAsync(
         string productId,
         ProductUninstallRequest request,
