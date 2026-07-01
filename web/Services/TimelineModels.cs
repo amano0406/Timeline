@@ -83,6 +83,66 @@ public sealed class TimelineLauncherShortcutStatus
     public string Message { get; set; } = "";
 }
 
+public sealed class TimelineInstallPlan
+{
+    public string ProductId { get; set; } = "";
+    public string ProductName { get; set; } = "";
+    public string State { get; set; } = "";
+    public string Mode { get; set; } = "";
+    public bool CanExecute { get; set; }
+    public string Platform { get; set; } = "";
+    public string TimelineRoot { get; set; } = "";
+    public string DataRoot { get; set; } = "";
+    public string SettingsPath { get; set; } = "";
+    public string LauncherExecutablePath { get; set; } = "";
+    public TimelineInstallPlanRegistration AppEntry { get; set; } = new();
+    public List<TimelineInstallPlanRegistration> RegistrationTargets { get; set; } = [];
+    public List<TimelineInstallPlanArtifact> ArtifactTargets { get; set; } = [];
+    public List<TimelineInstallPlanItem> Preserve { get; set; } = [];
+    public List<TimelineInstallPlanMessage> Warnings { get; set; } = [];
+    public string GeneratedAt { get; set; } = "";
+}
+
+public sealed class TimelineInstallPlanRegistration
+{
+    public string Id { get; set; } = "";
+    public string Name { get; set; } = "";
+    public string Kind { get; set; } = "";
+    public bool Supported { get; set; }
+    public bool Implemented { get; set; }
+    public bool Required { get; set; }
+    public string State { get; set; } = "";
+    public string CurrentPath { get; set; } = "";
+    public string TargetPath { get; set; } = "";
+    public string CommandLine { get; set; } = "";
+    public string Message { get; set; } = "";
+}
+
+public sealed class TimelineInstallPlanArtifact
+{
+    public string Id { get; set; } = "";
+    public string Name { get; set; } = "";
+    public string Kind { get; set; } = "";
+    public string Platform { get; set; } = "";
+    public string State { get; set; } = "";
+    public string Description { get; set; } = "";
+}
+
+public sealed class TimelineInstallPlanItem
+{
+    public string Id { get; set; } = "";
+    public string Path { get; set; } = "";
+    public string Kind { get; set; } = "";
+    public bool Exists { get; set; }
+    public bool UserData { get; set; }
+}
+
+public sealed class TimelineInstallPlanMessage
+{
+    public string Code { get; set; } = "";
+    public string Message { get; set; } = "";
+}
+
 public sealed class TimelineUninstallPlan
 {
     public string ProductId { get; set; } = "";

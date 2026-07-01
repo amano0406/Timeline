@@ -101,6 +101,8 @@ else if (_proMode)
 
             @TimelineStartupControls()
 
+            @TimelineInstallPlanControls()
+
             @TimelineUninstallPlanControls()
         </div>
     </section>
@@ -208,6 +210,9 @@ else
         </h2>
         <div class="mt-4">
             @TimelineStartupControls()
+        </div>
+        <div class="mt-4">
+            @TimelineInstallPlanControls()
         </div>
     </section>
 
@@ -721,6 +726,9 @@ else
     private bool _startWithOperatingSystem;
     private TimelineLauncherShortcutStatus _launcherShortcutStatus = new();
     private bool _launcherShortcutBusy;
+    private TimelineInstallPlan? _timelineInstallPlan;
+    private bool _timelineInstallPlanLoading = true;
+    private string? _timelineInstallPlanError;
     private TimelineUninstallPlan? _timelineUninstallPlan;
     private bool _timelineUninstallPlanLoading = true;
     private string? _timelineUninstallPlanError;
@@ -796,6 +804,7 @@ else
     public bool IsBusy =>
         _loading
         || _saving
+        || _timelineInstallPlanLoading
         || _timelineUninstallPlanLoading
         || _audioSettingsLoading
         || _imageSettingsLoading
@@ -1128,6 +1137,8 @@ else
         _audioSettingsLoading = true;
         _imageSettingsLoading = true;
         _videoSettingsLoading = true;
+        _timelineInstallPlanLoading = true;
+        _timelineInstallPlanError = null;
         _timelineUninstallPlanLoading = true;
         _timelineUninstallPlanError = null;
         try
@@ -1135,13 +1146,15 @@ else
             var settingsTask = Timeline.GetTimelineSettingsAsync();
             var runtimeTask = Timeline.GetProductRuntimeOverviewAsync();
             var launcherShortcutTask = Timeline.GetLauncherShortcutStatusAsync();
+            var installPlanTask = Timeline.GetTimelineInstallPlanAsync();
             var uninstallPlanTask = Timeline.GetTimelineUninstallPlanAsync();
 
-            await Task.WhenAll(settingsTask, runtimeTask, launcherShortcutTask, uninstallPlanTask);
+            await Task.WhenAll(settingsTask, runtimeTask, launcherShortcutTask, installPlanTask, uninstallPlanTask);
 
             _settings = await settingsTask;
             _runtime = await runtimeTask;
             _launcherShortcutStatus = await launcherShortcutTask;
+            _timelineInstallPlan = await installPlanTask;
             _timelineUninstallPlan = await uninstallPlanTask;
             EnsureTimelineUninstallSelectedLevel();
 
@@ -1168,12 +1181,15 @@ else
             _audioSettingsLoading = false;
             _imageSettingsLoading = false;
             _videoSettingsLoading = false;
+            _timelineInstallPlanLoading = false;
+            _timelineInstallPlanError = ex.Message;
             _timelineUninstallPlanLoading = false;
             _timelineUninstallPlanError = ex.Message;
         }
         finally
         {
             _loading = false;
+            _timelineInstallPlanLoading = false;
             _timelineUninstallPlanLoading = false;
             await InvokeAsync(StateHasChanged);
         }
@@ -2572,6 +2588,106 @@ else
         </div>
     </div>;
 
+    private RenderFragment TimelineInstallPlanControls() => @<div class="rounded-md border border-line bg-slate-50 p-4">
+        @if (_timelineInstallPlanLoading)
+        {
+            <div class="flex items-center gap-2 text-sm text-slate-600">
+                <FaIcon Name="spinner" Class="tfa-icon fa-spin text-accent" />
+                <span>インストール時の登録内容を確認しています。</span>
+            </div>
+        }
+        else if (!string.IsNullOrWhiteSpace(_timelineInstallPlanError))
+        {
+            <div class="tfa-alert-danger">@_timelineInstallPlanError</div>
+        }
+        else if (_timelineInstallPlan is null)
+        {
+            <div class="text-sm text-slate-600">インストール時の登録内容を確認できませんでした。</div>
+        }
+        else
+        {
+            var plan = _timelineInstallPlan;
+
+            <div class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
+                <div class="min-w-0">
+                    <div class="flex flex-wrap items-center gap-2">
+                        <FaIcon Name="download" Class="tfa-icon text-accent" />
+                        <h3 class="font-semibold text-slate-900">インストール計画</h3>
+                        <span class="tfa-status-pill border-slate-200 bg-white text-slate-700">@TimelineInstallPlanModeLabel(plan)</span>
+                        <span class="tfa-status-pill border-slate-200 bg-white text-slate-700">@EmptyText(plan.Platform)</span>
+                    </div>
+                    <p class="mt-2 text-sm text-slate-600">
+                        TimelineをOS上のアプリとして扱うために、アプリ入口、起動時登録、削除入口、保持するデータを確認します。ここでは確認だけを行い、OS設定は変更しません。
+                    </p>
+
+                    <div class="mt-3 grid gap-2 text-sm md:grid-cols-3">
+                        <div class="rounded-md border border-line bg-white p-3">
+                            <div class="tfa-kicker">アプリ本体</div>
+                            <div class="mt-1 break-all font-mono text-xs text-slate-700">@EmptyText(plan.TimelineRoot)</div>
+                        </div>
+                        <div class="rounded-md border border-line bg-white p-3">
+                            <div class="tfa-kicker">常駐ランチャー</div>
+                            <div class="mt-1 break-all font-mono text-xs text-slate-700">@EmptyText(plan.LauncherExecutablePath)</div>
+                        </div>
+                        <div class="rounded-md border border-line bg-white p-3">
+                            <div class="tfa-kicker">保持するデータ</div>
+                            <div class="mt-1 break-all font-mono text-xs text-slate-700">@EmptyText(plan.DataRoot)</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="rounded-md border border-line bg-white px-3 py-2 text-sm text-slate-700">
+                    <div class="tfa-kicker">実行状態</div>
+                    <div class="mt-1 font-semibold text-slate-900">@(plan.CanExecute ? "実行可能" : "確認のみ")</div>
+                </div>
+            </div>
+
+            @if (plan.Warnings.Count > 0)
+            {
+                <div class="mt-4 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                    <div class="font-semibold">インストーラーで注意が必要です</div>
+                    <div class="mt-2 grid gap-1">
+                        @foreach (var warning in plan.Warnings)
+                        {
+                            <div>@TimelineInstallWarningText(warning)</div>
+                        }
+                    </div>
+                </div>
+            }
+
+            <div class="mt-4 grid gap-3 xl:grid-cols-3">
+                @foreach (var target in plan.RegistrationTargets)
+                {
+                    <div class="@TimelineInstallRegistrationCardClass(target)">
+                        <div class="flex flex-wrap items-center gap-2">
+                            <div class="font-semibold text-slate-900">@target.Name</div>
+                            <span class="@TimelineInstallRegistrationPillClass(target)">@TimelineInstallRegistrationStateLabel(target)</span>
+                        </div>
+                        <div class="mt-2 text-sm text-slate-600">@TimelineInstallRegistrationMessage(target)</div>
+                        @if (!string.IsNullOrWhiteSpace(target.TargetPath))
+                        {
+                            <div class="mt-3 truncate rounded border border-line bg-white px-2 py-1 font-mono text-xs text-slate-500" title="@target.TargetPath">
+                                @target.TargetPath
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+
+            <div class="mt-4 grid gap-3 md:grid-cols-2">
+                @foreach (var artifact in plan.ArtifactTargets)
+                {
+                    <div class="rounded-md border border-line bg-white p-3">
+                        <div class="flex flex-wrap items-center gap-2">
+                            <div class="font-semibold text-slate-900">@artifact.Name</div>
+                            <span class="tfa-status-pill border-slate-200 bg-slate-50 text-slate-700">@artifact.State</span>
+                        </div>
+                        <div class="mt-1 text-sm text-slate-600">@artifact.Description</div>
+                    </div>
+                }
+            </div>
+        }
+    </div>;
+
     private RenderFragment TimelineUninstallPlanControls() => @<div class="rounded-md border border-line bg-slate-50 p-4">
         @if (_timelineUninstallPlanLoading)
         {
@@ -2715,6 +2831,90 @@ else
             </div>
         }
     </div>;
+
+    private static string TimelineInstallPlanModeLabel(TimelineInstallPlan plan)
+    {
+        if (!plan.CanExecute)
+        {
+            return "計画表示のみ";
+        }
+
+        return plan.Mode.Equals("read_only", StringComparison.OrdinalIgnoreCase)
+            ? "確認のみ"
+            : "実行可能";
+    }
+
+    private static string TimelineInstallWarningText(TimelineInstallPlanMessage warning) => warning.Code switch
+    {
+        "data_inside_app_root" => "Timelineデータがアプリ本体の中にあります。インストール/削除では、ユーザーデータを誤って消さない設計が必要です。",
+        "settings_inside_app_root" => "settings.json がアプリ本体の中にあります。再インストール後も設定を使う場合は保持が必要です。",
+        "developer_launcher_fallback" => "現在の入口は開発用の起動方法に寄っています。製品配布時は常駐ランチャー実行ファイルを直接起動する必要があります。",
+        "local_api_unreachable" => string.IsNullOrWhiteSpace(warning.Message) ? "操作機能に接続できないため、インストール計画を確認できません。" : warning.Message,
+        _ => string.IsNullOrWhiteSpace(warning.Message) ? warning.Code : warning.Message,
+    };
+
+    private static string TimelineInstallRegistrationCardClass(TimelineInstallPlanRegistration target)
+    {
+        if (!target.Supported)
+        {
+            return "rounded-md border border-amber-200 bg-white p-4";
+        }
+
+        return target.Implemented
+            ? "rounded-md border border-teal-200 bg-white p-4"
+            : "rounded-md border border-line bg-white p-4";
+    }
+
+    private static string TimelineInstallRegistrationPillClass(TimelineInstallPlanRegistration target)
+    {
+        if (!target.Supported)
+        {
+            return "tfa-status-pill border-amber-200 bg-amber-50 text-amber-900";
+        }
+
+        if (target.Implemented && target.State.Equals("registered", StringComparison.OrdinalIgnoreCase))
+        {
+            return "tfa-status-pill border-teal-200 bg-teal-50 text-teal-800";
+        }
+
+        return target.Implemented
+            ? "tfa-status-pill border-slate-200 bg-white text-slate-700"
+            : "tfa-status-pill border-sky-200 bg-sky-50 text-sky-800";
+    }
+
+    private static string TimelineInstallRegistrationStateLabel(TimelineInstallPlanRegistration target)
+    {
+        if (!target.Supported)
+        {
+            return "未対応";
+        }
+
+        if (!target.Implemented)
+        {
+            return target.Required ? "今後必要" : "任意";
+        }
+
+        return target.State switch
+        {
+            "registered" => "登録済み",
+            "not_registered" => "未登録",
+            "registered_with_different_target" => "更新が必要",
+            "failed" => "確認できません",
+            _ => string.IsNullOrWhiteSpace(target.State) ? "確認対象" : target.State,
+        };
+    }
+
+    private static string TimelineInstallRegistrationMessage(TimelineInstallPlanRegistration target)
+    {
+        if (!string.IsNullOrWhiteSpace(target.Message))
+        {
+            return target.Message;
+        }
+
+        return target.Required
+            ? "TimelineをOS上のアプリとして扱うために必要な登録です。"
+            : "ユーザー設定に応じて使う登録です。";
+    }
 
     private TimelineUninstallLevel? TimelineUninstallRecommendedLevel =>
         _timelineUninstallPlan?.Levels.FirstOrDefault(level => level.RecommendedDefault)
