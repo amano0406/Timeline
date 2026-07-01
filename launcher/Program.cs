@@ -17,6 +17,7 @@ try
         "preflight" => await ShowPreflight(root, settings, options.JsonOutput),
         "verify-setup" or "verify" => await VerifySetup(root, settings, options.JsonOutput),
         "version" => await ShowVersion(root, options.JsonOutput),
+        "uninstall-plan" => ShowUninstallPlan(root, options.JsonOutput),
         "update-plan" => await ShowUpdatePlan(root, options.JsonOutput),
         "update-apply-plan" => await ShowUpdateApplyPlan(root, options.ArtifactPath, options.JsonOutput),
         "update-recovery-plan" => await ShowUpdateRecoveryPlan(root, options.ArtifactPath, options.JsonOutput),
@@ -393,6 +394,61 @@ static async Task<int> ShowUpdatePlan(string root, bool jsonOutput)
     return 0;
 }
 
+static int ShowUninstallPlan(string root, bool jsonOutput)
+{
+    var plan = TimelineUninstallPlanService.GetPlan(root);
+    if (jsonOutput)
+    {
+        Console.WriteLine(JsonSerializer.Serialize(
+            plan,
+            new JsonSerializerOptions
+            {
+                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+                WriteIndented = true,
+            }));
+    }
+    else
+    {
+        Console.WriteLine("Timeline uninstall plan");
+        Console.WriteLine($"  state: {plan.State}");
+        Console.WriteLine($"  mode: {plan.Mode}");
+        Console.WriteLine($"  can execute: {(plan.CanExecute ? "yes" : "no")}");
+        Console.WriteLine($"  root: {plan.TimelineRoot}");
+        Console.WriteLine($"  data root: {plan.DataRoot}");
+        Console.WriteLine();
+        PrintUninstallMessages("Warnings", plan.Warnings);
+
+        foreach (var level in plan.Levels)
+        {
+            Console.WriteLine($"- {level.Id}: {level.Name}");
+            Console.WriteLine($"  destructive: {(level.Destructive ? "yes" : "no")}");
+            Console.WriteLine($"  default: {(level.RecommendedDefault ? "yes" : "no")}");
+            Console.WriteLine($"  {level.Description}");
+            foreach (var item in level.Items.Where(item => item.DefaultDelete))
+            {
+                Console.WriteLine($"    * {item.Id}: {item.Path}");
+            }
+        }
+    }
+
+    return 0;
+}
+
+static void PrintUninstallMessages(string title, IReadOnlyList<TimelineUninstallPlanMessage> messages)
+{
+    if (messages.Count == 0)
+    {
+        return;
+    }
+
+    Console.WriteLine(title + ":");
+    foreach (var message in messages)
+    {
+        Console.WriteLine($"  - {message.Code}: {message.Message}");
+    }
+    Console.WriteLine();
+}
+
 static void PrintUpdateMessages(string title, IReadOnlyList<TimelineUpdatePlanMessage> messages)
 {
     if (messages.Count == 0)
@@ -636,7 +692,7 @@ static int ShowHelp()
     Console.WriteLine("Timeline Launcher");
     Console.WriteLine();
     Console.WriteLine("Usage:");
-    Console.WriteLine("  TimelineLauncher [open|status|preflight|verify-setup|version|update-plan|update-apply-plan|update-recovery-plan|update-validate|start|stop|shortcut-status|shortcut-install|shortcut-remove|help] [--no-open] [--json]");
+    Console.WriteLine("  TimelineLauncher [open|status|preflight|verify-setup|version|uninstall-plan|update-plan|update-apply-plan|update-recovery-plan|update-validate|start|stop|shortcut-status|shortcut-install|shortcut-remove|help] [--no-open] [--json]");
     Console.WriteLine();
     Console.WriteLine("Commands:");
     Console.WriteLine("  open    Open Timeline. Starts it first when needed.");
@@ -644,6 +700,7 @@ static int ShowHelp()
     Console.WriteLine("  preflight  Check local prerequisites before runtime verification. Use --json for Jira evidence.");
     Console.WriteLine("  verify-setup  Verify that Timeline is usable after setup. Use --json for Jira evidence.");
     Console.WriteLine("  version  Show current Timeline version and latest built artifact status.");
+    Console.WriteLine("  uninstall-plan  Show delete levels and preserved data before future uninstall execution.");
     Console.WriteLine("  update-plan  Show the safe Timeline body update plan. Use --json for tooling.");
     Console.WriteLine("  update-apply-plan  Show whether a built product artifact can be applied now. Optional: --artifact <path>.");
     Console.WriteLine("  update-recovery-plan  Show rollback and failure recovery policy. Optional: --artifact <path>.");

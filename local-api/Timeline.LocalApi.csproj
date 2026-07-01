@@ -8,6 +8,7 @@
     <Compile Include="..\shared\TimelineDashboardStatsService.cs" Link="TimelineDashboardStatsService.cs" />
     <Compile Include="..\shared\TimelineLauncherShortcutService.cs" Link="TimelineLauncherShortcutService.cs" />
     <Compile Include="..\shared\TimelineStoreExportService.cs" Link="TimelineStoreExportService.cs" />
+    <Compile Include="..\shared\TimelineUninstallPlanService.cs" Link="TimelineUninstallPlanService.cs" />
     <Compile Include="..\shared\TimelineUpdatePlanService.cs" Link="TimelineUpdatePlanService.cs" />
     <Compile Include="..\shared\TimelineVersionService.cs" Link="TimelineVersionService.cs" />
   </ItemGroup>
