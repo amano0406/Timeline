@@ -69,6 +69,34 @@ The names above describe responsibilities, not necessarily final binary names.
 The exact publish output can differ by runtime identifier, but the user-facing
 root should stay predictable.
 
+## Windows artifact build
+
+KAN-45 uses the repository release builder to create the first Windows product
+artifact.
+
+```text
+dotnet run --project tools/Timeline.ReleaseBuilder -- --runtime win-x64 --version <version>
+```
+
+The builder publishes host-side executables for Windows and container-side
+runtime files for Docker:
+
+| Area | Runtime | Why |
+| --- | --- | --- |
+| Launcher | `win-x64` | Runs directly on the user's Windows machine |
+| Launcher tray | `win-x64` | Runs directly on the user's Windows machine |
+| Local API | `win-x64` | Runs directly on the user's Windows machine |
+| Web | `linux-x64` | Runs inside Docker's Linux container runtime |
+| Worker | `linux-x64` | Runs inside Docker's Linux container runtime |
+
+The product artifact's root `docker-compose.yml` is generated from
+`packaging/docker-compose.product.yml`. It does not build from Timeline source
+projects. It builds Docker images from the already published `web/` and
+`worker/` runtime directories.
+
+This means the user still needs Docker for the current Timeline runtime, but
+does not need a .NET SDK or source checkout to start from the product artifact.
+
 ### Required contents
 
 The artifact must include:
@@ -102,6 +130,10 @@ The artifact must not include:
 Development fallback scripts can remain in the repository, but they should not
 be the user-facing entry point. If they are included temporarily for migration,
 the Launcher remains the documented product entry.
+
+The Windows product artifact currently excludes development fallback scripts.
+Launcher, Local API, Web, Worker, Docker Compose, and product metadata are the
+minimum runtime surface.
 
 ## Runtime data separation
 
@@ -181,4 +213,3 @@ KAN-44 can be considered complete when:
   metadata at a responsibility level.
 - User data and generated data are explicitly excluded from product artifacts.
 - Downstream epics can refer to this document instead of redefining the layout.
-

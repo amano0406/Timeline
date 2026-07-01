@@ -55,10 +55,27 @@ static async Task<int> ShowPreflight(string root, TimelineSettings settings, boo
     checks.Add(NewInfo("Configured Web", settings.WebUrl));
     checks.Add(NewInfo("Configured Local API", settings.LocalApiHealthUrl));
 
+    var localApiRuntime = ResolveLocalApiRuntime(root);
+    checks.Add(localApiRuntime.Severity switch
+    {
+        "error" => NewError("Local API runtime", localApiRuntime.Message),
+        "warning" => NewWarning("Local API runtime", localApiRuntime.Message),
+        _ => NewOk("Local API runtime", localApiRuntime.Message)
+    });
+
     var dotnet = ResolveCommand(RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "dotnet.exe" : "dotnet");
-    checks.Add(string.IsNullOrWhiteSpace(dotnet)
-        ? NewError(".NET SDK", "dotnet command was not found on PATH.")
-        : NewOk(".NET SDK", dotnet));
+    if (localApiRuntime.RequiresDotnetCommand)
+    {
+        checks.Add(string.IsNullOrWhiteSpace(dotnet)
+            ? NewError(".NET command", "dotnet command was not found on PATH, but this checkout needs it to run or publish Local API.")
+            : NewOk(".NET command", dotnet));
+    }
+    else
+    {
+        checks.Add(string.IsNullOrWhiteSpace(dotnet)
+            ? NewInfo(".NET command", "Bundled Local API runtime is present. dotnet command is not required for normal startup.")
+            : NewInfo(".NET command", dotnet));
+    }
 
     var docker = ResolveDockerCommand();
     checks.Add(string.IsNullOrWhiteSpace(docker)
@@ -531,6 +548,57 @@ static void AddRequiredPathCheck(List<PreflightCheck> checks, string root, strin
         : NewError(relativePath, $"Required {requiredKind} was not found: {fullPath}"));
 }
 
+static LocalApiRuntimeCheck ResolveLocalApiRuntime(string root)
+{
+    var localApiDirectory = Path.Combine(root, "local-api");
+    if (!Directory.Exists(localApiDirectory))
+    {
+        return new LocalApiRuntimeCheck(
+            "error",
+            "Local API directory was not found.",
+            RequiresDotnetCommand: false);
+    }
+
+    var executablePath = Path.Combine(localApiDirectory, LocalApiExecutableFileName());
+    if (File.Exists(executablePath))
+    {
+        return new LocalApiRuntimeCheck(
+            "ok",
+            $"Bundled executable was found: {executablePath}",
+            RequiresDotnetCommand: false);
+    }
+
+    var dllPath = Path.Combine(localApiDirectory, "Timeline.LocalApi.dll");
+    if (File.Exists(dllPath))
+    {
+        return new LocalApiRuntimeCheck(
+            "ok",
+            $"Bundled DLL was found: {dllPath}",
+            RequiresDotnetCommand: true);
+    }
+
+    var projectPath = Path.Combine(localApiDirectory, "Timeline.LocalApi.csproj");
+    if (File.Exists(projectPath))
+    {
+        return new LocalApiRuntimeCheck(
+            "ok",
+            $"Development project was found: {projectPath}",
+            RequiresDotnetCommand: true);
+    }
+
+    return new LocalApiRuntimeCheck(
+        "error",
+        "Local API executable, DLL, or project file was not found.",
+        RequiresDotnetCommand: false);
+}
+
+static string LocalApiExecutableFileName()
+{
+    return RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
+        ? "Timeline.LocalApi.exe"
+        : "Timeline.LocalApi";
+}
+
 static void PrintPreflightChecks(IReadOnlyList<PreflightCheck> checks)
 {
     Console.WriteLine("Timeline preflight");
@@ -771,6 +839,8 @@ internal sealed record DockerStatus(bool Available, string State, string Message
 internal sealed record ProcessResult(int ExitCode, string Output, string Error);
 
 internal sealed record PreflightCheck(string Severity, string Name, string Message);
+
+internal sealed record LocalApiRuntimeCheck(string Severity, string Message, bool RequiresDotnetCommand);
 
 internal sealed record PreflightReport(
     DateTimeOffset GeneratedAt,

@@ -9,4 +9,8 @@
     <Compile Include="..\shared\TimelineLauncherShortcutService.cs" Link="TimelineLauncherShortcutService.cs" />
     <Compile Include="..\shared\TimelineStoreExportService.cs" Link="TimelineStoreExportService.cs" />
   </ItemGroup>
+  <ItemGroup>
+    <Content Remove="data\**;logs\**;to_timeline\**;work\**" />
+    <None Remove="data\**;logs\**;to_timeline\**;work\**" />
+  </ItemGroup>
 </Project>

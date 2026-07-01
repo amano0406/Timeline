@@ -140,7 +140,7 @@ internal static class TimelineDirectRuntime
 
             try
             {
-                await PublishLocalApiAsync(root, paths with { LocalApiPort = port });
+                await PrepareLocalApiAsync(root, paths with { LocalApiPort = port });
                 StartLocalApi(root, runtime, paths with { LocalApiPort = port }, port);
                 if (await WaitForLocalApiAsync(port, TimeSpan.FromSeconds(60)))
                 {
@@ -157,20 +157,34 @@ internal static class TimelineDirectRuntime
         return 0;
     }
 
-    private static async Task PublishLocalApiAsync(string root, TimelineRuntimePaths paths)
+    private static async Task PrepareLocalApiAsync(string root, TimelineRuntimePaths paths)
     {
-        var projectPath = Path.Combine(root, "local-api", "Timeline.LocalApi.csproj");
-        if (!File.Exists(projectPath))
-        {
-            throw new FileNotFoundException("Timeline local API project was not found.", projectPath);
-        }
-
         var buildDir = paths.LocalApiBuildDirectory;
         if (Directory.Exists(buildDir))
         {
             Directory.Delete(buildDir, recursive: true);
         }
         Directory.CreateDirectory(buildDir);
+
+        var bundledRuntimeDirectory = Path.Combine(root, "local-api");
+        var bundledExecutablePath = Path.Combine(bundledRuntimeDirectory, LocalApiExecutableFileName());
+        var bundledDllPath = Path.Combine(bundledRuntimeDirectory, "Timeline.LocalApi.dll");
+        if (File.Exists(bundledExecutablePath) || File.Exists(bundledDllPath))
+        {
+            CopyDirectory(bundledRuntimeDirectory, buildDir);
+            if (!HasRunnableLocalApi(paths))
+            {
+                throw new FileNotFoundException("Timeline local API bundled runtime was not runnable.", buildDir);
+            }
+
+            return;
+        }
+
+        var projectPath = Path.Combine(root, "local-api", "Timeline.LocalApi.csproj");
+        if (!File.Exists(projectPath))
+        {
+            throw new FileNotFoundException("Timeline local API project or bundled runtime was not found.", bundledRuntimeDirectory);
+        }
 
         var result = await ProcessRunner.RunAsync(
             root,
@@ -183,7 +197,7 @@ internal static class TimelineDirectRuntime
             throw new InvalidOperationException($"Timeline local API publish failed. See {paths.LocalApiPublishLog}");
         }
 
-        if (!File.Exists(paths.LocalApiDllPath))
+        if (!HasRunnableLocalApi(paths))
         {
             throw new FileNotFoundException("Timeline local API publish output was not found.", paths.LocalApiDllPath);
         }
@@ -193,14 +207,19 @@ internal static class TimelineDirectRuntime
     {
         StopLocalApi(runtime with { LocalApiPort = port }, paths);
 
+        var executablePath = Path.Combine(paths.LocalApiBuildDirectory, LocalApiExecutableFileName());
+        var runBundledExecutable = File.Exists(executablePath);
         var startInfo = new ProcessStartInfo
         {
-            FileName = ResolveDotnetCommand(),
+            FileName = runBundledExecutable ? executablePath : ResolveDotnetCommand(),
             WorkingDirectory = root,
             UseShellExecute = false,
             CreateNoWindow = RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
         };
-        startInfo.ArgumentList.Add(paths.LocalApiDllPath);
+        if (!runBundledExecutable)
+        {
+            startInfo.ArgumentList.Add(paths.LocalApiDllPath);
+        }
         startInfo.ArgumentList.Add("--urls");
         startInfo.ArgumentList.Add($"http://127.0.0.1:{port}");
         startInfo.ArgumentList.Add($"--Timeline:WebPort={runtime.WebPort}");
@@ -507,6 +526,36 @@ internal static class TimelineDirectRuntime
         if (!File.Exists(paths.DockerConfigPath))
         {
             File.WriteAllText(paths.DockerConfigPath, "{}");
+        }
+    }
+
+    private static bool HasRunnableLocalApi(TimelineRuntimePaths paths)
+    {
+        return File.Exists(Path.Combine(paths.LocalApiBuildDirectory, LocalApiExecutableFileName())) ||
+            File.Exists(paths.LocalApiDllPath);
+    }
+
+    private static string LocalApiExecutableFileName()
+    {
+        return RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
+            ? "Timeline.LocalApi.exe"
+            : "Timeline.LocalApi";
+    }
+
+    private static void CopyDirectory(string sourceDirectory, string destinationDirectory)
+    {
+        foreach (var directory in Directory.EnumerateDirectories(sourceDirectory, "*", SearchOption.AllDirectories))
+        {
+            var relativeDirectory = Path.GetRelativePath(sourceDirectory, directory);
+            Directory.CreateDirectory(Path.Combine(destinationDirectory, relativeDirectory));
+        }
+
+        foreach (var file in Directory.EnumerateFiles(sourceDirectory, "*", SearchOption.AllDirectories))
+        {
+            var relativeFile = Path.GetRelativePath(sourceDirectory, file);
+            var destinationFile = Path.Combine(destinationDirectory, relativeFile);
+            Directory.CreateDirectory(Path.GetDirectoryName(destinationFile) ?? destinationDirectory);
+            File.Copy(file, destinationFile, overwrite: true);
         }
     }
 

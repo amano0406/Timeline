@@ -1,0 +1,62 @@
+services:
+  ollama:
+    image: ollama/ollama:latest
+    restart: unless-stopped
+    environment:
+      OLLAMA_HOST: 0.0.0.0:11434
+      OLLAMA_KEEP_ALIVE: 30m
+    ports:
+      - "127.0.0.1:${TIMELINE_OLLAMA_PORT:-11434}:11434"
+    volumes:
+      - type: volume
+        source: ollama
+        target: /root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  web:
+    image: timeline-web:${TIMELINE_IMAGE_TAG:-__TIMELINE_IMAGE_TAG__}
+    build:
+      context: .
+      dockerfile: docker/web.product.Dockerfile
+    environment:
+      ASPNETCORE_URLS: http://+:8080
+      Timeline__LocalApiBaseUrl: http://host.docker.internal:${TIMELINE_LOCAL_API_PORT:-19001}
+      Timeline__LocalApiPublicBaseUrl: http://127.0.0.1:${TIMELINE_LOCAL_API_PORT:-19001}
+      Timeline__WorkDirectory: /data/work
+      Timeline__StoreDirectory: /data/store
+      TIMELINE_WORK_DIRECTORY: /data/work
+      TIMELINE_STORE_DIRECTORY: /data/store
+    ports:
+      - "127.0.0.1:${TIMELINE_WEB_PORT:-19000}:8080"
+    volumes:
+      - type: bind
+        source: ${TIMELINE_WORK_SOURCE:-./data/work}
+        target: /data/work
+      - type: bind
+        source: ${TIMELINE_STORE_SOURCE:-./data/to_timeline}
+        target: /data/store
+
+  worker:
+    image: timeline-worker:${TIMELINE_IMAGE_TAG:-__TIMELINE_IMAGE_TAG__}
+    build:
+      context: .
+      dockerfile: docker/worker.product.Dockerfile
+    environment:
+      Timeline__WorkDirectory: /data/work
+      Timeline__StoreDirectory: /data/store
+    volumes:
+      - type: bind
+        source: ${TIMELINE_WORK_SOURCE:-./data/work}
+        target: /data/work
+      - type: bind
+        source: ${TIMELINE_STORE_SOURCE:-./data/to_timeline}
+        target: /data/store
+
+volumes:
+  ollama:
+    name: ${TIMELINE_OLLAMA_VOLUME_NAME:-timeline-ollama}
+    external: true
