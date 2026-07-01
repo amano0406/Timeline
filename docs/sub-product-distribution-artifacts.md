@@ -321,5 +321,12 @@ product has local Git changes, or when required runtime files are missing.
 
 - Publish or attach these artifacts to the corresponding sub-product GitHub
   Releases.
-- Replace the existing source-archive update execution path with a built
-  artifact execution path.
+- Confirm that Timeline's update plan reports `builtArtifactStatus=ok` after
+  release artifacts are attached.
+- Run an end-to-end update against a Timeline-managed product installation
+  location, not the development repositories under `C:\apps`.
+
+The legacy source-archive update execution path has been removed from the
+normal user-facing updater. Product management now treats source-archive
+version differences as diagnostic information and uses the built artifact
+update plan and guarded artifact apply flow for normal updates.
