@@ -262,6 +262,13 @@ TimelineLauncher update-plan
 GET /timeline/update/plan
 ```
 
+Downloaded artifacts can be validated from:
+
+```text
+TimelineLauncher update-validate --artifact <zip-path>
+GET /timeline/update/artifact/validate?path=<zip-path>
+```
+
 The plan is intentionally conservative:
 
 - developer checkouts are blocked from product updater replacement;

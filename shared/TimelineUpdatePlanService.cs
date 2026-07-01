@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.IO.Compression;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
@@ -97,6 +98,160 @@ public static class TimelineUpdatePlanService
         };
     }
 
+    public static TimelineUpdateArtifactValidationResponse ValidateArtifact(
+        string timelineRoot,
+        string artifactPath)
+    {
+        var root = Path.GetFullPath(timelineRoot);
+        var fullPath = Path.GetFullPath(artifactPath);
+        var current = TimelineVersionService.GetCurrentVersion(root);
+        var blockers = new List<TimelineUpdatePlanMessage>();
+        var warnings = new List<TimelineUpdatePlanMessage>();
+        var required = new List<TimelineUpdateArtifactEntryCheck>();
+        var forbidden = new List<TimelineUpdateArtifactEntryCheck>();
+        var version = new TimelineUpdateArtifactVersionInfo();
+        var rootPrefix = string.Empty;
+        var entryCount = 0;
+
+        if (!File.Exists(fullPath))
+        {
+            blockers.Add(new TimelineUpdatePlanMessage
+            {
+                Code = "artifact_missing",
+                Message = $"Artifact was not found: {fullPath}",
+            });
+
+            return NewArtifactValidationResponse(
+                fullPath,
+                current,
+                rootPrefix,
+                entryCount,
+                version,
+                required,
+                forbidden,
+                blockers,
+                warnings);
+        }
+
+        try
+        {
+            using var archive = ZipFile.OpenRead(fullPath);
+            var entries = archive.Entries
+                .Where(entry => !string.IsNullOrWhiteSpace(entry.FullName))
+                .Select(entry => NormalizeZipPath(entry.FullName))
+                .Where(entry => !string.IsNullOrWhiteSpace(entry))
+                .ToList();
+            entryCount = entries.Count;
+            rootPrefix = DetectArtifactRootPrefix(entries);
+
+            foreach (var check in RequiredArtifactEntries())
+            {
+                var exists = check.Kind.Equals("file", StringComparison.OrdinalIgnoreCase)
+                    ? entries.Any(entry => IsSameZipPath(entry, rootPrefix + check.Path))
+                    : entries.Any(entry => IsUnderZipPath(entry, rootPrefix + check.Path + "/"));
+                required.Add(new TimelineUpdateArtifactEntryCheck
+                {
+                    Path = check.Path,
+                    Kind = check.Kind,
+                    Exists = exists,
+                    Message = exists ? "Found." : "Missing.",
+                });
+                if (!exists)
+                {
+                    blockers.Add(new TimelineUpdatePlanMessage
+                    {
+                        Code = "required_entry_missing",
+                        Message = $"Required artifact entry is missing: {check.Path}",
+                    });
+                }
+            }
+
+            foreach (var check in ForbiddenArtifactEntries())
+            {
+                var exists = check.Kind.Equals("file", StringComparison.OrdinalIgnoreCase)
+                    ? entries.Any(entry => IsSameZipPath(entry, rootPrefix + check.Path))
+                    : entries.Any(entry => IsUnderZipPath(entry, rootPrefix + check.Path + "/"));
+                forbidden.Add(new TimelineUpdateArtifactEntryCheck
+                {
+                    Path = check.Path,
+                    Kind = check.Kind,
+                    Exists = exists,
+                    Message = exists ? "Forbidden entry was found." : "Not present.",
+                });
+                if (exists)
+                {
+                    blockers.Add(new TimelineUpdatePlanMessage
+                    {
+                        Code = "forbidden_entry_present",
+                        Message = $"Artifact contains local or developer-only content: {check.Path}",
+                    });
+                }
+            }
+
+            var versionEntryName = rootPrefix + "VERSION";
+            var versionEntry = archive.Entries.FirstOrDefault(entry =>
+                IsSameZipPath(NormalizeZipPath(entry.FullName), versionEntryName));
+            if (versionEntry is null)
+            {
+                blockers.Add(new TimelineUpdatePlanMessage
+                {
+                    Code = "version_missing",
+                    Message = "Artifact VERSION metadata is missing.",
+                });
+            }
+            else
+            {
+                version = ReadArtifactVersion(versionEntry, blockers);
+                if (!string.IsNullOrWhiteSpace(version.RuntimeIdentifier)
+                    && !string.IsNullOrWhiteSpace(current.RuntimeIdentifier)
+                    && !version.RuntimeIdentifier.Equals(current.RuntimeIdentifier, StringComparison.OrdinalIgnoreCase))
+                {
+                    blockers.Add(new TimelineUpdatePlanMessage
+                    {
+                        Code = "runtime_mismatch",
+                        Message = $"Artifact runtime {version.RuntimeIdentifier} does not match current runtime {current.RuntimeIdentifier}.",
+                    });
+                }
+
+                if (string.IsNullOrWhiteSpace(version.RuntimeIdentifier))
+                {
+                    warnings.Add(new TimelineUpdatePlanMessage
+                    {
+                        Code = "artifact_runtime_missing",
+                        Message = "Artifact VERSION metadata does not include runtimeIdentifier.",
+                    });
+                }
+            }
+        }
+        catch (InvalidDataException ex)
+        {
+            blockers.Add(new TimelineUpdatePlanMessage
+            {
+                Code = "artifact_invalid_zip",
+                Message = $"Artifact is not a readable ZIP file. {ex.Message}",
+            });
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            blockers.Add(new TimelineUpdatePlanMessage
+            {
+                Code = "artifact_unreadable",
+                Message = $"Artifact could not be read. {ex.Message}",
+            });
+        }
+
+        return NewArtifactValidationResponse(
+            fullPath,
+            current,
+            rootPrefix,
+            entryCount,
+            version,
+            required,
+            forbidden,
+            blockers,
+            warnings);
+    }
+
     private static List<TimelineUpdatePathPlan> BuildPreservePlan(string root, string dataRoot)
     {
         return
@@ -179,6 +334,146 @@ public static class TimelineUpdatePlanService
             NewStep(8, "cleanup", "Remove the rollback directory only after verification succeeds."),
         ];
     }
+
+    private static TimelineUpdateArtifactValidationResponse NewArtifactValidationResponse(
+        string artifactPath,
+        TimelineCurrentVersion current,
+        string rootPrefix,
+        int entryCount,
+        TimelineUpdateArtifactVersionInfo version,
+        List<TimelineUpdateArtifactEntryCheck> required,
+        List<TimelineUpdateArtifactEntryCheck> forbidden,
+        List<TimelineUpdatePlanMessage> blockers,
+        List<TimelineUpdatePlanMessage> warnings)
+    {
+        return new TimelineUpdateArtifactValidationResponse
+        {
+            ArtifactPath = artifactPath,
+            State = blockers.Count == 0 ? "ready" : "blocked",
+            Valid = blockers.Count == 0,
+            CurrentRuntimeIdentifier = current.RuntimeIdentifier,
+            ArtifactRootPrefix = rootPrefix,
+            EntryCount = entryCount,
+            Version = version,
+            Required = required,
+            Forbidden = forbidden,
+            Blockers = blockers,
+            Warnings = warnings,
+            GeneratedAt = DateTimeOffset.UtcNow.ToString("O", CultureInfo.InvariantCulture),
+        };
+    }
+
+    private static TimelineUpdateArtifactVersionInfo ReadArtifactVersion(
+        ZipArchiveEntry entry,
+        List<TimelineUpdatePlanMessage> blockers)
+    {
+        try
+        {
+            using var stream = entry.Open();
+            using var reader = new StreamReader(stream);
+            var text = reader.ReadToEnd();
+            var payload = JsonNode.Parse(text) as JsonObject;
+            if (payload is null)
+            {
+                blockers.Add(new TimelineUpdatePlanMessage
+                {
+                    Code = "version_invalid",
+                    Message = "Artifact VERSION metadata is not a JSON object.",
+                });
+                return new TimelineUpdateArtifactVersionInfo();
+            }
+
+            return new TimelineUpdateArtifactVersionInfo
+            {
+                ProductId = GetString(payload, "productId"),
+                Version = GetString(payload, "version"),
+                Commit = GetString(payload, "commit"),
+                Channel = GetString(payload, "channel"),
+                RuntimeIdentifier = GetString(payload, "runtimeIdentifier"),
+                ContainerRuntimeIdentifier = GetString(payload, "containerRuntimeIdentifier"),
+                CreatedAt = GetString(payload, "createdAt"),
+            };
+        }
+        catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
+        {
+            blockers.Add(new TimelineUpdatePlanMessage
+            {
+                Code = "version_unreadable",
+                Message = $"Artifact VERSION metadata could not be read. {ex.Message}",
+            });
+            return new TimelineUpdateArtifactVersionInfo();
+        }
+    }
+
+    private static List<TimelineUpdateArtifactEntryCheck> RequiredArtifactEntries()
+    {
+        return
+        [
+            NewArtifactEntryCheck("launcher", "directory"),
+            NewArtifactEntryCheck("launcher-tray", "directory"),
+            NewArtifactEntryCheck("local-api", "directory"),
+            NewArtifactEntryCheck("web", "directory"),
+            NewArtifactEntryCheck("worker", "directory"),
+            NewArtifactEntryCheck("docker-compose.yml", "file"),
+            NewArtifactEntryCheck("VERSION", "file"),
+        ];
+    }
+
+    private static List<TimelineUpdateArtifactEntryCheck> ForbiddenArtifactEntries()
+    {
+        return
+        [
+            NewArtifactEntryCheck(".git", "directory"),
+            NewArtifactEntryCheck("data", "directory"),
+            NewArtifactEntryCheck("docs-temp", "directory"),
+            NewArtifactEntryCheck("scripts-temp", "directory"),
+            NewArtifactEntryCheck("source-downloads", "directory"),
+            NewArtifactEntryCheck("release", "directory"),
+            NewArtifactEntryCheck("settings.json", "file"),
+        ];
+    }
+
+    private static TimelineUpdateArtifactEntryCheck NewArtifactEntryCheck(string path, string kind)
+        => new()
+        {
+            Path = path,
+            Kind = kind,
+        };
+
+    private static string DetectArtifactRootPrefix(IReadOnlyList<string> entries)
+    {
+        var required = new[] { "launcher/", "local-api/", "web/" };
+        if (required.All(prefix => entries.Any(entry => IsUnderZipPath(entry, prefix))))
+        {
+            return string.Empty;
+        }
+
+        var firstSegments = entries
+            .Select(entry => entry.Split('/', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? string.Empty)
+            .Where(segment => !string.IsNullOrWhiteSpace(segment))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        foreach (var segment in firstSegments)
+        {
+            var prefix = segment + "/";
+            if (required.All(requiredPath => entries.Any(entry => IsUnderZipPath(entry, prefix + requiredPath))))
+            {
+                return prefix;
+            }
+        }
+
+        return string.Empty;
+    }
+
+    private static string NormalizeZipPath(string path)
+        => path.Replace('\\', '/').TrimStart('/');
+
+    private static bool IsSameZipPath(string left, string right)
+        => NormalizeZipPath(left).TrimEnd('/').Equals(NormalizeZipPath(right).TrimEnd('/'), StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsUnderZipPath(string entry, string prefix)
+        => NormalizeZipPath(entry).StartsWith(NormalizeZipPath(prefix), StringComparison.OrdinalIgnoreCase);
 
     private static string LatestArtifactStatusMessage(string latestVersionStatus, string runtimeIdentifier)
     {
@@ -375,6 +670,84 @@ public sealed class TimelineUpdatePlanMessage
 {
     [JsonPropertyName("code")]
     public string Code { get; set; } = "";
+
+    [JsonPropertyName("message")]
+    public string Message { get; set; } = "";
+}
+
+public sealed class TimelineUpdateArtifactValidationResponse
+{
+    [JsonPropertyName("artifactPath")]
+    public string ArtifactPath { get; set; } = "";
+
+    [JsonPropertyName("state")]
+    public string State { get; set; } = "";
+
+    [JsonPropertyName("valid")]
+    public bool Valid { get; set; }
+
+    [JsonPropertyName("currentRuntimeIdentifier")]
+    public string CurrentRuntimeIdentifier { get; set; } = "";
+
+    [JsonPropertyName("artifactRootPrefix")]
+    public string ArtifactRootPrefix { get; set; } = "";
+
+    [JsonPropertyName("entryCount")]
+    public int EntryCount { get; set; }
+
+    [JsonPropertyName("version")]
+    public TimelineUpdateArtifactVersionInfo Version { get; set; } = new();
+
+    [JsonPropertyName("required")]
+    public List<TimelineUpdateArtifactEntryCheck> Required { get; set; } = [];
+
+    [JsonPropertyName("forbidden")]
+    public List<TimelineUpdateArtifactEntryCheck> Forbidden { get; set; } = [];
+
+    [JsonPropertyName("blockers")]
+    public List<TimelineUpdatePlanMessage> Blockers { get; set; } = [];
+
+    [JsonPropertyName("warnings")]
+    public List<TimelineUpdatePlanMessage> Warnings { get; set; } = [];
+
+    [JsonPropertyName("generatedAt")]
+    public string GeneratedAt { get; set; } = "";
+}
+
+public sealed class TimelineUpdateArtifactVersionInfo
+{
+    [JsonPropertyName("productId")]
+    public string ProductId { get; set; } = "";
+
+    [JsonPropertyName("version")]
+    public string Version { get; set; } = "";
+
+    [JsonPropertyName("commit")]
+    public string Commit { get; set; } = "";
+
+    [JsonPropertyName("channel")]
+    public string Channel { get; set; } = "";
+
+    [JsonPropertyName("runtimeIdentifier")]
+    public string RuntimeIdentifier { get; set; } = "";
+
+    [JsonPropertyName("containerRuntimeIdentifier")]
+    public string ContainerRuntimeIdentifier { get; set; } = "";
+
+    [JsonPropertyName("createdAt")]
+    public string CreatedAt { get; set; } = "";
+}
+
+public sealed class TimelineUpdateArtifactEntryCheck
+{
+    [JsonPropertyName("path")]
+    public string Path { get; set; } = "";
+
+    [JsonPropertyName("kind")]
+    public string Kind { get; set; } = "";
+
+    [JsonPropertyName("exists")]
+    public bool Exists { get; set; }
 
     [JsonPropertyName("message")]
     public string Message { get; set; } = "";

@@ -18,6 +18,7 @@ try
         "verify-setup" or "verify" => await VerifySetup(root, settings, options.JsonOutput),
         "version" => await ShowVersion(root, options.JsonOutput),
         "update-plan" => await ShowUpdatePlan(root, options.JsonOutput),
+        "update-validate" => ShowUpdateArtifactValidation(root, options.ArtifactPath, options.JsonOutput),
         "start" => await RunStart(root, settings, openBrowser: !options.NoOpen),
         "stop" => await RunStop(root, settings),
         "open" => await OpenOrStart(root, settings),
@@ -405,6 +406,57 @@ static void PrintUpdateMessages(string title, IReadOnlyList<TimelineUpdatePlanMe
     Console.WriteLine();
 }
 
+static int ShowUpdateArtifactValidation(string root, string? artifactPath, bool jsonOutput)
+{
+    if (string.IsNullOrWhiteSpace(artifactPath))
+    {
+        Console.Error.WriteLine("Update artifact path is required. Use --artifact <zip-path>.");
+        return 2;
+    }
+
+    var result = TimelineUpdatePlanService.ValidateArtifact(root, artifactPath);
+    if (jsonOutput)
+    {
+        Console.WriteLine(JsonSerializer.Serialize(
+            result,
+            new JsonSerializerOptions
+            {
+                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+                WriteIndented = true,
+            }));
+    }
+    else
+    {
+        Console.WriteLine("Timeline update artifact validation");
+        Console.WriteLine($"  state: {result.State}");
+        Console.WriteLine($"  valid: {(result.Valid ? "yes" : "no")}");
+        Console.WriteLine($"  artifact: {result.ArtifactPath}");
+        Console.WriteLine($"  current runtime: {EmptyText(result.CurrentRuntimeIdentifier)}");
+        Console.WriteLine($"  artifact runtime: {EmptyText(result.Version.RuntimeIdentifier)}");
+        Console.WriteLine($"  artifact version: {EmptyText(result.Version.Version)}");
+        Console.WriteLine($"  root prefix: {EmptyText(result.ArtifactRootPrefix)}");
+        Console.WriteLine($"  entries: {result.EntryCount}");
+        Console.WriteLine();
+        PrintUpdateMessages("Blockers", result.Blockers);
+        PrintUpdateMessages("Warnings", result.Warnings);
+
+        Console.WriteLine("Required entries:");
+        foreach (var row in result.Required)
+        {
+            Console.WriteLine($"  - {(row.Exists ? "OK" : "NG")} {row.Path}");
+        }
+
+        Console.WriteLine();
+        Console.WriteLine("Forbidden entries:");
+        foreach (var row in result.Forbidden)
+        {
+            Console.WriteLine($"  - {(row.Exists ? "NG" : "OK")} {row.Path}");
+        }
+    }
+
+    return result.Valid ? 0 : 1;
+}
+
 static async Task<int> RunStart(string root, TimelineSettings settings, bool openBrowser)
 {
     Console.WriteLine("Starting Timeline through the C# launcher runtime...");
@@ -462,7 +514,7 @@ static int ShowHelp()
     Console.WriteLine("Timeline Launcher");
     Console.WriteLine();
     Console.WriteLine("Usage:");
-    Console.WriteLine("  TimelineLauncher [open|status|preflight|verify-setup|version|update-plan|start|stop|shortcut-status|shortcut-install|shortcut-remove|help] [--no-open] [--json]");
+    Console.WriteLine("  TimelineLauncher [open|status|preflight|verify-setup|version|update-plan|update-validate|start|stop|shortcut-status|shortcut-install|shortcut-remove|help] [--no-open] [--json]");
     Console.WriteLine();
     Console.WriteLine("Commands:");
     Console.WriteLine("  open    Open Timeline. Starts it first when needed.");
@@ -471,6 +523,7 @@ static int ShowHelp()
     Console.WriteLine("  verify-setup  Verify that Timeline is usable after setup. Use --json for Jira evidence.");
     Console.WriteLine("  version  Show current Timeline version and latest built artifact status.");
     Console.WriteLine("  update-plan  Show the safe Timeline body update plan. Use --json for tooling.");
+    Console.WriteLine("  update-validate  Validate a built product artifact ZIP. Use --artifact <path>.");
     Console.WriteLine("  start   Start Timeline.");
     Console.WriteLine("  stop    Stop Timeline.");
     Console.WriteLine("  shortcut-status   Show the OS app entry status.");
@@ -1202,11 +1255,12 @@ static void OpenUrl(string url)
     }
 }
 
-internal sealed record LauncherOptions(string? Root, string Command, bool NoOpen, bool JsonOutput)
+internal sealed record LauncherOptions(string? Root, string Command, bool NoOpen, bool JsonOutput, string? ArtifactPath)
 {
     public static LauncherOptions Parse(string[] args)
     {
         string? root = null;
+        string? artifactPath = null;
         var command = "open";
         var noOpen = false;
         var jsonOutput = false;
@@ -1238,10 +1292,28 @@ internal sealed record LauncherOptions(string? Root, string Command, bool NoOpen
                 continue;
             }
 
+            if ((arg == "--artifact" || arg == "--artifact-path") && index + 1 < args.Length)
+            {
+                artifactPath = args[++index];
+                continue;
+            }
+
+            if (arg.StartsWith("--artifact=", StringComparison.OrdinalIgnoreCase))
+            {
+                artifactPath = arg["--artifact=".Length..];
+                continue;
+            }
+
+            if (arg.StartsWith("--artifact-path=", StringComparison.OrdinalIgnoreCase))
+            {
+                artifactPath = arg["--artifact-path=".Length..];
+                continue;
+            }
+
             command = arg.Trim().ToLowerInvariant();
         }
 
-        return new LauncherOptions(root, command, noOpen, jsonOutput);
+        return new LauncherOptions(root, command, noOpen, jsonOutput, artifactPath);
     }
 }
 

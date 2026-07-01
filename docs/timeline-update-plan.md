@@ -27,10 +27,18 @@ dotnet run --project .\launcher\Timeline.Launcher.csproj -- update-plan
 dotnet run --project .\launcher\Timeline.Launcher.csproj -- update-plan --json
 ```
 
+Downloaded artifacts can be validated without applying an update:
+
+```powershell
+dotnet run --project .\launcher\Timeline.Launcher.csproj -- update-validate --artifact <zip-path>
+dotnet run --project .\launcher\Timeline.Launcher.csproj -- update-validate --artifact <zip-path> --json
+```
+
 ## Local API
 
 ```text
 GET http://127.0.0.1:19001/timeline/update/plan
+GET http://127.0.0.1:19001/timeline/update/artifact/validate?path=<zip-path>
 ```
 
 The Local API endpoint returns the same plan model as the Launcher command.
@@ -96,3 +104,30 @@ The update plan treats the following as replaceable product artifact content:
 - It does not update sub-products.
 - It does not treat GitHub source archives as product update targets.
 - It does not bypass installer work tracked separately by `KAN-41`.
+
+## Artifact validation
+
+The artifact validation step checks the ZIP before any replacement is allowed.
+
+Required entries:
+
+- `launcher/`
+- `launcher-tray/`
+- `local-api/`
+- `web/`
+- `worker/`
+- `docker-compose.yml`
+- `VERSION`
+
+Forbidden entries:
+
+- `.git/`
+- `data/`
+- `docs-temp/`
+- `scripts-temp/`
+- `source-downloads/`
+- `release/`
+- `settings.json`
+
+The validator also reads `VERSION` and blocks a runtime mismatch, for example
+using a macOS artifact on Windows.

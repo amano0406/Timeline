@@ -108,6 +108,21 @@ app.MapGet("/timeline/update/plan", async (
     return TypedResults.Json(await TimelineUpdatePlanService.GetPlanAsync(options.TimelineProductPath, cancellationToken));
 });
 
+app.MapGet("/timeline/update/artifact/validate", (
+    string? path,
+    TimelineLocalApiOptions options) =>
+{
+    var artifactPath = ConvertTimelineText(path);
+    if (string.IsNullOrWhiteSpace(artifactPath))
+    {
+        return Results.Json(
+            new { message = "Artifact path is required.", ok = false },
+            statusCode: StatusCodes.Status400BadRequest);
+    }
+
+    return Results.Json(TimelineUpdatePlanService.ValidateArtifact(options.TimelineProductPath, artifactPath));
+});
+
 app.MapPost("/timeline/runtime/stop", (TimelineRuntimeControlService runtime) =>
 {
     return TypedResults.Json(runtime.StopTimeline());

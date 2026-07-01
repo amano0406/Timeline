@@ -78,6 +78,12 @@ Structured output is available for tooling and Jira evidence:
 dotnet run --project .\launcher\Timeline.Launcher.csproj -- update-plan --json
 ```
 
+Validate a downloaded built product artifact before any update is applied:
+
+```powershell
+dotnet run --project .\launcher\Timeline.Launcher.csproj -- update-validate --artifact .\release\Timeline-win-x64-0.0.0-kan45.zip
+```
+
 Start without opening a browser tab:
 
 ```powershell
