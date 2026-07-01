@@ -94,6 +94,32 @@ The validator checks:
 
 Validation does not stop products, modify files, or apply an update.
 
+## Built artifact application plan
+
+Before staging or applying an artifact, Timeline can ask whether the current
+machine is allowed to apply it:
+
+```text
+GET http://127.0.0.1:19001/products/runtime/<productId>/update-artifact/apply-plan?path=<zip-path>
+```
+
+The apply-plan endpoint is read-only. It checks the artifact and the installed
+product state, then returns `state=ready` or `state=blocked`.
+
+The plan includes:
+
+- artifact validation result;
+- whether the product is installed;
+- whether runtime files were found;
+- whether the product path is under Timeline-managed product locations;
+- whether the product path is safe to replace;
+- whether the product Git worktree is clean;
+- preserved paths and replacement target;
+- the guarded update steps that would run after explicit confirmation.
+
+This endpoint exists so the UI and Launcher can show the user why an update can
+or cannot start before calling the destructive `apply` endpoint.
+
 ## Built artifact staging
 
 After validation, a local artifact can be staged before replacement:

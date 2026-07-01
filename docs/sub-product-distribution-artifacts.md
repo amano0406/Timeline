@@ -163,6 +163,17 @@ The builder was also verified in matrix mode. It created six artifacts and a
 manifest were accepted by the Local API validation endpoint with
 `state=ready`, `valid=true`, and `requiredEntries=2/2`.
 
+Timeline also exposes a read-only apply plan endpoint:
+
+```text
+GET /products/runtime/<productId>/update-artifact/apply-plan?path=<zip-path>
+```
+
+This endpoint is the bridge from "artifact is structurally valid" to "this
+machine can safely apply this artifact now". It blocks application when the
+current product path is not under Timeline-managed product locations, when the
+product has local Git changes, or when required runtime files are missing.
+
 ## Remaining work
 
 - Publish or attach these artifacts to the corresponding sub-product GitHub

@@ -1684,6 +1684,111 @@ public sealed class TimelineProductRuntimeService
         };
     }
 
+    public async Task<ProductUpdateArtifactApplyPlanResponse> GetProductUpdateArtifactApplyPlanAsync(
+        string productId,
+        string artifactPath,
+        CancellationToken cancellationToken)
+    {
+        var definition = GetProductDefinition(productId);
+        var status = await ConvertRuntimeStatusAsync(definition, cancellationToken);
+        var productPath = Path.GetFullPath(definition.ProductPath);
+        var blockers = new List<ProductUpdatePlanMessageResponse>();
+        var warnings = new List<ProductUpdatePlanMessageResponse>();
+
+        if (!status.ProductFound)
+        {
+            blockers.Add(NewProductUpdateMessage(
+                "product_not_installed",
+                "Product is not installed."));
+        }
+
+        if (!status.ComposeFound)
+        {
+            blockers.Add(NewProductUpdateMessage(
+                "product_incomplete",
+                "Product compose/runtime files were not found."));
+        }
+
+        var appManagedByTimeline = IsProductAppManagedByTimeline(productPath);
+        if (!appManagedByTimeline)
+        {
+            blockers.Add(NewProductUpdateMessage(
+                "app_not_managed_by_timeline",
+                "Product app path is outside Timeline-managed product locations."));
+        }
+
+        var productPathDeleteSafe = false;
+        if (status.ProductFound)
+        {
+            try
+            {
+                AssertProductPathDeleteSafe(definition.Id, productPath);
+                productPathDeleteSafe = true;
+            }
+            catch (Exception ex)
+            {
+                blockers.Add(NewProductUpdateMessage(
+                    "product_path_not_safe",
+                    ex.Message));
+            }
+        }
+
+        var gitWorktreeClean = false;
+        var gitState = "not_checked";
+        if (status.ProductFound)
+        {
+            try
+            {
+                gitWorktreeClean = await TestProductGitWorktreeCleanAsync(productPath, cancellationToken);
+                gitState = gitWorktreeClean ? "clean" : "dirty";
+                if (!gitWorktreeClean)
+                {
+                    blockers.Add(NewProductUpdateMessage(
+                        "git_worktree_dirty",
+                        "Product has local Git changes. Commit or discard them before updating."));
+                }
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+            {
+                gitState = "unavailable";
+                blockers.Add(NewProductUpdateMessage(
+                    "git_state_unavailable",
+                    ex.Message));
+            }
+        }
+
+        var validation = ValidateProductUpdateArtifact(productId, artifactPath);
+        blockers.AddRange(validation.Blockers.Select(message => NewProductUpdateMessage(message.Code, message.Message)));
+        warnings.AddRange(validation.Warnings.Select(message => NewProductUpdateMessage(message.Code, message.Message)));
+
+        var canApply = blockers.Count == 0 && validation.Valid;
+        return new ProductUpdateArtifactApplyPlanResponse
+        {
+            ProductId = definition.Id,
+            DisplayName = definition.DisplayName,
+            ArtifactPath = validation.ArtifactPath,
+            State = canApply ? "ready" : "blocked",
+            CanApply = canApply,
+            RequiresConfirmation = true,
+            ConfirmationParameter = "confirm",
+            ProductPath = productPath,
+            Running = status.Running,
+            ProductFound = status.ProductFound,
+            ComposeFound = status.ComposeFound,
+            AppManagedByTimeline = appManagedByTimeline,
+            ProductPathDeleteSafe = productPathDeleteSafe,
+            GitWorktreeClean = gitWorktreeClean,
+            GitState = gitState,
+            Validation = validation,
+            Preserve = BuildProductUpdatePreservePlan(definition),
+            Replace = BuildProductUpdateReplacePlan(productPath),
+            Steps = BuildProductUpdateSteps(),
+            Blockers = blockers,
+            Warnings = warnings,
+            GeneratedAt = DateTimeOffset.UtcNow.ToString("O"),
+        };
+    }
+
     private static void ExtractProductUpdateArtifact(
         string artifactPath,
         string artifactRootPrefix,
@@ -4733,6 +4838,75 @@ public sealed class ProductUpdateArtifactStageResponse
 
     [JsonPropertyName("stagedAt")]
     public string StagedAt { get; set; } = "";
+}
+
+public sealed class ProductUpdateArtifactApplyPlanResponse
+{
+    [JsonPropertyName("productId")]
+    public string ProductId { get; set; } = "";
+
+    [JsonPropertyName("displayName")]
+    public string DisplayName { get; set; } = "";
+
+    [JsonPropertyName("artifactPath")]
+    public string ArtifactPath { get; set; } = "";
+
+    [JsonPropertyName("state")]
+    public string State { get; set; } = "";
+
+    [JsonPropertyName("canApply")]
+    public bool CanApply { get; set; }
+
+    [JsonPropertyName("requiresConfirmation")]
+    public bool RequiresConfirmation { get; set; }
+
+    [JsonPropertyName("confirmationParameter")]
+    public string ConfirmationParameter { get; set; } = "";
+
+    [JsonPropertyName("productPath")]
+    public string ProductPath { get; set; } = "";
+
+    [JsonPropertyName("running")]
+    public bool Running { get; set; }
+
+    [JsonPropertyName("productFound")]
+    public bool ProductFound { get; set; }
+
+    [JsonPropertyName("composeFound")]
+    public bool ComposeFound { get; set; }
+
+    [JsonPropertyName("appManagedByTimeline")]
+    public bool AppManagedByTimeline { get; set; }
+
+    [JsonPropertyName("productPathDeleteSafe")]
+    public bool ProductPathDeleteSafe { get; set; }
+
+    [JsonPropertyName("gitWorktreeClean")]
+    public bool GitWorktreeClean { get; set; }
+
+    [JsonPropertyName("gitState")]
+    public string GitState { get; set; } = "";
+
+    [JsonPropertyName("validation")]
+    public ProductUpdateArtifactValidationResponse Validation { get; set; } = new();
+
+    [JsonPropertyName("preserve")]
+    public List<ProductUpdatePathPlanResponse> Preserve { get; set; } = [];
+
+    [JsonPropertyName("replace")]
+    public List<ProductUpdatePathPlanResponse> Replace { get; set; } = [];
+
+    [JsonPropertyName("steps")]
+    public List<ProductUpdateStepPlanResponse> Steps { get; set; } = [];
+
+    [JsonPropertyName("blockers")]
+    public List<ProductUpdatePlanMessageResponse> Blockers { get; set; } = [];
+
+    [JsonPropertyName("warnings")]
+    public List<ProductUpdatePlanMessageResponse> Warnings { get; set; } = [];
+
+    [JsonPropertyName("generatedAt")]
+    public string GeneratedAt { get; set; } = "";
 }
 
 public sealed class ProductUpdateArtifactEntryCheckResponse

@@ -1473,6 +1473,35 @@ app.MapGet("/products/runtime/{productId}/update-artifact/validate", (
     }
 });
 
+app.MapGet("/products/runtime/{productId}/update-artifact/apply-plan", async (
+    string productId,
+    string? path,
+    TimelineProductRuntimeService runtime,
+    CancellationToken cancellationToken) =>
+{
+    try
+    {
+        var artifactPath = ConvertTimelineText(path);
+        if (string.IsNullOrWhiteSpace(artifactPath))
+        {
+            return Results.Json(
+                new { message = "Artifact path is required.", ok = false },
+                statusCode: StatusCodes.Status400BadRequest);
+        }
+
+        return Results.Json(await runtime.GetProductUpdateArtifactApplyPlanAsync(
+            productId,
+            artifactPath,
+            cancellationToken));
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(
+            new { message = ex.Message, ok = false },
+            statusCode: StatusCodes.Status500InternalServerError);
+    }
+});
+
 app.MapPost("/products/runtime/{productId}/update-artifact/stage", async (
     HttpContext context,
     string productId,
