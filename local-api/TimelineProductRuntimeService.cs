@@ -369,7 +369,7 @@ public sealed class TimelineProductRuntimeService
         {
             warnings.Add(NewProductUpdateMessage(
                 "legacy_source_archive_mode",
-                "Current implementation updates this sub-product from a GitHub source archive. KAN-58 should move user-facing updates to built product artifacts."));
+                "GitHub source archive metadata is transitional. Normal user-facing updates require a built product artifact."));
         }
         else if (string.IsNullOrWhiteSpace(definition.SourceType))
         {
@@ -434,16 +434,22 @@ public sealed class TimelineProductRuntimeService
         var builtArtifactUpdateAvailable = builtArtifact is not null
             && builtArtifact.Status.Equals("ok", StringComparison.OrdinalIgnoreCase)
             && (string.IsNullOrEmpty(installedVersion) || CompareVersionText(installedVersion, builtArtifact.LatestVersion) < 0);
-        var canUseCurrentUpdater = blockers.Count == 0
-            && updateAvailable
-            && IsGitHubSourceArchive(definition.SourceType);
+        var sourceArchiveUpdateAvailable = updateAvailable && IsGitHubSourceArchive(definition.SourceType);
+        if (sourceArchiveUpdateAvailable && !builtArtifactUpdateAvailable)
+        {
+            warnings.Add(NewProductUpdateMessage(
+                "source_archive_update_demoted",
+                "A newer GitHub source archive exists, but it is not the normal user-facing update path. Attach a matching built product artifact to the GitHub Release first."));
+        }
+
+        var canUseCurrentUpdater = false;
         var canUseBuiltArtifactUpdater = blockers.Count == 0 && builtArtifactUpdateAvailable;
         var state = blockers.Count > 0
             ? "blocked"
             : canUseBuiltArtifactUpdater
                 ? "built_artifact_ready"
-                : updateAvailable
-                ? "legacy_ready"
+                : sourceArchiveUpdateAvailable
+                ? "built_artifact_required"
                 : "up_to_date";
 
         return new ProductUpdatePlanResponse
@@ -454,13 +460,12 @@ public sealed class TimelineProductRuntimeService
             ProductPath = productPath,
             SourceType = definition.SourceType,
             SourceUrl = definition.SourceUrl,
-            DistributionMode = IsGitHubSourceArchive(definition.SourceType)
-                ? "legacy_source_archive"
-                : "unknown",
+            DistributionMode = ResolveProductDistributionMode(definition, builtArtifact),
             InstalledVersion = installedVersion,
             LatestVersion = source?.LatestVersion ?? string.Empty,
             ArchiveUrl = source?.ArchiveUrl ?? string.Empty,
             UpdateAvailable = updateAvailable,
+            SourceArchiveUpdateAvailable = sourceArchiveUpdateAvailable,
             BuiltArtifactStatus = builtArtifact?.Status ?? string.Empty,
             BuiltArtifactMessage = builtArtifact?.Message ?? string.Empty,
             BuiltArtifactVersion = builtArtifact?.LatestVersion ?? string.Empty,
@@ -1915,9 +1920,33 @@ public sealed class TimelineProductRuntimeService
         return string.IsNullOrWhiteSpace(value) ? "resource" : value;
     }
 
-    private static bool IsGitHubSourceArchive(string sourceType)
+    private static bool IsGitHubSourceArchive(string? sourceType)
     {
+        if (string.IsNullOrWhiteSpace(sourceType))
+        {
+            return false;
+        }
+
         return sourceType.Equals("github-source-archive", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string ResolveProductDistributionMode(
+        ProductRuntimeDefinition definition,
+        ProductReleaseArtifactInfo? builtArtifact)
+    {
+        if (builtArtifact is not null && builtArtifact.Status.Equals("ok", StringComparison.OrdinalIgnoreCase))
+        {
+            return "built_product_artifact";
+        }
+
+        if (IsGitHubSourceArchive(definition.SourceType))
+        {
+            return builtArtifact is null
+                ? "legacy_source_archive_demoted"
+                : "built_product_artifact_missing";
+        }
+
+        return string.IsNullOrWhiteSpace(definition.SourceType) ? "unknown" : "unsupported";
     }
 
     private static string ToProductArtifactRuntimeName(string runtimeIdentifier)
@@ -4628,6 +4657,9 @@ public sealed class ProductUpdatePlanResponse
 
     [JsonPropertyName("updateAvailable")]
     public bool UpdateAvailable { get; set; }
+
+    [JsonPropertyName("sourceArchiveUpdateAvailable")]
+    public bool SourceArchiveUpdateAvailable { get; set; }
 
     [JsonPropertyName("builtArtifactStatus")]
     public string BuiltArtifactStatus { get; set; } = "";

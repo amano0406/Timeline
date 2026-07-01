@@ -1,6 +1,7 @@
 # Sub-product update plan
 
-This document tracks the safe sub-product update direction for `KAN-58`.
+This document tracks the safe sub-product update direction for `KAN-40`,
+`KAN-60`, and `KAN-61`.
 
 ## Purpose
 
@@ -39,9 +40,20 @@ It returns:
 
 | Mode | Meaning | User-facing safety |
 | --- | --- | --- |
-| `legacy_source_archive` | Update uses GitHub tag source archive ZIP. | Transitional only. |
 | `built_product_artifact` | Update uses a built runtime artifact. | Target direction. |
+| `built_product_artifact_missing` | Product metadata still points at a GitHub repository, but a matching runtime artifact is not available from the Release. | Block normal update until a built artifact is attached. |
+| `legacy_source_archive_demoted` | Only legacy source archive metadata is available. | Informational only; not a normal user-facing updater. |
 | `unknown` | Product source type is missing or not recognized. | Block or warn. |
+| `unsupported` | Product source type is configured but does not have a supported update flow. | Block normal update until a supported distribution path is defined. |
+
+## Update plan states
+
+| State | Meaning | User-facing action |
+| --- | --- | --- |
+| `up_to_date` | No newer supported update is available. | No action needed. |
+| `built_artifact_ready` | A newer built product artifact is available and the product can use the built updater. | The UI may offer an update. |
+| `built_artifact_required` | A newer GitHub source archive exists, but no matching built artifact is available. | Do not offer a normal update; publish a built artifact first. |
+| `blocked` | The product path, metadata, or runtime state is unsafe for automatic update planning. | Show blockers and ask the user to resolve them. |
 
 ## Built artifact discovery
 
@@ -68,8 +80,10 @@ The runtime name follows the Timeline artifact convention:
 - other .NET runtime identifiers as-is
 
 If no Release or matching asset exists, the endpoint reports that as a warning.
-It does not fall back silently to a source archive for the future user-facing
-update path.
+It does not fall back silently to a source archive for the normal user-facing
+update path. `sourceArchiveUpdateAvailable=true` may still be returned as
+diagnostic information, but `canUseCurrentUpdater=false` keeps the old source
+archive updater out of the normal update flow.
 
 ## Built artifact validation
 
@@ -221,7 +235,8 @@ present in the Local API. The remaining `KAN-40` / `KAN-60` gaps are:
 - release-hosted runtime artifacts for each sub-product;
 - update-plan confirmation that each product reports `builtArtifactStatus=ok`;
 - a user-facing UI flow that prefers built artifacts over source archives;
-- explicit demotion of source archive updates from the normal user path.
+- release publication and end-to-end update-plan verification after artifacts
+  are attached.
 
 See also:
 
