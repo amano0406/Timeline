@@ -20,7 +20,8 @@ const timelineDirectoryPicker = {
     }
 
     if (!response.ok) {
-      throw new Error("ディレクトリ選択を起動できませんでした。");
+      const message = await this.readErrorMessage(response);
+      return this.promptForPath("ディレクトリのパスを入力してください。", initialPath, message);
     }
 
     const payload = await response.json();
@@ -51,7 +52,8 @@ const timelineDirectoryPicker = {
     }
 
     if (!response.ok) {
-      throw new Error("ファイル選択を起動できませんでした。");
+      const message = await this.readErrorMessage(response);
+      return this.promptForPath("ファイルのパスを入力してください。", initialPath, message);
     }
 
     const payload = await response.json();
@@ -62,6 +64,29 @@ const timelineDirectoryPicker = {
       throw new Error("ファイルを選択できませんでした。");
     }
     return payload.path;
+  },
+
+  async readErrorMessage(response) {
+    try {
+      const payload = await response.json();
+      if (payload && payload.message) {
+        return payload.message;
+      }
+    } catch {
+      // Fall through to the generic fallback below.
+    }
+    return "選択ダイアログを起動できませんでした。";
+  },
+
+  promptForPath(label, initialPath, reason) {
+    const message = reason ? `${reason}\n\n${label}` : label;
+    const value = window.prompt(message, initialPath || "");
+    if (value === null) {
+      return null;
+    }
+
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : null;
   },
 };
 
