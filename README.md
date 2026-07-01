@@ -84,6 +84,12 @@ Validate a downloaded built product artifact before any update is applied:
 dotnet run --project .\launcher\Timeline.Launcher.csproj -- update-validate --artifact .\release\Timeline-win-x64-0.0.0-kan45.zip
 ```
 
+Inspect rollback and recovery policy before applying a future update:
+
+```powershell
+dotnet run --project .\launcher\Timeline.Launcher.csproj -- update-recovery-plan
+```
+
 Start without opening a browser tab:
 
 ```powershell

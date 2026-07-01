@@ -34,10 +34,19 @@ dotnet run --project .\launcher\Timeline.Launcher.csproj -- update-validate --ar
 dotnet run --project .\launcher\Timeline.Launcher.csproj -- update-validate --artifact <zip-path> --json
 ```
 
+Recovery policy can also be inspected without applying an update:
+
+```powershell
+dotnet run --project .\launcher\Timeline.Launcher.csproj -- update-recovery-plan
+dotnet run --project .\launcher\Timeline.Launcher.csproj -- update-recovery-plan --artifact <zip-path> --json
+```
+
 ## Local API
 
 ```text
 GET http://127.0.0.1:19001/timeline/update/plan
+GET http://127.0.0.1:19001/timeline/update/recovery/plan
+GET http://127.0.0.1:19001/timeline/update/recovery/plan?path=<zip-path>
 GET http://127.0.0.1:19001/timeline/update/artifact/validate?path=<zip-path>
 ```
 
@@ -96,6 +105,58 @@ The update plan treats the following as replaceable product artifact content:
 6. Start Timeline through the Launcher.
 7. Run setup verification and health checks.
 8. Remove the rollback directory only after verification succeeds.
+
+## Recovery policy
+
+`KAN-59` adds a read-only recovery plan. It does not roll back files yet. Its
+purpose is to make the future updater refuse unsafe updates and explain what
+will happen if a phase fails.
+
+The recovery plan defines:
+
+- the staging root for a downloaded artifact;
+- the rollback root for the current application files;
+- the operation log path;
+- every replaceable application item that must be backed up;
+- the paths that must never be deleted by recovery;
+- the failed phase and next action mapping.
+
+Rollback data is planned under:
+
+```text
+<dataRoot>/backups/timeline-updates/<operationId>/
+```
+
+Downloaded and extracted update files are planned under:
+
+```text
+<dataRoot>/work/timeline-updates/<operationId>/
+```
+
+The data root is used because it is explicitly preserved across product
+updates. The rollback directory must not be inside application folders that are
+being replaced.
+
+## Failure phases
+
+| Phase | Local state | Recovery policy |
+| --- | --- | --- |
+| `download` | No local application files changed. | Discard partial download and retry. |
+| `validate` | No local application files changed. | Reject the artifact and keep the current installation. |
+| `stop` | Runtime may be stopped, but files are unchanged. | Start Timeline again through the Launcher. |
+| `backup` | Replacement has not started. | Keep partial backup for diagnostics and retry only after backup can complete. |
+| `replace` | Application files may be partially replaced. | Restore backed-up application files before startup. |
+| `start` | New files are installed but startup failed. | Keep backup, show diagnostics, allow rollback. |
+| `verify` | Startup passed but checks failed. | Keep backup, allow retry or rollback. |
+| `cleanup` | Verification passed. | Keep backup and retry cleanup later. |
+
+Recovery must not delete:
+
+- `settings.json`;
+- user input files;
+- generated Timeline data;
+- sub-product directories;
+- Docker volumes, including shared Ollama data.
 
 ## Non-goals for the first implementation
 

@@ -18,6 +18,7 @@ try
         "verify-setup" or "verify" => await VerifySetup(root, settings, options.JsonOutput),
         "version" => await ShowVersion(root, options.JsonOutput),
         "update-plan" => await ShowUpdatePlan(root, options.JsonOutput),
+        "update-recovery-plan" => await ShowUpdateRecoveryPlan(root, options.ArtifactPath, options.JsonOutput),
         "update-validate" => ShowUpdateArtifactValidation(root, options.ArtifactPath, options.JsonOutput),
         "start" => await RunStart(root, settings, openBrowser: !options.NoOpen),
         "stop" => await RunStop(root, settings),
@@ -406,6 +407,67 @@ static void PrintUpdateMessages(string title, IReadOnlyList<TimelineUpdatePlanMe
     Console.WriteLine();
 }
 
+static async Task<int> ShowUpdateRecoveryPlan(string root, string? artifactPath, bool jsonOutput)
+{
+    var plan = await TimelineUpdatePlanService.GetRecoveryPlanAsync(root, artifactPath, CancellationToken.None);
+    if (jsonOutput)
+    {
+        Console.WriteLine(JsonSerializer.Serialize(
+            plan,
+            new JsonSerializerOptions
+            {
+                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+                WriteIndented = true,
+            }));
+    }
+    else
+    {
+        Console.WriteLine("Timeline update recovery plan");
+        Console.WriteLine($"  state: {plan.State}");
+        Console.WriteLine($"  can prepare rollback: {(plan.CanPrepareRollback ? "yes" : "no")}");
+        Console.WriteLine($"  owner: {plan.OperationOwner}");
+        Console.WriteLine($"  mode: {plan.Mode}");
+        Console.WriteLine($"  update plan state: {plan.UpdatePlanState}");
+        Console.WriteLine($"  operation id: {plan.OperationId}");
+        Console.WriteLine($"  staging root: {plan.StagingRoot}");
+        Console.WriteLine($"  rollback root: {plan.RollbackRoot}");
+        Console.WriteLine($"  app backup root: {plan.AppBackupRoot}");
+        Console.WriteLine($"  operation log: {plan.OperationLogPath}");
+        Console.WriteLine();
+
+        Console.WriteLine("Data loss policy:");
+        Console.WriteLine($"  {plan.DataLossPolicy}");
+        Console.WriteLine();
+
+        PrintUpdateMessages("Blockers", plan.Blockers);
+        PrintUpdateMessages("Warnings", plan.Warnings);
+
+        Console.WriteLine("Backup items:");
+        foreach (var item in plan.BackupItems)
+        {
+            Console.WriteLine($"  - {item.Id}: {item.SourcePath}");
+            Console.WriteLine($"    backup: {item.BackupPath}");
+            Console.WriteLine($"    action: {item.RestoreAction}");
+        }
+
+        Console.WriteLine();
+        Console.WriteLine("Failure policies:");
+        foreach (var policy in plan.FailurePolicies)
+        {
+            Console.WriteLine($"  - {policy.Phase}: {policy.NextAction}");
+        }
+
+        Console.WriteLine();
+        Console.WriteLine("Recovery steps:");
+        foreach (var step in plan.RecoverySteps.OrderBy(step => step.Order))
+        {
+            Console.WriteLine($"  {step.Order}. {step.Code}: {step.Message}");
+        }
+    }
+
+    return 0;
+}
+
 static int ShowUpdateArtifactValidation(string root, string? artifactPath, bool jsonOutput)
 {
     if (string.IsNullOrWhiteSpace(artifactPath))
@@ -514,7 +576,7 @@ static int ShowHelp()
     Console.WriteLine("Timeline Launcher");
     Console.WriteLine();
     Console.WriteLine("Usage:");
-    Console.WriteLine("  TimelineLauncher [open|status|preflight|verify-setup|version|update-plan|update-validate|start|stop|shortcut-status|shortcut-install|shortcut-remove|help] [--no-open] [--json]");
+    Console.WriteLine("  TimelineLauncher [open|status|preflight|verify-setup|version|update-plan|update-recovery-plan|update-validate|start|stop|shortcut-status|shortcut-install|shortcut-remove|help] [--no-open] [--json]");
     Console.WriteLine();
     Console.WriteLine("Commands:");
     Console.WriteLine("  open    Open Timeline. Starts it first when needed.");
@@ -523,6 +585,7 @@ static int ShowHelp()
     Console.WriteLine("  verify-setup  Verify that Timeline is usable after setup. Use --json for Jira evidence.");
     Console.WriteLine("  version  Show current Timeline version and latest built artifact status.");
     Console.WriteLine("  update-plan  Show the safe Timeline body update plan. Use --json for tooling.");
+    Console.WriteLine("  update-recovery-plan  Show rollback and failure recovery policy. Optional: --artifact <path>.");
     Console.WriteLine("  update-validate  Validate a built product artifact ZIP. Use --artifact <path>.");
     Console.WriteLine("  start   Start Timeline.");
     Console.WriteLine("  stop    Stop Timeline.");

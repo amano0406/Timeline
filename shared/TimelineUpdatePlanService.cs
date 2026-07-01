@@ -252,6 +252,106 @@ public static class TimelineUpdatePlanService
             warnings);
     }
 
+    public static async Task<TimelineUpdateRecoveryPlanResponse> GetRecoveryPlanAsync(
+        string timelineRoot,
+        string? artifactPath,
+        CancellationToken cancellationToken)
+    {
+        var root = Path.GetFullPath(timelineRoot);
+        var plan = await GetPlanAsync(root, cancellationToken);
+        var generatedAt = DateTimeOffset.UtcNow;
+        var operationId = "timeline-update-" + generatedAt.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture) + "-planned";
+        var rollbackRoot = Path.Combine(plan.DataRoot, "backups", "timeline-updates", operationId);
+        var appBackupRoot = Path.Combine(rollbackRoot, "app");
+        var stagingRoot = Path.Combine(plan.DataRoot, "work", "timeline-updates", operationId, "artifact");
+        var operationLogPath = Path.Combine(rollbackRoot, "operation.json");
+        var blockers = plan.Blockers
+            .Select(message => new TimelineUpdatePlanMessage
+            {
+                Code = message.Code,
+                Message = message.Message,
+            })
+            .ToList();
+        var warnings = plan.Warnings
+            .Select(message => new TimelineUpdatePlanMessage
+            {
+                Code = message.Code,
+                Message = message.Message,
+            })
+            .ToList();
+        TimelineUpdateArtifactValidationResponse? artifactValidation = null;
+
+        if (string.IsNullOrWhiteSpace(artifactPath))
+        {
+            warnings.Add(new TimelineUpdatePlanMessage
+            {
+                Code = "artifact_not_selected",
+                Message = "No artifact was selected. Recovery can be planned, but update execution must validate a concrete artifact first.",
+            });
+        }
+        else
+        {
+            artifactValidation = ValidateArtifact(root, artifactPath);
+            foreach (var blocker in artifactValidation.Blockers)
+            {
+                blockers.Add(new TimelineUpdatePlanMessage
+                {
+                    Code = "artifact_" + blocker.Code,
+                    Message = blocker.Message,
+                });
+            }
+
+            foreach (var warning in artifactValidation.Warnings)
+            {
+                warnings.Add(new TimelineUpdatePlanMessage
+                {
+                    Code = "artifact_" + warning.Code,
+                    Message = warning.Message,
+                });
+            }
+        }
+
+        if (plan.State.Equals("up_to_date", StringComparison.OrdinalIgnoreCase))
+        {
+            warnings.Add(new TimelineUpdatePlanMessage
+            {
+                Code = "update_not_required",
+                Message = "Current Timeline artifact is already up to date. Recovery plan is informational only.",
+            });
+        }
+
+        var state = blockers.Count > 0 ? "blocked" : "ready";
+
+        return new TimelineUpdateRecoveryPlanResponse
+        {
+            ProductId = "timeline",
+            ProductName = "Timeline",
+            State = state,
+            CanPrepareRollback = state.Equals("ready", StringComparison.OrdinalIgnoreCase)
+                && !plan.State.Equals("up_to_date", StringComparison.OrdinalIgnoreCase),
+            OperationOwner = "launcher",
+            Mode = "read_only_plan",
+            TimelineRoot = root,
+            DataRoot = plan.DataRoot,
+            OperationId = operationId,
+            StagingRoot = stagingRoot,
+            RollbackRoot = rollbackRoot,
+            AppBackupRoot = appBackupRoot,
+            OperationLogPath = operationLogPath,
+            DataLossPolicy = "settings, user data, generated Timeline data, sub-products, and Docker volumes must not be deleted by update recovery.",
+            BackupRetention = "Keep rollback backup until post-update verification succeeds. If verification fails, keep it for manual inspection and rollback.",
+            UpdatePlanState = plan.State,
+            ArtifactValidation = artifactValidation,
+            Preserve = plan.Preserve,
+            BackupItems = BuildBackupItems(plan.Replace, appBackupRoot),
+            FailurePolicies = BuildFailurePolicies(),
+            RecoverySteps = BuildRecoverySteps(),
+            Blockers = blockers,
+            Warnings = warnings,
+            GeneratedAt = generatedAt.ToString("O", CultureInfo.InvariantCulture),
+        };
+    }
+
     private static List<TimelineUpdatePathPlan> BuildPreservePlan(string root, string dataRoot)
     {
         return
@@ -333,6 +433,111 @@ public static class TimelineUpdatePlanService
             NewStep(7, "verify", "Run setup verification and health checks after startup."),
             NewStep(8, "cleanup", "Remove the rollback directory only after verification succeeds."),
         ];
+    }
+
+    private static List<TimelineUpdateBackupItemPlan> BuildBackupItems(
+        IEnumerable<TimelineUpdatePathPlan> replaceItems,
+        string appBackupRoot)
+    {
+        return replaceItems
+            .Select(item => new TimelineUpdateBackupItemPlan
+            {
+                Id = item.Id,
+                SourcePath = item.Path,
+                BackupPath = Path.Combine(appBackupRoot, item.Id),
+                Kind = item.Kind,
+                SourceExists = item.Exists,
+                RestoreAction = item.Exists ? "restore_from_backup" : "skip_missing_source",
+                Message = item.Exists
+                    ? "Back up before replacement and restore from this backup if update fails after replacement starts."
+                    : "Source is currently missing. Recovery records the absence and must not create a fake previous file.",
+            })
+            .ToList();
+    }
+
+    private static List<TimelineUpdateFailurePolicy> BuildFailurePolicies()
+    {
+        return
+        [
+            NewFailurePolicy(
+                "download",
+                "No local application files have changed.",
+                automaticRecovery: true,
+                "Discard partial download and retry with a valid release artifact.",
+                "none"),
+            NewFailurePolicy(
+                "validate",
+                "No local application files have changed.",
+                automaticRecovery: true,
+                "Reject the artifact and keep the current installation running or restart it if it was stopped earlier.",
+                "none"),
+            NewFailurePolicy(
+                "stop",
+                "Application files have not been replaced, but Timeline may be stopped.",
+                automaticRecovery: true,
+                "Start Timeline again through the Launcher and report the stop failure.",
+                "none"),
+            NewFailurePolicy(
+                "backup",
+                "Replacement has not started. Current application files should still be in place.",
+                automaticRecovery: true,
+                "Stop the update, keep any partial backup for diagnostics, and retry only after backup can be completed.",
+                "none"),
+            NewFailurePolicy(
+                "replace",
+                "Application files may be partially replaced.",
+                automaticRecovery: true,
+                "Restore every backed-up application item before starting Timeline again.",
+                "low_if_backup_completed"),
+            NewFailurePolicy(
+                "start",
+                "New application files are installed, but Timeline did not start.",
+                automaticRecovery: false,
+                "Keep rollback backup, show diagnostics, and allow rollback to the previous application files.",
+                "low_if_backup_completed"),
+            NewFailurePolicy(
+                "verify",
+                "Timeline started, but post-update checks failed.",
+                automaticRecovery: false,
+                "Keep rollback backup and let the user retry verification or roll back.",
+                "low_if_backup_completed"),
+            NewFailurePolicy(
+                "cleanup",
+                "Update already passed verification.",
+                automaticRecovery: true,
+                "Keep the rollback backup and warn that cleanup can be retried later.",
+                "none"),
+        ];
+    }
+
+    private static List<TimelineUpdateStepPlan> BuildRecoverySteps()
+    {
+        return
+        [
+            NewStep(1, "inspect", "Read the operation log and identify the failed phase."),
+            NewStep(2, "stop", "Stop any partially started Timeline runtime through the Launcher."),
+            NewStep(3, "restore", "Move backed-up application files from the rollback directory back to the Timeline root."),
+            NewStep(4, "start", "Start Timeline through the Launcher."),
+            NewStep(5, "verify", "Run setup verification and health checks against the restored version."),
+            NewStep(6, "report", "Keep logs and backup path visible if recovery could not be verified."),
+        ];
+    }
+
+    private static TimelineUpdateFailurePolicy NewFailurePolicy(
+        string phase,
+        string localState,
+        bool automaticRecovery,
+        string nextAction,
+        string dataLossRisk)
+    {
+        return new TimelineUpdateFailurePolicy
+        {
+            Phase = phase,
+            LocalState = localState,
+            AutomaticRecovery = automaticRecovery,
+            NextAction = nextAction,
+            DataLossRisk = dataLossRisk,
+        };
     }
 
     private static TimelineUpdateArtifactValidationResponse NewArtifactValidationResponse(
@@ -712,6 +917,123 @@ public sealed class TimelineUpdateArtifactValidationResponse
 
     [JsonPropertyName("generatedAt")]
     public string GeneratedAt { get; set; } = "";
+}
+
+public sealed class TimelineUpdateRecoveryPlanResponse
+{
+    [JsonPropertyName("productId")]
+    public string ProductId { get; set; } = "";
+
+    [JsonPropertyName("productName")]
+    public string ProductName { get; set; } = "";
+
+    [JsonPropertyName("state")]
+    public string State { get; set; } = "";
+
+    [JsonPropertyName("canPrepareRollback")]
+    public bool CanPrepareRollback { get; set; }
+
+    [JsonPropertyName("operationOwner")]
+    public string OperationOwner { get; set; } = "";
+
+    [JsonPropertyName("mode")]
+    public string Mode { get; set; } = "";
+
+    [JsonPropertyName("timelineRoot")]
+    public string TimelineRoot { get; set; } = "";
+
+    [JsonPropertyName("dataRoot")]
+    public string DataRoot { get; set; } = "";
+
+    [JsonPropertyName("operationId")]
+    public string OperationId { get; set; } = "";
+
+    [JsonPropertyName("stagingRoot")]
+    public string StagingRoot { get; set; } = "";
+
+    [JsonPropertyName("rollbackRoot")]
+    public string RollbackRoot { get; set; } = "";
+
+    [JsonPropertyName("appBackupRoot")]
+    public string AppBackupRoot { get; set; } = "";
+
+    [JsonPropertyName("operationLogPath")]
+    public string OperationLogPath { get; set; } = "";
+
+    [JsonPropertyName("dataLossPolicy")]
+    public string DataLossPolicy { get; set; } = "";
+
+    [JsonPropertyName("backupRetention")]
+    public string BackupRetention { get; set; } = "";
+
+    [JsonPropertyName("updatePlanState")]
+    public string UpdatePlanState { get; set; } = "";
+
+    [JsonPropertyName("artifactValidation")]
+    public TimelineUpdateArtifactValidationResponse? ArtifactValidation { get; set; }
+
+    [JsonPropertyName("preserve")]
+    public List<TimelineUpdatePathPlan> Preserve { get; set; } = [];
+
+    [JsonPropertyName("backupItems")]
+    public List<TimelineUpdateBackupItemPlan> BackupItems { get; set; } = [];
+
+    [JsonPropertyName("failurePolicies")]
+    public List<TimelineUpdateFailurePolicy> FailurePolicies { get; set; } = [];
+
+    [JsonPropertyName("recoverySteps")]
+    public List<TimelineUpdateStepPlan> RecoverySteps { get; set; } = [];
+
+    [JsonPropertyName("blockers")]
+    public List<TimelineUpdatePlanMessage> Blockers { get; set; } = [];
+
+    [JsonPropertyName("warnings")]
+    public List<TimelineUpdatePlanMessage> Warnings { get; set; } = [];
+
+    [JsonPropertyName("generatedAt")]
+    public string GeneratedAt { get; set; } = "";
+}
+
+public sealed class TimelineUpdateBackupItemPlan
+{
+    [JsonPropertyName("id")]
+    public string Id { get; set; } = "";
+
+    [JsonPropertyName("sourcePath")]
+    public string SourcePath { get; set; } = "";
+
+    [JsonPropertyName("backupPath")]
+    public string BackupPath { get; set; } = "";
+
+    [JsonPropertyName("kind")]
+    public string Kind { get; set; } = "";
+
+    [JsonPropertyName("sourceExists")]
+    public bool SourceExists { get; set; }
+
+    [JsonPropertyName("restoreAction")]
+    public string RestoreAction { get; set; } = "";
+
+    [JsonPropertyName("message")]
+    public string Message { get; set; } = "";
+}
+
+public sealed class TimelineUpdateFailurePolicy
+{
+    [JsonPropertyName("phase")]
+    public string Phase { get; set; } = "";
+
+    [JsonPropertyName("localState")]
+    public string LocalState { get; set; } = "";
+
+    [JsonPropertyName("automaticRecovery")]
+    public bool AutomaticRecovery { get; set; }
+
+    [JsonPropertyName("nextAction")]
+    public string NextAction { get; set; } = "";
+
+    [JsonPropertyName("dataLossRisk")]
+    public string DataLossRisk { get; set; } = "";
 }
 
 public sealed class TimelineUpdateArtifactVersionInfo
