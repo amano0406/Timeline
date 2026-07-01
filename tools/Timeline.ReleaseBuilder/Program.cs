@@ -60,6 +60,10 @@ RemoveForbiddenArtifactContent(productRoot);
 
 CreateProductZip(stagingParent, zipPath, options.HostRuntime);
 WriteArtifactManifest(outputRoot, options, version, commit, zipPath);
+if (options.WindowsInstaller)
+{
+    CreateWindowsInstallerBundle(repoRoot, outputRoot, options, version, commit, zipPath);
+}
 
 Console.WriteLine("Timeline product artifact created.");
 Console.WriteLine($"  Runtime: {options.HostRuntime}");
@@ -260,6 +264,184 @@ static void WriteArtifactManifest(
         JsonSerializer.Serialize(manifest, new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true }) + Environment.NewLine);
 }
 
+static void CreateWindowsInstallerBundle(
+    string repoRoot,
+    string outputRoot,
+    ReleaseOptions options,
+    string version,
+    string commit,
+    string productZipPath)
+{
+    if (!options.HostRuntime.StartsWith("win-", StringComparison.OrdinalIgnoreCase))
+    {
+        throw new InvalidOperationException("--windows-installer can be used only with a Windows host runtime.");
+    }
+
+    var artifactRuntimeName = ToArtifactRuntimeName(options.HostRuntime);
+    var installerStagingParent = Path.Combine(outputRoot, "installer-staging");
+    var installerRoot = Path.Combine(installerStagingParent, "Timeline-Setup");
+    var installerAppRoot = Path.Combine(installerRoot, "installer");
+    var artifactsRoot = Path.Combine(installerRoot, "artifacts");
+    var setupZipPath = Path.Combine(outputRoot, $"Timeline-{artifactRuntimeName}-{version}-setup.zip");
+
+    if (Directory.Exists(installerStagingParent))
+    {
+        Directory.Delete(installerStagingParent, recursive: true);
+    }
+
+    if (File.Exists(setupZipPath))
+    {
+        File.Delete(setupZipPath);
+    }
+
+    Directory.CreateDirectory(installerAppRoot);
+    Directory.CreateDirectory(artifactsRoot);
+
+    Console.WriteLine($"Publishing Windows installer ({options.HostRuntime})...");
+    var publishResult = RunCaptureAsync(
+        repoRoot,
+        ResolveDotnetCommand(),
+        [
+            "publish",
+            Path.Combine(repoRoot, "installer-windows", "Timeline.WindowsInstaller.csproj"),
+            "-c",
+            "Release",
+            "-r",
+            options.HostRuntime,
+            "--self-contained",
+            "true",
+            "-p:DebugType=none",
+            "-p:DebugSymbols=false",
+            "-p:PublishSingleFile=false",
+            "-o",
+            installerAppRoot
+        ],
+        TimeSpan.FromMinutes(10)).GetAwaiter().GetResult();
+    if (publishResult.ExitCode != 0)
+    {
+        throw new InvalidOperationException($"dotnet publish failed for Windows installer.{Environment.NewLine}{publishResult.CombinedText}");
+    }
+
+    var productZipCopyPath = Path.Combine(artifactsRoot, Path.GetFileName(productZipPath));
+    File.Copy(productZipPath, productZipCopyPath, overwrite: true);
+    WriteWindowsInstallerReadme(installerRoot, productZipCopyPath);
+    WriteWindowsInstallerManifest(installerRoot, options, version, commit, productZipCopyPath);
+
+    CreateProductZip(installerStagingParent, setupZipPath, options.HostRuntime);
+    WriteWindowsInstallerExternalManifest(outputRoot, options, version, commit, setupZipPath, productZipCopyPath);
+
+    Console.WriteLine("Timeline Windows installer bundle created.");
+    Console.WriteLine($"  Setup: {setupZipPath}");
+}
+
+static void WriteWindowsInstallerReadme(string installerRoot, string productZipPath)
+{
+    var productZipName = Path.GetFileName(productZipPath);
+    File.WriteAllText(
+        Path.Combine(installerRoot, "README.txt"),
+        $"""
+        Timeline Windows setup bundle
+
+        This bundle installs a built Timeline product artifact without using bat, sh, or command wrappers.
+
+        Contents:
+        - installer/Timeline.WindowsInstaller.exe
+        - artifacts/{productZipName}
+
+        Plan only:
+          installer\Timeline.WindowsInstaller.exe --artifact artifacts\{productZipName} --plan
+
+        Install:
+          installer\Timeline.WindowsInstaller.exe --artifact artifacts\{productZipName}
+
+        Default install directory:
+          %LOCALAPPDATA%\Programs\Timeline
+
+        Existing application files are not replaced unless --force is supplied. User data, settings, logs,
+        runtime state, and managed products are preserved when --force is used.
+        """ + Environment.NewLine);
+}
+
+static void WriteWindowsInstallerManifest(
+    string installerRoot,
+    ReleaseOptions options,
+    string version,
+    string commit,
+    string productZipPath)
+{
+    var productZip = new FileInfo(productZipPath);
+    var manifest = new TimelineWindowsInstallerManifest(
+        ManifestType: "timeline_windows_installer_bundle_manifest",
+        ProductId: "timeline",
+        ProductName: "Timeline",
+        Channel: options.Channel,
+        Version: version,
+        Commit: commit,
+        RuntimeIdentifier: options.HostRuntime,
+        RuntimeName: ToArtifactRuntimeName(options.HostRuntime),
+        CreatedAt: DateTimeOffset.UtcNow.ToString("O", CultureInfo.InvariantCulture),
+        ProductArtifact: new TimelineArtifactManifestItem(
+            ArtifactKind: "built_product_artifact",
+            FileName: productZip.Name,
+            Path: Path.Combine("artifacts", productZip.Name).Replace('\\', '/'),
+            SizeBytes: productZip.Length,
+            Sha256: ComputeSha256(productZip.FullName),
+            AppBundleIncluded: false),
+        Installer: new TimelineInstallerManifestItem(
+            InstallerKind: "windows_csharp_installer",
+            EntryPoint: "installer/Timeline.WindowsInstaller.exe",
+            UsesBatchOrShellWrapper: false));
+
+    File.WriteAllText(
+        Path.Combine(installerRoot, "installer-manifest.json"),
+        JsonSerializer.Serialize(manifest, new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true }) + Environment.NewLine);
+}
+
+static void WriteWindowsInstallerExternalManifest(
+    string outputRoot,
+    ReleaseOptions options,
+    string version,
+    string commit,
+    string setupZipPath,
+    string productZipPath)
+{
+    var setupZip = new FileInfo(setupZipPath);
+    var productZip = new FileInfo(productZipPath);
+    var artifactRuntimeName = ToArtifactRuntimeName(options.HostRuntime);
+    var manifest = new TimelineWindowsInstallerExternalManifest(
+        ManifestType: "timeline_windows_installer_artifact_manifest",
+        ProductId: "timeline",
+        ProductName: "Timeline",
+        Channel: options.Channel,
+        Version: version,
+        Commit: commit,
+        RuntimeIdentifier: options.HostRuntime,
+        RuntimeName: artifactRuntimeName,
+        CreatedAt: DateTimeOffset.UtcNow.ToString("O", CultureInfo.InvariantCulture),
+        SetupArtifact: new TimelineArtifactManifestItem(
+            ArtifactKind: "windows_installer_bundle",
+            FileName: setupZip.Name,
+            Path: setupZip.FullName,
+            SizeBytes: setupZip.Length,
+            Sha256: ComputeSha256(setupZip.FullName),
+            AppBundleIncluded: false),
+        ProductArtifact: new TimelineArtifactManifestItem(
+            ArtifactKind: "built_product_artifact",
+            FileName: productZip.Name,
+            Path: productZip.FullName,
+            SizeBytes: productZip.Length,
+            Sha256: ComputeSha256(productZip.FullName),
+            AppBundleIncluded: false),
+        Installer: new TimelineInstallerManifestItem(
+            InstallerKind: "windows_csharp_installer",
+            EntryPoint: "installer/Timeline.WindowsInstaller.exe",
+            UsesBatchOrShellWrapper: false));
+
+    File.WriteAllText(
+        Path.Combine(outputRoot, $"timeline-installer-{artifactRuntimeName}.json"),
+        JsonSerializer.Serialize(manifest, new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true }) + Environment.NewLine);
+}
+
 static string ComputeSha256(string path)
 {
     using var stream = File.OpenRead(path);
@@ -455,7 +637,8 @@ internal sealed record ReleaseOptions(
     string ContainerRuntime,
     string OutputDirectory,
     string Channel,
-    string? Version)
+    string? Version,
+    bool WindowsInstaller)
 {
     public static ReleaseOptions Parse(string[] args)
     {
@@ -464,6 +647,7 @@ internal sealed record ReleaseOptions(
         var outputDirectory = "release";
         var channel = "dev";
         string? version = null;
+        var windowsInstaller = false;
 
         for (var index = 0; index < args.Length; index++)
         {
@@ -478,10 +662,17 @@ internal sealed record ReleaseOptions(
                 continue;
             }
 
+            if (arg.Equals("--windows-installer", StringComparison.OrdinalIgnoreCase) ||
+                arg.Equals("--include-windows-installer", StringComparison.OrdinalIgnoreCase))
+            {
+                windowsInstaller = true;
+                continue;
+            }
+
             throw new ArgumentException($"Unknown argument: {arg}");
         }
 
-        return new ReleaseOptions(hostRuntime, containerRuntime, outputDirectory, channel, version);
+        return new ReleaseOptions(hostRuntime, containerRuntime, outputDirectory, channel, version, windowsInstaller);
     }
 
     private static bool TryReadOption(string[] args, ref int index, string arg, string optionName, ref string value)
@@ -542,6 +733,38 @@ internal sealed record TimelineArtifactManifestItem(
     long SizeBytes,
     string Sha256,
     bool AppBundleIncluded);
+
+internal sealed record TimelineInstallerManifestItem(
+    string InstallerKind,
+    string EntryPoint,
+    bool UsesBatchOrShellWrapper);
+
+internal sealed record TimelineWindowsInstallerManifest(
+    string ManifestType,
+    string ProductId,
+    string ProductName,
+    string Channel,
+    string Version,
+    string Commit,
+    string RuntimeIdentifier,
+    string RuntimeName,
+    string CreatedAt,
+    TimelineArtifactManifestItem ProductArtifact,
+    TimelineInstallerManifestItem Installer);
+
+internal sealed record TimelineWindowsInstallerExternalManifest(
+    string ManifestType,
+    string ProductId,
+    string ProductName,
+    string Channel,
+    string Version,
+    string Commit,
+    string RuntimeIdentifier,
+    string RuntimeName,
+    string CreatedAt,
+    TimelineArtifactManifestItem SetupArtifact,
+    TimelineArtifactManifestItem ProductArtifact,
+    TimelineInstallerManifestItem Installer);
 
 internal sealed record ProcessResult(int ExitCode, string Output, string Error)
 {

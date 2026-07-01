@@ -40,12 +40,14 @@ The first user-facing artifact set should be small and explicit.
 | Artifact | Target | Purpose |
 | --- | --- | --- |
 | `Timeline-win-x64-<version>.zip` | Windows x64 | Built Timeline product for Windows validation before a full installer exists |
+| `Timeline-win-x64-<version>-setup.zip` | Windows x64 | C# setup bundle that installs the built product artifact and registers OS app entries |
 | `Timeline-macos-arm64-<version>.zip` | macOS Apple Silicon | Built Timeline product for Mac validation before a full installer exists |
 | `Timeline-macos-x64-<version>.zip` | macOS Intel | Built Timeline product for Mac validation if Intel support is kept |
 
-Installer formats such as `.msi`, `.exe`, `.pkg`, or `.dmg` belong to KAN-41.
-They should consume the same built product layout instead of inventing another
-runtime layout.
+Installer formats such as `.msi`, `.pkg`, or `.dmg` belong to KAN-41. They
+should consume the same built product layout instead of inventing another
+runtime layout. The current Windows setup bundle is a C# installer ZIP, not a
+signed native MSI.
 
 ## Product layout
 
@@ -96,6 +98,40 @@ projects. It builds Docker images from the already published `web/` and
 
 This means the user still needs Docker for the current Timeline runtime, but
 does not need a .NET SDK or source checkout to start from the product artifact.
+
+To also create the first Windows setup bundle:
+
+```text
+dotnet run --project tools/Timeline.ReleaseBuilder -- --runtime win-x64 --version <version> --windows-installer
+```
+
+This produces:
+
+```text
+Timeline-win-x64-<version>.zip
+Timeline-win-x64-<version>-setup.zip
+timeline-artifact-win-x64.json
+timeline-installer-win-x64.json
+```
+
+The setup bundle contains:
+
+```text
+Timeline-Setup/
+  installer/
+    Timeline.WindowsInstaller.exe
+  artifacts/
+    Timeline-win-x64-<version>.zip
+  installer-manifest.json
+  README.txt
+```
+
+The setup executable is C# and does not use `bat`, `sh`, or `.command`
+wrappers. It extracts the built product artifact, creates the Windows Start
+Menu shortcut, and registers Timeline in Windows Apps & Features. Existing
+application files are not replaced unless `--force` is supplied. User data,
+settings, logs, runtime state, and managed products are preserved when
+replacement is explicitly requested.
 
 ## Mac artifact build
 

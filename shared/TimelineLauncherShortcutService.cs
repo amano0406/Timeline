@@ -163,6 +163,24 @@ public static class TimelineLauncherShortcutService
             : $"{QuoteForDisplay(status.TargetPath)} {status.Arguments}";
     }
 
+    public static string ResolveLauncherTrayExecutable(string timelineRoot)
+    {
+        var executableName = OperatingSystem.IsWindows()
+            ? "Timeline.Launcher.Tray.exe"
+            : "Timeline.Launcher.Tray";
+        var candidates = new[]
+        {
+            Path.Combine(timelineRoot, "launcher-tray", executableName),
+            Path.Combine(timelineRoot, "launcher-tray", "publish", executableName),
+            Path.Combine(timelineRoot, "launcher-tray", "bin", "Release", "net10.0", executableName),
+            Path.Combine(timelineRoot, "launcher-tray", "bin", "Debug", "net10.0", executableName),
+            Path.Combine(timelineRoot, "launcher-tray", "bin", "Release", "net10.0", GetRuntimeIdentifier(), "publish", executableName),
+            Path.Combine(timelineRoot, "launcher-tray", "bin", "Debug", "net10.0", GetRuntimeIdentifier(), "publish", executableName),
+        };
+
+        return candidates.FirstOrDefault(File.Exists) ?? string.Empty;
+    }
+
     private static TimelineLauncherShortcutStatus Unsupported(string timelineRoot)
         => NewStatus(
             supported: false,
@@ -223,24 +241,6 @@ public static class TimelineLauncherShortcutService
             FileName: dotnet,
             Arguments: $"run --project {QuoteWindowsArgument(launcherProject)}",
             WorkingDirectory: timelineRoot);
-    }
-
-    public static string ResolveLauncherTrayExecutable(string timelineRoot)
-    {
-        var executableName = OperatingSystem.IsWindows()
-            ? "Timeline.Launcher.Tray.exe"
-            : "Timeline.Launcher.Tray";
-        var candidates = new[]
-        {
-            Path.Combine(timelineRoot, "launcher-tray", executableName),
-            Path.Combine(timelineRoot, "launcher-tray", "publish", executableName),
-            Path.Combine(timelineRoot, "launcher-tray", "bin", "Release", "net10.0", executableName),
-            Path.Combine(timelineRoot, "launcher-tray", "bin", "Debug", "net10.0", executableName),
-            Path.Combine(timelineRoot, "launcher-tray", "bin", "Release", "net10.0", GetRuntimeIdentifier(), "publish", executableName),
-            Path.Combine(timelineRoot, "launcher-tray", "bin", "Debug", "net10.0", GetRuntimeIdentifier(), "publish", executableName),
-        };
-
-        return candidates.FirstOrDefault(File.Exists) ?? string.Empty;
     }
 
     private static string ResolveLauncherTrayDll(string timelineRoot)
@@ -328,7 +328,7 @@ public static class TimelineLauncherShortcutService
     private static object CreateWindowsShortcutObject(string shortcutPath)
     {
         var shellType = Type.GetTypeFromProgID("WScript.Shell")
-            ?? throw new InvalidOperationException("Windows Script Host が利用できないため、ショートカットを操作できません。");
+            ?? throw new InvalidOperationException("Windows Script Host が利用できないため、ショートカットを作成できません。");
         var shell = Activator.CreateInstance(shellType)
             ?? throw new InvalidOperationException("Windows Script Host を起動できません。");
         try

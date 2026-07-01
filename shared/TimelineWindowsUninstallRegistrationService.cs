@@ -1,6 +1,6 @@
-using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.Win32;
 
@@ -159,7 +159,7 @@ public static class TimelineWindowsUninstallRegistrationService
             InstallLocation = timelineRoot,
             DisplayIcon = "",
             UninstallString = "",
-            Message = "このOSでは Windows のアンインストール登録は利用しません。",
+            Message = "このOSでは Windows のアンインストール登録は利用できません。",
         };
 
     private static TimelineWindowsUninstallRegistrationStatus NewStatus(
@@ -261,12 +261,7 @@ public static class TimelineWindowsUninstallRegistrationService
     private static string ResolveDisplayIcon(string timelineRoot)
     {
         var trayExecutable = TimelineLauncherShortcutService.ResolveLauncherTrayExecutable(timelineRoot);
-        if (!string.IsNullOrWhiteSpace(trayExecutable))
-        {
-            return trayExecutable;
-        }
-
-        return ResolveLauncherExecutable(timelineRoot);
+        return string.IsNullOrWhiteSpace(trayExecutable) ? ResolveLauncherExecutable(timelineRoot) : trayExecutable;
     }
 
     private static string ResolveVersion(string timelineRoot)
@@ -274,10 +269,21 @@ public static class TimelineWindowsUninstallRegistrationService
         var versionPath = Path.Combine(timelineRoot, "VERSION");
         if (File.Exists(versionPath))
         {
-            var value = File.ReadAllText(versionPath).Trim();
-            if (!string.IsNullOrWhiteSpace(value))
+            try
             {
-                return value;
+                using var document = JsonDocument.Parse(File.ReadAllText(versionPath));
+                if (document.RootElement.TryGetProperty("version", out var version))
+                {
+                    return version.GetString() ?? "";
+                }
+            }
+            catch (JsonException)
+            {
+                var value = File.ReadAllText(versionPath).Trim();
+                if (!string.IsNullOrWhiteSpace(value))
+                {
+                    return value;
+                }
             }
         }
 

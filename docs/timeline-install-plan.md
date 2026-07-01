@@ -1,7 +1,7 @@
 # Timeline install plan
 
-This document defines the read-only install plan used by the C# Launcher,
-Timeline Local API, and future OS installers.
+This document defines the install plan used by the C# Launcher, Timeline Local
+API, and OS installers.
 
 The plan belongs to KAN-48 and KAN-49.
 
@@ -20,7 +20,7 @@ The user-facing direction is:
 Batch files, shell scripts, and `.command` wrappers are not user-facing
 application entries.
 
-## Current implementation
+## Current install plan implementation
 
 The plan is read-only. It does not install, remove, or change OS settings.
 
@@ -46,6 +46,53 @@ The response describes:
 - future startup and uninstall registrations;
 - Windows and macOS installer artifact targets;
 - warnings that an installer must handle.
+
+## Current Windows setup implementation
+
+KAN-63 adds the first C# Windows setup bundle. It is not an MSI and it is not
+signed, but it is a real setup entry that can install a built Timeline product
+artifact without source checkout or scripts.
+
+Create it from the release builder:
+
+```powershell
+dotnet run --project .\tools\Timeline.ReleaseBuilder\Timeline.ReleaseBuilder.csproj -- --runtime win-x64 --version <version> --windows-installer
+```
+
+The generated setup ZIP contains:
+
+```text
+Timeline-Setup/
+  installer/Timeline.WindowsInstaller.exe
+  artifacts/Timeline-win-x64-<version>.zip
+  installer-manifest.json
+  README.txt
+```
+
+The setup executable supports a plan-only mode:
+
+```powershell
+.\installer\Timeline.WindowsInstaller.exe --artifact .\artifacts\Timeline-win-x64-<version>.zip --plan
+```
+
+The default install directory is:
+
+```text
+%LOCALAPPDATA%\Programs\Timeline
+```
+
+When executed, the installer:
+
+- extracts the built Timeline product artifact;
+- creates or updates the Windows Start Menu shortcut through the C# Launcher
+  shortcut service;
+- registers Timeline in Windows Apps & Features through the uninstall
+  registration service;
+- writes an install receipt under the Timeline runtime directory.
+
+The installer refuses to replace a non-empty install directory unless `--force`
+is supplied. With `--force`, it replaces application files but preserves
+`settings.json`, `data`, `logs`, `runtime`, and managed `products`.
 
 ## Windows application entry
 
@@ -110,9 +157,10 @@ work can verify:
 
 ## Installer boundary
 
-The install plan is not the installer.
+The install plan is still not itself the installer.
 
-The future Windows or macOS installer should consume the same concepts:
+Windows setup and future macOS/native installers should consume the same
+concepts:
 
 - application files are replaceable;
 - settings are local configuration;

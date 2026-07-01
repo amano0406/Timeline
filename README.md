@@ -81,6 +81,15 @@ dotnet run --project .\launcher\Timeline.Launcher.csproj -- install-plan
 dotnet run --project .\launcher\Timeline.Launcher.csproj -- install-plan --json
 ```
 
+Create a Windows setup bundle from a built product artifact:
+
+```powershell
+dotnet run --project .\tools\Timeline.ReleaseBuilder\Timeline.ReleaseBuilder.csproj -- --runtime win-x64 --version <version> --windows-installer
+```
+
+The setup bundle contains a C# installer executable and the built Timeline
+artifact. It does not use `bat`, `sh`, or `.command` wrappers.
+
 Inspect the safe update plan for the Timeline body and Launcher:
 
 ```powershell
