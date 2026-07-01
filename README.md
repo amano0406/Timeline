@@ -101,6 +101,7 @@ Create or inspect the Windows Start Menu entry:
 ```powershell
 dotnet run --project .\launcher\Timeline.Launcher.csproj -- shortcut-install
 dotnet run --project .\launcher\Timeline.Launcher.csproj -- shortcut-status
+dotnet run --project .\launcher\Timeline.Launcher.csproj -- shortcut-status --json
 ```
 
 The entry points directly to the C# resident launcher. It does not generate a

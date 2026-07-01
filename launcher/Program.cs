@@ -24,9 +24,9 @@ try
         "start" => await RunStart(root, settings, openBrowser: !options.NoOpen),
         "stop" => await RunStop(root, settings),
         "open" => await OpenOrStart(root, settings),
-        "shortcut-status" => ShowShortcutStatus(root),
-        "shortcut-install" or "install-shortcut" => InstallShortcut(root),
-        "shortcut-remove" or "remove-shortcut" => RemoveShortcut(root),
+        "shortcut-status" => ShowShortcutStatus(root, options.JsonOutput),
+        "shortcut-install" or "install-shortcut" => InstallShortcut(root, options.JsonOutput),
+        "shortcut-remove" or "remove-shortcut" => RemoveShortcut(root, options.JsonOutput),
         "help" => ShowHelp(),
         _ => ShowUnknownCommand(command)
     };
@@ -579,29 +579,41 @@ static async Task<int> RunStop(string root, TimelineSettings settings)
     return await TimelineDirectRuntime.StopAsync(root, settings);
 }
 
-static int ShowShortcutStatus(string root)
+static int ShowShortcutStatus(string root, bool jsonOutput)
 {
     var status = TimelineLauncherShortcutService.GetStatus(root);
-    PrintShortcutStatus(status);
+    PrintShortcutStatus(status, jsonOutput);
     return status.State.Equals("failed", StringComparison.OrdinalIgnoreCase) ? 1 : 0;
 }
 
-static int InstallShortcut(string root)
+static int InstallShortcut(string root, bool jsonOutput)
 {
     var status = TimelineLauncherShortcutService.Install(root);
-    PrintShortcutStatus(status);
+    PrintShortcutStatus(status, jsonOutput);
     return status.Registered ? 0 : 1;
 }
 
-static int RemoveShortcut(string root)
+static int RemoveShortcut(string root, bool jsonOutput)
 {
     var status = TimelineLauncherShortcutService.Remove(root);
-    PrintShortcutStatus(status);
+    PrintShortcutStatus(status, jsonOutput);
     return status.State.Equals("failed", StringComparison.OrdinalIgnoreCase) ? 1 : 0;
 }
 
-static void PrintShortcutStatus(TimelineLauncherShortcutStatus status)
+static void PrintShortcutStatus(TimelineLauncherShortcutStatus status, bool jsonOutput)
 {
+    if (jsonOutput)
+    {
+        Console.WriteLine(JsonSerializer.Serialize(
+            status,
+            new JsonSerializerOptions
+            {
+                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+                WriteIndented = true,
+            }));
+        return;
+    }
+
     Console.WriteLine("Timeline app entry");
     Console.WriteLine($"  {status.Message}");
     Console.WriteLine($"  platform: {status.Platform}");
