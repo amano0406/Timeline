@@ -53,6 +53,7 @@ public sealed class TimelineProductRuntimeService
     private readonly TimelineLocalApiOptions _options;
     private readonly HttpClient _http;
     private readonly ConcurrentDictionary<string, CachedLatestVersion> _latestVersionCache = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, CachedProductReleaseArtifactInfo> _latestReleaseArtifactCache = new(StringComparer.OrdinalIgnoreCase);
 
     public TimelineProductRuntimeService(
         TimelineSettingsService settings,
@@ -339,6 +340,7 @@ public sealed class TimelineProductRuntimeService
         var warnings = new List<ProductUpdatePlanMessageResponse>();
         var installedVersion = string.Empty;
         ProductSourceInfo? source = null;
+        ProductReleaseArtifactInfo? builtArtifact = null;
 
         if (!status.ProductFound)
         {
@@ -402,6 +404,23 @@ public sealed class TimelineProductRuntimeService
                     "latest_source_unavailable",
                     $"Latest source version could not be resolved. {ex.Message}"));
             }
+
+            try
+            {
+                builtArtifact = await GetLatestProductReleaseArtifactAsync(definition, cancellationToken);
+                if (!builtArtifact.Status.Equals("ok", StringComparison.OrdinalIgnoreCase))
+                {
+                    warnings.Add(NewProductUpdateMessage(
+                        "built_artifact_" + NormalizeProductUpdateId(builtArtifact.Status),
+                        builtArtifact.Message));
+                }
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+            {
+                warnings.Add(NewProductUpdateMessage(
+                    "built_artifact_unavailable",
+                    $"Latest built artifact could not be resolved. {ex.Message}"));
+            }
         }
         else
         {
@@ -412,13 +431,18 @@ public sealed class TimelineProductRuntimeService
 
         var updateAvailable = source is not null
             && (string.IsNullOrEmpty(installedVersion) || CompareVersionText(installedVersion, source.LatestVersion) < 0);
+        var builtArtifactUpdateAvailable = builtArtifact is not null
+            && builtArtifact.Status.Equals("ok", StringComparison.OrdinalIgnoreCase)
+            && (string.IsNullOrEmpty(installedVersion) || CompareVersionText(installedVersion, builtArtifact.LatestVersion) < 0);
         var canUseCurrentUpdater = blockers.Count == 0
             && updateAvailable
             && IsGitHubSourceArchive(definition.SourceType);
-        var canUseBuiltArtifactUpdater = false;
+        var canUseBuiltArtifactUpdater = blockers.Count == 0 && builtArtifactUpdateAvailable;
         var state = blockers.Count > 0
             ? "blocked"
-            : updateAvailable
+            : canUseBuiltArtifactUpdater
+                ? "built_artifact_ready"
+                : updateAvailable
                 ? "legacy_ready"
                 : "up_to_date";
 
@@ -437,6 +461,13 @@ public sealed class TimelineProductRuntimeService
             LatestVersion = source?.LatestVersion ?? string.Empty,
             ArchiveUrl = source?.ArchiveUrl ?? string.Empty,
             UpdateAvailable = updateAvailable,
+            BuiltArtifactStatus = builtArtifact?.Status ?? string.Empty,
+            BuiltArtifactMessage = builtArtifact?.Message ?? string.Empty,
+            BuiltArtifactVersion = builtArtifact?.LatestVersion ?? string.Empty,
+            BuiltArtifactName = builtArtifact?.ArtifactName ?? string.Empty,
+            BuiltArtifactUrl = builtArtifact?.ArtifactUrl ?? string.Empty,
+            BuiltArtifactRuntime = builtArtifact?.RuntimeName ?? string.Empty,
+            BuiltArtifactUpdateAvailable = builtArtifactUpdateAvailable,
             CanUseCurrentUpdater = canUseCurrentUpdater,
             CanUseBuiltArtifactUpdater = canUseBuiltArtifactUpdater,
             Running = status.Running,
@@ -1187,6 +1218,21 @@ public sealed class TimelineProductRuntimeService
     private static bool IsGitHubSourceArchive(string sourceType)
     {
         return sourceType.Equals("github-source-archive", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string ToProductArtifactRuntimeName(string runtimeIdentifier)
+    {
+        if (runtimeIdentifier.Equals("osx-arm64", StringComparison.OrdinalIgnoreCase))
+        {
+            return "macos-arm64";
+        }
+
+        if (runtimeIdentifier.Equals("osx-x64", StringComparison.OrdinalIgnoreCase))
+        {
+            return "macos-x64";
+        }
+
+        return string.IsNullOrWhiteSpace(runtimeIdentifier) ? "unknown" : runtimeIdentifier;
     }
 
     private ProductInstallOptions GetProductInstallOptions(JsonObject? request)
@@ -2977,6 +3023,148 @@ public sealed class TimelineProductRuntimeService
         return new ProductSourceInfo(sourceUrl, latestVersion, archiveUrl);
     }
 
+    private async Task<ProductReleaseArtifactInfo> GetLatestProductReleaseArtifactAsync(
+        ProductRuntimeDefinition definition,
+        CancellationToken cancellationToken)
+    {
+        var sourceUrl = ConvertTimelineText(definition.SourceUrl);
+        if (string.IsNullOrEmpty(sourceUrl))
+        {
+            return new ProductReleaseArtifactInfo(
+                "source_url_missing",
+                "Product source URL is not configured.",
+                string.Empty,
+                string.Empty,
+                string.Empty,
+                string.Empty,
+                string.Empty);
+        }
+
+        var repository = ResolveGitHubRepository(sourceUrl);
+        if (repository is null)
+        {
+            return new ProductReleaseArtifactInfo(
+                "source_not_github",
+                $"Built artifact discovery currently supports GitHub releases only: {sourceUrl}",
+                string.Empty,
+                string.Empty,
+                string.Empty,
+                string.Empty,
+                string.Empty);
+        }
+
+        var runtimeName = ToProductArtifactRuntimeName(RuntimeInformation.RuntimeIdentifier);
+        var cacheKey = $"{repository.Owner}/{repository.Repo}/{runtimeName}".ToLowerInvariant();
+        if (_latestReleaseArtifactCache.TryGetValue(cacheKey, out var cached)
+            && DateTimeOffset.Now - cached.CachedAt < TimeSpan.FromSeconds(300))
+        {
+            return cached.Info;
+        }
+
+        var info = await GetLatestGitHubReleaseArtifactAsync(repository.Owner, repository.Repo, runtimeName, cancellationToken);
+        _latestReleaseArtifactCache[cacheKey] = new CachedProductReleaseArtifactInfo(info, DateTimeOffset.Now);
+        return info;
+    }
+
+    private async Task<ProductReleaseArtifactInfo> GetLatestGitHubReleaseArtifactAsync(
+        string owner,
+        string repo,
+        string runtimeName,
+        CancellationToken cancellationToken)
+    {
+        var url = $"https://api.github.com/repos/{owner}/{repo}/releases/latest";
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, url);
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeout.CancelAfter(TimeSpan.FromSeconds(10));
+            using var response = await _http.SendAsync(request, timeout.Token);
+            if (response.StatusCode == HttpStatusCode.NotFound)
+            {
+                return new ProductReleaseArtifactInfo(
+                    "no_release",
+                    $"No GitHub Release was found for {owner}/{repo}.",
+                    string.Empty,
+                    string.Empty,
+                    string.Empty,
+                    string.Empty,
+                    runtimeName);
+            }
+
+            if (!response.IsSuccessStatusCode)
+            {
+                return new ProductReleaseArtifactInfo(
+                    "request_failed",
+                    $"GitHub Release request failed for {owner}/{repo}. HTTP {(int)response.StatusCode}",
+                    string.Empty,
+                    string.Empty,
+                    string.Empty,
+                    string.Empty,
+                    runtimeName);
+            }
+
+            var json = await response.Content.ReadAsStringAsync(timeout.Token);
+            var root = JsonNode.Parse(json) as JsonObject;
+            if (root is null)
+            {
+                return new ProductReleaseArtifactInfo(
+                    "request_failed",
+                    $"GitHub Release response could not be parsed for {owner}/{repo}.",
+                    string.Empty,
+                    string.Empty,
+                    string.Empty,
+                    string.Empty,
+                    runtimeName);
+            }
+
+            var latestVersion = GetString(root, "tag_name", string.Empty);
+            var releaseUrl = GetString(root, "html_url", string.Empty);
+            var expectedPrefix = $"{repo}-{runtimeName}-";
+            var asset = root["assets"]?.AsArray()
+                .OfType<JsonObject>()
+                .Select(node => new
+                {
+                    Name = GetString(node, "name", string.Empty),
+                    Url = GetString(node, "browser_download_url", string.Empty),
+                })
+                .FirstOrDefault(item =>
+                    item.Name.StartsWith(expectedPrefix, StringComparison.OrdinalIgnoreCase) &&
+                    item.Name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase));
+
+            if (asset is null)
+            {
+                return new ProductReleaseArtifactInfo(
+                    "asset_missing",
+                    $"GitHub Release exists for {owner}/{repo}, but no built product artifact matching {expectedPrefix}*.zip was found.",
+                    latestVersion,
+                    releaseUrl,
+                    string.Empty,
+                    string.Empty,
+                    runtimeName);
+            }
+
+            return new ProductReleaseArtifactInfo(
+                "ok",
+                "Built product artifact was found.",
+                latestVersion,
+                releaseUrl,
+                asset.Name,
+                asset.Url,
+                runtimeName);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+        {
+            return new ProductReleaseArtifactInfo(
+                "request_failed",
+                $"GitHub Release request failed for {owner}/{repo}. {ex.Message}",
+                string.Empty,
+                string.Empty,
+                string.Empty,
+                string.Empty,
+                runtimeName);
+        }
+    }
+
     private async Task<string> GetLatestGitHubTagAsync(string owner, string repo, CancellationToken cancellationToken)
     {
         var key = $"{owner}/{repo}".ToLowerInvariant();
@@ -3533,6 +3721,15 @@ public sealed class TimelineProductRuntimeService
         string LatestVersion,
         string ArchiveUrl);
 
+    private sealed record ProductReleaseArtifactInfo(
+        string Status,
+        string Message,
+        string LatestVersion,
+        string ReleaseUrl,
+        string ArtifactName,
+        string ArtifactUrl,
+        string RuntimeName);
+
     private sealed record ProductSourceArchiveStage(
         string OperationId,
         string StageRoot,
@@ -3545,6 +3742,8 @@ public sealed class TimelineProductRuntimeService
     private sealed record GitHubRepository(string Owner, string Repo);
 
     private sealed record CachedLatestVersion(string Version, DateTimeOffset CachedAt);
+
+    private sealed record CachedProductReleaseArtifactInfo(ProductReleaseArtifactInfo Info, DateTimeOffset CachedAt);
 
     private sealed record ProcessRunResult(int ExitCode, string Stdout, string Stderr);
 
@@ -3709,6 +3908,27 @@ public sealed class ProductUpdatePlanResponse
 
     [JsonPropertyName("updateAvailable")]
     public bool UpdateAvailable { get; set; }
+
+    [JsonPropertyName("builtArtifactStatus")]
+    public string BuiltArtifactStatus { get; set; } = "";
+
+    [JsonPropertyName("builtArtifactMessage")]
+    public string BuiltArtifactMessage { get; set; } = "";
+
+    [JsonPropertyName("builtArtifactVersion")]
+    public string BuiltArtifactVersion { get; set; } = "";
+
+    [JsonPropertyName("builtArtifactName")]
+    public string BuiltArtifactName { get; set; } = "";
+
+    [JsonPropertyName("builtArtifactUrl")]
+    public string BuiltArtifactUrl { get; set; } = "";
+
+    [JsonPropertyName("builtArtifactRuntime")]
+    public string BuiltArtifactRuntime { get; set; } = "";
+
+    [JsonPropertyName("builtArtifactUpdateAvailable")]
+    public bool BuiltArtifactUpdateAvailable { get; set; }
 
     [JsonPropertyName("canUseCurrentUpdater")]
     public bool CanUseCurrentUpdater { get; set; }

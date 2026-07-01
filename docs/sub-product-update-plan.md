@@ -26,6 +26,7 @@ It returns:
 
 - current product path and source settings;
 - installed version and latest source version when available;
+- latest built product artifact status when a GitHub Release exists;
 - whether the product is installed and complete;
 - whether the product path is managed by Timeline;
 - current distribution mode;
@@ -41,6 +42,34 @@ It returns:
 | `legacy_source_archive` | Update uses GitHub tag source archive ZIP. | Transitional only. |
 | `built_product_artifact` | Update uses a built runtime artifact. | Target direction. |
 | `unknown` | Product source type is missing or not recognized. | Block or warn. |
+
+## Built artifact discovery
+
+The plan endpoint now checks the latest GitHub Release for a runtime-specific
+ZIP asset. The expected naming pattern is:
+
+```text
+<repository-name>-<runtime>-<version>.zip
+```
+
+Examples:
+
+```text
+TimelineForAudio-win-x64-v0.4.11.zip
+TimelineForVideo-macos-arm64-v0.5.7.zip
+TimelineForPcInfo-win-x64-v0.2.1.zip
+```
+
+The runtime name follows the Timeline artifact convention:
+
+- `win-x64`
+- `macos-arm64`
+- `macos-x64`
+- other .NET runtime identifiers as-is
+
+If no Release or matching asset exists, the endpoint reports that as a warning.
+It does not fall back silently to a source archive for the future user-facing
+update path.
 
 ## Preservation rules
 
@@ -74,3 +103,6 @@ registry is configured that way.
 For a complete `KAN-58`, the next implementation should introduce built
 artifact discovery and validation for sub-products, then either disable or
 demote source archive update for normal users.
+
+Artifact discovery is now present in the read-only plan. The remaining gap is
+actual built-artifact validation and replacement execution.
