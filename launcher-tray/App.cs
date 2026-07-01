@@ -34,32 +34,32 @@ public sealed class App : Application
     {
         var menu = new NativeMenu();
 
-        _statusItem = new NativeMenuItem("Status: checking...")
+        _statusItem = new NativeMenuItem("状態: 確認中")
         {
             IsEnabled = false
         };
         menu.Items.Add(_statusItem);
         menu.Items.Add(new NativeMenuItemSeparator());
 
-        var openItem = new NativeMenuItem("Open Timeline");
+        var openItem = new NativeMenuItem("Timelineを開く");
         openItem.Click += async (_, _) => await RunLauncherAsync("open");
         menu.Items.Add(openItem);
 
-        var startItem = new NativeMenuItem("Start");
+        var startItem = new NativeMenuItem("起動");
         startItem.Click += async (_, _) => await RunLauncherAsync("start", "--no-open");
         menu.Items.Add(startItem);
 
-        var stopItem = new NativeMenuItem("Stop");
+        var stopItem = new NativeMenuItem("停止");
         stopItem.Click += async (_, _) => await RunLauncherAsync("stop");
         menu.Items.Add(stopItem);
 
-        var refreshItem = new NativeMenuItem("Refresh Status");
+        var refreshItem = new NativeMenuItem("状態を更新");
         refreshItem.Click += async (_, _) => await RefreshStatusAsync();
         menu.Items.Add(refreshItem);
 
         menu.Items.Add(new NativeMenuItemSeparator());
 
-        var exitItem = new NativeMenuItem("Exit Launcher");
+        var exitItem = new NativeMenuItem("Launcherを終了");
         exitItem.Click += (_, _) => Shutdown();
         menu.Items.Add(exitItem);
 
@@ -74,11 +74,11 @@ public sealed class App : Application
         }
 
         _busy = true;
-        SetStatus("Status: working...");
+        SetStatus("状態: 処理中");
         try
         {
             var result = await TimelineLauncherProcess.RunAsync(arguments, TimeSpan.FromMinutes(30));
-            SetStatus(result.ExitCode == 0 ? "Status: ready" : "Status: action failed");
+            SetStatus(result.ExitCode == 0 ? "状態: 利用できます" : "状態: 対応が必要です");
         }
         finally
         {
@@ -94,11 +94,11 @@ public sealed class App : Application
         }
 
         _busy = true;
-        SetStatus("Status: checking...");
+        SetStatus("状態: 確認中");
         try
         {
             var result = await TimelineLauncherProcess.RunAsync(["status"], TimeSpan.FromSeconds(30));
-            SetStatus(result.ExitCode == 0 ? "Status: running" : "Status: needs attention");
+            SetStatus(result.ExitCode == 0 ? "状態: 稼働中" : "状態: 対応が必要です");
         }
         finally
         {

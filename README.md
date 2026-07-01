@@ -4,39 +4,41 @@ Timeline is the local parent UI, product manager, and cross-product timeline
 store for Timeline sub-products.
 
 Timeline does not contain the conversion engines. Each sub-product remains a
-separate local product with its own public host-side entry points such as
-`start.ps1`, `stop.ps1`, and a local product API. Timeline coordinates
-the public product API and launchers, then builds Timeline-owned data for
-review, scan, download, and later LLM workflows.
+separate local product with its own public host-side API and lifecycle entry
+points. Timeline coordinates those public APIs and launchers, then builds
+Timeline-owned data for review, scan, download, and later LLM workflows.
 
 Timeline must not enter or operate a sub-product Docker container directly.
 
 ## Start
 
-Windows:
+The normal user-facing entry point is the C# Launcher. It owns startup,
+shutdown, status checks, and the resident tray/menu-bar UI. Batch files,
+shell scripts, and `.command` files are not part of the normal Timeline
+operation path.
+
+Resident launcher UI:
 
 ```powershell
 cd <Timeline>
-.\start.ps1
+dotnet run --project .\launcher-tray\Timeline.Launcher.Tray.csproj
 ```
 
-For development checks without opening a browser tab:
+Open or start Timeline without the resident UI:
 
 ```powershell
-.\start.ps1 -NoOpen
+dotnet run --project .\launcher\Timeline.Launcher.csproj -- open
 ```
 
-macOS / Linux minimal launcher:
+Start without opening a browser tab:
 
-```sh
-cd <Timeline>
-./start.sh --no-open
+```powershell
+dotnet run --project .\launcher\Timeline.Launcher.csproj -- start --no-open
 ```
 
-The shell launcher uses default ports unless environment variables are supplied.
-Set `TIMELINE_WEB_PORT`, `TIMELINE_LOCAL_API_PORT`,
-`TIMELINE_OLLAMA_PORT`, or `TIMELINE_COMPOSE_PROJECT` when running more than
-one copy or when a port is already in use.
+The same C# projects are intended to run on macOS as well. The macOS resident
+form is the menu-bar equivalent of the Windows tray. Actual packaging,
+signing, notarization, and installer work are tracked separately.
 
 Open:
 
@@ -76,17 +78,19 @@ than one copy at the same time.
 
 Stop:
 
-Windows:
+```powershell
+dotnet run --project .\launcher\Timeline.Launcher.csproj -- stop
+```
+
+Status:
 
 ```powershell
-.\stop.ps1
+dotnet run --project .\launcher\Timeline.Launcher.csproj -- status
 ```
 
-macOS / Linux:
-
-```sh
-./stop.sh
-```
+`start.ps1` and `stop.ps1` remain as low-level developer fallback tools while
+the product is still being migrated. They are not the normal user-facing
+launcher path.
 
 ## Product Scope
 
@@ -193,7 +197,7 @@ dotnet build .\local-api\Timeline.LocalApi.csproj
 dotnet build .\worker\Timeline.Worker.csproj
 ```
 
-PowerShell launcher check:
+Low-level fallback script check:
 
 ```powershell
 $files = @('.\start.ps1', '.\stop.ps1')
