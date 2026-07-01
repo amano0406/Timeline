@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.IO.Compression;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -262,6 +263,16 @@ public sealed class TimelineStoreRebuildService
         Action<string, string, JsonObject?> progress,
         CancellationToken cancellationToken)
     {
+        if (!IsProductSupportedOnCurrentOperatingSystem(product.ProductId))
+        {
+            return NewRefreshResult(
+                product,
+                refreshed: false,
+                skipped: true,
+                reason: GetUnsupportedProductSkipReason(product),
+                result: null);
+        }
+
         if (product.ProductId.Equals("audio", StringComparison.OrdinalIgnoreCase))
         {
             var requestBody = BuildProductRefreshRequestBody(request);
@@ -400,6 +411,11 @@ public sealed class TimelineStoreRebuildService
         TimelineStoreProduct product,
         CancellationToken cancellationToken)
     {
+        if (!IsProductSupportedOnCurrentOperatingSystem(product.ProductId))
+        {
+            return new ProductDownloadResult(product.ProductId, product.DisplayName, string.Empty);
+        }
+
         if (product.ProductId.Equals("audio", StringComparison.OrdinalIgnoreCase))
         {
             return NewDownloadResult(product, await _productActions.DownloadAudioItemsAsync(new JsonObject { ["all"] = true }, cancellationToken));
@@ -446,6 +462,48 @@ public sealed class TimelineStoreRebuildService
         }
 
         throw new InvalidOperationException("Unsupported product: " + product.ProductId);
+    }
+
+    private static bool IsProductSupportedOnCurrentOperatingSystem(string productId)
+        => IsProductSupportedOnOperatingSystem(productId, GetCurrentOperatingSystemKey());
+
+    public static bool IsProductSupportedOnOperatingSystem(string productId, string operatingSystemKey)
+    {
+        var product = ConvertTimelineText(productId).ToLowerInvariant();
+        var os = ConvertTimelineText(operatingSystemKey).ToLowerInvariant();
+        return product switch
+        {
+            "windows-codex" or "pc" => os == "windows",
+            _ => true,
+        };
+    }
+
+    private static string GetUnsupportedProductSkipReason(TimelineStoreProduct product)
+        => product.ProductId.ToLowerInvariant() switch
+        {
+            "windows-codex" => product.DisplayName + " は Windows Codex のローカル履歴を扱うため、このOSではスキャン対象から外しました。",
+            "pc" => product.DisplayName + " は Windows のPC状態を扱うため、このOSではスキャン対象から外しました。",
+            _ => product.DisplayName + " はこのOSでは未対応のため、スキャン対象から外しました。",
+        };
+
+    private static string GetCurrentOperatingSystemKey()
+    {
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            return "windows";
+        }
+
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+        {
+            return "macos";
+        }
+
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+        {
+            return "linux";
+        }
+
+        return RuntimeInformation.OSDescription;
     }
 
     private JsonObject AddProductArchive(
