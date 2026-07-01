@@ -19,6 +19,7 @@ execution is added.
 ```powershell
 dotnet run --project .\launcher\Timeline.Launcher.csproj -- uninstall-plan
 dotnet run --project .\launcher\Timeline.Launcher.csproj -- uninstall-plan --json
+dotnet run --project .\launcher\Timeline.Launcher.csproj -- uninstall
 ```
 
 ## Local API
@@ -36,9 +37,10 @@ POST http://127.0.0.1:19001/timeline/uninstall-registration/install
 POST http://127.0.0.1:19001/timeline/uninstall-registration/remove
 ```
 
-The registration command currently points Windows to `uninstall-plan`. This
-keeps the OS-level entry safe while the destructive uninstall executor is still
-out of scope.
+The registration command points Windows to `uninstall`, not directly to a
+destructive executor. The command starts Timeline when needed and opens the
+settings section where the user can compare uninstall levels. This keeps the
+OS-level entry useful while still preventing silent data deletion.
 
 ## UI
 

@@ -19,7 +19,7 @@ public static class TimelineUninstallPlanService
             warnings.Add(new TimelineUninstallPlanMessage
             {
                 Code = "data_inside_app_root",
-                Message = "The configured data root is inside the Timeline application root. App-only uninstall must preserve or move this data before deleting the root directory.",
+                Message = "Timelineデータがアプリ本体の中にあります。アプリだけ削除する場合は、データを残す処理が必要です。",
             });
         }
 
@@ -28,7 +28,7 @@ public static class TimelineUninstallPlanService
             warnings.Add(new TimelineUninstallPlanMessage
             {
                 Code = "settings_inside_app_root",
-                Message = "settings.json is currently stored in the Timeline application root. App-only uninstall must preserve it if reinstall should keep local settings.",
+                Message = "settings.json がアプリ本体の中にあります。再インストール後も設定を使う場合は保持が必要です。",
             });
         }
 

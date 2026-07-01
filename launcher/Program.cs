@@ -28,6 +28,7 @@ try
         "configure-runtime" => ShowRuntimeConfiguration(root, settings, runtimeConfigurationUpdate, options.JsonOutput),
         "install-plan" => ShowInstallPlan(root, options.JsonOutput),
         "uninstall-plan" => ShowUninstallPlan(root, options.JsonOutput),
+        "uninstall" or "uninstall-assistant" => await OpenUninstallAssistant(root, settings, openBrowser: !options.NoOpen, options.JsonOutput),
         "update-plan" => await ShowUpdatePlan(root, options.JsonOutput),
         "update-apply-plan" => await ShowUpdateApplyPlan(root, options.ArtifactPath, options.JsonOutput),
         "update-manifest-apply-plan" => await ShowUpdateManifestApplyPlan(root, options.ManifestPath, options.JsonOutput),
@@ -572,6 +573,76 @@ static async Task<int> OpenOrStart(string root, TimelineSettings settings)
     Console.WriteLine($"Opening Timeline: {settings.WebUrl}");
     OpenUrl(settings.WebUrl);
     return 0;
+}
+
+static async Task<int> OpenUninstallAssistant(string root, TimelineSettings settings, bool openBrowser, bool jsonOutput)
+{
+    var targetUrl = BuildTimelineUrl(settings.WebUrl, "timeline/settings#timeline-uninstall-settings");
+    if (!await IsWebReady(settings.WebHealthUrl))
+    {
+        var exitCode = await RunStart(root, settings, openBrowser: false);
+        if (exitCode != 0)
+        {
+            return PrintUninstallAssistantResult(
+                "failed",
+                targetUrl,
+                opened: false,
+                "Timeline を起動できませんでした。起動後に設定画面の削除時の影響範囲を開いてください。",
+                jsonOutput);
+        }
+    }
+
+    if (!await WaitForWeb(settings.WebHealthUrl, TimeSpan.FromSeconds(30)))
+    {
+        return PrintUninstallAssistantResult(
+            "not_ready",
+            targetUrl,
+            opened: false,
+            "Timeline の画面を開ける状態になりませんでした。起動状況を確認してください。",
+            jsonOutput);
+    }
+
+    if (openBrowser)
+    {
+        OpenUrl(targetUrl);
+    }
+
+    return PrintUninstallAssistantResult(
+        "ready",
+        targetUrl,
+        opened: openBrowser,
+        "削除範囲を選ぶ画面を開きます。ここでは自動削除は行いません。",
+        jsonOutput);
+}
+
+static int PrintUninstallAssistantResult(string state, string targetUrl, bool opened, string message, bool jsonOutput)
+{
+    if (jsonOutput)
+    {
+        Console.WriteLine(JsonSerializer.Serialize(
+            new
+            {
+                state,
+                targetUrl,
+                opened,
+                message,
+            },
+            new JsonSerializerOptions
+            {
+                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+                WriteIndented = true,
+            }));
+    }
+    else
+    {
+        Console.WriteLine("Timeline uninstall assistant");
+        Console.WriteLine($"  state: {state}");
+        Console.WriteLine($"  url: {targetUrl}");
+        Console.WriteLine($"  opened: {(opened ? "yes" : "no")}");
+        Console.WriteLine($"  {message}");
+    }
+
+    return state == "ready" ? 0 : 1;
 }
 
 static async Task<int> ShowStatus(string root, TimelineSettings settings)
@@ -1391,7 +1462,7 @@ static int ShowHelp()
     Console.WriteLine("Timeline Launcher");
     Console.WriteLine();
     Console.WriteLine("Usage:");
-    Console.WriteLine("  TimelineLauncher [open|status|preflight|verify-setup|mac-verification-report|version|configure-runtime|install-plan|uninstall-plan|update-plan|update-apply-plan|update-manifest-apply-plan|update-recovery-plan|update-validate|update-manifest-validate|update-stage|update-manifest-stage|start|stop|shortcut-status|shortcut-install|shortcut-remove|uninstall-registration-status|uninstall-registration-install|uninstall-registration-remove|help] [--no-open] [--json]");
+    Console.WriteLine("  TimelineLauncher [open|status|preflight|verify-setup|mac-verification-report|version|configure-runtime|install-plan|uninstall-plan|uninstall|update-plan|update-apply-plan|update-manifest-apply-plan|update-recovery-plan|update-validate|update-manifest-validate|update-stage|update-manifest-stage|start|stop|shortcut-status|shortcut-install|shortcut-remove|uninstall-registration-status|uninstall-registration-install|uninstall-registration-remove|help] [--no-open] [--json]");
     Console.WriteLine();
     Console.WriteLine("Commands:");
     Console.WriteLine("  open    Open Timeline. Starts it first when needed.");
@@ -1403,6 +1474,7 @@ static int ShowHelp()
     Console.WriteLine("  configure-runtime  Write explicit runtime ports and instance settings before isolated verification.");
     Console.WriteLine("  install-plan  Show OS registration and installer targets before future installer execution.");
     Console.WriteLine("  uninstall-plan  Show delete levels and preserved data before future uninstall execution.");
+    Console.WriteLine("  uninstall  Open the settings section where the user can choose the uninstall scope. No files are deleted.");
     Console.WriteLine("  update-plan  Show the safe Timeline body update plan. Use --json for tooling.");
     Console.WriteLine("  update-apply-plan  Show whether a built product artifact can be applied now. Optional: --artifact <path>.");
     Console.WriteLine("  update-manifest-apply-plan  Show whether a manifest artifact can be applied now. Use --manifest <path>.");
@@ -2279,6 +2351,14 @@ static void OpenUrl(string url)
     {
         Console.Error.WriteLine($"Failed to open browser: {ex.Message}");
     }
+}
+
+static string BuildTimelineUrl(string baseUrl, string relativePath)
+{
+    var normalizedBase = string.IsNullOrWhiteSpace(baseUrl)
+        ? "http://127.0.0.1:19000/"
+        : baseUrl.TrimEnd('/') + "/";
+    return new Uri(new Uri(normalizedBase), relativePath).ToString();
 }
 
 internal sealed record LauncherOptions(

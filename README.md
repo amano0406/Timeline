@@ -71,6 +71,7 @@ Inspect uninstall levels before any future destructive uninstall execution:
 ```powershell
 dotnet run --project .\launcher\Timeline.Launcher.csproj -- uninstall-plan
 dotnet run --project .\launcher\Timeline.Launcher.csproj -- uninstall-plan --json
+dotnet run --project .\launcher\Timeline.Launcher.csproj -- uninstall
 ```
 
 Inspect OS registration and installer targets before any future installer

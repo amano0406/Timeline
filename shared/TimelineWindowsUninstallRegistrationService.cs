@@ -216,17 +216,17 @@ public static class TimelineWindowsUninstallRegistrationService
         var executable = ResolveLauncherExecutable(timelineRoot);
         if (!string.IsNullOrWhiteSpace(executable))
         {
-            return new LauncherCommand(executable, "uninstall-plan");
+            return new LauncherCommand(executable, "uninstall");
         }
 
         var dll = ResolveLauncherDll(timelineRoot);
         if (!string.IsNullOrWhiteSpace(dll))
         {
-            return new LauncherCommand(ResolveDotnetCommand(), $"{QuoteArgument(dll)} uninstall-plan");
+            return new LauncherCommand(ResolveDotnetCommand(), $"{QuoteArgument(dll)} uninstall");
         }
 
         var project = Path.Combine(timelineRoot, "launcher", "Timeline.Launcher.csproj");
-        return new LauncherCommand(ResolveDotnetCommand(), $"run --project {QuoteArgument(project)} -- uninstall-plan");
+        return new LauncherCommand(ResolveDotnetCommand(), $"run --project {QuoteArgument(project)} -- uninstall");
     }
 
     private static string ResolveLauncherExecutable(string timelineRoot)

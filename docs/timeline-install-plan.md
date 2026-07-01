@@ -140,12 +140,13 @@ The registration is per-user under:
 HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Uninstall\Timeline
 ```
 
-The registration points to the C# Launcher. At this stage the uninstall command
-opens `uninstall-plan`; it does not delete files directly. This is intentional:
-Timeline contains application files, settings, user material, generated data,
-managed sub-products, logs, and Docker resources. Destructive removal should
-only be added after the selectable uninstall levels have a final confirmation
-flow.
+The registration points to the C# Launcher `uninstall` command. The command
+starts Timeline when needed and opens the settings section where the user can
+choose the uninstall scope. It does not delete files directly. This is
+intentional: Timeline contains application files, settings, user material,
+generated data, managed sub-products, logs, and Docker resources. Destructive
+removal should only be added after the selectable uninstall levels have a final
+confirmation flow.
 
 The install plan reports this target as `uninstall_entry` so Windows installer
 work can verify:
