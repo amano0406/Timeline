@@ -37,6 +37,60 @@ public sealed partial class TimelineLocalApiClient
             ?? new TimelineAppSettings();
     }
 
+    public async Task<TimelineLauncherShortcutStatus> GetLauncherShortcutStatusAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            return await _http.GetFromJsonAsync<TimelineLauncherShortcutStatus>(
+                    "timeline/launcher-shortcut/status",
+                    JsonOptions,
+                    cancellationToken)
+                ?? new TimelineLauncherShortcutStatus
+                {
+                    State = "unknown",
+                    Message = "Timeline のアプリ入口の状態を取得できませんでした。",
+                };
+        }
+        catch (Exception ex)
+        {
+            LogOptionalLocalApiReadFailure(ex, "Failed to load Timeline launcher shortcut status.");
+            return new TimelineLauncherShortcutStatus
+            {
+                Supported = false,
+                State = "local_api_unreachable",
+                Message = "Timeline の操作機能に接続できません。Timeline Launcher から起動し直してください。",
+            };
+        }
+    }
+
+    public async Task<TimelineLauncherShortcutStatus> InstallLauncherShortcutAsync(CancellationToken cancellationToken = default)
+    {
+        var response = await _http.PostAsync("timeline/launcher-shortcut/install", content: null, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            throw new InvalidOperationException(ErrorMessageFromBody(body)
+                ?? $"Timeline のアプリ入口を作成できませんでした。HTTP {(int)response.StatusCode}");
+        }
+
+        return await response.Content.ReadFromJsonAsync<TimelineLauncherShortcutStatus>(JsonOptions, cancellationToken)
+            ?? new TimelineLauncherShortcutStatus { State = "unknown", Message = "Timeline のアプリ入口の作成結果が空でした。" };
+    }
+
+    public async Task<TimelineLauncherShortcutStatus> RemoveLauncherShortcutAsync(CancellationToken cancellationToken = default)
+    {
+        var response = await _http.PostAsync("timeline/launcher-shortcut/remove", content: null, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            throw new InvalidOperationException(ErrorMessageFromBody(body)
+                ?? $"Timeline のアプリ入口を削除できませんでした。HTTP {(int)response.StatusCode}");
+        }
+
+        return await response.Content.ReadFromJsonAsync<TimelineLauncherShortcutStatus>(JsonOptions, cancellationToken)
+            ?? new TimelineLauncherShortcutStatus { State = "unknown", Message = "Timeline のアプリ入口の削除結果が空でした。" };
+    }
+
     public async Task<PathStatusResult> GetPathStatusAsync(
         string path,
         string kind = "directory",

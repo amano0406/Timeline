@@ -69,6 +69,20 @@ public sealed class TimelineStartupStatus
     public string Message { get; set; } = "";
 }
 
+public sealed class TimelineLauncherShortcutStatus
+{
+    public string Platform { get; set; } = "";
+    public bool Supported { get; set; }
+    public bool Registered { get; set; }
+    public string State { get; set; } = "";
+    public string Kind { get; set; } = "";
+    public string ShortcutPath { get; set; } = "";
+    public string TargetPath { get; set; } = "";
+    public string Arguments { get; set; } = "";
+    public string WorkingDirectory { get; set; } = "";
+    public string Message { get; set; } = "";
+}
+
 public sealed class TimelineCommonAiSettings
 {
     public string ComputeMode { get; set; } = "auto";

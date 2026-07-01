@@ -14,6 +14,7 @@ Timeline の通常導線は C# Launcher に集約する。
 | --- | --- | --- |
 | C# CLI Launcher | 起動、停止、状態確認、Webを開く | `launcher/Timeline.Launcher.csproj` |
 | C# Resident Launcher | タスクバー/通知領域、macOS メニューバー相当で常駐する | `launcher-tray/Timeline.Launcher.Tray.csproj` |
+| Windows Start Menu entry | Windows のアプリ入口として C# Resident Launcher を起動する | `TimelineLauncher shortcut-install` が `.lnk` を作成 |
 | OS 自動起動設定 | OS 起動時に常駐 Launcher を起動する | Windows は Run レジストリ、macOS は LaunchAgent plist |
 
 現時点ではインストーラーや署名済みアプリの完成前であるため、開発環境では `dotnet run --project ...` で起動する。配布時は同じ C# 実装を発行済み実行ファイルまたは DLL として起動する。

@@ -17,6 +17,9 @@ try
         "start" => await RunStart(root, settings, openBrowser: !options.NoOpen),
         "stop" => await RunStop(root, settings),
         "open" => await OpenOrStart(root, settings),
+        "shortcut-status" => ShowShortcutStatus(root),
+        "shortcut-install" or "install-shortcut" => InstallShortcut(root),
+        "shortcut-remove" or "remove-shortcut" => RemoveShortcut(root),
         "help" => ShowHelp(),
         _ => ShowUnknownCommand(command)
     };
@@ -119,18 +122,61 @@ static async Task<int> RunStop(string root, TimelineSettings settings)
     return await TimelineDirectRuntime.StopAsync(root, settings);
 }
 
+static int ShowShortcutStatus(string root)
+{
+    var status = TimelineLauncherShortcutService.GetStatus(root);
+    PrintShortcutStatus(status);
+    return status.State.Equals("failed", StringComparison.OrdinalIgnoreCase) ? 1 : 0;
+}
+
+static int InstallShortcut(string root)
+{
+    var status = TimelineLauncherShortcutService.Install(root);
+    PrintShortcutStatus(status);
+    return status.Registered ? 0 : 1;
+}
+
+static int RemoveShortcut(string root)
+{
+    var status = TimelineLauncherShortcutService.Remove(root);
+    PrintShortcutStatus(status);
+    return status.State.Equals("failed", StringComparison.OrdinalIgnoreCase) ? 1 : 0;
+}
+
+static void PrintShortcutStatus(TimelineLauncherShortcutStatus status)
+{
+    Console.WriteLine("Timeline app entry");
+    Console.WriteLine($"  {status.Message}");
+    Console.WriteLine($"  platform: {status.Platform}");
+    Console.WriteLine($"  state: {status.State}");
+    Console.WriteLine($"  registered: {status.Registered}");
+    Console.WriteLine($"  kind: {status.Kind}");
+    if (!string.IsNullOrWhiteSpace(status.ShortcutPath))
+    {
+        Console.WriteLine($"  shortcut: {status.ShortcutPath}");
+    }
+    var commandLine = TimelineLauncherShortcutService.FormatCommandLine(status);
+    if (!string.IsNullOrWhiteSpace(commandLine))
+    {
+        Console.WriteLine($"  target: {commandLine}");
+    }
+}
+
 static int ShowHelp()
 {
     Console.WriteLine("Timeline Launcher");
     Console.WriteLine();
     Console.WriteLine("Usage:");
-    Console.WriteLine("  TimelineLauncher [open|status|start|stop|help] [--no-open]");
+    Console.WriteLine("  TimelineLauncher [open|status|start|stop|shortcut-status|shortcut-install|shortcut-remove|help] [--no-open]");
     Console.WriteLine();
     Console.WriteLine("Commands:");
     Console.WriteLine("  open    Open Timeline. Starts it first when needed.");
     Console.WriteLine("  status  Show Timeline runtime status.");
     Console.WriteLine("  start   Start Timeline.");
     Console.WriteLine("  stop    Stop Timeline.");
+    Console.WriteLine("  shortcut-status   Show the OS app entry status.");
+    Console.WriteLine("  shortcut-install  Create or update the OS app entry.");
+    Console.WriteLine("  shortcut-remove   Remove the OS app entry.");
     return 0;
 }
 

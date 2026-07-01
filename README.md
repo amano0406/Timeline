@@ -36,6 +36,16 @@ Start without opening a browser tab:
 dotnet run --project .\launcher\Timeline.Launcher.csproj -- start --no-open
 ```
 
+Create or inspect the Windows Start Menu entry:
+
+```powershell
+dotnet run --project .\launcher\Timeline.Launcher.csproj -- shortcut-install
+dotnet run --project .\launcher\Timeline.Launcher.csproj -- shortcut-status
+```
+
+The entry points directly to the C# resident launcher. It does not generate a
+batch file, shell script, or `.command` wrapper.
+
 The same C# projects are intended to run on macOS as well. The macOS resident
 form is the menu-bar equivalent of the Windows tray. Actual packaging,
 signing, notarization, and installer work are tracked separately.

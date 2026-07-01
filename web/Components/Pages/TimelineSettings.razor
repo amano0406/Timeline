@@ -707,6 +707,8 @@ else
     private string _timeZoneId = "Asia/Tokyo";
     private string _timelineDirectory = DefaultDataRoot;
     private bool _startWithOperatingSystem;
+    private TimelineLauncherShortcutStatus _launcherShortcutStatus = new();
+    private bool _launcherShortcutBusy;
     private string _commonComputeMode = "auto";
     private string _audioComputeMode = "cpu";
     private string _imageComputeMode = "cpu";
@@ -822,6 +824,73 @@ else
     };
 
     private TimelineStartupStatus StartupStatus => _settings?.Startup.Status ?? new TimelineStartupStatus();
+
+    private string LauncherShortcutStatusLabel
+    {
+        get
+        {
+            if (!_launcherShortcutStatus.Supported)
+            {
+                return "未対応";
+            }
+            if (_launcherShortcutStatus.State.Equals("failed", StringComparison.OrdinalIgnoreCase))
+            {
+                return "確認できません";
+            }
+
+            return _launcherShortcutStatus.Registered ? "作成済み" : "未作成";
+        }
+    }
+
+    private string LauncherShortcutStatusIcon
+    {
+        get
+        {
+            if (!_launcherShortcutStatus.Supported || _launcherShortcutStatus.State.Equals("failed", StringComparison.OrdinalIgnoreCase))
+            {
+                return "triangle-exclamation";
+            }
+
+            return _launcherShortcutStatus.Registered ? "circle-check" : "circle-minus";
+        }
+    }
+
+    private string LauncherShortcutStatusClass
+    {
+        get
+        {
+            if (!_launcherShortcutStatus.Supported)
+            {
+                return "tfa-status-pill border-amber-200 bg-amber-50 text-amber-900";
+            }
+            if (_launcherShortcutStatus.State.Equals("failed", StringComparison.OrdinalIgnoreCase))
+            {
+                return "tfa-status-pill border-red-200 bg-red-50 text-red-800";
+            }
+
+            return _launcherShortcutStatus.Registered
+                ? "tfa-status-pill border-teal-200 bg-teal-50 text-teal-800"
+                : "tfa-status-pill border-slate-200 bg-white text-slate-700";
+        }
+    }
+
+    private string LauncherShortcutDetail =>
+        string.IsNullOrWhiteSpace(_launcherShortcutStatus.Message)
+            ? "Timeline のアプリ入口の状態を確認できませんでした。"
+            : _launcherShortcutStatus.Message;
+
+    private string LauncherShortcutTargetDisplay
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(_launcherShortcutStatus.ShortcutPath))
+            {
+                return "-";
+            }
+
+            return _launcherShortcutStatus.ShortcutPath;
+        }
+    }
 
     private string StartupStatusLabel
     {
@@ -1046,11 +1115,13 @@ else
         {
             var settingsTask = Timeline.GetTimelineSettingsAsync();
             var runtimeTask = Timeline.GetProductRuntimeOverviewAsync();
+            var launcherShortcutTask = Timeline.GetLauncherShortcutStatusAsync();
 
-            await Task.WhenAll(settingsTask, runtimeTask);
+            await Task.WhenAll(settingsTask, runtimeTask, launcherShortcutTask);
 
             _settings = await settingsTask;
             _runtime = await runtimeTask;
+            _launcherShortcutStatus = await launcherShortcutTask;
 
             _displayLanguageId = string.IsNullOrWhiteSpace(_settings.DisplayLanguageId) ? "ja-JP" : _settings.DisplayLanguageId;
             _timeZoneId = string.IsNullOrWhiteSpace(_settings.TimeZoneId) ? "Asia/Tokyo" : _settings.TimeZoneId;
@@ -2149,6 +2220,42 @@ else
         _saved = false;
     }
 
+    private async Task InstallLauncherShortcutAsync()
+    {
+        _launcherShortcutBusy = true;
+        _error = null;
+        try
+        {
+            _launcherShortcutStatus = await Timeline.InstallLauncherShortcutAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _launcherShortcutBusy = false;
+        }
+    }
+
+    private async Task RemoveLauncherShortcutAsync()
+    {
+        _launcherShortcutBusy = true;
+        _error = null;
+        try
+        {
+            _launcherShortcutStatus = await Timeline.RemoveLauncherShortcutAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _launcherShortcutBusy = false;
+        }
+    }
+
     private void OnCommonComputeModeChanged(ChangeEventArgs args)
     {
         _commonComputeMode = NormalizeCommonComputeMode(args.Value?.ToString());
@@ -2358,7 +2465,8 @@ else
         </div>
     </div>;
 
-    private RenderFragment TimelineStartupControls() => @<div class="rounded-md border border-line bg-slate-50 p-4">
+    private RenderFragment TimelineStartupControls() => @<div class="grid gap-4">
+    <div class="rounded-md border border-line bg-slate-50 p-4">
         <div class="grid gap-4 lg:grid-cols-[1fr_auto] lg:items-start">
             <div class="min-w-0">
                 <label class="inline-flex cursor-pointer items-start gap-3" for="timeline-start-with-os">
@@ -2392,6 +2500,49 @@ else
             <div class="rounded-md border border-line bg-white px-3 py-2 text-sm text-slate-700">
                 <div class="tfa-kicker">設定値</div>
                 <div class="mt-1 font-semibold text-slate-900">@StartupToggleLabel(_startWithOperatingSystem)</div>
+            </div>
+        </div>
+    </div>
+    @LauncherShortcutControls()
+    </div>;
+
+    private RenderFragment LauncherShortcutControls() => @<div class="rounded-md border border-line bg-slate-50 p-4">
+        <div class="grid gap-4 lg:grid-cols-[1fr_auto] lg:items-start">
+            <div class="min-w-0">
+                <div class="flex flex-wrap items-center gap-2">
+                    <FaIcon Name="arrow-up-right-from-square" Class="tfa-icon text-accent" />
+                    <h3 class="font-semibold text-slate-900">OS上のアプリ入口</h3>
+                    <span class="@LauncherShortcutStatusClass">
+                        <FaIcon Name="@LauncherShortcutStatusIcon" Class="tfa-icon !h-3 !w-3" />
+                        <span>@LauncherShortcutStatusLabel</span>
+                    </span>
+                </div>
+                <p class="mt-2 text-sm text-slate-600">
+                    スタートメニューから Timeline Launcher を起動できる入口を作成します。自動起動とは別で、ユーザーが手動で開くための入口です。
+                </p>
+                <div class="mt-3 rounded-md border border-line bg-white p-3 text-sm text-slate-700">
+                    @LauncherShortcutDetail
+                    <div class="mt-2 break-all font-mono text-xs text-slate-500">@LauncherShortcutTargetDisplay</div>
+                </div>
+            </div>
+            <div class="flex flex-wrap gap-2 lg:justify-end">
+                <button type="button"
+                        class="tfa-button-primary gap-2"
+                        disabled="@(_launcherShortcutBusy || !_launcherShortcutStatus.Supported)"
+                        @onclick="InstallLauncherShortcutAsync">
+                    <FaIcon Name="@(_launcherShortcutBusy ? "spinner" : "plus")" Class="@($"tfa-icon {(_launcherShortcutBusy ? "fa-spin" : "")}")" />
+                    <span>@(_launcherShortcutStatus.Registered ? "作成し直す" : "入口を作成")</span>
+                </button>
+                @if (_launcherShortcutStatus.Registered)
+                {
+                    <button type="button"
+                            class="tfa-button-secondary gap-2"
+                            disabled="@_launcherShortcutBusy"
+                            @onclick="RemoveLauncherShortcutAsync">
+                        <FaIcon Name="trash" Class="tfa-icon" />
+                        <span>入口を削除</span>
+                    </button>
+                }
             </div>
         </div>
     </div>;

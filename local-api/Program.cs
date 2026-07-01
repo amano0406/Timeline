@@ -99,6 +99,21 @@ app.MapPost("/timeline/runtime/stop", (TimelineRuntimeControlService runtime) =>
     return TypedResults.Json(runtime.StopTimeline());
 });
 
+app.MapGet("/timeline/launcher-shortcut/status", (TimelineLocalApiOptions options) =>
+{
+    return TypedResults.Json(TimelineLauncherShortcutService.GetStatus(options.TimelineProductPath));
+});
+
+app.MapPost("/timeline/launcher-shortcut/install", (TimelineLocalApiOptions options) =>
+{
+    return TypedResults.Json(TimelineLauncherShortcutService.Install(options.TimelineProductPath));
+});
+
+app.MapPost("/timeline/launcher-shortcut/remove", (TimelineLocalApiOptions options) =>
+{
+    return TypedResults.Json(TimelineLauncherShortcutService.Remove(options.TimelineProductPath));
+});
+
 app.MapGet("/timeline/settings", (TimelineSettingsService settings) =>
 {
     return TypedResults.Json(settings.ReadSettings());
