@@ -83,6 +83,51 @@ public sealed class TimelineLauncherShortcutStatus
     public string Message { get; set; } = "";
 }
 
+public sealed class TimelineUninstallPlan
+{
+    public string ProductId { get; set; } = "";
+    public string ProductName { get; set; } = "";
+    public string State { get; set; } = "";
+    public string Mode { get; set; } = "";
+    public bool CanExecute { get; set; }
+    public bool RequiresExplicitConfirmation { get; set; }
+    public string TimelineRoot { get; set; } = "";
+    public string DataRoot { get; set; } = "";
+    public string SettingsPath { get; set; } = "";
+    public List<TimelineUninstallLevel> Levels { get; set; } = [];
+    public List<TimelineUninstallPlanMessage> Warnings { get; set; } = [];
+    public string GeneratedAt { get; set; } = "";
+}
+
+public sealed class TimelineUninstallLevel
+{
+    public string Id { get; set; } = "";
+    public string Name { get; set; } = "";
+    public string Description { get; set; } = "";
+    public bool Destructive { get; set; }
+    public bool RecommendedDefault { get; set; }
+    public bool RequiresStrongConfirmation { get; set; }
+    public List<TimelineUninstallPlanItem> Items { get; set; } = [];
+}
+
+public sealed class TimelineUninstallPlanItem
+{
+    public string Id { get; set; } = "";
+    public string Path { get; set; } = "";
+    public string Kind { get; set; } = "";
+    public bool Exists { get; set; }
+    public bool DefaultDelete { get; set; }
+    public bool UserData { get; set; }
+    public bool SharedResource { get; set; }
+    public string Risk { get; set; } = "";
+}
+
+public sealed class TimelineUninstallPlanMessage
+{
+    public string Code { get; set; } = "";
+    public string Message { get; set; } = "";
+}
+
 public sealed class TimelineCommonAiSettings
 {
     public string ComputeMode { get; set; } = "auto";

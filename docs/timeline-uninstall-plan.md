@@ -27,6 +27,23 @@ dotnet run --project .\launcher\Timeline.Launcher.csproj -- uninstall-plan --jso
 GET http://127.0.0.1:19001/timeline/uninstall/plan
 ```
 
+## UI
+
+The Timeline settings page shows the read-only plan under the uninstall impact
+area. The UI currently displays:
+
+- the recommended uninstall level
+- the application root, data root, and settings path
+- warning messages translated into user-facing Japanese
+- a selectable uninstall level so users can compare intended scope before any
+  future execution step
+- each uninstall level, whether strong confirmation is required, and a short
+  preview of affected targets
+
+The UI still does not execute uninstall operations. Destructive execution should
+be added only after the installer/uninstaller flow has a final confirmation
+model.
+
 ## Levels
 
 | Level | Meaning | Default |

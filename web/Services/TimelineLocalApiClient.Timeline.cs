@@ -91,6 +91,44 @@ public sealed partial class TimelineLocalApiClient
             ?? new TimelineLauncherShortcutStatus { State = "unknown", Message = "Timeline のアプリ入口の削除結果が空でした。" };
     }
 
+    public async Task<TimelineUninstallPlan> GetTimelineUninstallPlanAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            return await _http.GetFromJsonAsync<TimelineUninstallPlan>(
+                    "timeline/uninstall/plan",
+                    JsonOptions,
+                    cancellationToken)
+                ?? new TimelineUninstallPlan
+                {
+                    ProductId = "timeline",
+                    ProductName = "Timeline",
+                    State = "empty",
+                };
+        }
+        catch (Exception ex)
+        {
+            LogOptionalLocalApiReadFailure(ex, "Failed to load Timeline uninstall plan.");
+            return new TimelineUninstallPlan
+            {
+                ProductId = "timeline",
+                ProductName = "Timeline",
+                State = "local_api_unreachable",
+                Mode = "read_only",
+                CanExecute = false,
+                RequiresExplicitConfirmation = true,
+                Warnings =
+                [
+                    new TimelineUninstallPlanMessage
+                    {
+                        Code = "local_api_unreachable",
+                        Message = "Timeline の操作機能に接続できないため、削除対象を確認できませんでした。",
+                    },
+                ],
+            };
+        }
+    }
+
     public async Task<PathStatusResult> GetPathStatusAsync(
         string path,
         string kind = "directory",

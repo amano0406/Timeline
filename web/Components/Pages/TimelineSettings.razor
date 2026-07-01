@@ -100,6 +100,8 @@ else if (_proMode)
             </div>
 
             @TimelineStartupControls()
+
+            @TimelineUninstallPlanControls()
         </div>
     </section>
 
@@ -206,6 +208,16 @@ else
         </h2>
         <div class="mt-4">
             @TimelineStartupControls()
+        </div>
+    </section>
+
+    <section id="timeline-uninstall-settings" class="tfa-card tfa-card-pad mt-5 scroll-mt-6">
+        <h2 class="flex items-center gap-2 text-lg font-semibold">
+            <FaIcon Name="trash" Class="tfa-icon text-accent" />
+            <span>削除時の影響範囲</span>
+        </h2>
+        <div class="mt-4">
+            @TimelineUninstallPlanControls()
         </div>
     </section>
 
@@ -709,6 +721,10 @@ else
     private bool _startWithOperatingSystem;
     private TimelineLauncherShortcutStatus _launcherShortcutStatus = new();
     private bool _launcherShortcutBusy;
+    private TimelineUninstallPlan? _timelineUninstallPlan;
+    private bool _timelineUninstallPlanLoading = true;
+    private string? _timelineUninstallPlanError;
+    private string _timelineUninstallSelectedLevelId = "";
     private string _commonComputeMode = "auto";
     private string _audioComputeMode = "cpu";
     private string _imageComputeMode = "cpu";
@@ -780,6 +796,7 @@ else
     public bool IsBusy =>
         _loading
         || _saving
+        || _timelineUninstallPlanLoading
         || _audioSettingsLoading
         || _imageSettingsLoading
         || _videoSettingsLoading;
@@ -1111,17 +1128,22 @@ else
         _audioSettingsLoading = true;
         _imageSettingsLoading = true;
         _videoSettingsLoading = true;
+        _timelineUninstallPlanLoading = true;
+        _timelineUninstallPlanError = null;
         try
         {
             var settingsTask = Timeline.GetTimelineSettingsAsync();
             var runtimeTask = Timeline.GetProductRuntimeOverviewAsync();
             var launcherShortcutTask = Timeline.GetLauncherShortcutStatusAsync();
+            var uninstallPlanTask = Timeline.GetTimelineUninstallPlanAsync();
 
-            await Task.WhenAll(settingsTask, runtimeTask, launcherShortcutTask);
+            await Task.WhenAll(settingsTask, runtimeTask, launcherShortcutTask, uninstallPlanTask);
 
             _settings = await settingsTask;
             _runtime = await runtimeTask;
             _launcherShortcutStatus = await launcherShortcutTask;
+            _timelineUninstallPlan = await uninstallPlanTask;
+            EnsureTimelineUninstallSelectedLevel();
 
             _displayLanguageId = string.IsNullOrWhiteSpace(_settings.DisplayLanguageId) ? "ja-JP" : _settings.DisplayLanguageId;
             _timeZoneId = string.IsNullOrWhiteSpace(_settings.TimeZoneId) ? "Asia/Tokyo" : _settings.TimeZoneId;
@@ -1146,10 +1168,13 @@ else
             _audioSettingsLoading = false;
             _imageSettingsLoading = false;
             _videoSettingsLoading = false;
+            _timelineUninstallPlanLoading = false;
+            _timelineUninstallPlanError = ex.Message;
         }
         finally
         {
             _loading = false;
+            _timelineUninstallPlanLoading = false;
             await InvokeAsync(StateHasChanged);
         }
 
@@ -2546,6 +2571,252 @@ else
             </div>
         </div>
     </div>;
+
+    private RenderFragment TimelineUninstallPlanControls() => @<div class="rounded-md border border-line bg-slate-50 p-4">
+        @if (_timelineUninstallPlanLoading)
+        {
+            <div class="flex items-center gap-2 text-sm text-slate-600">
+                <FaIcon Name="spinner" Class="tfa-icon fa-spin text-accent" />
+                <span>削除時の影響範囲を確認しています。</span>
+            </div>
+        }
+        else if (!string.IsNullOrWhiteSpace(_timelineUninstallPlanError))
+        {
+            <div class="tfa-alert-danger">@_timelineUninstallPlanError</div>
+        }
+        else if (_timelineUninstallPlan is null)
+        {
+            <div class="text-sm text-slate-600">削除時の影響範囲を確認できませんでした。</div>
+        }
+        else
+        {
+            var plan = _timelineUninstallPlan;
+            var recommended = TimelineUninstallRecommendedLevel;
+            var selectedLevel = TimelineUninstallSelectedLevel;
+
+            <div class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
+                <div class="min-w-0">
+                    <div class="flex flex-wrap items-center gap-2">
+                        <FaIcon Name="trash" Class="tfa-icon text-accent" />
+                        <h3 class="font-semibold text-slate-900">アンインストール計画</h3>
+                        <span class="tfa-status-pill border-slate-200 bg-white text-slate-700">@TimelineUninstallPlanModeLabel(plan)</span>
+                        @if (recommended is not null)
+                        {
+                            <span class="tfa-status-pill border-teal-200 bg-teal-50 text-teal-800">推奨: @recommended.Name</span>
+                        }
+                    </div>
+                    <p class="mt-2 text-sm text-slate-600">
+                        Timelineを削除するときに、アプリ本体、設定、取り込み素材、生成データ、Docker関連情報のどこまでを対象にするかを事前に確認します。
+                    </p>
+
+                    <div class="mt-3 grid gap-2 text-sm md:grid-cols-3">
+                        <div class="rounded-md border border-line bg-white p-3">
+                            <div class="tfa-kicker">アプリ本体</div>
+                            <div class="mt-1 break-all font-mono text-xs text-slate-700">@EmptyText(plan.TimelineRoot)</div>
+                        </div>
+                        <div class="rounded-md border border-line bg-white p-3">
+                            <div class="tfa-kicker">Timelineデータ</div>
+                            <div class="mt-1 break-all font-mono text-xs text-slate-700">@EmptyText(plan.DataRoot)</div>
+                        </div>
+                        <div class="rounded-md border border-line bg-white p-3">
+                            <div class="tfa-kicker">設定</div>
+                            <div class="mt-1 break-all font-mono text-xs text-slate-700">@EmptyText(plan.SettingsPath)</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="rounded-md border border-line bg-white px-3 py-2 text-sm text-slate-700">
+                    <div class="tfa-kicker">実行状態</div>
+                    <div class="mt-1 font-semibold text-slate-900">@(plan.CanExecute ? "実行可能" : "確認のみ")</div>
+                </div>
+            </div>
+
+            @if (plan.Warnings.Count > 0)
+            {
+                <div class="mt-4 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                    <div class="font-semibold">先に設計上の注意があります</div>
+                    <div class="mt-2 grid gap-1">
+                        @foreach (var warning in plan.Warnings)
+                        {
+                            <div>@TimelineUninstallWarningText(warning)</div>
+                        }
+                    </div>
+                </div>
+            }
+
+            @if (selectedLevel is not null)
+            {
+                <div class="mt-4 rounded-md border border-line bg-white p-3 text-sm text-slate-700">
+                    <div class="flex flex-wrap items-center gap-2">
+                        <span class="font-semibold text-slate-900">選択中: @selectedLevel.Name</span>
+                        @if (selectedLevel.RequiresStrongConfirmation)
+                        {
+                            <span class="tfa-status-pill border-amber-200 bg-amber-50 text-amber-900">削除実行時は再確認が必要</span>
+                        }
+                        else
+                        {
+                            <span class="tfa-status-pill border-teal-200 bg-teal-50 text-teal-800">既定案</span>
+                        }
+                    </div>
+                    <div class="mt-2">
+                        ここでは影響範囲の比較だけを行います。実際の削除処理はまだ実装していないため、この選択だけでファイルやDockerリソースは削除されません。
+                    </div>
+                </div>
+            }
+
+            <div class="mt-4 grid gap-3 xl:grid-cols-2">
+                @foreach (var level in plan.Levels)
+                {
+                    var selected = string.Equals(level.Id, _timelineUninstallSelectedLevelId, StringComparison.OrdinalIgnoreCase);
+                    <div class="@TimelineUninstallLevelCardClass(level, selected)">
+                        <div class="flex flex-wrap items-center justify-between gap-2">
+                            <div class="flex flex-wrap items-center gap-2">
+                                <div class="font-semibold text-slate-900">@level.Name</div>
+                                @if (selected)
+                                {
+                                    <span class="tfa-status-pill border-sky-200 bg-sky-50 text-sky-800">選択中</span>
+                                }
+                            </div>
+                            <button type="button"
+                                    class="tfa-button-secondary !min-h-8 !px-3 !py-1 text-xs"
+                                    disabled="@selected"
+                                    @onclick="@(() => SelectTimelineUninstallLevel(level.Id))">
+                                選択
+                            </button>
+                        </div>
+                        <div class="mt-2 flex flex-wrap items-center gap-2">
+                            @if (level.RecommendedDefault)
+                            {
+                                <span class="tfa-status-pill border-teal-200 bg-teal-50 text-teal-800">推奨</span>
+                            }
+                            @if (level.RequiresStrongConfirmation)
+                            {
+                                <span class="tfa-status-pill border-amber-200 bg-amber-50 text-amber-900">強い確認が必要</span>
+                            }
+                        </div>
+                        <p class="mt-2 text-sm text-slate-600">@level.Description</p>
+                        <div class="mt-3 flex flex-wrap gap-2 text-xs">
+                            <span class="tfa-status-pill border-slate-200 bg-white text-slate-700">対象 @TimelineUninstallDefaultDeleteCount(level) 件</span>
+                            <span class="tfa-status-pill border-slate-200 bg-white text-slate-700">存在確認 @TimelineUninstallExistingCount(level) 件</span>
+                            <span class="@TimelineUninstallRiskClass(level)">@TimelineUninstallRiskLabel(level)</span>
+                        </div>
+                        @if (TimelineUninstallPreviewItems(level).Count > 0)
+                        {
+                            <div class="mt-3 grid gap-1">
+                                @foreach (var item in TimelineUninstallPreviewItems(level))
+                                {
+                                    <div class="truncate rounded border border-line bg-white px-2 py-1 font-mono text-xs text-slate-500" title="@item.Path">
+                                        @TimelineUninstallItemKindLabel(item) / @item.Path
+                                    </div>
+                                }
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+        }
+    </div>;
+
+    private TimelineUninstallLevel? TimelineUninstallRecommendedLevel =>
+        _timelineUninstallPlan?.Levels.FirstOrDefault(level => level.RecommendedDefault)
+        ?? _timelineUninstallPlan?.Levels.FirstOrDefault();
+
+    private TimelineUninstallLevel? TimelineUninstallSelectedLevel =>
+        _timelineUninstallPlan?.Levels.FirstOrDefault(level => level.Id.Equals(_timelineUninstallSelectedLevelId, StringComparison.OrdinalIgnoreCase))
+        ?? TimelineUninstallRecommendedLevel;
+
+    private void EnsureTimelineUninstallSelectedLevel()
+    {
+        if (_timelineUninstallPlan is null || _timelineUninstallPlan.Levels.Count == 0)
+        {
+            _timelineUninstallSelectedLevelId = "";
+            return;
+        }
+
+        if (_timelineUninstallPlan.Levels.Any(level => level.Id.Equals(_timelineUninstallSelectedLevelId, StringComparison.OrdinalIgnoreCase)))
+        {
+            return;
+        }
+
+        _timelineUninstallSelectedLevelId = TimelineUninstallRecommendedLevel?.Id ?? _timelineUninstallPlan.Levels[0].Id;
+    }
+
+    private void SelectTimelineUninstallLevel(string levelId)
+    {
+        _timelineUninstallSelectedLevelId = levelId;
+    }
+
+    private static string TimelineUninstallPlanModeLabel(TimelineUninstallPlan plan)
+    {
+        if (!plan.CanExecute)
+        {
+            return "計画表示のみ";
+        }
+
+        return plan.Mode.Equals("read_only", StringComparison.OrdinalIgnoreCase)
+            ? "確認のみ"
+            : "実行可能";
+    }
+
+    private static string TimelineUninstallWarningText(TimelineUninstallPlanMessage warning) => warning.Code switch
+    {
+        "data_inside_app_root" => "Timelineデータがアプリ本体の中にあります。アプリだけ削除する場合は、データを残す処理が必要です。",
+        "settings_inside_app_root" => "settings.json がアプリ本体の中にあります。再インストール後も設定を使う場合は保持が必要です。",
+        "local_api_unreachable" => string.IsNullOrWhiteSpace(warning.Message) ? "操作機能に接続できないため、削除対象を確認できません。" : warning.Message,
+        _ => string.IsNullOrWhiteSpace(warning.Message) ? warning.Code : warning.Message,
+    };
+
+    private static string TimelineUninstallLevelCardClass(TimelineUninstallLevel level, bool selected)
+    {
+        if (selected)
+        {
+            return "rounded-md border-2 border-accent bg-white p-4";
+        }
+
+        return level.Destructive
+            ? "rounded-md border border-amber-200 bg-white p-4"
+            : "rounded-md border border-teal-200 bg-white p-4";
+    }
+
+    private static string TimelineUninstallRiskClass(TimelineUninstallLevel level) =>
+        level.Items.Any(item => item.SharedResource)
+            ? "tfa-status-pill border-amber-200 bg-amber-50 text-amber-900"
+            : level.Items.Any(item => item.UserData && item.DefaultDelete)
+                ? "tfa-status-pill border-red-200 bg-red-50 text-red-800"
+                : "tfa-status-pill border-teal-200 bg-teal-50 text-teal-800";
+
+    private static string TimelineUninstallRiskLabel(TimelineUninstallLevel level)
+    {
+        if (level.Items.Any(item => item.SharedResource))
+        {
+            return "共有資産あり";
+        }
+
+        return level.Items.Any(item => item.UserData && item.DefaultDelete)
+            ? "ユーザーデータ対象"
+            : "アプリ中心";
+    }
+
+    private static int TimelineUninstallDefaultDeleteCount(TimelineUninstallLevel level) =>
+        level.Items.Count(item => item.DefaultDelete);
+
+    private static int TimelineUninstallExistingCount(TimelineUninstallLevel level) =>
+        level.Items.Count(item => item.Exists);
+
+    private static IReadOnlyList<TimelineUninstallPlanItem> TimelineUninstallPreviewItems(TimelineUninstallLevel level) =>
+        level.Items
+            .Where(item => item.DefaultDelete)
+            .Take(3)
+            .ToList();
+
+    private static string TimelineUninstallItemKindLabel(TimelineUninstallPlanItem item) => item.Kind switch
+    {
+        "file" => "ファイル",
+        "directory" => "ディレクトリ",
+        "docker-compose-project" => "Docker構成",
+        "docker-volume-group" => "Dockerボリューム",
+        "docker-volume" => "Dockerボリューム",
+        _ => item.Kind,
+    };
 
     private RenderFragment DevicePreview(string label, string icon, IReadOnlyList<string> devices) => @<div class="grid gap-1 rounded-md border border-line bg-white p-3">
         <div class="inline-flex items-center gap-2 font-medium text-slate-700">
