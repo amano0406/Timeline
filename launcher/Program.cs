@@ -88,6 +88,10 @@ static async Task<int> ShowPreflight(string root, TimelineSettings settings, boo
     checks.Add(dockerStatus.Available
         ? NewOk("Docker Engine", dockerStatus.Message)
         : NewError("Docker Engine", $"{dockerStatus.Message} {dockerStatus.Action}".Trim()));
+    if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+    {
+        AddWindowsDockerBackendChecks(checks, root);
+    }
 
     checks.Add(await IsWebReady(settings.WebHealthUrl)
         ? NewOk("Web health", $"{settings.WebHealthUrl} is responding.")
@@ -408,6 +412,112 @@ static DockerStatus GetDockerStatus(string root)
     return NewDockerProblemStatus(result.ExitCode, details);
 }
 
+static void AddWindowsDockerBackendChecks(List<PreflightCheck> checks, string root)
+{
+    checks.Add(ReadWindowsWslStatus(root));
+    checks.Add(ReadWindowsHypervisorStatus(root));
+}
+
+static PreflightCheck ReadWindowsWslStatus(string root)
+{
+    var wsl = ResolveWindowsSystemCommand("wsl.exe");
+    if (string.IsNullOrWhiteSpace(wsl))
+    {
+        return NewWarning("Windows WSL", "wsl.exe was not found. Docker Desktop with the WSL2 backend may not work.");
+    }
+
+    var result = RunProcess(root, wsl, "--status", TimeSpan.FromSeconds(5));
+    var details = CombineProcessText(result).Trim();
+    if (result.ExitCode == 0)
+    {
+        return NewOk("Windows WSL", "wsl.exe responded. WSL can be inspected from this user session.");
+    }
+
+    if (LooksLikeWslMissing(details))
+    {
+        return NewWarning("Windows WSL", "WSL appears to be unavailable. Docker Desktop with the WSL2 backend may require WSL2 setup.");
+    }
+
+    return NewWarning("Windows WSL", ShortenDiagnostic(details, $"wsl.exe --status returned exit code {result.ExitCode}."));
+}
+
+static PreflightCheck ReadWindowsHypervisorStatus(string root)
+{
+    var systeminfo = ResolveWindowsSystemCommand("systeminfo.exe");
+    if (string.IsNullOrWhiteSpace(systeminfo))
+    {
+        return NewInfo("Windows Hypervisor", "systeminfo.exe was not found. Hypervisor and virtualization state could not be inspected.");
+    }
+
+    var result = RunProcess(root, systeminfo, string.Empty, TimeSpan.FromSeconds(12));
+    var details = CombineProcessText(result);
+    if (result.ExitCode != 0)
+    {
+        return NewInfo("Windows Hypervisor", ShortenDiagnostic(details, "Hypervisor and virtualization state could not be inspected."));
+    }
+
+    var lines = details.Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+    var hypervisorLine = lines.FirstOrDefault(line =>
+        line.Contains("A hypervisor has been detected", StringComparison.OrdinalIgnoreCase) ||
+        line.Contains("hypervisor", StringComparison.OrdinalIgnoreCase) ||
+        line.Contains("Hyper-V", StringComparison.OrdinalIgnoreCase));
+    if (!string.IsNullOrWhiteSpace(hypervisorLine) &&
+        hypervisorLine.Contains("detected", StringComparison.OrdinalIgnoreCase))
+    {
+        return NewOk("Windows Hypervisor", hypervisorLine);
+    }
+
+    var firmwareVirtualizationLine = lines.FirstOrDefault(line =>
+        line.Contains("Virtualization Enabled In Firmware", StringComparison.OrdinalIgnoreCase));
+    if (!string.IsNullOrWhiteSpace(firmwareVirtualizationLine))
+    {
+        return firmwareVirtualizationLine.Contains("No", StringComparison.OrdinalIgnoreCase)
+            ? NewWarning("Windows Hypervisor", "Firmware virtualization appears to be disabled. Docker Desktop / WSL2 may not start.")
+            : NewOk("Windows Hypervisor", firmwareVirtualizationLine);
+    }
+
+    var virtualizationSecurityLine = lines.FirstOrDefault(line =>
+        line.Contains("Virtualization-based security", StringComparison.OrdinalIgnoreCase));
+    if (!string.IsNullOrWhiteSpace(virtualizationSecurityLine) &&
+        virtualizationSecurityLine.Contains("Running", StringComparison.OrdinalIgnoreCase))
+    {
+        return NewOk("Windows Hypervisor", virtualizationSecurityLine);
+    }
+
+    return NewInfo("Windows Hypervisor", "systeminfo did not expose a clear Hyper-V or firmware virtualization line.");
+}
+
+static string ResolveWindowsSystemCommand(string commandName)
+{
+    var resolved = ResolveCommand(commandName);
+    if (!string.IsNullOrWhiteSpace(resolved))
+    {
+        return resolved;
+    }
+
+    var system32 = Environment.GetFolderPath(Environment.SpecialFolder.System);
+    var candidate = Path.Combine(system32, commandName);
+    return File.Exists(candidate) ? candidate : string.Empty;
+}
+
+static string ShortenDiagnostic(string details, string fallback)
+{
+    if (string.IsNullOrWhiteSpace(details))
+    {
+        return fallback;
+    }
+
+    var firstLine = details
+        .Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+        .FirstOrDefault();
+    if (string.IsNullOrWhiteSpace(firstLine))
+    {
+        return fallback;
+    }
+
+    return firstLine.Length <= 240 ? firstLine : firstLine[..240] + "...";
+}
+
 static DockerStatus NewDockerProblemStatus(int exitCode, string details)
 {
     var state = ResolveDockerProblemState(exitCode, details);
@@ -428,6 +538,16 @@ static string ResolveDockerProblemState(int exitCode, string details)
     if (exitCode == 127)
     {
         return "command_missing";
+    }
+
+    if (IsWslProblem(details))
+    {
+        return "wsl_problem";
+    }
+
+    if (IsVirtualizationProblem(details))
+    {
+        return "virtualization_problem";
     }
 
     if (IsDockerEngineUnavailable(details))
@@ -460,6 +580,16 @@ static string DescribeDockerProblem(int exitCode, string details)
         return "Docker Engine が起動していません。Timeline の自動処理を使うには Docker Desktop の起動が必要です。";
     }
 
+    if (IsWslProblem(details))
+    {
+        return "Docker は WSL2 バックエンドまたは WSL 関連の理由で利用できない可能性があります。";
+    }
+
+    if (IsVirtualizationProblem(details))
+    {
+        return "Docker は Windows の仮想化または Hyper-V 関連の理由で利用できない可能性があります。";
+    }
+
     if (IsDockerCommandMissing(details))
     {
         return "Docker コマンドが見つからない、または実行できません。Docker Desktop のインストールと PATH を確認してください。";
@@ -472,6 +602,8 @@ static string ResolveDockerProblemAction(string state) => state switch
 {
     "command_missing" => "Docker Desktop をインストールするか、docker.exe に PATH が通っている状態にしてから再実行してください。",
     "engine_stopped" => "Docker Desktop を起動してから、TimelineLauncher status または TimelineLauncher open を再実行してください。",
+    "wsl_problem" => "Docker Desktop の WSL2 バックエンド設定、WSL2 の状態、Windows の再起動要否を確認してください。",
+    "virtualization_problem" => "Windows の仮想化、Hyper-V、Virtual Machine Platform の設定を確認してください。",
     "timeout" => "Docker Desktop の起動が完了するまで待ってから、TimelineLauncher status を再実行してください。",
     _ => "Docker Desktop の状態を確認してから、TimelineLauncher status を再実行してください。",
 };
@@ -491,6 +623,31 @@ static bool IsDockerEngineUnavailable(string details)
         || details.Contains("Cannot connect to the Docker daemon", StringComparison.OrdinalIgnoreCase)
         || details.Contains("pipe/docker", StringComparison.OrdinalIgnoreCase)
         || details.Contains("docker API", StringComparison.OrdinalIgnoreCase);
+}
+
+static bool IsWslProblem(string details)
+{
+    return details.Contains("WSL", StringComparison.OrdinalIgnoreCase)
+        || details.Contains("wsl.exe", StringComparison.OrdinalIgnoreCase)
+        || details.Contains("Windows Subsystem for Linux", StringComparison.OrdinalIgnoreCase)
+        || details.Contains("Linux kernel", StringComparison.OrdinalIgnoreCase);
+}
+
+static bool IsVirtualizationProblem(string details)
+{
+    return details.Contains("virtualization", StringComparison.OrdinalIgnoreCase)
+        || details.Contains("Hyper-V", StringComparison.OrdinalIgnoreCase)
+        || details.Contains("hypervisor", StringComparison.OrdinalIgnoreCase)
+        || details.Contains("Virtual Machine Platform", StringComparison.OrdinalIgnoreCase);
+}
+
+static bool LooksLikeWslMissing(string details)
+{
+    return details.Contains("not installed", StringComparison.OrdinalIgnoreCase)
+        || details.Contains("not recognized", StringComparison.OrdinalIgnoreCase)
+        || details.Contains("not found", StringComparison.OrdinalIgnoreCase)
+        || details.Contains("インストール", StringComparison.OrdinalIgnoreCase)
+        || details.Contains("見つかりません", StringComparison.OrdinalIgnoreCase);
 }
 
 static string CombineProcessText(ProcessResult result)
