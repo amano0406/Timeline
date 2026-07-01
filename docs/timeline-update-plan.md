@@ -42,6 +42,15 @@ dotnet run --project .\launcher\Timeline.Launcher.csproj -- update-validate --ar
 dotnet run --project .\launcher\Timeline.Launcher.csproj -- update-validate --artifact <zip-path> --json
 ```
 
+When a release manifest is available, validate the manifest before the raw ZIP.
+This confirms that the manifest points to the intended Timeline artifact and
+that the file size and SHA-256 hash still match:
+
+```powershell
+dotnet run --project .\launcher\Timeline.Launcher.csproj -- update-manifest-validate --manifest <json-path>
+dotnet run --project .\launcher\Timeline.Launcher.csproj -- update-manifest-validate --manifest <json-path> --json
+```
+
 Validated artifacts can also be staged without replacing the current
 installation:
 
@@ -65,6 +74,7 @@ GET http://127.0.0.1:19001/timeline/update/recovery/plan
 GET http://127.0.0.1:19001/timeline/update/recovery/plan?path=<zip-path>
 GET http://127.0.0.1:19001/timeline/update/artifact/apply-plan?path=<zip-path>
 GET http://127.0.0.1:19001/timeline/update/artifact/validate?path=<zip-path>
+GET http://127.0.0.1:19001/timeline/update/artifact/manifest/validate?path=<json-path>
 POST http://127.0.0.1:19001/timeline/update/artifact/stage
 ```
 

@@ -160,6 +160,21 @@ app.MapGet("/timeline/update/artifact/validate", (
     return Results.Json(TimelineUpdatePlanService.ValidateArtifact(options.TimelineProductPath, artifactPath));
 });
 
+app.MapGet("/timeline/update/artifact/manifest/validate", (
+    string? path,
+    TimelineLocalApiOptions options) =>
+{
+    var manifestPath = ConvertTimelineText(path);
+    if (string.IsNullOrWhiteSpace(manifestPath))
+    {
+        return Results.Json(
+            new { message = "Artifact manifest path is required.", ok = false },
+            statusCode: StatusCodes.Status400BadRequest);
+    }
+
+    return Results.Json(TimelineUpdatePlanService.ValidateArtifactManifest(options.TimelineProductPath, manifestPath));
+});
+
 app.MapPost("/timeline/update/artifact/stage", async (
     HttpContext context,
     TimelineLocalApiOptions options,

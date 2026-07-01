@@ -310,6 +310,15 @@ TimelineLauncher update-validate --artifact <zip-path>
 GET /timeline/update/artifact/validate?path=<zip-path>
 ```
 
+When an artifact manifest is available, validate the manifest first. This checks
+the manifest type, product id, runtime, artifact size, SHA-256 hash, and then
+runs the ZIP structure validation against the referenced artifact:
+
+```text
+TimelineLauncher update-manifest-validate --manifest <json-path>
+GET /timeline/update/artifact/manifest/validate?path=<json-path>
+```
+
 The plan is intentionally conservative:
 
 - developer checkouts are blocked from product updater replacement;

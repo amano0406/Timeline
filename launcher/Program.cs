@@ -31,6 +31,7 @@ try
         "update-apply-plan" => await ShowUpdateApplyPlan(root, options.ArtifactPath, options.JsonOutput),
         "update-recovery-plan" => await ShowUpdateRecoveryPlan(root, options.ArtifactPath, options.JsonOutput),
         "update-validate" => ShowUpdateArtifactValidation(root, options.ArtifactPath, options.JsonOutput),
+        "update-manifest-validate" => ShowUpdateArtifactManifestValidation(root, options.ManifestPath, options.JsonOutput),
         "update-stage" => await StageUpdateArtifact(root, options.ArtifactPath, options.JsonOutput),
         "start" => await RunStart(root, settings, openBrowser: !options.NoOpen),
         "stop" => await RunStop(root, settings),
@@ -967,6 +968,49 @@ static int ShowUpdateArtifactValidation(string root, string? artifactPath, bool 
     return result.Valid ? 0 : 1;
 }
 
+static int ShowUpdateArtifactManifestValidation(string root, string? manifestPath, bool jsonOutput)
+{
+    if (string.IsNullOrWhiteSpace(manifestPath))
+    {
+        Console.Error.WriteLine("Update artifact manifest path is required. Use --manifest <json-path>.");
+        return 2;
+    }
+
+    var result = TimelineUpdatePlanService.ValidateArtifactManifest(root, manifestPath);
+    if (jsonOutput)
+    {
+        Console.WriteLine(JsonSerializer.Serialize(
+            result,
+            new JsonSerializerOptions
+            {
+                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+                WriteIndented = true,
+            }));
+    }
+    else
+    {
+        Console.WriteLine("Timeline update artifact manifest validation");
+        Console.WriteLine($"  state: {result.State}");
+        Console.WriteLine($"  valid: {(result.Valid ? "yes" : "no")}");
+        Console.WriteLine($"  manifest valid: {(result.ManifestValid ? "yes" : "no")}");
+        Console.WriteLine($"  artifact valid: {(result.ArtifactValid ? "yes" : "no")}");
+        Console.WriteLine($"  sha256 matches: {(result.Sha256Matches ? "yes" : "no")}");
+        Console.WriteLine($"  size matches: {(result.SizeMatches ? "yes" : "no")}");
+        Console.WriteLine($"  runtime compatible: {(result.RuntimeCompatible ? "yes" : "no")}");
+        Console.WriteLine($"  manifest: {result.ManifestPath}");
+        Console.WriteLine($"  artifact: {result.Artifact.Path}");
+        Console.WriteLine($"  current runtime: {EmptyText(result.CurrentRuntimeIdentifier)}");
+        Console.WriteLine($"  manifest runtime: {EmptyText(result.Manifest.RuntimeIdentifier)}");
+        Console.WriteLine($"  manifest version: {EmptyText(result.Manifest.Version)}");
+        Console.WriteLine($"  artifact kind: {EmptyText(result.Artifact.ArtifactKind)}");
+        Console.WriteLine();
+        PrintUpdateMessages("Blockers", result.Blockers);
+        PrintUpdateMessages("Warnings", result.Warnings);
+    }
+
+    return result.Valid ? 0 : 1;
+}
+
 static async Task<int> StageUpdateArtifact(string root, string? artifactPath, bool jsonOutput)
 {
     if (string.IsNullOrWhiteSpace(artifactPath))
@@ -1142,7 +1186,7 @@ static int ShowHelp()
     Console.WriteLine("Timeline Launcher");
     Console.WriteLine();
     Console.WriteLine("Usage:");
-    Console.WriteLine("  TimelineLauncher [open|status|preflight|verify-setup|version|configure-runtime|install-plan|uninstall-plan|update-plan|update-apply-plan|update-recovery-plan|update-validate|update-stage|start|stop|shortcut-status|shortcut-install|shortcut-remove|uninstall-registration-status|uninstall-registration-install|uninstall-registration-remove|help] [--no-open] [--json]");
+    Console.WriteLine("  TimelineLauncher [open|status|preflight|verify-setup|version|configure-runtime|install-plan|uninstall-plan|update-plan|update-apply-plan|update-recovery-plan|update-validate|update-manifest-validate|update-stage|start|stop|shortcut-status|shortcut-install|shortcut-remove|uninstall-registration-status|uninstall-registration-install|uninstall-registration-remove|help] [--no-open] [--json]");
     Console.WriteLine();
     Console.WriteLine("Commands:");
     Console.WriteLine("  open    Open Timeline. Starts it first when needed.");
@@ -1157,6 +1201,7 @@ static int ShowHelp()
     Console.WriteLine("  update-apply-plan  Show whether a built product artifact can be applied now. Optional: --artifact <path>.");
     Console.WriteLine("  update-recovery-plan  Show rollback and failure recovery policy. Optional: --artifact <path>.");
     Console.WriteLine("  update-validate  Validate a built product artifact ZIP. Use --artifact <path>.");
+    Console.WriteLine("  update-manifest-validate  Validate an artifact manifest and its ZIP. Use --manifest <path>.");
     Console.WriteLine("  update-stage  Validate and extract a built product artifact into the Timeline work directory. Use --artifact <path>.");
     Console.WriteLine("  start   Start Timeline.");
     Console.WriteLine("  stop    Stop Timeline.");
@@ -1908,6 +1953,7 @@ internal sealed record LauncherOptions(
     bool NoOpen,
     bool JsonOutput,
     string? ArtifactPath,
+    string? ManifestPath,
     int? WebPort,
     int? LocalApiPort,
     int? LocalApiPortEnd,
@@ -1931,6 +1977,7 @@ internal sealed record LauncherOptions(
     {
         string? root = null;
         string? artifactPath = null;
+        string? manifestPath = null;
         string? instanceName = null;
         string? dataRoot = null;
         string? ollamaVolumeName = null;
@@ -1985,6 +2032,24 @@ internal sealed record LauncherOptions(
             if (arg.StartsWith("--artifact-path=", StringComparison.OrdinalIgnoreCase))
             {
                 artifactPath = arg["--artifact-path=".Length..];
+                continue;
+            }
+
+            if ((arg == "--manifest" || arg == "--manifest-path") && index + 1 < args.Length)
+            {
+                manifestPath = args[++index];
+                continue;
+            }
+
+            if (arg.StartsWith("--manifest=", StringComparison.OrdinalIgnoreCase))
+            {
+                manifestPath = arg["--manifest=".Length..];
+                continue;
+            }
+
+            if (arg.StartsWith("--manifest-path=", StringComparison.OrdinalIgnoreCase))
+            {
+                manifestPath = arg["--manifest-path=".Length..];
                 continue;
             }
 
@@ -2045,6 +2110,7 @@ internal sealed record LauncherOptions(
             noOpen,
             jsonOutput,
             artifactPath,
+            manifestPath,
             webPort,
             localApiPort,
             localApiPortEnd,

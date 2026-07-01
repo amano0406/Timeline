@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.IO.Compression;
+using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
@@ -248,6 +249,220 @@ public static class TimelineUpdatePlanService
             version,
             required,
             forbidden,
+            blockers,
+            warnings);
+    }
+
+    public static TimelineUpdateArtifactManifestValidationResponse ValidateArtifactManifest(
+        string timelineRoot,
+        string manifestPath)
+    {
+        var root = Path.GetFullPath(timelineRoot);
+        var fullManifestPath = Path.GetFullPath(manifestPath);
+        var current = TimelineVersionService.GetCurrentVersion(root);
+        var blockers = new List<TimelineUpdatePlanMessage>();
+        var warnings = new List<TimelineUpdatePlanMessage>();
+        var manifest = new TimelineUpdateArtifactManifestInfo();
+        var artifact = new TimelineUpdateArtifactManifestItemInfo();
+        TimelineUpdateArtifactValidationResponse? artifactValidation = null;
+        var sha256Matches = false;
+        var sizeMatches = false;
+
+        if (!File.Exists(fullManifestPath))
+        {
+            blockers.Add(new TimelineUpdatePlanMessage
+            {
+                Code = "manifest_missing",
+                Message = $"Artifact manifest was not found: {fullManifestPath}",
+            });
+
+            return NewArtifactManifestValidationResponse(
+                fullManifestPath,
+                current,
+                manifest,
+                artifact,
+                artifactValidation,
+                sha256Matches,
+                sizeMatches,
+                blockers,
+                warnings);
+        }
+
+        try
+        {
+            var payload = JsonNode.Parse(File.ReadAllText(fullManifestPath)) as JsonObject;
+            if (payload is null)
+            {
+                blockers.Add(new TimelineUpdatePlanMessage
+                {
+                    Code = "manifest_invalid",
+                    Message = "Artifact manifest is not a JSON object.",
+                });
+            }
+            else
+            {
+                manifest = new TimelineUpdateArtifactManifestInfo
+                {
+                    ManifestType = GetString(payload, "manifestType"),
+                    ProductId = GetString(payload, "productId"),
+                    ProductName = GetString(payload, "productName"),
+                    Channel = GetString(payload, "channel"),
+                    Version = GetString(payload, "version"),
+                    Commit = GetString(payload, "commit"),
+                    RuntimeIdentifier = GetString(payload, "runtimeIdentifier"),
+                    RuntimeName = GetString(payload, "runtimeName"),
+                    ContainerRuntimeIdentifier = GetString(payload, "containerRuntimeIdentifier"),
+                    CreatedAt = GetString(payload, "createdAt"),
+                };
+
+                if (!manifest.ManifestType.Equals("timeline_product_artifact_manifest", StringComparison.OrdinalIgnoreCase))
+                {
+                    blockers.Add(new TimelineUpdatePlanMessage
+                    {
+                        Code = "manifest_type_invalid",
+                        Message = $"Artifact manifest type is not timeline_product_artifact_manifest: {manifest.ManifestType}",
+                    });
+                }
+
+                if (!manifest.ProductId.Equals("timeline", StringComparison.OrdinalIgnoreCase))
+                {
+                    blockers.Add(new TimelineUpdatePlanMessage
+                    {
+                        Code = "product_id_invalid",
+                        Message = $"Artifact manifest productId is not timeline: {manifest.ProductId}",
+                    });
+                }
+
+                if (!string.IsNullOrWhiteSpace(manifest.RuntimeIdentifier)
+                    && !string.IsNullOrWhiteSpace(current.RuntimeIdentifier)
+                    && !manifest.RuntimeIdentifier.Equals(current.RuntimeIdentifier, StringComparison.OrdinalIgnoreCase))
+                {
+                    blockers.Add(new TimelineUpdatePlanMessage
+                    {
+                        Code = "runtime_mismatch",
+                        Message = $"Manifest runtime {manifest.RuntimeIdentifier} does not match current runtime {current.RuntimeIdentifier}.",
+                    });
+                }
+
+                if (payload["artifact"] is JsonObject artifactPayload)
+                {
+                    artifact = new TimelineUpdateArtifactManifestItemInfo
+                    {
+                        ArtifactKind = GetString(artifactPayload, "artifactKind"),
+                        FileName = GetString(artifactPayload, "fileName"),
+                        Path = ResolveManifestArtifactPath(fullManifestPath, GetString(artifactPayload, "path"), GetString(artifactPayload, "fileName")),
+                        SizeBytes = GetInt64(artifactPayload, "sizeBytes"),
+                        Sha256 = GetString(artifactPayload, "sha256"),
+                        AppBundleIncluded = GetBool(artifactPayload, "appBundleIncluded"),
+                    };
+
+                    if (!artifact.ArtifactKind.Equals("built_product_artifact", StringComparison.OrdinalIgnoreCase))
+                    {
+                        blockers.Add(new TimelineUpdatePlanMessage
+                        {
+                            Code = "artifact_kind_invalid",
+                            Message = $"Manifest artifact kind is not built_product_artifact: {artifact.ArtifactKind}",
+                        });
+                    }
+
+                    if (string.IsNullOrWhiteSpace(artifact.Path))
+                    {
+                        blockers.Add(new TimelineUpdatePlanMessage
+                        {
+                            Code = "artifact_path_missing",
+                            Message = "Manifest artifact path and fileName are missing.",
+                        });
+                    }
+                    else if (!File.Exists(artifact.Path))
+                    {
+                        blockers.Add(new TimelineUpdatePlanMessage
+                        {
+                            Code = "artifact_missing",
+                            Message = $"Manifest artifact was not found: {artifact.Path}",
+                        });
+                    }
+                    else
+                    {
+                        var fileInfo = new FileInfo(artifact.Path);
+                        sizeMatches = artifact.SizeBytes <= 0 || fileInfo.Length == artifact.SizeBytes;
+                        if (!sizeMatches)
+                        {
+                            blockers.Add(new TimelineUpdatePlanMessage
+                            {
+                                Code = "artifact_size_mismatch",
+                                Message = $"Manifest artifact size {artifact.SizeBytes} does not match actual size {fileInfo.Length}.",
+                            });
+                        }
+
+                        if (string.IsNullOrWhiteSpace(artifact.Sha256))
+                        {
+                            blockers.Add(new TimelineUpdatePlanMessage
+                            {
+                                Code = "artifact_sha256_missing",
+                                Message = "Manifest artifact sha256 is missing.",
+                            });
+                        }
+                        else
+                        {
+                            var actualSha256 = ComputeSha256(artifact.Path);
+                            sha256Matches = actualSha256.Equals(artifact.Sha256, StringComparison.OrdinalIgnoreCase);
+                            if (!sha256Matches)
+                            {
+                                blockers.Add(new TimelineUpdatePlanMessage
+                                {
+                                    Code = "artifact_sha256_mismatch",
+                                    Message = "Manifest artifact sha256 does not match the artifact file.",
+                                });
+                            }
+                        }
+
+                        artifactValidation = ValidateArtifact(root, artifact.Path);
+                        foreach (var blocker in artifactValidation.Blockers)
+                        {
+                            blockers.Add(new TimelineUpdatePlanMessage
+                            {
+                                Code = "artifact_" + blocker.Code,
+                                Message = blocker.Message,
+                            });
+                        }
+
+                        foreach (var warning in artifactValidation.Warnings)
+                        {
+                            warnings.Add(new TimelineUpdatePlanMessage
+                            {
+                                Code = "artifact_" + warning.Code,
+                                Message = warning.Message,
+                            });
+                        }
+                    }
+                }
+                else
+                {
+                    blockers.Add(new TimelineUpdatePlanMessage
+                    {
+                        Code = "artifact_section_missing",
+                        Message = "Artifact manifest does not contain an artifact object.",
+                    });
+                }
+            }
+        }
+        catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
+        {
+            blockers.Add(new TimelineUpdatePlanMessage
+            {
+                Code = "manifest_unreadable",
+                Message = $"Artifact manifest could not be read. {ex.Message}",
+            });
+        }
+
+        return NewArtifactManifestValidationResponse(
+            fullManifestPath,
+            current,
+            manifest,
+            artifact,
+            artifactValidation,
+            sha256Matches,
+            sizeMatches,
             blockers,
             warnings);
     }
@@ -770,6 +985,41 @@ public static class TimelineUpdatePlanService
         };
     }
 
+    private static TimelineUpdateArtifactManifestValidationResponse NewArtifactManifestValidationResponse(
+        string manifestPath,
+        TimelineCurrentVersion current,
+        TimelineUpdateArtifactManifestInfo manifest,
+        TimelineUpdateArtifactManifestItemInfo artifact,
+        TimelineUpdateArtifactValidationResponse? artifactValidation,
+        bool sha256Matches,
+        bool sizeMatches,
+        List<TimelineUpdatePlanMessage> blockers,
+        List<TimelineUpdatePlanMessage> warnings)
+    {
+        var runtimeCompatible = !blockers.Any(blocker =>
+            blocker.Code.Equals("runtime_mismatch", StringComparison.OrdinalIgnoreCase)
+            || blocker.Code.Equals("artifact_runtime_mismatch", StringComparison.OrdinalIgnoreCase));
+
+        return new TimelineUpdateArtifactManifestValidationResponse
+        {
+            ManifestPath = manifestPath,
+            State = blockers.Count == 0 ? "ready" : "blocked",
+            Valid = blockers.Count == 0,
+            ManifestValid = blockers.All(blocker => blocker.Code.StartsWith("artifact_", StringComparison.OrdinalIgnoreCase)),
+            ArtifactValid = artifactValidation?.Valid == true,
+            Sha256Matches = sha256Matches,
+            SizeMatches = sizeMatches,
+            RuntimeCompatible = runtimeCompatible,
+            CurrentRuntimeIdentifier = current.RuntimeIdentifier,
+            Manifest = manifest,
+            Artifact = artifact,
+            ArtifactValidation = artifactValidation,
+            Blockers = blockers,
+            Warnings = warnings,
+            GeneratedAt = DateTimeOffset.UtcNow.ToString("O", CultureInfo.InvariantCulture),
+        };
+    }
+
     private static TimelineUpdateArtifactVersionInfo ReadArtifactVersion(
         ZipArchiveEntry entry,
         List<TimelineUpdatePlanMessage> blockers)
@@ -846,6 +1096,29 @@ public static class TimelineUpdatePlanService
             Path = path,
             Kind = kind,
         };
+
+    private static string ResolveManifestArtifactPath(string manifestPath, string artifactPath, string fileName)
+    {
+        if (!string.IsNullOrWhiteSpace(artifactPath))
+        {
+            return Path.GetFullPath(Path.IsPathRooted(artifactPath)
+                ? artifactPath
+                : Path.Combine(Path.GetDirectoryName(manifestPath) ?? string.Empty, artifactPath));
+        }
+
+        if (!string.IsNullOrWhiteSpace(fileName))
+        {
+            return Path.GetFullPath(Path.Combine(Path.GetDirectoryName(manifestPath) ?? string.Empty, fileName));
+        }
+
+        return string.Empty;
+    }
+
+    private static string ComputeSha256(string path)
+    {
+        using var stream = File.OpenRead(path);
+        return Convert.ToHexString(SHA256.HashData(stream)).ToLowerInvariant();
+    }
 
     private static string DetectArtifactRootPrefix(IReadOnlyList<string> entries)
     {
@@ -1077,6 +1350,66 @@ public static class TimelineUpdatePlanService
 
         return string.Empty;
     }
+
+    private static long GetInt64(JsonObject? source, string name)
+    {
+        if (source is null)
+        {
+            return 0;
+        }
+
+        foreach (var property in source)
+        {
+            if (!property.Key.Equals(name, StringComparison.OrdinalIgnoreCase) || property.Value is null)
+            {
+                continue;
+            }
+
+            try
+            {
+                return property.Value.GetValue<long>();
+            }
+            catch (InvalidOperationException)
+            {
+                return long.TryParse(property.Value.ToString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var value)
+                    ? value
+                    : 0;
+            }
+        }
+
+        return 0;
+    }
+
+    private static bool GetBool(JsonObject? source, string name)
+    {
+        if (source is null)
+        {
+            return false;
+        }
+
+        foreach (var property in source)
+        {
+            if (!property.Key.Equals(name, StringComparison.OrdinalIgnoreCase) || property.Value is null)
+            {
+                continue;
+            }
+
+            try
+            {
+                return property.Value.GetValue<bool>();
+            }
+            catch (InvalidOperationException)
+            {
+                var text = property.Value.ToString();
+                return text.Equals("true", StringComparison.OrdinalIgnoreCase)
+                    || text.Equals("1", StringComparison.OrdinalIgnoreCase)
+                    || text.Equals("yes", StringComparison.OrdinalIgnoreCase)
+                    || text.Equals("on", StringComparison.OrdinalIgnoreCase);
+            }
+        }
+
+        return false;
+    }
 }
 
 public sealed class TimelineUpdatePlanResponse
@@ -1233,6 +1566,108 @@ public sealed class TimelineUpdateArtifactValidationResponse
 
     [JsonPropertyName("generatedAt")]
     public string GeneratedAt { get; set; } = "";
+}
+
+public sealed class TimelineUpdateArtifactManifestValidationResponse
+{
+    [JsonPropertyName("manifestPath")]
+    public string ManifestPath { get; set; } = "";
+
+    [JsonPropertyName("state")]
+    public string State { get; set; } = "";
+
+    [JsonPropertyName("valid")]
+    public bool Valid { get; set; }
+
+    [JsonPropertyName("manifestValid")]
+    public bool ManifestValid { get; set; }
+
+    [JsonPropertyName("artifactValid")]
+    public bool ArtifactValid { get; set; }
+
+    [JsonPropertyName("sha256Matches")]
+    public bool Sha256Matches { get; set; }
+
+    [JsonPropertyName("sizeMatches")]
+    public bool SizeMatches { get; set; }
+
+    [JsonPropertyName("runtimeCompatible")]
+    public bool RuntimeCompatible { get; set; }
+
+    [JsonPropertyName("currentRuntimeIdentifier")]
+    public string CurrentRuntimeIdentifier { get; set; } = "";
+
+    [JsonPropertyName("manifest")]
+    public TimelineUpdateArtifactManifestInfo Manifest { get; set; } = new();
+
+    [JsonPropertyName("artifact")]
+    public TimelineUpdateArtifactManifestItemInfo Artifact { get; set; } = new();
+
+    [JsonPropertyName("artifactValidation")]
+    public TimelineUpdateArtifactValidationResponse? ArtifactValidation { get; set; }
+
+    [JsonPropertyName("blockers")]
+    public List<TimelineUpdatePlanMessage> Blockers { get; set; } = [];
+
+    [JsonPropertyName("warnings")]
+    public List<TimelineUpdatePlanMessage> Warnings { get; set; } = [];
+
+    [JsonPropertyName("generatedAt")]
+    public string GeneratedAt { get; set; } = "";
+}
+
+public sealed class TimelineUpdateArtifactManifestInfo
+{
+    [JsonPropertyName("manifestType")]
+    public string ManifestType { get; set; } = "";
+
+    [JsonPropertyName("productId")]
+    public string ProductId { get; set; } = "";
+
+    [JsonPropertyName("productName")]
+    public string ProductName { get; set; } = "";
+
+    [JsonPropertyName("channel")]
+    public string Channel { get; set; } = "";
+
+    [JsonPropertyName("version")]
+    public string Version { get; set; } = "";
+
+    [JsonPropertyName("commit")]
+    public string Commit { get; set; } = "";
+
+    [JsonPropertyName("runtimeIdentifier")]
+    public string RuntimeIdentifier { get; set; } = "";
+
+    [JsonPropertyName("runtimeName")]
+    public string RuntimeName { get; set; } = "";
+
+    [JsonPropertyName("containerRuntimeIdentifier")]
+    public string ContainerRuntimeIdentifier { get; set; } = "";
+
+    [JsonPropertyName("createdAt")]
+    public string CreatedAt { get; set; } = "";
+}
+
+public sealed class TimelineUpdateArtifactManifestItemInfo
+{
+    [JsonPropertyName("artifactKind")]
+    public string ArtifactKind { get; set; } = "";
+
+    [JsonPropertyName("fileName")]
+    public string FileName { get; set; } = "";
+
+    [JsonPropertyName("path")]
+    public string Path { get; set; } = "";
+
+    [JsonPropertyName("sizeBytes")]
+    public long SizeBytes { get; set; }
+
+    [JsonPropertyName("sha256")]
+    public string Sha256 { get; set; } = "";
+
+    [JsonPropertyName("appBundleIncluded")]
+    public bool AppBundleIncluded { get; set; }
 }
 
 public sealed class TimelineUpdateArtifactStageResponse
