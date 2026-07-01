@@ -2254,6 +2254,17 @@ public sealed class TimelineProductRuntimeService
 
     private static string GetUnsupportedOperatingSystemMessage(ProductRuntimeDefinition definition)
     {
+        var knownMessage = definition.Id.ToLowerInvariant() switch
+        {
+            "windows-codex" => "この製品は Windows Codex のローカル履歴を扱うため、このOSでは未対応です。Windows環境で利用してください。",
+            "pc" => "この製品は Windows のPC状態を扱うため、このOSでは未対応です。Windows環境で利用してください。",
+            _ => string.Empty,
+        };
+        if (!string.IsNullOrWhiteSpace(knownMessage))
+        {
+            return knownMessage;
+        }
+
         if (!string.IsNullOrWhiteSpace(definition.UnsupportedOperatingSystemMessage))
         {
             return definition.UnsupportedOperatingSystemMessage;

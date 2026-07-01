@@ -21,7 +21,7 @@ public static class RuntimeDisplayText
 
         if (IsLocalApiConnectionFailure(text))
         {
-            return "Timeline の操作機能に接続できません。Timeline を起動し直してください。";
+            return "Timeline の操作機能に接続できません。Timeline を起動し直してから、もう一度確認してください。";
         }
 
         if (text.Contains("Product health API is running.", StringComparison.OrdinalIgnoreCase))
@@ -37,7 +37,7 @@ public static class RuntimeDisplayText
 
         if (text.Contains("Product directory was not found.", StringComparison.OrdinalIgnoreCase))
         {
-            return "製品の配置が見つかりません。インストール状態を確認してください。";
+            return "製品の配置先が見つかりません。インストール状態を確認してください。";
         }
 
         if (text.Contains("Product health API base URL was not resolved.", StringComparison.OrdinalIgnoreCase))
@@ -101,7 +101,7 @@ public static class RuntimeDisplayText
             "local_api_unreachable" => "Timeline の操作機能に接続できません。Timeline を起動し直してください。",
             "docker_unavailable" => "Docker が起動していません。Docker を起動してから、もう一度状態を確認してください。",
             "missing" => "自動処理の起動記録が見つかりません。必要な場合は復旧を実行してください。",
-            "stale" => "自動処理から一定時間応答がありません。止まっている可能性があります。",
+            "stale" => "自動処理から一定時間応答がありません。停止している可能性があります。",
             "unreadable" => "Docker または worker の状態確認に失敗しました。復旧を実行すると起動を試します。",
             "stopped" => "自動処理は停止しています。必要な場合は復旧を実行してください。",
             "unknown" or "" => "自動処理の状態はまだ確認できていません。",
