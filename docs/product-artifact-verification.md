@@ -119,6 +119,8 @@ The artifact verification succeeds when:
 - Web health returns HTTP 200.
 - Local API health returns HTTP 200.
 - `VERSION` contains the expected runtime identifiers and version.
+- A fresh artifact that does not yet have `settings.json` reports that as an
+  initial-state information item, not as a warning or failure.
 
 Sub-products can be `not-created` in a fresh artifact verification. That is not
 an artifact failure. Sub-product installation and setup belong to the setup and
@@ -147,13 +149,34 @@ As of KAN-45:
   `11434` to `11435` because `11434` was already allocated locally.
 - Web health returned HTTP 200.
 - Local API health returned HTTP 200.
+- `Timeline-win-x64-0.0.0-kan-preflight-aaeb148.zip` was created after the
+  fresh-artifact preflight rule was corrected.
+- Running the bundled
+  `Timeline\launcher\Timeline.Launcher.exe preflight --json --root Timeline`
+  from the extracted artifact returned `state=ok`, `errorCount=0`, and
+  `warningCount=0`.
+- In that artifact, missing `settings.json` was classified as expected
+  first-start state because the artifact contains `VERSION` and packaged
+  runtimes.
 
 As of KAN-46:
 
 - `Timeline-macos-arm64-0.0.0-kan46.zip` was created from Windows.
+- `Timeline-macos-arm64-0.0.0-kan-mac-launcher-049cb85.zip` was also created
+  after the tray launcher started preferring the bundled CLI launcher.
 - The ZIP did not include forbidden local data or development directories.
 - Mac host executable entries were marked with executable metadata.
 - Final Mac startup remains a Mac hardware verification item.
+
+As of KAN-47:
+
+- Artifact preflight can now distinguish product packaging problems from normal
+  first-run state.
+- The Windows artifact has a repeatable preflight command and a recorded
+  success result.
+- Full runtime startup from an extracted artifact still needs an isolated
+  verification environment or explicit port configuration, because the
+  developer machine can already have Timeline running on the default ports.
 
 ## Relationship to Jira epics
 
