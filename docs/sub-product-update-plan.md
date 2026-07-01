@@ -106,3 +106,7 @@ demote source archive update for normal users.
 
 Artifact discovery is now present in the read-only plan. The remaining gap is
 actual built-artifact validation and replacement execution.
+
+See also:
+
+- [sub-product-distribution-artifacts.md](sub-product-distribution-artifacts.md)

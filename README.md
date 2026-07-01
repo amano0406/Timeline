@@ -308,6 +308,8 @@ workspace material.
   Timeline body and Launcher update safety model and plan output.
 - [docs/sub-product-update-plan.md](docs/sub-product-update-plan.md):
   sub-product update safety model and plan output.
+- [docs/sub-product-distribution-artifacts.md](docs/sub-product-distribution-artifacts.md):
+  sub-product built artifact naming, contents, and builder.
 - [docs/timeline-product-manifest.md](docs/timeline-product-manifest.md):
   sub-product manifest contract.
 - [docs/SUBPRODUCT_JOB_API.md](docs/SUBPRODUCT_JOB_API.md):
