@@ -140,6 +140,10 @@ dotnet run --project .\tools\Timeline.SubProductReleaseBuilder\Timeline.SubProdu
   --github-owner amano0406
 ```
 
+For reliable GitHub API reads, set `GITHUB_TOKEN` or `GH_TOKEN` before running
+the command. Without a token, GitHub may return rate-limit `403` responses; in
+that case the plan records `release_check_failed` instead of guessing.
+
 The publish plan reads `sub-product-artifacts-<runtime>.json`, checks the
 matching GitHub Release for each artifact tag, and writes:
 
@@ -164,6 +168,34 @@ Each item includes the expected artifact name, release URL, current latest
 release tag, existing asset names, and a suggested `gh release create` or
 `gh release upload` command. The suggested command is an execution aid only;
 publishing still requires explicit release approval.
+
+## Publish execution
+
+Publishing is available as an explicit operation, but it is guarded because it
+creates GitHub Releases and uploads release assets:
+
+```powershell
+dotnet run --project .\tools\Timeline.SubProductReleaseBuilder\Timeline.SubProductReleaseBuilder.csproj -- `
+  --publish `
+  --confirm-publish `
+  --runtime win-x64 `
+  --output release\sub-products `
+  --github-owner amano0406
+```
+
+Requirements:
+
+- explicit release approval has been given;
+- `GITHUB_TOKEN` or `GH_TOKEN` is set with permission to create releases and
+  upload release assets;
+- the read-only publish plan has already been reviewed.
+
+If `--confirm-publish` is omitted, the command stops before making any GitHub
+changes. A successful publish writes:
+
+```text
+sub-product-release-publish-result-<runtime>.json
+```
 
 This first builder creates a cleaned product ZIP. It does not pre-build and
 embed Docker images. Docker-based sub-products may still build their worker
