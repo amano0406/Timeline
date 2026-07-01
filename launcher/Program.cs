@@ -14,6 +14,7 @@ try
     return command switch
     {
         "status" => await ShowStatus(root, settings),
+        "preflight" => await ShowPreflight(root, settings),
         "start" => await RunStart(root, settings, openBrowser: !options.NoOpen),
         "stop" => await RunStop(root, settings),
         "open" => await OpenOrStart(root, settings),
@@ -29,6 +30,58 @@ catch (Exception ex)
     Console.Error.WriteLine("Timeline Launcher failed.");
     Console.Error.WriteLine(ex.Message);
     return 1;
+}
+
+static async Task<int> ShowPreflight(string root, TimelineSettings settings)
+{
+    var checks = new List<PreflightCheck>();
+    var settingsPath = Path.Combine(root, "settings.json");
+
+    checks.Add(NewInfo("OS", GetPlatformDescription()));
+    checks.Add(Directory.Exists(root)
+        ? NewOk("Timeline root", root)
+        : NewError("Timeline root", $"Directory was not found: {root}"));
+
+    AddRequiredPathCheck(checks, root, "docker-compose.yml", requiredKind: "file");
+    AddRequiredPathCheck(checks, root, "launcher", requiredKind: "directory");
+    AddRequiredPathCheck(checks, root, "launcher-tray", requiredKind: "directory");
+    AddRequiredPathCheck(checks, root, "local-api", requiredKind: "directory");
+    AddRequiredPathCheck(checks, root, "web", requiredKind: "directory");
+
+    checks.Add(File.Exists(settingsPath)
+        ? NewOk("settings.json", $"Loaded from {settingsPath}")
+        : NewWarning("settings.json", "settings.json was not found. Default ports will be used."));
+
+    checks.Add(NewInfo("Configured Web", settings.WebUrl));
+    checks.Add(NewInfo("Configured Local API", settings.LocalApiHealthUrl));
+
+    var dotnet = ResolveCommand(RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "dotnet.exe" : "dotnet");
+    checks.Add(string.IsNullOrWhiteSpace(dotnet)
+        ? NewError(".NET SDK", "dotnet command was not found on PATH.")
+        : NewOk(".NET SDK", dotnet));
+
+    var docker = ResolveDockerCommand();
+    checks.Add(string.IsNullOrWhiteSpace(docker)
+        ? NewError("Docker command", "Docker command was not found.")
+        : NewOk("Docker command", docker));
+
+    var dockerStatus = string.IsNullOrWhiteSpace(docker)
+        ? NewDockerProblemStatus(127, "Docker command could not be found.")
+        : GetDockerStatus(root);
+    checks.Add(dockerStatus.Available
+        ? NewOk("Docker Engine", dockerStatus.Message)
+        : NewError("Docker Engine", $"{dockerStatus.Message} {dockerStatus.Action}".Trim()));
+
+    checks.Add(await IsWebReady(settings.WebHealthUrl)
+        ? NewOk("Web health", $"{settings.WebHealthUrl} is responding.")
+        : NewWarning("Web health", $"{settings.WebHealthUrl} is not responding. This is acceptable before startup."));
+
+    checks.Add(await IsLocalApiReady(settings.LocalApiHealthUrl)
+        ? NewOk("Local API health", $"{settings.LocalApiHealthUrl} is responding.")
+        : NewWarning("Local API health", $"{settings.LocalApiHealthUrl} is not responding. This is acceptable before startup."));
+
+    PrintPreflightChecks(checks);
+    return PreflightExitCode(checks);
 }
 
 static async Task<int> OpenOrStart(string root, TimelineSettings settings)
@@ -167,11 +220,12 @@ static int ShowHelp()
     Console.WriteLine("Timeline Launcher");
     Console.WriteLine();
     Console.WriteLine("Usage:");
-    Console.WriteLine("  TimelineLauncher [open|status|start|stop|shortcut-status|shortcut-install|shortcut-remove|help] [--no-open]");
+    Console.WriteLine("  TimelineLauncher [open|status|preflight|start|stop|shortcut-status|shortcut-install|shortcut-remove|help] [--no-open]");
     Console.WriteLine();
     Console.WriteLine("Commands:");
     Console.WriteLine("  open    Open Timeline. Starts it first when needed.");
     Console.WriteLine("  status  Show Timeline runtime status.");
+    Console.WriteLine("  preflight  Check local prerequisites before runtime verification.");
     Console.WriteLine("  start   Start Timeline.");
     Console.WriteLine("  stop    Stop Timeline.");
     Console.WriteLine("  shortcut-status   Show the OS app entry status.");
@@ -438,6 +492,11 @@ static string ResolveDockerCommand()
         }
     }
 
+    return ResolveCommand(commandName);
+}
+
+static string ResolveCommand(string commandName)
+{
     var path = Environment.GetEnvironmentVariable("PATH") ?? string.Empty;
     foreach (var entry in path.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
     {
@@ -449,6 +508,84 @@ static string ResolveDockerCommand()
     }
 
     return string.Empty;
+}
+
+static void AddRequiredPathCheck(List<PreflightCheck> checks, string root, string relativePath, string requiredKind)
+{
+    var fullPath = Path.Combine(root, relativePath);
+    var exists = requiredKind.Equals("file", StringComparison.OrdinalIgnoreCase)
+        ? File.Exists(fullPath)
+        : Directory.Exists(fullPath);
+
+    checks.Add(exists
+        ? NewOk(relativePath, fullPath)
+        : NewError(relativePath, $"Required {requiredKind} was not found: {fullPath}"));
+}
+
+static void PrintPreflightChecks(IReadOnlyList<PreflightCheck> checks)
+{
+    Console.WriteLine("Timeline preflight");
+    Console.WriteLine("  Checks local prerequisites for runtime verification.");
+    Console.WriteLine();
+
+    foreach (var check in checks)
+    {
+        Console.WriteLine($"- [{PreflightSeverityLabel(check.Severity)}] {check.Name}");
+        if (!string.IsNullOrWhiteSpace(check.Message))
+        {
+            Console.WriteLine($"  {check.Message}");
+        }
+    }
+
+    Console.WriteLine();
+    var errors = checks.Count(check => check.Severity.Equals("error", StringComparison.OrdinalIgnoreCase));
+    var warnings = checks.Count(check => check.Severity.Equals("warning", StringComparison.OrdinalIgnoreCase));
+    Console.WriteLine(errors > 0
+        ? $"Result: {errors} error(s), {warnings} warning(s). Fix errors before runtime verification."
+        : warnings > 0
+            ? $"Result: {warnings} warning(s). Runtime verification can continue if these are expected."
+            : "Result: all preflight checks passed.");
+}
+
+static int PreflightExitCode(IEnumerable<PreflightCheck> checks)
+{
+    if (checks.Any(check => check.Severity.Equals("error", StringComparison.OrdinalIgnoreCase)))
+    {
+        return 2;
+    }
+
+    return checks.Any(check => check.Severity.Equals("warning", StringComparison.OrdinalIgnoreCase))
+        ? 1
+        : 0;
+}
+
+static string PreflightSeverityLabel(string severity) => severity switch
+{
+    "ok" => "OK",
+    "warning" => "WARN",
+    "error" => "ERROR",
+    _ => "INFO",
+};
+
+static PreflightCheck NewOk(string name, string message) => new("ok", name, message);
+
+static PreflightCheck NewWarning(string name, string message) => new("warning", name, message);
+
+static PreflightCheck NewError(string name, string message) => new("error", name, message);
+
+static PreflightCheck NewInfo(string name, string message) => new("info", name, message);
+
+static string GetPlatformDescription()
+{
+    var platform = RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
+        ? "Windows"
+        : RuntimeInformation.IsOSPlatform(OSPlatform.OSX)
+            ? "macOS"
+            : RuntimeInformation.IsOSPlatform(OSPlatform.Linux)
+                ? "Linux"
+                : "Unknown";
+
+    return $"{platform} / {RuntimeInformation.OSDescription} / {RuntimeInformation.ProcessArchitecture}";
 }
 
 static void OpenUrl(string url)
@@ -582,6 +719,8 @@ internal sealed record RuntimeComponent(
 internal sealed record DockerStatus(bool Available, string State, string Message, string Action);
 
 internal sealed record ProcessResult(int ExitCode, string Output, string Error);
+
+internal sealed record PreflightCheck(string Severity, string Name, string Message);
 
 internal static class TimelinePaths
 {

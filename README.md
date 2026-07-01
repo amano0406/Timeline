@@ -30,6 +30,12 @@ Open or start Timeline without the resident UI:
 dotnet run --project .\launcher\Timeline.Launcher.csproj -- open
 ```
 
+Check local prerequisites before runtime verification:
+
+```powershell
+dotnet run --project .\launcher\Timeline.Launcher.csproj -- preflight
+```
+
 Start without opening a browser tab:
 
 ```powershell

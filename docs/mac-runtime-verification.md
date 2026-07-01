@@ -53,6 +53,20 @@ These commands are diagnostic commands only. They are not Timeline launchers.
 
 Run from the Timeline repository root.
 
+Check local prerequisites first:
+
+```bash
+dotnet run --project launcher/Timeline.Launcher.csproj -- preflight
+```
+
+Interpretation:
+
+- `OK`: the prerequisite is available;
+- `WARN`: the condition may be acceptable before startup, such as Web or Local
+  API not responding yet;
+- `ERROR`: fix this before runtime verification, such as Docker Engine not
+  running or required repository directories missing.
+
 Check current status:
 
 ```bash
@@ -162,6 +176,7 @@ Machine:
 - .NET SDK:
 
 KAN-16:
+- preflight:
 - launcher status:
 - launcher start:
 - Web health:
