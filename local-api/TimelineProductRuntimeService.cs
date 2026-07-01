@@ -483,6 +483,197 @@ public sealed class TimelineProductRuntimeService
         };
     }
 
+    public ProductUpdateArtifactValidationResponse ValidateProductUpdateArtifact(
+        string productId,
+        string artifactPath)
+    {
+        var definition = GetProductDefinition(productId);
+        var fullPath = Path.GetFullPath(artifactPath);
+        var blockers = new List<ProductUpdatePlanMessageResponse>();
+        var warnings = new List<ProductUpdatePlanMessageResponse>();
+        var requiredEntries = BuildProductUpdateArtifactEntryChecks();
+        var artifactRootPrefix = string.Empty;
+        var version = string.Empty;
+        var artifactType = string.Empty;
+        var artifactProductId = string.Empty;
+        var artifactProductName = string.Empty;
+        var artifactRuntime = string.Empty;
+        var commit = string.Empty;
+        var channel = string.Empty;
+
+        if (!File.Exists(fullPath))
+        {
+            blockers.Add(NewProductUpdateMessage(
+                "artifact_missing",
+                $"Artifact file was not found: {fullPath}"));
+            return NewProductUpdateArtifactValidationResponse(
+                definition,
+                fullPath,
+                artifactRootPrefix,
+                requiredEntries,
+                blockers,
+                warnings,
+                artifactType,
+                artifactProductId,
+                artifactProductName,
+                version,
+                commit,
+                channel,
+                artifactRuntime);
+        }
+
+        var artifactRuntimeName = ToProductArtifactRuntimeName(RuntimeInformation.RuntimeIdentifier);
+        var expectedPrefix = $"{definition.DisplayName}-{artifactRuntimeName}-";
+        var fileName = Path.GetFileName(fullPath);
+        if (!fileName.StartsWith(expectedPrefix, StringComparison.OrdinalIgnoreCase) ||
+            !fileName.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+        {
+            blockers.Add(NewProductUpdateMessage(
+                "artifact_name_mismatch",
+                $"Artifact name must match {expectedPrefix}*.zip."));
+        }
+
+        try
+        {
+            using var archive = ZipFile.OpenRead(fullPath);
+            artifactRootPrefix = ResolveProductArtifactRootPrefix(archive);
+            if (string.IsNullOrWhiteSpace(artifactRootPrefix))
+            {
+                blockers.Add(NewProductUpdateMessage(
+                    "artifact_root_missing",
+                    "Artifact must contain exactly one product root directory."));
+            }
+            else if (!artifactRootPrefix.TrimEnd('/').Equals(definition.DisplayName, StringComparison.OrdinalIgnoreCase))
+            {
+                blockers.Add(NewProductUpdateMessage(
+                    "artifact_root_mismatch",
+                    $"Artifact root must be {definition.DisplayName}/."));
+            }
+
+            foreach (var check in requiredEntries)
+            {
+                var entryPath = artifactRootPrefix + check.Path;
+                var exists = archive.GetEntry(entryPath) is not null;
+                check.Exists = exists;
+                if (!exists)
+                {
+                    blockers.Add(NewProductUpdateMessage(
+                        "required_entry_missing",
+                        $"Required artifact entry is missing: {entryPath}"));
+                }
+            }
+
+            var versionEntry = string.IsNullOrWhiteSpace(artifactRootPrefix)
+                ? null
+                : archive.GetEntry(artifactRootPrefix + "VERSION");
+            if (versionEntry is null)
+            {
+                blockers.Add(NewProductUpdateMessage(
+                    "version_missing",
+                    "Artifact VERSION metadata is missing."));
+            }
+            else
+            {
+                try
+                {
+                    var versionText = ReadZipEntryText(versionEntry);
+                    var root = JsonNode.Parse(versionText) as JsonObject;
+                    if (root is null)
+                    {
+                        blockers.Add(NewProductUpdateMessage(
+                            "version_invalid",
+                            "Artifact VERSION metadata is not a JSON object."));
+                    }
+                    else
+                    {
+                        artifactType = GetString(root, "artifactType", string.Empty);
+                        artifactProductId = GetString(root, "productId", string.Empty);
+                        artifactProductName = GetString(root, "productName", string.Empty);
+                        version = GetString(root, "version", string.Empty);
+                        commit = GetString(root, "commit", string.Empty);
+                        channel = GetString(root, "channel", string.Empty);
+                        artifactRuntime = GetString(root, "runtimeIdentifier", string.Empty);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    blockers.Add(NewProductUpdateMessage(
+                        "version_unreadable",
+                        $"Artifact VERSION metadata could not be read. {ex.Message}"));
+                }
+            }
+        }
+        catch (InvalidDataException ex)
+        {
+            blockers.Add(NewProductUpdateMessage(
+                "artifact_invalid_zip",
+                $"Artifact ZIP could not be read. {ex.Message}"));
+        }
+        catch (Exception ex)
+        {
+            blockers.Add(NewProductUpdateMessage(
+                "artifact_unreadable",
+                $"Artifact could not be read. {ex.Message}"));
+        }
+
+        if (!string.IsNullOrWhiteSpace(artifactType) &&
+            !artifactType.Equals("timeline_sub_product_artifact", StringComparison.OrdinalIgnoreCase))
+        {
+            blockers.Add(NewProductUpdateMessage(
+                "artifact_type_mismatch",
+                "Artifact VERSION metadata is not a Timeline sub-product artifact."));
+        }
+
+        if (!string.IsNullOrWhiteSpace(artifactProductId) &&
+            !artifactProductId.Equals(definition.Id, StringComparison.OrdinalIgnoreCase))
+        {
+            blockers.Add(NewProductUpdateMessage(
+                "product_id_mismatch",
+                $"Artifact productId must be {definition.Id}."));
+        }
+
+        if (!string.IsNullOrWhiteSpace(artifactProductName) &&
+            !artifactProductName.Equals(definition.DisplayName, StringComparison.OrdinalIgnoreCase))
+        {
+            blockers.Add(NewProductUpdateMessage(
+                "product_name_mismatch",
+                $"Artifact productName must be {definition.DisplayName}."));
+        }
+
+        if (!string.IsNullOrWhiteSpace(artifactRuntime))
+        {
+            var normalizedArtifactRuntime = ToProductArtifactRuntimeName(artifactRuntime);
+            if (!normalizedArtifactRuntime.Equals(artifactRuntimeName, StringComparison.OrdinalIgnoreCase))
+            {
+                blockers.Add(NewProductUpdateMessage(
+                    "runtime_mismatch",
+                    $"Artifact runtime {artifactRuntime} does not match current runtime {RuntimeInformation.RuntimeIdentifier}."));
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(version))
+        {
+            warnings.Add(NewProductUpdateMessage(
+                "version_empty",
+                "Artifact VERSION metadata does not include a version."));
+        }
+
+        return NewProductUpdateArtifactValidationResponse(
+            definition,
+            fullPath,
+            artifactRootPrefix,
+            requiredEntries,
+            blockers,
+            warnings,
+            artifactType,
+            artifactProductId,
+            artifactProductName,
+            version,
+            commit,
+            channel,
+            artifactRuntime);
+    }
+
     public ProductUninstallPlanResponse GetProductUninstallPlan(
         string productId,
         JsonObject? request)
@@ -1158,6 +1349,62 @@ public sealed class TimelineProductRuntimeService
         ];
     }
 
+    private static List<ProductUpdateArtifactEntryCheckResponse> BuildProductUpdateArtifactEntryChecks()
+    {
+        return
+        [
+            NewProductUpdateArtifactEntryCheck("VERSION", "file"),
+            NewProductUpdateArtifactEntryCheck("timeline-product.json", "file"),
+        ];
+    }
+
+    private static ProductUpdateArtifactEntryCheckResponse NewProductUpdateArtifactEntryCheck(string path, string kind)
+    {
+        return new ProductUpdateArtifactEntryCheckResponse
+        {
+            Path = path,
+            Kind = kind,
+        };
+    }
+
+    private static ProductUpdateArtifactValidationResponse NewProductUpdateArtifactValidationResponse(
+        ProductRuntimeDefinition definition,
+        string artifactPath,
+        string artifactRootPrefix,
+        List<ProductUpdateArtifactEntryCheckResponse> requiredEntries,
+        List<ProductUpdatePlanMessageResponse> blockers,
+        List<ProductUpdatePlanMessageResponse> warnings,
+        string artifactType,
+        string artifactProductId,
+        string artifactProductName,
+        string version,
+        string commit,
+        string channel,
+        string runtimeIdentifier)
+    {
+        return new ProductUpdateArtifactValidationResponse
+        {
+            ProductId = definition.Id,
+            DisplayName = definition.DisplayName,
+            ArtifactPath = artifactPath,
+            ArtifactRootPrefix = artifactRootPrefix,
+            State = blockers.Count == 0 ? "ready" : "blocked",
+            Valid = blockers.Count == 0,
+            ArtifactType = artifactType,
+            ArtifactProductId = artifactProductId,
+            ArtifactProductName = artifactProductName,
+            Version = version,
+            Commit = commit,
+            Channel = channel,
+            RuntimeIdentifier = runtimeIdentifier,
+            CurrentRuntimeIdentifier = RuntimeInformation.RuntimeIdentifier,
+            RequiredEntries = requiredEntries,
+            Blockers = blockers,
+            Warnings = warnings,
+            CheckedAt = DateTimeOffset.UtcNow.ToString("O"),
+        };
+    }
+
     private static ProductUpdatePathPlanResponse NewProductUpdatePath(
         string id,
         string kind,
@@ -1233,6 +1480,26 @@ public sealed class TimelineProductRuntimeService
         }
 
         return string.IsNullOrWhiteSpace(runtimeIdentifier) ? "unknown" : runtimeIdentifier;
+    }
+
+    private static string ResolveProductArtifactRootPrefix(ZipArchive archive)
+    {
+        var roots = archive.Entries
+            .Select(entry => entry.FullName.Replace('\\', '/'))
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Select(name => name.Split('/', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? string.Empty)
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        return roots.Count == 1 ? roots[0].TrimEnd('/') + "/" : string.Empty;
+    }
+
+    private static string ReadZipEntryText(ZipArchiveEntry entry)
+    {
+        using var stream = entry.Open();
+        using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
+        return reader.ReadToEnd();
     }
 
     private ProductInstallOptions GetProductInstallOptions(JsonObject? request)
@@ -4010,6 +4277,75 @@ public sealed class ProductUpdatePlanMessageResponse
 
     [JsonPropertyName("message")]
     public string Message { get; set; } = "";
+}
+
+public sealed class ProductUpdateArtifactValidationResponse
+{
+    [JsonPropertyName("productId")]
+    public string ProductId { get; set; } = "";
+
+    [JsonPropertyName("displayName")]
+    public string DisplayName { get; set; } = "";
+
+    [JsonPropertyName("artifactPath")]
+    public string ArtifactPath { get; set; } = "";
+
+    [JsonPropertyName("artifactRootPrefix")]
+    public string ArtifactRootPrefix { get; set; } = "";
+
+    [JsonPropertyName("state")]
+    public string State { get; set; } = "";
+
+    [JsonPropertyName("valid")]
+    public bool Valid { get; set; }
+
+    [JsonPropertyName("artifactType")]
+    public string ArtifactType { get; set; } = "";
+
+    [JsonPropertyName("artifactProductId")]
+    public string ArtifactProductId { get; set; } = "";
+
+    [JsonPropertyName("artifactProductName")]
+    public string ArtifactProductName { get; set; } = "";
+
+    [JsonPropertyName("version")]
+    public string Version { get; set; } = "";
+
+    [JsonPropertyName("commit")]
+    public string Commit { get; set; } = "";
+
+    [JsonPropertyName("channel")]
+    public string Channel { get; set; } = "";
+
+    [JsonPropertyName("runtimeIdentifier")]
+    public string RuntimeIdentifier { get; set; } = "";
+
+    [JsonPropertyName("currentRuntimeIdentifier")]
+    public string CurrentRuntimeIdentifier { get; set; } = "";
+
+    [JsonPropertyName("requiredEntries")]
+    public List<ProductUpdateArtifactEntryCheckResponse> RequiredEntries { get; set; } = [];
+
+    [JsonPropertyName("blockers")]
+    public List<ProductUpdatePlanMessageResponse> Blockers { get; set; } = [];
+
+    [JsonPropertyName("warnings")]
+    public List<ProductUpdatePlanMessageResponse> Warnings { get; set; } = [];
+
+    [JsonPropertyName("checkedAt")]
+    public string CheckedAt { get; set; } = "";
+}
+
+public sealed class ProductUpdateArtifactEntryCheckResponse
+{
+    [JsonPropertyName("path")]
+    public string Path { get; set; } = "";
+
+    [JsonPropertyName("kind")]
+    public string Kind { get; set; } = "";
+
+    [JsonPropertyName("exists")]
+    public bool Exists { get; set; }
 }
 
 public sealed class ProductUninstallPlanResponse

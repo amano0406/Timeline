@@ -71,6 +71,29 @@ If no Release or matching asset exists, the endpoint reports that as a warning.
 It does not fall back silently to a source archive for the future user-facing
 update path.
 
+## Built artifact validation
+
+Downloaded or locally generated artifacts can be validated before update:
+
+```text
+GET http://127.0.0.1:19001/products/runtime/<productId>/update-artifact/validate?path=<zip-path>
+```
+
+The validator checks:
+
+- ZIP file exists and is readable;
+- archive name matches `<product-name>-<runtime>-<version>.zip`;
+- ZIP contains exactly one product root directory;
+- product root matches the configured product display name;
+- `VERSION` exists and is a Timeline sub-product artifact;
+- `productId`, `productName`, and runtime match the target product and current
+  machine;
+- required entries exist:
+  - `VERSION`
+  - `timeline-product.json`
+
+Validation does not stop products, modify files, or apply an update.
+
 ## Preservation rules
 
 Sub-product update must preserve:
@@ -104,8 +127,8 @@ For a complete `KAN-58`, the next implementation should introduce built
 artifact discovery and validation for sub-products, then either disable or
 demote source archive update for normal users.
 
-Artifact discovery is now present in the read-only plan. The remaining gap is
-actual built-artifact validation and replacement execution.
+Artifact discovery and local artifact validation are now present. The remaining
+gap is actual built-artifact replacement execution.
 
 See also:
 

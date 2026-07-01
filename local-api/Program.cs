@@ -1447,6 +1447,31 @@ app.MapGet("/products/runtime/{productId}/update-plan", async (
     }
 });
 
+app.MapGet("/products/runtime/{productId}/update-artifact/validate", (
+    string productId,
+    string? path,
+    TimelineProductRuntimeService runtime) =>
+{
+    try
+    {
+        var artifactPath = ConvertTimelineText(path);
+        if (string.IsNullOrWhiteSpace(artifactPath))
+        {
+            return Results.Json(
+                new { message = "Artifact path is required.", ok = false },
+                statusCode: StatusCodes.Status400BadRequest);
+        }
+
+        return Results.Json(runtime.ValidateProductUpdateArtifact(productId, artifactPath));
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(
+            new { message = ex.Message, ok = false },
+            statusCode: StatusCodes.Status500InternalServerError);
+    }
+});
+
 app.MapPost("/products/runtime/{productId}/uninstall-plan", async (
     HttpContext context,
     string productId,

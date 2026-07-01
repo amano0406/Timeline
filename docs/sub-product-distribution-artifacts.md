@@ -118,10 +118,19 @@ The builder produced local Windows artifacts for all six current sub-products:
 The verification checked that each ZIP contains a `VERSION` file and does not
 contain excluded settings, data, logs, tests, or runtime cache paths.
 
+Each generated ZIP was also accepted by the Timeline Local API validation
+endpoint:
+
+```text
+GET /products/runtime/<productId>/update-artifact/validate?path=<zip-path>
+```
+
+All six artifacts returned `state=ready`, `valid=true`, `requiredEntries=2/2`,
+with no blockers or warnings.
+
 ## Remaining work
 
 - Publish or attach these artifacts to the corresponding sub-product GitHub
   Releases.
-- Add artifact validation before Timeline applies a sub-product update.
 - Replace the existing source-archive update execution path with a built
   artifact execution path.
