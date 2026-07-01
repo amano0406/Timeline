@@ -113,8 +113,10 @@ public sealed class TimelineSettingsService
             : ResolveStartupSettings(new JsonObject { ["startup"] = requestStartup.DeepClone() }, includeStatus: false);
         var startupStatus = _startup.GetStatus();
         if (requestStartup is not null
-            && (startup.StartWithOperatingSystem != currentStartup.StartWithOperatingSystem
-                || startup.StartWithOperatingSystem != startupStatus.Registered))
+            && StartupRegistrationNeedsApply(
+                startup.StartWithOperatingSystem,
+                currentStartup.StartWithOperatingSystem,
+                startupStatus))
         {
             startupStatus = _startup.ApplyDesiredState(startup.StartWithOperatingSystem);
             if (startupStatus.State.Equals("failed", StringComparison.OrdinalIgnoreCase)
@@ -365,6 +367,30 @@ public sealed class TimelineSettingsService
                 ? _startup.GetStatus()
                 : new TimelineStartupRegistrationStatusResponse(),
         };
+    }
+
+    private static bool StartupRegistrationNeedsApply(
+        bool desired,
+        bool currentDesired,
+        TimelineStartupRegistrationStatusResponse currentStatus)
+    {
+        if (desired != currentDesired)
+        {
+            return true;
+        }
+
+        if (desired != currentStatus.Registered)
+        {
+            return true;
+        }
+
+        if (!desired)
+        {
+            return false;
+        }
+
+        return currentStatus.State.Equals("legacy_registered", StringComparison.OrdinalIgnoreCase)
+            || currentStatus.State.Equals("registered_with_different_target", StringComparison.OrdinalIgnoreCase);
     }
 
     private TimelineCommonAiSettingsResponse ResolveCommonAiSettingsForResponse(JsonObject? payload)

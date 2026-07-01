@@ -69,6 +69,11 @@ project path, or different executable, the UI should show it as an update target
 instead of treating it as fully healthy. Saving the startup setting is the
 repair path; status checks do not rewrite OS settings by themselves.
 
+The settings save path must also treat `legacy_registered` and
+`registered_with_different_target` as refresh targets when OS startup is enabled.
+Otherwise a stale registration would remain in place because it is technically
+already registered.
+
 ## Installer boundary
 
 The install plan is not the installer.
