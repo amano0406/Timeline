@@ -606,6 +606,72 @@ public static class TimelineUpdatePlanService
         };
     }
 
+    public static async Task<TimelineUpdateArtifactManifestApplyPlanResponse> GetManifestApplyPlanAsync(
+        string timelineRoot,
+        string manifestPath,
+        CancellationToken cancellationToken)
+    {
+        var root = Path.GetFullPath(timelineRoot);
+        var manifestValidation = ValidateArtifactManifest(root, manifestPath);
+        var blockers = manifestValidation.Blockers
+            .Select(message => new TimelineUpdatePlanMessage
+            {
+                Code = message.Code,
+                Message = message.Message,
+            })
+            .ToList();
+        var warnings = manifestValidation.Warnings
+            .Select(message => new TimelineUpdatePlanMessage
+            {
+                Code = message.Code,
+                Message = message.Message,
+            })
+            .ToList();
+        TimelineUpdateApplyPlanResponse? applyPlan = null;
+
+        if (manifestValidation.Valid)
+        {
+            applyPlan = await GetApplyPlanAsync(root, manifestValidation.Artifact.Path, cancellationToken);
+            foreach (var blocker in applyPlan.Blockers)
+            {
+                blockers.Add(new TimelineUpdatePlanMessage
+                {
+                    Code = "apply_plan_" + blocker.Code,
+                    Message = blocker.Message,
+                });
+            }
+
+            foreach (var warning in applyPlan.Warnings)
+            {
+                warnings.Add(new TimelineUpdatePlanMessage
+                {
+                    Code = "apply_plan_" + warning.Code,
+                    Message = warning.Message,
+                });
+            }
+        }
+
+        var canApply = manifestValidation.Valid && applyPlan?.CanApply == true && blockers.Count == 0;
+        return new TimelineUpdateArtifactManifestApplyPlanResponse
+        {
+            ProductId = "timeline",
+            ProductName = "Timeline",
+            State = canApply ? "ready" : "blocked",
+            CanApply = canApply,
+            RequiresConfirmation = true,
+            ConfirmationParameter = "confirm",
+            OperationOwner = "launcher",
+            Mode = "manifest_read_only_apply_plan",
+            TimelineRoot = root,
+            DataRoot = applyPlan?.DataRoot ?? ResolveDataRoot(root),
+            ManifestValidation = manifestValidation,
+            ApplyPlan = applyPlan,
+            Blockers = blockers,
+            Warnings = warnings,
+            GeneratedAt = DateTimeOffset.UtcNow.ToString("O", CultureInfo.InvariantCulture),
+        };
+    }
+
     public static async Task<TimelineUpdateArtifactStageResponse> StageArtifactAsync(
         string timelineRoot,
         string artifactPath,
@@ -1996,6 +2062,54 @@ public sealed class TimelineUpdateApplyPlanResponse
 
     [JsonPropertyName("steps")]
     public List<TimelineUpdateStepPlan> Steps { get; set; } = [];
+
+    [JsonPropertyName("blockers")]
+    public List<TimelineUpdatePlanMessage> Blockers { get; set; } = [];
+
+    [JsonPropertyName("warnings")]
+    public List<TimelineUpdatePlanMessage> Warnings { get; set; } = [];
+
+    [JsonPropertyName("generatedAt")]
+    public string GeneratedAt { get; set; } = "";
+}
+
+public sealed class TimelineUpdateArtifactManifestApplyPlanResponse
+{
+    [JsonPropertyName("productId")]
+    public string ProductId { get; set; } = "";
+
+    [JsonPropertyName("productName")]
+    public string ProductName { get; set; } = "";
+
+    [JsonPropertyName("state")]
+    public string State { get; set; } = "";
+
+    [JsonPropertyName("canApply")]
+    public bool CanApply { get; set; }
+
+    [JsonPropertyName("requiresConfirmation")]
+    public bool RequiresConfirmation { get; set; }
+
+    [JsonPropertyName("confirmationParameter")]
+    public string ConfirmationParameter { get; set; } = "";
+
+    [JsonPropertyName("operationOwner")]
+    public string OperationOwner { get; set; } = "";
+
+    [JsonPropertyName("mode")]
+    public string Mode { get; set; } = "";
+
+    [JsonPropertyName("timelineRoot")]
+    public string TimelineRoot { get; set; } = "";
+
+    [JsonPropertyName("dataRoot")]
+    public string DataRoot { get; set; } = "";
+
+    [JsonPropertyName("manifestValidation")]
+    public TimelineUpdateArtifactManifestValidationResponse ManifestValidation { get; set; } = new();
+
+    [JsonPropertyName("applyPlan")]
+    public TimelineUpdateApplyPlanResponse? ApplyPlan { get; set; }
 
     [JsonPropertyName("blockers")]
     public List<TimelineUpdatePlanMessage> Blockers { get; set; } = [];

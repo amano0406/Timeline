@@ -319,6 +319,13 @@ TimelineLauncher update-manifest-validate --manifest <json-path>
 GET /timeline/update/artifact/manifest/validate?path=<json-path>
 ```
 
+The manifest can also drive the read-only apply decision:
+
+```text
+TimelineLauncher update-manifest-apply-plan --manifest <json-path>
+GET /timeline/update/artifact/manifest/apply-plan?path=<json-path>
+```
+
 The same manifest can be used as the non-destructive staging entrypoint:
 
 ```text

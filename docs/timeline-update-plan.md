@@ -33,6 +33,7 @@ plan:
 ```powershell
 dotnet run --project .\launcher\Timeline.Launcher.csproj -- update-apply-plan --artifact <zip-path>
 dotnet run --project .\launcher\Timeline.Launcher.csproj -- update-apply-plan --artifact <zip-path> --json
+dotnet run --project .\launcher\Timeline.Launcher.csproj -- update-manifest-apply-plan --manifest <json-path> --json
 ```
 
 Downloaded artifacts can be validated without applying an update:
@@ -74,6 +75,7 @@ GET http://127.0.0.1:19001/timeline/update/plan
 GET http://127.0.0.1:19001/timeline/update/recovery/plan
 GET http://127.0.0.1:19001/timeline/update/recovery/plan?path=<zip-path>
 GET http://127.0.0.1:19001/timeline/update/artifact/apply-plan?path=<zip-path>
+GET http://127.0.0.1:19001/timeline/update/artifact/manifest/apply-plan?path=<json-path>
 GET http://127.0.0.1:19001/timeline/update/artifact/validate?path=<zip-path>
 GET http://127.0.0.1:19001/timeline/update/artifact/manifest/validate?path=<json-path>
 POST http://127.0.0.1:19001/timeline/update/artifact/stage

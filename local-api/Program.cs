@@ -145,6 +145,25 @@ app.MapGet("/timeline/update/artifact/apply-plan", async (
         cancellationToken));
 });
 
+app.MapGet("/timeline/update/artifact/manifest/apply-plan", async (
+    string? path,
+    TimelineLocalApiOptions options,
+    CancellationToken cancellationToken) =>
+{
+    var manifestPath = ConvertTimelineText(path);
+    if (string.IsNullOrWhiteSpace(manifestPath))
+    {
+        return Results.Json(
+            new { message = "Artifact manifest path is required.", ok = false },
+            statusCode: StatusCodes.Status400BadRequest);
+    }
+
+    return Results.Json(await TimelineUpdatePlanService.GetManifestApplyPlanAsync(
+        options.TimelineProductPath,
+        manifestPath,
+        cancellationToken));
+});
+
 app.MapGet("/timeline/update/artifact/validate", (
     string? path,
     TimelineLocalApiOptions options) =>

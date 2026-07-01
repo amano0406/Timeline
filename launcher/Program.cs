@@ -29,6 +29,7 @@ try
         "uninstall-plan" => ShowUninstallPlan(root, options.JsonOutput),
         "update-plan" => await ShowUpdatePlan(root, options.JsonOutput),
         "update-apply-plan" => await ShowUpdateApplyPlan(root, options.ArtifactPath, options.JsonOutput),
+        "update-manifest-apply-plan" => await ShowUpdateManifestApplyPlan(root, options.ManifestPath, options.JsonOutput),
         "update-recovery-plan" => await ShowUpdateRecoveryPlan(root, options.ArtifactPath, options.JsonOutput),
         "update-validate" => ShowUpdateArtifactValidation(root, options.ArtifactPath, options.JsonOutput),
         "update-manifest-validate" => ShowUpdateArtifactManifestValidation(root, options.ManifestPath, options.JsonOutput),
@@ -855,6 +856,43 @@ static async Task<int> ShowUpdateApplyPlan(string root, string? artifactPath, bo
     return 0;
 }
 
+static async Task<int> ShowUpdateManifestApplyPlan(string root, string? manifestPath, bool jsonOutput)
+{
+    if (string.IsNullOrWhiteSpace(manifestPath))
+    {
+        Console.Error.WriteLine("Update artifact manifest path is required. Use --manifest <json-path>.");
+        return 2;
+    }
+
+    var plan = await TimelineUpdatePlanService.GetManifestApplyPlanAsync(root, manifestPath, CancellationToken.None);
+    if (jsonOutput)
+    {
+        Console.WriteLine(JsonSerializer.Serialize(
+            plan,
+            new JsonSerializerOptions
+            {
+                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+                WriteIndented = true,
+            }));
+    }
+    else
+    {
+        Console.WriteLine("Timeline update manifest apply plan");
+        Console.WriteLine($"  state: {plan.State}");
+        Console.WriteLine($"  can apply: {(plan.CanApply ? "yes" : "no")}");
+        Console.WriteLine($"  manifest: {plan.ManifestValidation.ManifestPath}");
+        Console.WriteLine($"  artifact: {plan.ManifestValidation.Artifact.Path}");
+        Console.WriteLine($"  manifest version: {EmptyText(plan.ManifestValidation.Manifest.Version)}");
+        Console.WriteLine($"  manifest runtime: {EmptyText(plan.ManifestValidation.Manifest.RuntimeIdentifier)}");
+        Console.WriteLine($"  update plan state: {EmptyText(plan.ApplyPlan?.UpdatePlanState)}");
+        Console.WriteLine();
+        PrintUpdateMessages("Blockers", plan.Blockers);
+        PrintUpdateMessages("Warnings", plan.Warnings);
+    }
+
+    return 0;
+}
+
 static async Task<int> ShowUpdateRecoveryPlan(string root, string? artifactPath, bool jsonOutput)
 {
     var plan = await TimelineUpdatePlanService.GetRecoveryPlanAsync(root, artifactPath, CancellationToken.None);
@@ -1235,7 +1273,7 @@ static int ShowHelp()
     Console.WriteLine("Timeline Launcher");
     Console.WriteLine();
     Console.WriteLine("Usage:");
-    Console.WriteLine("  TimelineLauncher [open|status|preflight|verify-setup|version|configure-runtime|install-plan|uninstall-plan|update-plan|update-apply-plan|update-recovery-plan|update-validate|update-manifest-validate|update-stage|update-manifest-stage|start|stop|shortcut-status|shortcut-install|shortcut-remove|uninstall-registration-status|uninstall-registration-install|uninstall-registration-remove|help] [--no-open] [--json]");
+    Console.WriteLine("  TimelineLauncher [open|status|preflight|verify-setup|version|configure-runtime|install-plan|uninstall-plan|update-plan|update-apply-plan|update-manifest-apply-plan|update-recovery-plan|update-validate|update-manifest-validate|update-stage|update-manifest-stage|start|stop|shortcut-status|shortcut-install|shortcut-remove|uninstall-registration-status|uninstall-registration-install|uninstall-registration-remove|help] [--no-open] [--json]");
     Console.WriteLine();
     Console.WriteLine("Commands:");
     Console.WriteLine("  open    Open Timeline. Starts it first when needed.");
@@ -1248,6 +1286,7 @@ static int ShowHelp()
     Console.WriteLine("  uninstall-plan  Show delete levels and preserved data before future uninstall execution.");
     Console.WriteLine("  update-plan  Show the safe Timeline body update plan. Use --json for tooling.");
     Console.WriteLine("  update-apply-plan  Show whether a built product artifact can be applied now. Optional: --artifact <path>.");
+    Console.WriteLine("  update-manifest-apply-plan  Show whether a manifest artifact can be applied now. Use --manifest <path>.");
     Console.WriteLine("  update-recovery-plan  Show rollback and failure recovery policy. Optional: --artifact <path>.");
     Console.WriteLine("  update-validate  Validate a built product artifact ZIP. Use --artifact <path>.");
     Console.WriteLine("  update-manifest-validate  Validate an artifact manifest and its ZIP. Use --manifest <path>.");
