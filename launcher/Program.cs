@@ -14,7 +14,7 @@ try
     return command switch
     {
         "status" => await ShowStatus(root, settings),
-        "preflight" => await ShowPreflight(root, settings),
+        "preflight" => await ShowPreflight(root, settings, options.JsonOutput),
         "start" => await RunStart(root, settings, openBrowser: !options.NoOpen),
         "stop" => await RunStop(root, settings),
         "open" => await OpenOrStart(root, settings),
@@ -32,7 +32,7 @@ catch (Exception ex)
     return 1;
 }
 
-static async Task<int> ShowPreflight(string root, TimelineSettings settings)
+static async Task<int> ShowPreflight(string root, TimelineSettings settings, bool jsonOutput)
 {
     var checks = new List<PreflightCheck>();
     var settingsPath = Path.Combine(root, "settings.json");
@@ -80,8 +80,17 @@ static async Task<int> ShowPreflight(string root, TimelineSettings settings)
         ? NewOk("Local API health", $"{settings.LocalApiHealthUrl} is responding.")
         : NewWarning("Local API health", $"{settings.LocalApiHealthUrl} is not responding. This is acceptable before startup."));
 
-    PrintPreflightChecks(checks);
-    return PreflightExitCode(checks);
+    var exitCode = PreflightExitCode(checks);
+    if (jsonOutput)
+    {
+        PrintPreflightJson(root, settings, checks, exitCode);
+    }
+    else
+    {
+        PrintPreflightChecks(checks);
+    }
+
+    return exitCode;
 }
 
 static async Task<int> OpenOrStart(string root, TimelineSettings settings)
@@ -220,12 +229,12 @@ static int ShowHelp()
     Console.WriteLine("Timeline Launcher");
     Console.WriteLine();
     Console.WriteLine("Usage:");
-    Console.WriteLine("  TimelineLauncher [open|status|preflight|start|stop|shortcut-status|shortcut-install|shortcut-remove|help] [--no-open]");
+    Console.WriteLine("  TimelineLauncher [open|status|preflight|start|stop|shortcut-status|shortcut-install|shortcut-remove|help] [--no-open] [--json]");
     Console.WriteLine();
     Console.WriteLine("Commands:");
     Console.WriteLine("  open    Open Timeline. Starts it first when needed.");
     Console.WriteLine("  status  Show Timeline runtime status.");
-    Console.WriteLine("  preflight  Check local prerequisites before runtime verification.");
+    Console.WriteLine("  preflight  Check local prerequisites before runtime verification. Use --json for Jira evidence.");
     Console.WriteLine("  start   Start Timeline.");
     Console.WriteLine("  stop    Stop Timeline.");
     Console.WriteLine("  shortcut-status   Show the OS app entry status.");
@@ -547,6 +556,40 @@ static void PrintPreflightChecks(IReadOnlyList<PreflightCheck> checks)
             : "Result: all preflight checks passed.");
 }
 
+static void PrintPreflightJson(
+    string root,
+    TimelineSettings settings,
+    IReadOnlyList<PreflightCheck> checks,
+    int exitCode)
+{
+    var errors = checks.Count(check => check.Severity.Equals("error", StringComparison.OrdinalIgnoreCase));
+    var warnings = checks.Count(check => check.Severity.Equals("warning", StringComparison.OrdinalIgnoreCase));
+    var state = errors > 0
+        ? "error"
+        : warnings > 0
+            ? "warning"
+            : "ok";
+
+    var report = new PreflightReport(
+        GeneratedAt: DateTimeOffset.UtcNow,
+        State: state,
+        ExitCode: exitCode,
+        ErrorCount: errors,
+        WarningCount: warnings,
+        Root: root,
+        WebUrl: settings.WebUrl,
+        LocalApiHealthUrl: settings.LocalApiHealthUrl,
+        Checks: checks.ToArray());
+
+    Console.WriteLine(JsonSerializer.Serialize(
+        report,
+        new JsonSerializerOptions
+        {
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+            WriteIndented = true,
+        }));
+}
+
 static int PreflightExitCode(IEnumerable<PreflightCheck> checks)
 {
     if (checks.Any(check => check.Severity.Equals("error", StringComparison.OrdinalIgnoreCase)))
@@ -612,13 +655,14 @@ static void OpenUrl(string url)
     }
 }
 
-internal sealed record LauncherOptions(string? Root, string Command, bool NoOpen)
+internal sealed record LauncherOptions(string? Root, string Command, bool NoOpen, bool JsonOutput)
 {
     public static LauncherOptions Parse(string[] args)
     {
         string? root = null;
         var command = "open";
         var noOpen = false;
+        var jsonOutput = false;
 
         for (var index = 0; index < args.Length; index++)
         {
@@ -626,6 +670,12 @@ internal sealed record LauncherOptions(string? Root, string Command, bool NoOpen
             if (arg == "--no-open")
             {
                 noOpen = true;
+                continue;
+            }
+
+            if (arg == "--json")
+            {
+                jsonOutput = true;
                 continue;
             }
 
@@ -644,7 +694,7 @@ internal sealed record LauncherOptions(string? Root, string Command, bool NoOpen
             command = arg.Trim().ToLowerInvariant();
         }
 
-        return new LauncherOptions(root, command, noOpen);
+        return new LauncherOptions(root, command, noOpen, jsonOutput);
     }
 }
 
@@ -721,6 +771,17 @@ internal sealed record DockerStatus(bool Available, string State, string Message
 internal sealed record ProcessResult(int ExitCode, string Output, string Error);
 
 internal sealed record PreflightCheck(string Severity, string Name, string Message);
+
+internal sealed record PreflightReport(
+    DateTimeOffset GeneratedAt,
+    string State,
+    int ExitCode,
+    int ErrorCount,
+    int WarningCount,
+    string Root,
+    string WebUrl,
+    string LocalApiHealthUrl,
+    PreflightCheck[] Checks);
 
 internal static class TimelinePaths
 {

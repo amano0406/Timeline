@@ -59,6 +59,12 @@ Check local prerequisites first:
 dotnet run --project launcher/Timeline.Launcher.csproj -- preflight
 ```
 
+For Jira evidence, capture the same result as JSON:
+
+```bash
+dotnet run --project launcher/Timeline.Launcher.csproj -- preflight --json
+```
+
 Interpretation:
 
 - `OK`: the prerequisite is available;
@@ -177,6 +183,7 @@ Machine:
 
 KAN-16:
 - preflight:
+- preflight JSON:
 - launcher status:
 - launcher start:
 - Web health:

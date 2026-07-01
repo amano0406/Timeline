@@ -36,6 +36,12 @@ Check local prerequisites before runtime verification:
 dotnet run --project .\launcher\Timeline.Launcher.csproj -- preflight
 ```
 
+For Jira evidence or later comparison, use structured output:
+
+```powershell
+dotnet run --project .\launcher\Timeline.Launcher.csproj -- preflight --json
+```
+
 Start without opening a browser tab:
 
 ```powershell
