@@ -255,9 +255,17 @@ Minimum metadata:
 }
 ```
 
-The exact file name is not fixed yet. `VERSION` is sufficient for the first
-iteration; a structured JSON manifest can replace or accompany it when update
-implementation starts.
+ReleaseBuilder also writes a machine-readable artifact manifest next to the ZIP:
+
+```text
+timeline-artifact-<runtime>.json
+```
+
+The manifest records the product id, product name, channel, version, commit,
+host runtime, container runtime, artifact file name, byte size, SHA-256 hash,
+and whether the artifact includes a macOS `.app` bundle. `VERSION` remains the
+metadata inside the artifact; the external manifest is the safer handoff for
+release attachment, validation, and update planning.
 
 ## Version and latest checks
 

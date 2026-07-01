@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Globalization;
 using System.IO.Compression;
+using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 
@@ -58,6 +59,7 @@ WriteRuntimeReadme(productRoot);
 RemoveForbiddenArtifactContent(productRoot);
 
 CreateProductZip(stagingParent, zipPath, options.HostRuntime);
+WriteArtifactManifest(outputRoot, options, version, commit, zipPath);
 
 Console.WriteLine("Timeline product artifact created.");
 Console.WriteLine($"  Runtime: {options.HostRuntime}");
@@ -222,6 +224,47 @@ static void WriteRuntimeReadme(string productRoot)
     File.WriteAllText(
         Path.Combine(runtimeDirectory, "README.txt"),
         "Runtime state, user data, logs, and generated stores are created outside the immutable product artifact." + Environment.NewLine);
+}
+
+static void WriteArtifactManifest(
+    string outputRoot,
+    ReleaseOptions options,
+    string version,
+    string commit,
+    string zipPath)
+{
+    Directory.CreateDirectory(outputRoot);
+    var artifactRuntimeName = ToArtifactRuntimeName(options.HostRuntime);
+    var fileInfo = new FileInfo(zipPath);
+    var manifest = new TimelineArtifactManifest(
+        ManifestType: "timeline_product_artifact_manifest",
+        ProductId: "timeline",
+        ProductName: "Timeline",
+        Channel: options.Channel,
+        Version: version,
+        Commit: commit,
+        RuntimeIdentifier: options.HostRuntime,
+        RuntimeName: artifactRuntimeName,
+        ContainerRuntimeIdentifier: options.ContainerRuntime,
+        CreatedAt: DateTimeOffset.UtcNow.ToString("O", CultureInfo.InvariantCulture),
+        Artifact: new TimelineArtifactManifestItem(
+            ArtifactKind: "built_product_artifact",
+            FileName: fileInfo.Name,
+            Path: fileInfo.FullName,
+            SizeBytes: fileInfo.Length,
+            Sha256: ComputeSha256(zipPath),
+            AppBundleIncluded: options.HostRuntime.StartsWith("osx-", StringComparison.OrdinalIgnoreCase)));
+
+    File.WriteAllText(
+        Path.Combine(outputRoot, $"timeline-artifact-{artifactRuntimeName}.json"),
+        JsonSerializer.Serialize(manifest, new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true }) + Environment.NewLine);
+}
+
+static string ComputeSha256(string path)
+{
+    using var stream = File.OpenRead(path);
+    var hash = SHA256.HashData(stream);
+    return Convert.ToHexString(hash).ToLowerInvariant();
 }
 
 static void CreateProductZip(string sourceDirectory, string zipPath, string hostRuntime)
@@ -478,6 +521,27 @@ internal sealed record PublishSpec(
     string RuntimeIdentifier,
     bool SelfContained,
     bool UseAppHost);
+
+internal sealed record TimelineArtifactManifest(
+    string ManifestType,
+    string ProductId,
+    string ProductName,
+    string Channel,
+    string Version,
+    string Commit,
+    string RuntimeIdentifier,
+    string RuntimeName,
+    string ContainerRuntimeIdentifier,
+    string CreatedAt,
+    TimelineArtifactManifestItem Artifact);
+
+internal sealed record TimelineArtifactManifestItem(
+    string ArtifactKind,
+    string FileName,
+    string Path,
+    long SizeBytes,
+    string Sha256,
+    bool AppBundleIncluded);
 
 internal sealed record ProcessResult(int ExitCode, string Output, string Error)
 {
