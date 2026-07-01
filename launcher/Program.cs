@@ -15,6 +15,7 @@ try
     {
         "status" => await ShowStatus(root, settings),
         "preflight" => await ShowPreflight(root, settings, options.JsonOutput),
+        "verify-setup" or "verify" => await VerifySetup(root, settings, options.JsonOutput),
         "start" => await RunStart(root, settings, openBrowser: !options.NoOpen),
         "stop" => await RunStop(root, settings),
         "open" => await OpenOrStart(root, settings),
@@ -33,6 +34,22 @@ catch (Exception ex)
 }
 
 static async Task<int> ShowPreflight(string root, TimelineSettings settings, bool jsonOutput)
+{
+    var checks = await BuildPreflightChecks(root, settings);
+    var exitCode = PreflightExitCode(checks);
+    if (jsonOutput)
+    {
+        PrintPreflightJson(root, settings, checks, exitCode);
+    }
+    else
+    {
+        PrintPreflightChecks(checks);
+    }
+
+    return exitCode;
+}
+
+static async Task<List<PreflightCheck>> BuildPreflightChecks(string root, TimelineSettings settings)
 {
     var checks = new List<PreflightCheck>();
     var settingsPath = Path.Combine(root, "settings.json");
@@ -105,14 +122,93 @@ static async Task<int> ShowPreflight(string root, TimelineSettings settings, boo
         ? NewOk("Local API health", $"{settings.LocalApiHealthUrl} is responding.")
         : NewWarning("Local API health", $"{settings.LocalApiHealthUrl} is not responding. This is acceptable before startup."));
 
-    var exitCode = PreflightExitCode(checks);
+    return checks;
+}
+
+static async Task<int> VerifySetup(string root, TimelineSettings settings, bool jsonOutput)
+{
+    var preflightChecks = await BuildPreflightChecks(root, settings);
+    var checks = new List<SetupVerificationCheck>();
+
+    foreach (var check in preflightChecks.Where(check => check.Severity.Equals("error", StringComparison.OrdinalIgnoreCase)))
+    {
+        checks.Add(NewSetupError("prerequisite", check.Name, "failed", check.Message, "先に前提環境を修正してから再確認してください。"));
+    }
+
+    var dockerCheck = preflightChecks.FirstOrDefault(check => check.Name.Equals("Docker Engine", StringComparison.OrdinalIgnoreCase));
+    if (dockerCheck is not null && !dockerCheck.Severity.Equals("error", StringComparison.OrdinalIgnoreCase))
+    {
+        checks.Add(NewSetupOk("runtime", "Docker", "running", dockerCheck.Message));
+    }
+
+    var localApiReady = await IsLocalApiReady(settings.LocalApiHealthUrl);
+    checks.Add(localApiReady
+        ? NewSetupOk("runtime", "Timeline Local API", "running", "Timeline の操作APIに接続できます。")
+        : NewSetupError("runtime", "Timeline Local API", "not_responding", "Timeline の操作APIに接続できません。", "TimelineLauncher start を実行してから再確認してください。"));
+
+    var webReady = await IsWebReady(settings.WebHealthUrl);
+    checks.Add(webReady
+        ? NewSetupOk("runtime", "Timeline Web", "running", "Timeline の画面に接続できます。")
+        : NewSetupError("runtime", "Timeline Web", "not_responding", "Timeline の画面に接続できません。", "TimelineLauncher start を実行してから再確認してください。"));
+
+    RuntimeStatus? runtimeStatus = null;
+    if (localApiReady)
+    {
+        runtimeStatus = await FetchRuntimeStatus(settings.RuntimeStatusUrl);
+        if (runtimeStatus is null)
+        {
+            checks.Add(NewSetupError("runtime", "Timeline runtime status", "unavailable", "Timeline の詳細な起動状態を取得できません。", "Local API を再起動してから再確認してください。"));
+        }
+        else
+        {
+            checks.Add(runtimeStatus.Severity.Equals("error", StringComparison.OrdinalIgnoreCase) ||
+                       runtimeStatus.Severity.Equals("danger", StringComparison.OrdinalIgnoreCase)
+                ? NewSetupError("runtime", "Timeline runtime", runtimeStatus.State, runtimeStatus.Message, "表示されたコンポーネントのエラーを確認してください。")
+                : runtimeStatus.Severity.Equals("warning", StringComparison.OrdinalIgnoreCase)
+                    ? NewSetupWarning("runtime", "Timeline runtime", runtimeStatus.State, runtimeStatus.Message, "必要に応じて警告のある項目を確認してください。")
+                    : NewSetupOk("runtime", "Timeline runtime", runtimeStatus.State, runtimeStatus.Message));
+
+            foreach (var component in runtimeStatus.Components)
+            {
+                if (component.Severity.Equals("error", StringComparison.OrdinalIgnoreCase) ||
+                    component.Severity.Equals("danger", StringComparison.OrdinalIgnoreCase))
+                {
+                    checks.Add(NewSetupError("component", component.Label, component.State, component.Message, "この項目を復旧してから再確認してください。"));
+                }
+                else if (component.Severity.Equals("warning", StringComparison.OrdinalIgnoreCase))
+                {
+                    checks.Add(NewSetupWarning("component", component.Label, component.State, component.Message, "必要な機能であれば起動または設定を確認してください。"));
+                }
+                else
+                {
+                    checks.Add(NewSetupOk("component", component.Label, component.State, component.Message));
+                }
+            }
+        }
+    }
+
+    var errorCount = checks.Count(check => check.Severity.Equals("error", StringComparison.OrdinalIgnoreCase));
+    var warningCount = checks.Count(check => check.Severity.Equals("warning", StringComparison.OrdinalIgnoreCase));
+    var state = errorCount > 0
+        ? "blocked"
+        : warningCount > 0
+            ? "needs_attention"
+            : "ready";
+    var exitCode = errorCount > 0 ? 2 : warningCount > 0 ? 1 : 0;
+    var message = state switch
+    {
+        "ready" => "Timeline は利用できる状態です。",
+        "needs_attention" => "Timeline は起動していますが、確認した方がよい項目があります。",
+        _ => "Timeline はまだ利用できる状態ではありません。表示された項目を修正してください。",
+    };
+
     if (jsonOutput)
     {
-        PrintPreflightJson(root, settings, checks, exitCode);
+        PrintSetupVerificationJson(root, settings, state, message, exitCode, errorCount, warningCount, checks);
     }
     else
     {
-        PrintPreflightChecks(checks);
+        PrintSetupVerification(state, message, checks);
     }
 
     return exitCode;
@@ -254,12 +350,13 @@ static int ShowHelp()
     Console.WriteLine("Timeline Launcher");
     Console.WriteLine();
     Console.WriteLine("Usage:");
-    Console.WriteLine("  TimelineLauncher [open|status|preflight|start|stop|shortcut-status|shortcut-install|shortcut-remove|help] [--no-open] [--json]");
+    Console.WriteLine("  TimelineLauncher [open|status|preflight|verify-setup|start|stop|shortcut-status|shortcut-install|shortcut-remove|help] [--no-open] [--json]");
     Console.WriteLine();
     Console.WriteLine("Commands:");
     Console.WriteLine("  open    Open Timeline. Starts it first when needed.");
     Console.WriteLine("  status  Show Timeline runtime status.");
     Console.WriteLine("  preflight  Check local prerequisites before runtime verification. Use --json for Jira evidence.");
+    Console.WriteLine("  verify-setup  Verify that Timeline is usable after setup. Use --json for Jira evidence.");
     Console.WriteLine("  start   Start Timeline.");
     Console.WriteLine("  stop    Stop Timeline.");
     Console.WriteLine("  shortcut-status   Show the OS app entry status.");
@@ -847,6 +944,63 @@ static void PrintPreflightJson(
         }));
 }
 
+static void PrintSetupVerification(
+    string state,
+    string message,
+    IReadOnlyList<SetupVerificationCheck> checks)
+{
+    Console.WriteLine("Timeline setup verification");
+    Console.WriteLine($"  state: {state}");
+    Console.WriteLine($"  {message}");
+    Console.WriteLine();
+
+    foreach (var check in checks)
+    {
+        Console.WriteLine($"- [{PreflightSeverityLabel(check.Severity)}] {check.Name}: {check.State}");
+        if (!string.IsNullOrWhiteSpace(check.Message))
+        {
+            Console.WriteLine($"  {check.Message}");
+        }
+        if (!string.IsNullOrWhiteSpace(check.Action))
+        {
+            Console.WriteLine($"  Next action: {check.Action}");
+        }
+    }
+}
+
+static void PrintSetupVerificationJson(
+    string root,
+    TimelineSettings settings,
+    string state,
+    string message,
+    int exitCode,
+    int errorCount,
+    int warningCount,
+    IReadOnlyList<SetupVerificationCheck> checks)
+{
+    var report = new SetupVerificationReport(
+        GeneratedAt: DateTimeOffset.UtcNow,
+        State: state,
+        Message: message,
+        ExitCode: exitCode,
+        ErrorCount: errorCount,
+        WarningCount: warningCount,
+        Root: root,
+        WebUrl: settings.WebUrl,
+        WebHealthUrl: settings.WebHealthUrl,
+        LocalApiHealthUrl: settings.LocalApiHealthUrl,
+        RuntimeStatusUrl: settings.RuntimeStatusUrl,
+        Checks: checks.ToArray());
+
+    Console.WriteLine(JsonSerializer.Serialize(
+        report,
+        new JsonSerializerOptions
+        {
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+            WriteIndented = true,
+        }));
+}
+
 static int PreflightExitCode(IEnumerable<PreflightCheck> checks)
 {
     if (checks.Any(check => check.Severity.Equals("error", StringComparison.OrdinalIgnoreCase)))
@@ -874,6 +1028,15 @@ static PreflightCheck NewWarning(string name, string message) => new("warning", 
 static PreflightCheck NewError(string name, string message) => new("error", name, message);
 
 static PreflightCheck NewInfo(string name, string message) => new("info", name, message);
+
+static SetupVerificationCheck NewSetupOk(string area, string name, string state, string message)
+    => new("ok", area, name, state, message, "");
+
+static SetupVerificationCheck NewSetupWarning(string area, string name, string state, string message, string action)
+    => new("warning", area, name, state, message, action);
+
+static SetupVerificationCheck NewSetupError(string area, string name, string state, string message, string action)
+    => new("error", area, name, state, message, action);
 
 static string GetPlatformDescription()
 {
@@ -1029,6 +1192,14 @@ internal sealed record ProcessResult(int ExitCode, string Output, string Error);
 
 internal sealed record PreflightCheck(string Severity, string Name, string Message);
 
+internal sealed record SetupVerificationCheck(
+    string Severity,
+    string Area,
+    string Name,
+    string State,
+    string Message,
+    string Action);
+
 internal sealed record LocalApiRuntimeCheck(string Severity, string Message, bool RequiresDotnetCommand);
 
 internal sealed record PreflightReport(
@@ -1041,6 +1212,20 @@ internal sealed record PreflightReport(
     string WebUrl,
     string LocalApiHealthUrl,
     PreflightCheck[] Checks);
+
+internal sealed record SetupVerificationReport(
+    DateTimeOffset GeneratedAt,
+    string State,
+    string Message,
+    int ExitCode,
+    int ErrorCount,
+    int WarningCount,
+    string Root,
+    string WebUrl,
+    string WebHealthUrl,
+    string LocalApiHealthUrl,
+    string RuntimeStatusUrl,
+    SetupVerificationCheck[] Checks);
 
 internal static class TimelinePaths
 {

@@ -42,6 +42,18 @@ For Jira evidence or later comparison, use structured output:
 dotnet run --project .\launcher\Timeline.Launcher.csproj -- preflight --json
 ```
 
+After setup or startup, verify whether Timeline is actually usable:
+
+```powershell
+dotnet run --project .\launcher\Timeline.Launcher.csproj -- verify-setup
+```
+
+For Jira evidence or setup support, use structured output:
+
+```powershell
+dotnet run --project .\launcher\Timeline.Launcher.csproj -- verify-setup --json
+```
+
 Start without opening a browser tab:
 
 ```powershell
