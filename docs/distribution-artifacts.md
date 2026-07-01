@@ -97,6 +97,30 @@ projects. It builds Docker images from the already published `web/` and
 This means the user still needs Docker for the current Timeline runtime, but
 does not need a .NET SDK or source checkout to start from the product artifact.
 
+## Mac artifact build
+
+KAN-46 uses the same release builder for Mac artifacts.
+
+```text
+dotnet run --project tools/Timeline.ReleaseBuilder -- --runtime osx-arm64 --container-runtime linux-arm64 --version <version>
+```
+
+The generated user-facing file name uses `macos-arm64`, not the .NET runtime
+identifier `osx-arm64`:
+
+```text
+Timeline-macos-arm64-<version>.zip
+```
+
+For Apple Silicon Macs, the host-side Launcher, tray app, and Local API are
+published as `osx-arm64`, while Web and Worker are published as `linux-arm64`
+for Docker's Linux container runtime.
+
+The ZIP writer marks the Mac host executables as executable entries. Mac
+hardware still has to verify Gatekeeper behavior, quarantine attributes, Docker
+Desktop startup, and whether the tray experience should become a `.app` bundle
+or remain a raw executable until the installer work in KAN-41.
+
 ### Required contents
 
 The artifact must include:

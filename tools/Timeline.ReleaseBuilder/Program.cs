@@ -19,7 +19,8 @@ var imageTag = SanitizeDockerTag(version);
 var outputRoot = Path.GetFullPath(Path.Combine(repoRoot, options.OutputDirectory));
 var stagingParent = Path.Combine(outputRoot, "staging");
 var productRoot = Path.Combine(stagingParent, "Timeline");
-var zipPath = Path.Combine(outputRoot, $"Timeline-{options.HostRuntime}-{version}.zip");
+var artifactRuntimeName = ToArtifactRuntimeName(options.HostRuntime);
+var zipPath = Path.Combine(outputRoot, $"Timeline-{artifactRuntimeName}-{version}.zip");
 
 if (Directory.Exists(stagingParent))
 {
@@ -55,7 +56,7 @@ WriteNotices(productRoot);
 WriteRuntimeReadme(productRoot);
 RemoveForbiddenArtifactContent(productRoot);
 
-ZipFile.CreateFromDirectory(stagingParent, zipPath, CompressionLevel.Optimal, includeBaseDirectory: false);
+CreateProductZip(stagingParent, zipPath, options.HostRuntime);
 
 Console.WriteLine("Timeline product artifact created.");
 Console.WriteLine($"  Runtime: {options.HostRuntime}");
@@ -151,6 +152,36 @@ static void WriteRuntimeReadme(string productRoot)
     File.WriteAllText(
         Path.Combine(runtimeDirectory, "README.txt"),
         "Runtime state, user data, logs, and generated stores are created outside the immutable product artifact." + Environment.NewLine);
+}
+
+static void CreateProductZip(string sourceDirectory, string zipPath, string hostRuntime)
+{
+    using var archive = ZipFile.Open(zipPath, ZipArchiveMode.Create);
+    foreach (var file in Directory.EnumerateFiles(sourceDirectory, "*", SearchOption.AllDirectories).OrderBy(path => path, StringComparer.Ordinal))
+    {
+        var relativePath = Path.GetRelativePath(sourceDirectory, file).Replace('\\', '/');
+        var entry = archive.CreateEntry(relativePath, CompressionLevel.Optimal);
+        if (ShouldMarkExecutable(relativePath, hostRuntime))
+        {
+            entry.ExternalAttributes = Convert.ToInt32("100755", 8) << 16;
+        }
+
+        using var input = File.OpenRead(file);
+        using var output = entry.Open();
+        input.CopyTo(output);
+    }
+}
+
+static bool ShouldMarkExecutable(string relativePath, string hostRuntime)
+{
+    if (!hostRuntime.StartsWith("osx-", StringComparison.OrdinalIgnoreCase) &&
+        !hostRuntime.StartsWith("linux-", StringComparison.OrdinalIgnoreCase))
+    {
+        return false;
+    }
+
+    var fileName = Path.GetFileName(relativePath);
+    return fileName is "Timeline.Launcher" or "Timeline.Launcher.Tray" or "Timeline.LocalApi";
 }
 
 static void RemoveForbiddenArtifactContent(string productRoot)
@@ -278,6 +309,16 @@ static string SanitizeDockerTag(string value)
 {
     var sanitized = SanitizeVersion(value).ToLowerInvariant();
     return string.IsNullOrWhiteSpace(sanitized) ? "dev" : sanitized;
+}
+
+static string ToArtifactRuntimeName(string runtimeIdentifier)
+{
+    return runtimeIdentifier switch
+    {
+        "osx-arm64" => "macos-arm64",
+        "osx-x64" => "macos-x64",
+        _ => runtimeIdentifier
+    };
 }
 
 internal sealed record ReleaseOptions(
