@@ -109,6 +109,12 @@ app.MapGet("/timeline/update/plan", async (
     return TypedResults.Json(await TimelineUpdatePlanService.GetPlanAsync(options.TimelineProductPath, cancellationToken));
 });
 
+app.MapGet("/timeline/install/plan", (
+    TimelineLocalApiOptions options) =>
+{
+    return TypedResults.Json(TimelineInstallPlanService.GetPlan(options.TimelineProductPath));
+});
+
 app.MapGet("/timeline/uninstall/plan", (
     TimelineLocalApiOptions options) =>
 {

@@ -189,6 +189,16 @@ The Launcher owns:
 - recovery guidance
 - future update orchestration
 
+The Launcher also exposes a read-only install plan:
+
+```text
+TimelineLauncher install-plan --json
+GET /timeline/install/plan
+```
+
+The plan is the shared contract for OS application entry, installer targets,
+and data preservation before a destructive or privileged installer flow exists.
+
 The Web UI can present update or setup choices, but the Launcher is the safer
 owner for operations that stop or replace Timeline itself.
 

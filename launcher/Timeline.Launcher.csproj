@@ -6,6 +6,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="..\shared\TimelineInstallPlanService.cs" Link="TimelineInstallPlanService.cs" />
     <Compile Include="..\shared\TimelineLauncherShortcutService.cs" Link="TimelineLauncherShortcutService.cs" />
     <Compile Include="..\shared\TimelineUninstallPlanService.cs" Link="TimelineUninstallPlanService.cs" />
     <Compile Include="..\shared\TimelineUpdatePlanService.cs" Link="TimelineUpdatePlanService.cs" />

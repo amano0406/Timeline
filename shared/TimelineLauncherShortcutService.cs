@@ -199,6 +199,15 @@ public static class TimelineLauncherShortcutService
 
     private static LauncherShortcutCommand BuildLauncherCommand(string timelineRoot)
     {
+        var launcherExecutable = ResolveLauncherTrayExecutable(timelineRoot);
+        if (!string.IsNullOrWhiteSpace(launcherExecutable))
+        {
+            return new LauncherShortcutCommand(
+                FileName: launcherExecutable,
+                Arguments: "",
+                WorkingDirectory: timelineRoot);
+        }
+
         var dotnet = ResolveDotnetCommand();
         var launcherDll = ResolveLauncherTrayDll(timelineRoot);
         if (!string.IsNullOrWhiteSpace(launcherDll))
@@ -214,6 +223,24 @@ public static class TimelineLauncherShortcutService
             FileName: dotnet,
             Arguments: $"run --project {QuoteWindowsArgument(launcherProject)}",
             WorkingDirectory: timelineRoot);
+    }
+
+    public static string ResolveLauncherTrayExecutable(string timelineRoot)
+    {
+        var executableName = OperatingSystem.IsWindows()
+            ? "Timeline.Launcher.Tray.exe"
+            : "Timeline.Launcher.Tray";
+        var candidates = new[]
+        {
+            Path.Combine(timelineRoot, "launcher-tray", executableName),
+            Path.Combine(timelineRoot, "launcher-tray", "publish", executableName),
+            Path.Combine(timelineRoot, "launcher-tray", "bin", "Release", "net10.0", executableName),
+            Path.Combine(timelineRoot, "launcher-tray", "bin", "Debug", "net10.0", executableName),
+            Path.Combine(timelineRoot, "launcher-tray", "bin", "Release", "net10.0", GetRuntimeIdentifier(), "publish", executableName),
+            Path.Combine(timelineRoot, "launcher-tray", "bin", "Debug", "net10.0", GetRuntimeIdentifier(), "publish", executableName),
+        };
+
+        return candidates.FirstOrDefault(File.Exists) ?? string.Empty;
     }
 
     private static string ResolveLauncherTrayDll(string timelineRoot)
@@ -422,6 +449,34 @@ public static class TimelineLauncherShortcutService
         }
 
         return RuntimeInformation.OSDescription;
+    }
+
+    private static string GetRuntimeIdentifier()
+    {
+        var architecture = RuntimeInformation.OSArchitecture switch
+        {
+            Architecture.Arm64 => "arm64",
+            Architecture.X64 => "x64",
+            Architecture.X86 => "x86",
+            _ => RuntimeInformation.OSArchitecture.ToString().ToLowerInvariant(),
+        };
+
+        if (OperatingSystem.IsWindows())
+        {
+            return $"win-{architecture}";
+        }
+
+        if (OperatingSystem.IsMacOS())
+        {
+            return $"osx-{architecture}";
+        }
+
+        if (OperatingSystem.IsLinux())
+        {
+            return $"linux-{architecture}";
+        }
+
+        return architecture;
     }
 
     private sealed record LauncherShortcutCommand(string FileName, string Arguments, string WorkingDirectory);

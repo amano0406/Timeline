@@ -17,6 +17,7 @@ try
         "preflight" => await ShowPreflight(root, settings, options.JsonOutput),
         "verify-setup" or "verify" => await VerifySetup(root, settings, options.JsonOutput),
         "version" => await ShowVersion(root, options.JsonOutput),
+        "install-plan" => ShowInstallPlan(root, options.JsonOutput),
         "uninstall-plan" => ShowUninstallPlan(root, options.JsonOutput),
         "update-plan" => await ShowUpdatePlan(root, options.JsonOutput),
         "update-apply-plan" => await ShowUpdateApplyPlan(root, options.ArtifactPath, options.JsonOutput),
@@ -434,6 +435,100 @@ static int ShowUninstallPlan(string root, bool jsonOutput)
     return 0;
 }
 
+static int ShowInstallPlan(string root, bool jsonOutput)
+{
+    var plan = TimelineInstallPlanService.GetPlan(root);
+    if (jsonOutput)
+    {
+        Console.WriteLine(JsonSerializer.Serialize(
+            plan,
+            new JsonSerializerOptions
+            {
+                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+                WriteIndented = true,
+            }));
+    }
+    else
+    {
+        Console.WriteLine("Timeline install plan");
+        Console.WriteLine($"  state: {plan.State}");
+        Console.WriteLine($"  mode: {plan.Mode}");
+        Console.WriteLine($"  can execute: {(plan.CanExecute ? "yes" : "no")}");
+        Console.WriteLine($"  platform: {plan.Platform}");
+        Console.WriteLine($"  root: {plan.TimelineRoot}");
+        Console.WriteLine($"  data root: {plan.DataRoot}");
+        Console.WriteLine($"  launcher executable: {EmptyText(plan.LauncherExecutablePath)}");
+        Console.WriteLine();
+        PrintInstallMessages("Warnings", plan.Warnings);
+
+        Console.WriteLine("Application entry:");
+        PrintInstallRegistration(plan.AppEntry);
+
+        Console.WriteLine();
+        Console.WriteLine("Registration targets:");
+        foreach (var target in plan.RegistrationTargets)
+        {
+            PrintInstallRegistration(target);
+        }
+
+        Console.WriteLine();
+        Console.WriteLine("Installer artifacts:");
+        foreach (var artifact in plan.ArtifactTargets)
+        {
+            Console.WriteLine($"  - {artifact.Id}: {artifact.Name}");
+            Console.WriteLine($"    platform: {artifact.Platform}");
+            Console.WriteLine($"    state: {artifact.State}");
+            Console.WriteLine($"    {artifact.Description}");
+        }
+
+        Console.WriteLine();
+        Console.WriteLine("Preserve:");
+        foreach (var item in plan.Preserve)
+        {
+            Console.WriteLine($"  - {item.Id}: {item.Path}");
+        }
+    }
+
+    return 0;
+}
+
+static void PrintInstallRegistration(TimelineInstallPlanRegistration target)
+{
+    Console.WriteLine($"  - {target.Id}: {target.Name}");
+    Console.WriteLine($"    kind: {target.Kind}");
+    Console.WriteLine($"    state: {target.State}");
+    Console.WriteLine($"    supported: {(target.Supported ? "yes" : "no")}");
+    Console.WriteLine($"    implemented: {(target.Implemented ? "yes" : "no")}");
+    if (!string.IsNullOrWhiteSpace(target.CurrentPath))
+    {
+        Console.WriteLine($"    current: {target.CurrentPath}");
+    }
+    if (!string.IsNullOrWhiteSpace(target.TargetPath))
+    {
+        Console.WriteLine($"    target: {target.TargetPath}");
+    }
+    if (!string.IsNullOrWhiteSpace(target.CommandLine))
+    {
+        Console.WriteLine($"    command: {target.CommandLine}");
+    }
+    Console.WriteLine($"    {target.Message}");
+}
+
+static void PrintInstallMessages(string title, IReadOnlyList<TimelineInstallPlanMessage> messages)
+{
+    if (messages.Count == 0)
+    {
+        return;
+    }
+
+    Console.WriteLine(title + ":");
+    foreach (var message in messages)
+    {
+        Console.WriteLine($"  - {message.Code}: {message.Message}");
+    }
+    Console.WriteLine();
+}
+
 static void PrintUninstallMessages(string title, IReadOnlyList<TimelineUninstallPlanMessage> messages)
 {
     if (messages.Count == 0)
@@ -692,7 +787,7 @@ static int ShowHelp()
     Console.WriteLine("Timeline Launcher");
     Console.WriteLine();
     Console.WriteLine("Usage:");
-    Console.WriteLine("  TimelineLauncher [open|status|preflight|verify-setup|version|uninstall-plan|update-plan|update-apply-plan|update-recovery-plan|update-validate|start|stop|shortcut-status|shortcut-install|shortcut-remove|help] [--no-open] [--json]");
+    Console.WriteLine("  TimelineLauncher [open|status|preflight|verify-setup|version|install-plan|uninstall-plan|update-plan|update-apply-plan|update-recovery-plan|update-validate|start|stop|shortcut-status|shortcut-install|shortcut-remove|help] [--no-open] [--json]");
     Console.WriteLine();
     Console.WriteLine("Commands:");
     Console.WriteLine("  open    Open Timeline. Starts it first when needed.");
@@ -700,6 +795,7 @@ static int ShowHelp()
     Console.WriteLine("  preflight  Check local prerequisites before runtime verification. Use --json for Jira evidence.");
     Console.WriteLine("  verify-setup  Verify that Timeline is usable after setup. Use --json for Jira evidence.");
     Console.WriteLine("  version  Show current Timeline version and latest built artifact status.");
+    Console.WriteLine("  install-plan  Show OS registration and installer targets before future installer execution.");
     Console.WriteLine("  uninstall-plan  Show delete levels and preserved data before future uninstall execution.");
     Console.WriteLine("  update-plan  Show the safe Timeline body update plan. Use --json for tooling.");
     Console.WriteLine("  update-apply-plan  Show whether a built product artifact can be applied now. Optional: --artifact <path>.");

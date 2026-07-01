@@ -73,6 +73,14 @@ dotnet run --project .\launcher\Timeline.Launcher.csproj -- uninstall-plan
 dotnet run --project .\launcher\Timeline.Launcher.csproj -- uninstall-plan --json
 ```
 
+Inspect OS registration and installer targets before any future installer
+execution:
+
+```powershell
+dotnet run --project .\launcher\Timeline.Launcher.csproj -- install-plan
+dotnet run --project .\launcher\Timeline.Launcher.csproj -- install-plan --json
+```
+
 Inspect the safe update plan for the Timeline body and Launcher:
 
 ```powershell
