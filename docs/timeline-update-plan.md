@@ -206,3 +206,10 @@ Forbidden entries:
 
 The validator also reads `VERSION` and blocks a runtime mismatch, for example
 using a macOS artifact on Windows.
+
+`valid` means the artifact can be applied to the current installation. A
+cross-runtime artifact such as `osx-arm64` on Windows remains `valid=false`.
+For release checks, `structureValid` shows whether the ZIP itself has the
+required product layout and avoids forbidden local data. This lets Windows CI
+or a Windows development machine confirm a macOS artifact shape without making
+it installable on Windows.

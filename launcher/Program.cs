@@ -538,6 +538,8 @@ static int ShowUpdateArtifactValidation(string root, string? artifactPath, bool 
         Console.WriteLine("Timeline update artifact validation");
         Console.WriteLine($"  state: {result.State}");
         Console.WriteLine($"  valid: {(result.Valid ? "yes" : "no")}");
+        Console.WriteLine($"  structure valid: {(result.StructureValid ? "yes" : "no")}");
+        Console.WriteLine($"  runtime compatible: {(result.RuntimeCompatible ? "yes" : "no")}");
         Console.WriteLine($"  artifact: {result.ArtifactPath}");
         Console.WriteLine($"  current runtime: {EmptyText(result.CurrentRuntimeIdentifier)}");
         Console.WriteLine($"  artifact runtime: {EmptyText(result.Version.RuntimeIdentifier)}");

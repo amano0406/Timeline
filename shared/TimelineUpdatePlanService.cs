@@ -595,6 +595,10 @@ public static class TimelineUpdatePlanService
             ArtifactPath = artifactPath,
             State = blockers.Count == 0 ? "ready" : "blocked",
             Valid = blockers.Count == 0,
+            StructureValid = blockers.All(blocker =>
+                blocker.Code.Equals("runtime_mismatch", StringComparison.OrdinalIgnoreCase)),
+            RuntimeCompatible = !blockers.Any(blocker =>
+                blocker.Code.Equals("runtime_mismatch", StringComparison.OrdinalIgnoreCase)),
             CurrentRuntimeIdentifier = current.RuntimeIdentifier,
             ArtifactRootPrefix = rootPrefix,
             EntryCount = entryCount,
@@ -929,6 +933,12 @@ public sealed class TimelineUpdateArtifactValidationResponse
 
     [JsonPropertyName("valid")]
     public bool Valid { get; set; }
+
+    [JsonPropertyName("structureValid")]
+    public bool StructureValid { get; set; }
+
+    [JsonPropertyName("runtimeCompatible")]
+    public bool RuntimeCompatible { get; set; }
 
     [JsonPropertyName("currentRuntimeIdentifier")]
     public string CurrentRuntimeIdentifier { get; set; } = "";
