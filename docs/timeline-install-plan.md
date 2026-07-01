@@ -58,6 +58,11 @@ If no published executable exists, development checkouts can still fall back to
 `dotnet` execution. That fallback is acceptable for development, but it is not
 the desired user artifact behavior.
 
+The OS startup registration follows the same rule. When the resident Launcher
+executable exists, startup registration points directly to it. Development
+checkout fallback can still use the DLL or project path, but user-facing
+artifacts should not require the .NET SDK or source project execution.
+
 ## Installer boundary
 
 The install plan is not the installer.

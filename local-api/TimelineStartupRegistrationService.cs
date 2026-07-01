@@ -265,6 +265,12 @@ public sealed class TimelineStartupRegistrationService
 
     private LauncherCommandLine BuildLauncherCommandLine()
     {
+        var launcherExecutable = TimelineLauncherShortcutService.ResolveLauncherTrayExecutable(_options.TimelineProductPath);
+        if (!string.IsNullOrWhiteSpace(launcherExecutable))
+        {
+            return LauncherCommandLine.FromArguments([launcherExecutable]);
+        }
+
         var dotnet = ResolveDotnetCommand();
         var launcherDll = ResolveLauncherTrayDll();
         if (!string.IsNullOrWhiteSpace(launcherDll))
