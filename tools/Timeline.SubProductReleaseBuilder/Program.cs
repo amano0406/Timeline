@@ -1,11 +1,18 @@
 using System.Diagnostics;
 using System.Globalization;
 using System.IO.Compression;
+using System.Net;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 
 var options = ReleaseOptions.Parse(args);
+
+if (options.WritePublishPlan)
+{
+    await WritePublishPlanAsync(options);
+    return;
+}
 
 if (options.BuildAll)
 {
@@ -49,6 +56,190 @@ Console.WriteLine($"  Product: {result.ProductName}");
 Console.WriteLine($"  Runtime: {result.RuntimeIdentifier}");
 Console.WriteLine($"  Version: {result.Version}");
 Console.WriteLine($"  Zip: {result.ArtifactPath}");
+
+static async Task WritePublishPlanAsync(ReleaseOptions options)
+{
+    var outputRoot = Path.GetFullPath(options.OutputDirectory);
+    var runtimeName = ToArtifactRuntimeName(options.RuntimeIdentifier);
+    var manifestName = string.IsNullOrWhiteSpace(options.ManifestName)
+        ? $"sub-product-artifacts-{runtimeName}.json"
+        : SanitizeSegment(options.ManifestName);
+    if (!manifestName.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
+    {
+        manifestName += ".json";
+    }
+
+    var manifestPath = Path.Combine(outputRoot, manifestName);
+    if (!File.Exists(manifestPath))
+    {
+        throw new FileNotFoundException($"Sub-product artifact manifest was not found: {manifestPath}");
+    }
+
+    var manifest = JsonSerializer.Deserialize<SubProductArtifactManifest>(
+        await File.ReadAllTextAsync(manifestPath),
+        new JsonSerializerOptions(JsonSerializerDefaults.Web)
+        {
+            PropertyNameCaseInsensitive = true,
+        }) ?? throw new InvalidOperationException($"Sub-product artifact manifest could not be read: {manifestPath}");
+
+    using var client = new HttpClient();
+    client.DefaultRequestHeaders.UserAgent.ParseAdd("Timeline-SubProductReleaseBuilder");
+
+    var items = new List<SubProductPublishPlanItem>();
+    foreach (var artifact in manifest.Artifacts)
+    {
+        if (!artifact.State.Equals("created", StringComparison.OrdinalIgnoreCase))
+        {
+            items.Add(new SubProductPublishPlanItem(
+                artifact.ProductId,
+                artifact.ProductName,
+                artifact.Version,
+                artifact.RuntimeName,
+                Path.GetFileName(artifact.ArtifactPath),
+                artifact.ArtifactPath,
+                artifact.SizeBytes,
+                $"https://github.com/{options.GitHubOwner}/{artifact.ProductName}/releases/tag/{artifact.Version}",
+                "artifact_not_created",
+                string.Empty,
+                false,
+                [],
+                [],
+                "Artifact was not created, so it cannot be attached.",
+                string.Empty,
+                string.Empty));
+            continue;
+        }
+
+        var artifactName = Path.GetFileName(artifact.ArtifactPath);
+        var releaseState = await ReadReleaseStateAsync(client, options.GitHubOwner, artifact.ProductName, artifact.Version);
+        var uploadCommand = releaseState.ReleaseExists
+            ? $"gh release upload {artifact.Version} \"{artifact.ArtifactPath}\" --repo {options.GitHubOwner}/{artifact.ProductName} --clobber"
+            : $"gh release create {artifact.Version} \"{artifact.ArtifactPath}\" --repo {options.GitHubOwner}/{artifact.ProductName} --title {artifact.Version} --notes \"Timeline sub-product runtime artifact.\"";
+        var assetExists = releaseState.AssetNames.Any(name => name.Equals(artifactName, StringComparison.OrdinalIgnoreCase));
+        var state = !string.IsNullOrWhiteSpace(releaseState.ReleaseCheckError)
+            ? "release_check_failed"
+            : releaseState.ReleaseExists
+            ? assetExists ? "ready" : "asset_missing"
+            : "release_missing";
+        var message = state switch
+        {
+            "ready" => "Release and matching artifact asset already exist.",
+            "asset_missing" => "Release exists, but the matching runtime artifact asset is missing.",
+            "release_missing" => "Tag exists locally/remotely, but GitHub Release for the tag was not found.",
+            "release_check_failed" => $"GitHub Release state could not be checked: {releaseState.ReleaseCheckError}",
+            _ => "Release state could not be determined.",
+        };
+
+        items.Add(new SubProductPublishPlanItem(
+            artifact.ProductId,
+            artifact.ProductName,
+            artifact.Version,
+            artifact.RuntimeName,
+            artifactName,
+            artifact.ArtifactPath,
+            artifact.SizeBytes,
+            $"https://github.com/{options.GitHubOwner}/{artifact.ProductName}/releases/tag/{artifact.Version}",
+            state,
+            releaseState.LatestReleaseTag,
+            releaseState.ReleaseExists,
+            releaseState.AssetNames,
+            releaseState.LatestAssetNames,
+            message,
+            releaseState.ReleaseCheckError,
+            uploadCommand));
+    }
+
+    var plan = new SubProductPublishPlan(
+        "timeline_sub_product_release_publish_plan",
+        options.GitHubOwner,
+        manifest.RuntimeIdentifier,
+        manifest.RuntimeName,
+        manifestPath,
+        DateTimeOffset.UtcNow.ToString("O", CultureInfo.InvariantCulture),
+        items.Count,
+        items.Count(item => item.State.Equals("ready", StringComparison.OrdinalIgnoreCase)),
+        items.Count(item => item.State.Equals("asset_missing", StringComparison.OrdinalIgnoreCase)),
+        items.Count(item => item.State.Equals("release_missing", StringComparison.OrdinalIgnoreCase)),
+        items.Count(item => item.State.Equals("release_check_failed", StringComparison.OrdinalIgnoreCase)),
+        items.Count(item => item.State.Equals("artifact_not_created", StringComparison.OrdinalIgnoreCase)),
+        items);
+
+    var planPath = Path.Combine(outputRoot, $"sub-product-release-publish-plan-{runtimeName}.json");
+    await File.WriteAllTextAsync(
+        planPath,
+        JsonSerializer.Serialize(plan, new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true }) + Environment.NewLine);
+
+    Console.WriteLine("Sub-product release publish plan created.");
+    Console.WriteLine($"  Runtime: {manifest.RuntimeIdentifier}");
+    Console.WriteLine($"  Manifest: {manifestPath}");
+    Console.WriteLine($"  Plan: {planPath}");
+    Console.WriteLine($"  Ready: {plan.ReadyCount}");
+    Console.WriteLine($"  Missing assets: {plan.AssetMissingCount}");
+    Console.WriteLine($"  Missing releases: {plan.ReleaseMissingCount}");
+    Console.WriteLine($"  Release check failed: {plan.ReleaseCheckFailedCount}");
+    Console.WriteLine($"  Artifacts not created: {plan.ArtifactNotCreatedCount}");
+}
+
+static async Task<GitHubReleaseState> ReadReleaseStateAsync(
+    HttpClient client,
+    string owner,
+    string repo,
+    string tag)
+{
+    var tagRelease = await ReadReleaseAsync(client, $"https://api.github.com/repos/{owner}/{repo}/releases/tags/{tag}");
+    var latestRelease = await ReadReleaseAsync(client, $"https://api.github.com/repos/{owner}/{repo}/releases/latest");
+    return new GitHubReleaseState(
+        tagRelease.Exists,
+        tagRelease.AssetNames,
+        latestRelease.Tag,
+        latestRelease.AssetNames,
+        tagRelease.Error,
+        latestRelease.Error);
+}
+
+static async Task<GitHubReleaseReadResult> ReadReleaseAsync(HttpClient client, string url)
+{
+    try
+    {
+        using var response = await client.GetAsync(url);
+        if (response.StatusCode == HttpStatusCode.NotFound)
+        {
+            return new GitHubReleaseReadResult(false, string.Empty, [], string.Empty);
+        }
+
+        if (!response.IsSuccessStatusCode)
+        {
+            return new GitHubReleaseReadResult(false, string.Empty, [], $"HTTP {(int)response.StatusCode}");
+        }
+
+        response.EnsureSuccessStatusCode();
+        using var stream = await response.Content.ReadAsStreamAsync();
+        using var document = await JsonDocument.ParseAsync(stream);
+        var root = document.RootElement;
+        var tag = root.TryGetProperty("tag_name", out var tagElement) ? tagElement.GetString() ?? string.Empty : string.Empty;
+        var assets = new List<string>();
+        if (root.TryGetProperty("assets", out var assetsElement) && assetsElement.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var assetElement in assetsElement.EnumerateArray())
+            {
+                if (assetElement.TryGetProperty("name", out var nameElement))
+                {
+                    var name = nameElement.GetString();
+                    if (!string.IsNullOrWhiteSpace(name))
+                    {
+                        assets.Add(name);
+                    }
+                }
+            }
+        }
+
+        return new GitHubReleaseReadResult(true, tag, assets, string.Empty);
+    }
+    catch (Exception ex)
+    {
+        return new GitHubReleaseReadResult(false, string.Empty, [], ex.Message);
+    }
+}
 
 static async Task<SubProductArtifactBuildResult> BuildArtifactAsync(ReleaseOptions options)
 {
@@ -374,7 +565,9 @@ internal sealed record ReleaseOptions(
     string? Version,
     bool BuildAll,
     string ProductsRoot,
-    string ManifestName)
+    string ManifestName,
+    bool WritePublishPlan,
+    string GitHubOwner)
 {
     public static ReleaseOptions Parse(string[] args)
     {
@@ -388,6 +581,8 @@ internal sealed record ReleaseOptions(
         var buildAll = false;
         var productsRoot = Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), ".."));
         var manifestName = string.Empty;
+        var writePublishPlan = false;
+        var gitHubOwner = "amano0406";
 
         for (var index = 0; index < args.Length; index++)
         {
@@ -395,6 +590,12 @@ internal sealed record ReleaseOptions(
             if (arg.Equals("--all", StringComparison.OrdinalIgnoreCase))
             {
                 buildAll = true;
+                continue;
+            }
+
+            if (arg.Equals("--publish-plan", StringComparison.OrdinalIgnoreCase))
+            {
+                writePublishPlan = true;
                 continue;
             }
 
@@ -406,6 +607,7 @@ internal sealed record ReleaseOptions(
                 TryReadOption(args, ref index, arg, "--output", ref outputDirectory) ||
                 TryReadOption(args, ref index, arg, "--channel", ref channel) ||
                 TryReadOption(args, ref index, arg, "--products-root", ref productsRoot) ||
+                TryReadOption(args, ref index, arg, "--github-owner", ref gitHubOwner) ||
                 TryReadOption(args, ref index, arg, "--manifest", ref manifestName) ||
                 TryReadNullableOption(args, ref index, arg, "--version", ref version))
             {
@@ -415,7 +617,7 @@ internal sealed record ReleaseOptions(
             throw new ArgumentException($"Unknown argument: {arg}");
         }
 
-        if (!buildAll && string.IsNullOrWhiteSpace(productRoot))
+        if (!buildAll && !writePublishPlan && string.IsNullOrWhiteSpace(productRoot))
         {
             throw new ArgumentException("Product root is required. Use --repo <path>.");
         }
@@ -430,7 +632,9 @@ internal sealed record ReleaseOptions(
             version,
             buildAll,
             productsRoot,
-            manifestName);
+            manifestName,
+            writePublishPlan,
+            gitHubOwner);
     }
 
     private static bool TryReadOption(string[] args, ref int index, string arg, string optionName, ref string value)
@@ -530,6 +734,53 @@ internal sealed record SubProductArtifactBuildResult(
         };
     }
 }
+
+internal sealed record SubProductPublishPlan(
+    string ArtifactType,
+    string GitHubOwner,
+    string RuntimeIdentifier,
+    string RuntimeName,
+    string ManifestPath,
+    string CreatedAt,
+    int TotalCount,
+    int ReadyCount,
+    int AssetMissingCount,
+    int ReleaseMissingCount,
+    int ReleaseCheckFailedCount,
+    int ArtifactNotCreatedCount,
+    List<SubProductPublishPlanItem> Items);
+
+internal sealed record SubProductPublishPlanItem(
+    string ProductId,
+    string ProductName,
+    string Version,
+    string RuntimeName,
+    string ArtifactName,
+    string ArtifactPath,
+    long SizeBytes,
+    string ReleaseUrl,
+    string State,
+    string LatestReleaseTag,
+    bool ReleaseExists,
+    List<string> ReleaseAssetNames,
+    List<string> LatestReleaseAssetNames,
+    string Message,
+    string ReleaseCheckError,
+    string SuggestedCommand);
+
+internal sealed record GitHubReleaseState(
+    bool ReleaseExists,
+    List<string> AssetNames,
+    string LatestReleaseTag,
+    List<string> LatestAssetNames,
+    string ReleaseCheckError,
+    string LatestReleaseCheckError);
+
+internal sealed record GitHubReleaseReadResult(
+    bool Exists,
+    string Tag,
+    List<string> AssetNames,
+    string Error);
 
 internal static class ReleaseExclusionRules
 {

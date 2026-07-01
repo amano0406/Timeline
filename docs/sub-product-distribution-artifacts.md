@@ -127,6 +127,44 @@ The manifest lists each product, source repository path, version, commit,
 artifact path, runtime, size, and creation state. This file is intended as the
 machine-readable handoff to validation, release attachment, and update planning.
 
+## Publish plan
+
+Before publishing or attaching artifacts to GitHub Releases, generate a
+read-only publish plan:
+
+```powershell
+dotnet run --project .\tools\Timeline.SubProductReleaseBuilder\Timeline.SubProductReleaseBuilder.csproj -- `
+  --publish-plan `
+  --runtime win-x64 `
+  --output release\sub-products `
+  --github-owner amano0406
+```
+
+The publish plan reads `sub-product-artifacts-<runtime>.json`, checks the
+matching GitHub Release for each artifact tag, and writes:
+
+```text
+sub-product-release-publish-plan-<runtime>.json
+```
+
+This command is read-only. It does not create releases, upload assets, delete
+assets, or change repository settings.
+
+Plan states:
+
+| State | Meaning |
+| --- | --- |
+| `ready` | The GitHub Release and matching runtime asset already exist. |
+| `asset_missing` | The GitHub Release exists, but the matching runtime ZIP is missing. |
+| `release_missing` | The tag exists in the artifact manifest, but the GitHub Release for that tag is missing. |
+| `release_check_failed` | GitHub could not be checked. Do not assume release or asset absence. |
+| `artifact_not_created` | The manifest entry exists, but the artifact build itself did not complete. |
+
+Each item includes the expected artifact name, release URL, current latest
+release tag, existing asset names, and a suggested `gh release create` or
+`gh release upload` command. The suggested command is an execution aid only;
+publishing still requires explicit release approval.
+
 This first builder creates a cleaned product ZIP. It does not pre-build and
 embed Docker images. Docker-based sub-products may still build their worker
 image from the files inside the artifact when they start. If startup without
@@ -162,6 +200,19 @@ The builder was also verified in matrix mode. It created six artifacts and a
 `sub-product-artifacts-win-x64.json` manifest. The artifacts listed in that
 manifest were accepted by the Local API validation endpoint with
 `state=ready`, `valid=true`, and `requiredEntries=2/2`.
+
+The publish plan was also verified. On 2026-07-02, all six generated artifacts
+returned `release_missing` because the corresponding tags existed, but the
+latest GitHub Releases still pointed at older tags:
+
+| Product | Artifact tag | Latest GitHub Release |
+| --- | --- | --- |
+| TimelineForAudio | `v0.4.11` | `v0.4.6` |
+| TimelineForImage | `v0.2.8` | `v0.2.4` |
+| TimelineForVideo | `v0.5.7` | `v0.5.4` |
+| TimelineForChatGPT | `v0.2.8` | `v0.2.6` |
+| TimelineForWindowsCodex | `v0.2.7` | `v0.2.5` |
+| TimelineForPcInfo | `v0.2.1` | `v0.2.0` |
 
 Timeline also exposes a read-only apply plan endpoint:
 
