@@ -87,6 +87,12 @@ The future Windows or macOS installer should consume the same concepts:
   registrations;
 - destructive operations require explicit user confirmation.
 
+Startup registration is already managed by Timeline settings and the Local API
+on Windows and macOS. The install plan should therefore show this area as
+`settings_managed`, not as a future-only installer task. A future installer must
+respect the same registration target instead of inventing a separate startup
+mechanism.
+
 ## Relationship to uninstall
 
 `docs/timeline-uninstall-plan.md` defines deletion levels.

@@ -68,13 +68,17 @@ public static class TimelineInstallPlanService
                 Name = "OS起動時にTimelineを起動する登録",
                 Kind = GetStartupKind(),
                 Supported = OperatingSystem.IsWindows() || OperatingSystem.IsMacOS(),
-                Implemented = false,
+                Implemented = OperatingSystem.IsWindows() || OperatingSystem.IsMacOS(),
                 Required = false,
-                State = "planned",
+                State = OperatingSystem.IsWindows() || OperatingSystem.IsMacOS()
+                    ? "settings_managed"
+                    : "planned",
                 CurrentPath = "",
                 TargetPath = appEntry.TargetPath,
                 CommandLine = appEntry.CommandLine,
-                Message = "OS起動時の自動起動登録は、インストーラーまたはLauncherの設定導線で扱います。",
+                Message = OperatingSystem.IsWindows() || OperatingSystem.IsMacOS()
+                    ? "OS起動時の自動起動登録は、Timeline の設定画面と Local API で扱います。インストーラーは同じ登録先を尊重します。"
+                    : "OS起動時の自動起動登録は、今後のOS対応で扱います。",
             },
             new TimelineInstallPlanRegistration
             {
