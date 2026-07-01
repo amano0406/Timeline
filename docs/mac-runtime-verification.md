@@ -65,6 +65,23 @@ For Jira evidence, capture the same result as JSON:
 dotnet run --project launcher/Timeline.Launcher.csproj -- preflight --json
 ```
 
+The preferred Jira evidence command is:
+
+```bash
+dotnet run --project launcher/Timeline.Launcher.csproj -- mac-verification-report
+```
+
+For automation or structured comments, capture the same report as JSON:
+
+```bash
+dotnet run --project launcher/Timeline.Launcher.csproj -- mac-verification-report --json
+```
+
+This report combines platform, preflight, Web health, Local API health, runtime
+components, and a Jira-ready evidence template. If it is run on Windows or
+Linux, treat it only as preparation evidence. It must not be used to complete
+`KAN-16`, `KAN-24`, or `KAN-3`.
+
 Interpretation:
 
 - `OK`: the prerequisite is available;

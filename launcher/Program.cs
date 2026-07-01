@@ -23,6 +23,7 @@ try
         "status" => await ShowStatus(root, settings),
         "preflight" => await ShowPreflight(root, settings, options.JsonOutput),
         "verify-setup" or "verify" => await VerifySetup(root, settings, options.JsonOutput),
+        "mac-verification-report" or "mac-report" => await ShowMacVerificationReport(root, settings, options.JsonOutput),
         "version" => await ShowVersion(root, options.JsonOutput),
         "configure-runtime" => ShowRuntimeConfiguration(root, settings, runtimeConfigurationUpdate, options.JsonOutput),
         "install-plan" => ShowInstallPlan(root, options.JsonOutput),
@@ -472,6 +473,81 @@ static async Task<int> VerifySetup(string root, TimelineSettings settings, bool 
     }
 
     return exitCode;
+}
+
+static async Task<int> ShowMacVerificationReport(string root, TimelineSettings settings, bool jsonOutput)
+{
+    var preflightChecks = await BuildPreflightChecks(root, settings);
+    var preflightErrors = preflightChecks.Count(check => check.Severity.Equals("error", StringComparison.OrdinalIgnoreCase));
+    var preflightWarnings = preflightChecks.Count(check => check.Severity.Equals("warning", StringComparison.OrdinalIgnoreCase));
+    var isMacHost = RuntimeInformation.IsOSPlatform(OSPlatform.OSX);
+    var webReady = await IsWebReady(settings.WebHealthUrl);
+    var localApiReady = await IsLocalApiReady(settings.LocalApiHealthUrl);
+    var runtimeStatus = localApiReady
+        ? await FetchRuntimeStatus(settings.RuntimeStatusUrl)
+        : null;
+
+    var runtimeHasError = runtimeStatus is not null &&
+                          (runtimeStatus.Severity.Equals("error", StringComparison.OrdinalIgnoreCase) ||
+                           runtimeStatus.Severity.Equals("danger", StringComparison.OrdinalIgnoreCase));
+    var state = !isMacHost
+        ? "not_mac_host"
+        : preflightErrors > 0
+            ? "blocked"
+            : !webReady || !localApiReady
+                ? "ready_to_start"
+                : runtimeStatus is null
+                    ? "runtime_status_unavailable"
+                    : runtimeHasError
+                        ? "runtime_needs_attention"
+                        : "runtime_visible";
+
+    var nextActions = BuildMacVerificationNextActions(isMacHost, preflightErrors, webReady, localApiReady, runtimeStatus, runtimeHasError);
+    var report = new MacVerificationReport(
+        GeneratedAt: DateTimeOffset.UtcNow,
+        State: state,
+        Platform: GetPlatformDescription(),
+        IsMacHost: isMacHost,
+        Root: root,
+        WebUrl: settings.WebUrl,
+        WebHealthUrl: settings.WebHealthUrl,
+        LocalApiHealthUrl: settings.LocalApiHealthUrl,
+        RuntimeStatusUrl: settings.RuntimeStatusUrl,
+        PreflightErrorCount: preflightErrors,
+        PreflightWarningCount: preflightWarnings,
+        WebReady: webReady,
+        LocalApiReady: localApiReady,
+        RuntimeStatus: runtimeStatus,
+        CompletionRule: "KAN-16、KAN-24、KAN-3 は Mac 実機での起動・素材取り込み証跡が揃うまで完了にしない。",
+        NextActions: nextActions,
+        PreflightChecks: preflightChecks.ToArray());
+
+    if (jsonOutput)
+    {
+        Console.WriteLine(JsonSerializer.Serialize(
+            report,
+            new JsonSerializerOptions
+            {
+                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+                WriteIndented = true,
+            }));
+    }
+    else
+    {
+        PrintMacVerificationReport(report);
+    }
+
+    if (!isMacHost)
+    {
+        return 1;
+    }
+
+    if (preflightErrors > 0 || runtimeHasError)
+    {
+        return 2;
+    }
+
+    return webReady && localApiReady && runtimeStatus is not null ? 0 : 1;
 }
 
 static async Task<int> OpenOrStart(string root, TimelineSettings settings)
@@ -1315,13 +1391,14 @@ static int ShowHelp()
     Console.WriteLine("Timeline Launcher");
     Console.WriteLine();
     Console.WriteLine("Usage:");
-    Console.WriteLine("  TimelineLauncher [open|status|preflight|verify-setup|version|configure-runtime|install-plan|uninstall-plan|update-plan|update-apply-plan|update-manifest-apply-plan|update-recovery-plan|update-validate|update-manifest-validate|update-stage|update-manifest-stage|start|stop|shortcut-status|shortcut-install|shortcut-remove|uninstall-registration-status|uninstall-registration-install|uninstall-registration-remove|help] [--no-open] [--json]");
+    Console.WriteLine("  TimelineLauncher [open|status|preflight|verify-setup|mac-verification-report|version|configure-runtime|install-plan|uninstall-plan|update-plan|update-apply-plan|update-manifest-apply-plan|update-recovery-plan|update-validate|update-manifest-validate|update-stage|update-manifest-stage|start|stop|shortcut-status|shortcut-install|shortcut-remove|uninstall-registration-status|uninstall-registration-install|uninstall-registration-remove|help] [--no-open] [--json]");
     Console.WriteLine();
     Console.WriteLine("Commands:");
     Console.WriteLine("  open    Open Timeline. Starts it first when needed.");
     Console.WriteLine("  status  Show Timeline runtime status.");
     Console.WriteLine("  preflight  Check local prerequisites before runtime verification. Use --json for Jira evidence.");
     Console.WriteLine("  verify-setup  Verify that Timeline is usable after setup. Use --json for Jira evidence.");
+    Console.WriteLine("  mac-verification-report  Print Jira-ready Mac verification evidence for KAN-16 / KAN-24. Use --json for tooling.");
     Console.WriteLine("  version  Show current Timeline version and latest built artifact status.");
     Console.WriteLine("  configure-runtime  Write explicit runtime ports and instance settings before isolated verification.");
     Console.WriteLine("  install-plan  Show OS registration and installer targets before future installer execution.");
@@ -1992,6 +2069,124 @@ static void PrintSetupVerificationJson(
         }));
 }
 
+static string[] BuildMacVerificationNextActions(
+    bool isMacHost,
+    int preflightErrors,
+    bool webReady,
+    bool localApiReady,
+    RuntimeStatus? runtimeStatus,
+    bool runtimeHasError)
+{
+    var actions = new List<string>();
+    if (!isMacHost)
+    {
+        actions.Add("Mac実機で同じコマンドを実行し、結果をJiraへ貼り付ける。");
+        actions.Add("Windowsで得た結果は準備確認に留め、KAN-16/KAN-24の完了証跡にはしない。");
+        return actions.ToArray();
+    }
+
+    if (preflightErrors > 0)
+    {
+        actions.Add("preflight の ERROR を先に解消する。Docker / .NET / リポジトリ配置を優先して確認する。");
+        return actions.ToArray();
+    }
+
+    if (!webReady || !localApiReady)
+    {
+        actions.Add("`TimelineLauncher start --no-open` を実行してから、再度 `mac-verification-report` を実行する。");
+        actions.Add("Web または Local API が起動しない場合は、該当ログを確認して Docker / Local API / Web に分類する。");
+        return actions.ToArray();
+    }
+
+    if (runtimeStatus is null)
+    {
+        actions.Add("Local API は応答しているが runtime status が取れないため、Local API のログを確認する。");
+        return actions.ToArray();
+    }
+
+    if (runtimeHasError)
+    {
+        actions.Add("runtime component の ERROR / danger 項目を確認し、Docker / Worker / Ollama / パス / 権限に分類する。");
+        return actions.ToArray();
+    }
+
+    actions.Add("KAN-16 の起動証跡としてこの結果をJiraに貼り付ける。");
+    actions.Add("KAN-24 は軽い素材を1種類選び、設定、スキャン、一覧または詳細画面の確認結果を追記する。");
+    return actions.ToArray();
+}
+
+static void PrintMacVerificationReport(MacVerificationReport report)
+{
+    Console.WriteLine("Timeline Mac verification report");
+    Console.WriteLine($"  state: {report.State}");
+    Console.WriteLine($"  platform: {report.Platform}");
+    Console.WriteLine($"  root: {report.Root}");
+    Console.WriteLine();
+    Console.WriteLine("Runtime endpoints");
+    Console.WriteLine($"  Web: {report.WebUrl} ({(report.WebReady ? "ready" : "not responding")})");
+    Console.WriteLine($"  Local API: {report.LocalApiHealthUrl} ({(report.LocalApiReady ? "ready" : "not responding")})");
+    Console.WriteLine($"  Runtime status: {report.RuntimeStatusUrl}");
+    Console.WriteLine();
+    Console.WriteLine("Preflight");
+    Console.WriteLine($"  errors: {report.PreflightErrorCount}");
+    Console.WriteLine($"  warnings: {report.PreflightWarningCount}");
+    foreach (var check in report.PreflightChecks)
+    {
+        Console.WriteLine($"  - [{PreflightSeverityLabel(check.Severity)}] {check.Name}: {check.Message}");
+    }
+    Console.WriteLine();
+
+    if (report.RuntimeStatus is not null)
+    {
+        Console.WriteLine("Runtime components");
+        Console.WriteLine($"  state: {report.RuntimeStatus.State}");
+        Console.WriteLine($"  message: {report.RuntimeStatus.Message}");
+        foreach (var component in report.RuntimeStatus.Components)
+        {
+            Console.WriteLine($"  - [{PreflightSeverityLabel(component.Severity)}] {component.Label}: {component.State} / {component.Message}");
+        }
+        Console.WriteLine();
+    }
+
+    Console.WriteLine("Next actions");
+    foreach (var action in report.NextActions)
+    {
+        Console.WriteLine($"  - {action}");
+    }
+    Console.WriteLine();
+    Console.WriteLine("Jira evidence template");
+    Console.WriteLine("```text");
+    Console.WriteLine("Mac verification result");
+    Console.WriteLine();
+    Console.WriteLine("Machine:");
+    Console.WriteLine($"- platform: {report.Platform}");
+    Console.WriteLine($"- Mac host: {(report.IsMacHost ? "yes" : "no")}");
+    Console.WriteLine($"- root: {report.Root}");
+    Console.WriteLine();
+    Console.WriteLine("KAN-16:");
+    Console.WriteLine($"- report state: {report.State}");
+    Console.WriteLine($"- preflight: {report.PreflightErrorCount} errors / {report.PreflightWarningCount} warnings");
+    Console.WriteLine($"- Web health: {(report.WebReady ? "ready" : "not responding")}");
+    Console.WriteLine($"- Local API health: {(report.LocalApiReady ? "ready" : "not responding")}");
+    Console.WriteLine($"- runtime status: {(report.RuntimeStatus is null ? "not available" : report.RuntimeStatus.State)}");
+    Console.WriteLine("- resident launcher: 未確認");
+    Console.WriteLine("- launcher stop: 未確認");
+    Console.WriteLine();
+    Console.WriteLine("KAN-24:");
+    Console.WriteLine("- material type: 未確認");
+    Console.WriteLine("- host path: 未確認");
+    Console.WriteLine("- scan result: 未確認");
+    Console.WriteLine("- detail/list confirmation: 未確認");
+    Console.WriteLine();
+    Console.WriteLine("Failure classification:");
+    Console.WriteLine("- area: 未分類");
+    Console.WriteLine("- evidence: このレポートと対象ログ");
+    Console.WriteLine("- next task needed: 未確認");
+    Console.WriteLine("```");
+    Console.WriteLine();
+    Console.WriteLine(report.CompletionRule);
+}
+
 static int PreflightExitCode(IEnumerable<PreflightCheck> checks)
 {
     if (checks.Any(check => check.Severity.Equals("error", StringComparison.OrdinalIgnoreCase)))
@@ -2430,6 +2625,25 @@ internal sealed record SetupVerificationReport(
     string LocalApiHealthUrl,
     string RuntimeStatusUrl,
     SetupVerificationCheck[] Checks);
+
+internal sealed record MacVerificationReport(
+    DateTimeOffset GeneratedAt,
+    string State,
+    string Platform,
+    bool IsMacHost,
+    string Root,
+    string WebUrl,
+    string WebHealthUrl,
+    string LocalApiHealthUrl,
+    string RuntimeStatusUrl,
+    int PreflightErrorCount,
+    int PreflightWarningCount,
+    bool WebReady,
+    bool LocalApiReady,
+    RuntimeStatus? RuntimeStatus,
+    string CompletionRule,
+    string[] NextActions,
+    PreflightCheck[] PreflightChecks);
 
 internal static class TimelinePaths
 {
