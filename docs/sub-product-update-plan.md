@@ -250,12 +250,18 @@ settings and rollback data are prepared.
 
 ## Remaining gap
 
-Built artifact discovery, validation, staging, and guarded application are now
-present in the Local API. The remaining `KAN-40` / `KAN-60` gaps are:
+Built artifact discovery, validation, staging, guarded application, and the
+product management UI flow are now present. The UI can show the read-only update
+plan, explain blockers and warnings, keep source archive updates out of the
+normal update button, and call the guarded `apply-latest` endpoint only when a
+new built artifact is available.
+
+The remaining `KAN-40` / `KAN-60` gaps are:
 
 - release-hosted runtime artifacts for each sub-product;
 - update-plan confirmation that each product reports `builtArtifactStatus=ok`;
-- a user-facing UI flow that prefers built artifacts over source archives;
+- a managed product installation layout that can be safely replaced by the
+  artifact updater;
 - release publication and end-to-end update-plan verification after artifacts
   are attached.
 
