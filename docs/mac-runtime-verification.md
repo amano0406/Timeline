@@ -143,10 +143,33 @@ Expected checks:
 
 - the path can be saved in Timeline settings;
 - Docker worker can read the mounted path;
+- paths returned as `/host/...` by a sub-product are shown and read by Timeline
+  as the corresponding macOS host path;
 - scan starts from the C# launcher/runtime path;
 - scan status is visible in the Web UI;
 - at least one item appears in the material list or detail screen;
 - Windows-only products are not treated as generic failures.
+
+Default path mapping for Mac verification:
+
+```text
+Container path: /host/TimelineSamples/image/a.png
+Host path:      $HOME/TimelineSamples/image/a.png
+```
+
+If the sample material is outside the home directory, set an explicit narrow
+mapping before starting Timeline:
+
+```bash
+export TIMELINE_HOST_ROOT=/Volumes/Work/TimelineSamples
+export TIMELINE_CONTAINER_ROOT=/host
+```
+
+For multiple host roots, use:
+
+```bash
+export TIMELINE_PATH_MAPPINGS='[{"host":"$HOME","container":"/host"},{"host":"/Volumes/Work","container":"/work"}]'
+```
 
 `KAN-24` can be completed only when at least one supported material type has
 been imported and observed in Timeline.
