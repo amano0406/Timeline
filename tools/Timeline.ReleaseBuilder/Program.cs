@@ -47,6 +47,7 @@ foreach (var spec in publishSpecs)
     await PublishAsync(repoRoot, productRoot, spec);
 }
 
+CreateMacAppBundle(productRoot, options.HostRuntime, version);
 CopyProductCompose(repoRoot, productRoot, imageTag);
 CopyIfExists(Path.Combine(repoRoot, "docker-compose.gpu.yml"), Path.Combine(productRoot, "docker-compose.gpu.yml"));
 CopyIfExists(Path.Combine(repoRoot, "README.md"), Path.Combine(productRoot, "README.md"));
@@ -100,6 +101,68 @@ static async Task PublishAsync(string repoRoot, string productRoot, PublishSpec 
     {
         throw new InvalidOperationException($"dotnet publish failed for {spec.Name}.{Environment.NewLine}{result.CombinedText}");
     }
+}
+
+static void CreateMacAppBundle(string productRoot, string hostRuntime, string version)
+{
+    if (!hostRuntime.StartsWith("osx-", StringComparison.OrdinalIgnoreCase))
+    {
+        return;
+    }
+
+    var launcherTrayDirectory = Path.Combine(productRoot, "launcher-tray");
+    var launcherTrayExecutable = Path.Combine(launcherTrayDirectory, "Timeline.Launcher.Tray");
+    if (!File.Exists(launcherTrayExecutable))
+    {
+        throw new FileNotFoundException("Mac resident Launcher executable was not found.", launcherTrayExecutable);
+    }
+
+    var appRoot = Path.Combine(productRoot, "Timeline.app");
+    var contentsDirectory = Path.Combine(appRoot, "Contents");
+    var macOsDirectory = Path.Combine(contentsDirectory, "MacOS");
+    Directory.CreateDirectory(macOsDirectory);
+
+    CopyDirectory(launcherTrayDirectory, macOsDirectory);
+    File.WriteAllText(Path.Combine(contentsDirectory, "Info.plist"), BuildMacAppInfoPlist(version), System.Text.Encoding.UTF8);
+}
+
+static string BuildMacAppInfoPlist(string version)
+{
+    var bundleVersion = ResolveMacBundleVersion(version);
+    return $"""
+       <?xml version="1.0" encoding="UTF-8"?>
+       <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "https://www.apple.com/DTDs/PropertyList-1.0.dtd">
+       <plist version="1.0">
+       <dict>
+         <key>CFBundleDevelopmentRegion</key>
+         <string>ja_JP</string>
+         <key>CFBundleExecutable</key>
+         <string>Timeline.Launcher.Tray</string>
+         <key>CFBundleIdentifier</key>
+         <string>com.amanosystemlab.timeline</string>
+         <key>CFBundleInfoDictionaryVersion</key>
+         <string>6.0</string>
+         <key>CFBundleName</key>
+         <string>Timeline</string>
+         <key>CFBundlePackageType</key>
+         <string>APPL</string>
+         <key>CFBundleShortVersionString</key>
+         <string>{bundleVersion}</string>
+         <key>CFBundleVersion</key>
+         <string>{bundleVersion}</string>
+         <key>LSMinimumSystemVersion</key>
+         <string>13.0</string>
+         <key>LSUIElement</key>
+         <true/>
+       </dict>
+       </plist>
+       """;
+}
+
+static string ResolveMacBundleVersion(string version)
+{
+    var match = Regex.Match(version, @"\d+(?:\.\d+){0,2}");
+    return match.Success ? match.Value : "0.0.0";
 }
 
 static void CopyProductCompose(string repoRoot, string productRoot, string imageTag)
@@ -223,6 +286,22 @@ static void CopyIfExists(string sourcePath, string destinationPath)
 
     Directory.CreateDirectory(Path.GetDirectoryName(destinationPath) ?? ".");
     File.Copy(sourcePath, destinationPath, overwrite: true);
+}
+
+static void CopyDirectory(string sourceDirectory, string destinationDirectory)
+{
+    Directory.CreateDirectory(destinationDirectory);
+    foreach (var directory in Directory.EnumerateDirectories(sourceDirectory, "*", SearchOption.AllDirectories))
+    {
+        Directory.CreateDirectory(Path.Combine(destinationDirectory, Path.GetRelativePath(sourceDirectory, directory)));
+    }
+
+    foreach (var file in Directory.EnumerateFiles(sourceDirectory, "*", SearchOption.AllDirectories))
+    {
+        var destinationPath = Path.Combine(destinationDirectory, Path.GetRelativePath(sourceDirectory, file));
+        Directory.CreateDirectory(Path.GetDirectoryName(destinationPath) ?? destinationDirectory);
+        File.Copy(file, destinationPath, overwrite: true);
+    }
 }
 
 static string ResolveRepoRoot(string startDirectory)

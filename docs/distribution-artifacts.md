@@ -118,14 +118,26 @@ for Docker's Linux container runtime.
 
 The ZIP writer marks the Mac host executables as executable entries. Mac
 hardware still has to verify Gatekeeper behavior, quarantine attributes, Docker
-Desktop startup, and whether the tray experience should become a `.app` bundle
-or remain a raw executable until the installer work in KAN-41.
+Desktop startup, and menu bar behavior.
+
+The Mac artifact also includes `Timeline.app`. This app bundle wraps the
+published C# resident Launcher and provides a normal macOS application entry
+without requiring a `.sh` or `.command` wrapper. The raw `launcher-tray/`
+runtime remains present for diagnostics and fallback.
+
+As of `Timeline-macos-arm64-0.0.0-kan50-mac-app-4a60a4e.zip`, the ZIP contains:
+
+- `Timeline/Timeline.app/Contents/Info.plist`;
+- `Timeline/Timeline.app/Contents/MacOS/Timeline.Launcher.Tray`;
+- executable metadata on both the `.app` Launcher executable and the raw
+  `launcher-tray/Timeline.Launcher.Tray`.
 
 ### Required contents
 
 The artifact must include:
 
 - C# resident Launcher, which is the normal user entry point.
+- `Timeline.app`, which wraps the resident Launcher on macOS artifacts.
 - C# CLI Launcher, for diagnostics and controlled launcher operations.
 - Timeline Local API runtime.
 - Timeline Web runtime.

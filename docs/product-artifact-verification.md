@@ -103,12 +103,16 @@ After extraction on Mac, run:
 Mac-specific checks:
 
 - Host executables keep execute permission after extraction.
+- `Timeline.app/Contents/Info.plist` exists and points to
+  `Timeline.Launcher.Tray`.
+- `Timeline.app/Contents/MacOS/Timeline.Launcher.Tray` exists and keeps execute
+  permission after extraction.
 - Gatekeeper or quarantine behavior is understood.
 - Docker Desktop can start and run Apple Silicon container payloads.
 - `web` and `worker` Docker images build from the packaged `linux-arm64`
   publish output.
-- The tray experience is acceptable until KAN-41 decides the installer and
-  `.app` bundle shape.
+- The menu bar experience is acceptable until KAN-41 decides the final signed
+  installer shape.
 
 ## Success criteria
 
@@ -166,8 +170,12 @@ As of KAN-46:
 - `Timeline-macos-arm64-0.0.0-kan46.zip` was created from Windows.
 - `Timeline-macos-arm64-0.0.0-kan-mac-launcher-049cb85.zip` was also created
   after the tray launcher started preferring the bundled CLI launcher.
+- `Timeline-macos-arm64-0.0.0-kan50-mac-app-4a60a4e.zip` was created with
+  `Timeline.app/Contents/Info.plist` and
+  `Timeline.app/Contents/MacOS/Timeline.Launcher.Tray`.
 - The ZIP did not include forbidden local data or development directories.
 - Mac host executable entries were marked with executable metadata.
+- The `.app` resident Launcher executable entry was also marked executable.
 - Final Mac startup remains a Mac hardware verification item.
 
 As of KAN-47:
