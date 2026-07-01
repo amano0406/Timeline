@@ -47,15 +47,41 @@ public partial class ProductManagementModal
 
     private static string BuiltArtifactStatusText(ProductUpdatePlan plan)
     {
-        if (plan.BuiltArtifactStatus.Equals("ok", StringComparison.OrdinalIgnoreCase))
+        var status = plan.BuiltArtifactStatus.Trim().ToLowerInvariant();
+        if (status.Equals("ok", StringComparison.OrdinalIgnoreCase))
         {
             return string.IsNullOrWhiteSpace(plan.BuiltArtifactName)
                 ? "ビルド済み成果物あり"
                 : plan.BuiltArtifactName;
         }
 
-        return string.IsNullOrWhiteSpace(plan.BuiltArtifactMessage)
-            ? "ビルド済み成果物はまだ見つかっていません"
-            : plan.BuiltArtifactMessage;
+        return status switch
+        {
+            "release_missing" => $"GitHub Release がまだありません{BuiltArtifactDetail(plan)}",
+            "asset_missing" => $"Release はありますが、このPC用のZIPがありません{BuiltArtifactDetail(plan)}",
+            "no_release" => $"GitHub Release がまだありません{BuiltArtifactDetail(plan)}",
+            "request_failed" => "GitHub Release を確認できませんでした",
+            "source_url_missing" => "配布元URLが設定されていません",
+            "source_not_github" => "GitHub Release 以外の配布元は未対応です",
+            _ => string.IsNullOrWhiteSpace(plan.BuiltArtifactMessage)
+                ? "ビルド済み成果物はまだ見つかっていません"
+                : plan.BuiltArtifactMessage,
+        };
+    }
+
+    private static string BuiltArtifactDetail(ProductUpdatePlan plan)
+    {
+        var parts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(plan.BuiltArtifactVersion))
+        {
+            parts.Add(plan.BuiltArtifactVersion);
+        }
+
+        if (!string.IsNullOrWhiteSpace(plan.BuiltArtifactRuntime))
+        {
+            parts.Add(plan.BuiltArtifactRuntime);
+        }
+
+        return parts.Count == 0 ? string.Empty : $"（{string.Join(" / ", parts)}）";
     }
 }
