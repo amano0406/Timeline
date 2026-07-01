@@ -97,6 +97,36 @@ The builder is C# and cross-platform. It does not use `bat`, `sh`, or
 `command` files as the product entry. It only packages an existing sub-product
 repository into a runtime artifact ZIP.
 
+All current sub-products can be built in one run:
+
+```powershell
+dotnet run --project .\tools\Timeline.SubProductReleaseBuilder\Timeline.SubProductReleaseBuilder.csproj -- `
+  --all `
+  --products-root C:\apps `
+  --runtime win-x64 `
+  --output release\sub-products `
+  --channel dev
+```
+
+The matrix mode currently targets:
+
+- `TimelineForAudio`
+- `TimelineForImage`
+- `TimelineForVideo`
+- `TimelineForChatGPT`
+- `TimelineForWindowsCodex`
+- `TimelineForPcInfo`
+
+It writes a manifest next to the ZIPs:
+
+```text
+sub-product-artifacts-<runtime>.json
+```
+
+The manifest lists each product, source repository path, version, commit,
+artifact path, runtime, size, and creation state. This file is intended as the
+machine-readable handoff to validation, release attachment, and update planning.
+
 This first builder creates a cleaned product ZIP. It does not pre-build and
 embed Docker images. Docker-based sub-products may still build their worker
 image from the files inside the artifact when they start. If startup without
@@ -127,6 +157,11 @@ GET /products/runtime/<productId>/update-artifact/validate?path=<zip-path>
 
 All six artifacts returned `state=ready`, `valid=true`, `requiredEntries=2/2`,
 with no blockers or warnings.
+
+The builder was also verified in matrix mode. It created six artifacts and a
+`sub-product-artifacts-win-x64.json` manifest. The artifacts listed in that
+manifest were accepted by the Local API validation endpoint with
+`state=ready`, `valid=true`, and `requiredEntries=2/2`.
 
 ## Remaining work
 
