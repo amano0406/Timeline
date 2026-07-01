@@ -391,6 +391,165 @@ public static class TimelineUpdatePlanService
         };
     }
 
+    public static async Task<TimelineUpdateArtifactStageResponse> StageArtifactAsync(
+        string timelineRoot,
+        string artifactPath,
+        string? operationId,
+        CancellationToken cancellationToken)
+    {
+        var root = Path.GetFullPath(timelineRoot);
+        var plan = await GetPlanAsync(root, cancellationToken);
+        var validation = ValidateArtifact(root, artifactPath);
+        var blockers = validation.Blockers
+            .Select(message => new TimelineUpdatePlanMessage
+            {
+                Code = message.Code,
+                Message = message.Message,
+            })
+            .ToList();
+        var warnings = validation.Warnings
+            .Select(message => new TimelineUpdatePlanMessage
+            {
+                Code = message.Code,
+                Message = message.Message,
+            })
+            .ToList();
+
+        foreach (var blocker in plan.Blockers)
+        {
+            warnings.Add(new TimelineUpdatePlanMessage
+            {
+                Code = "update_plan_" + blocker.Code,
+                Message = blocker.Message,
+            });
+        }
+
+        foreach (var warning in plan.Warnings)
+        {
+            warnings.Add(new TimelineUpdatePlanMessage
+            {
+                Code = "update_plan_" + warning.Code,
+                Message = warning.Message,
+            });
+        }
+
+        var normalizedOperationId = NormalizeOperationId(operationId);
+        var operationRoot = Path.GetFullPath(Path.Combine(
+            plan.DataRoot,
+            "work",
+            "timeline-updates",
+            normalizedOperationId));
+        var stagingRoot = Path.Combine(operationRoot, "artifact");
+        var operationLogPath = Path.Combine(operationRoot, "stage.json");
+        var stagedProductRoot = string.IsNullOrWhiteSpace(validation.ArtifactRootPrefix)
+            ? stagingRoot
+            : Path.Combine(stagingRoot, validation.ArtifactRootPrefix.TrimEnd('/', '\\'));
+
+        var expectedWorkRoot = Path.GetFullPath(Path.Combine(plan.DataRoot, "work", "timeline-updates"));
+        if (!IsPathUnderRoot(operationRoot, expectedWorkRoot))
+        {
+            blockers.Add(new TimelineUpdatePlanMessage
+            {
+                Code = "operation_path_unsafe",
+                Message = "Timeline update operation path must stay under the Timeline work directory.",
+            });
+        }
+
+        if (Directory.Exists(operationRoot) || File.Exists(operationRoot))
+        {
+            blockers.Add(new TimelineUpdatePlanMessage
+            {
+                Code = "operation_path_exists",
+                Message = $"Timeline update operation path already exists: {operationRoot}",
+            });
+        }
+
+        if (validation.Valid && blockers.Count == 0)
+        {
+            try
+            {
+                Directory.CreateDirectory(stagingRoot);
+                ExtractArtifact(validation.ArtifactPath, validation.ArtifactRootPrefix, stagingRoot);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException or InvalidOperationException)
+            {
+                TryDeleteDirectory(stagingRoot, warnings);
+                blockers.Add(new TimelineUpdatePlanMessage
+                {
+                    Code = "staging_failed",
+                    Message = $"Artifact could not be staged. {ex.Message}",
+                });
+            }
+        }
+
+        var staged = validation.Valid
+            && blockers.Count == 0
+            && Directory.Exists(stagedProductRoot)
+            && File.Exists(Path.Combine(stagedProductRoot, "VERSION"));
+        if (!staged && validation.Valid && blockers.Count == 0)
+        {
+            blockers.Add(new TimelineUpdatePlanMessage
+            {
+                Code = "staging_incomplete",
+                Message = "Artifact was extracted, but the staged product root or VERSION file was not found.",
+            });
+        }
+
+        var response = new TimelineUpdateArtifactStageResponse
+        {
+            ProductId = "timeline",
+            ProductName = "Timeline",
+            State = staged && blockers.Count == 0 ? "staged" : "blocked",
+            Staged = staged && blockers.Count == 0,
+            CanApplyAfterStage = staged && blockers.Count == 0 && plan.CanUpdate,
+            OperationOwner = "launcher",
+            Mode = "stage_only",
+            TimelineRoot = root,
+            DataRoot = plan.DataRoot,
+            OperationId = normalizedOperationId,
+            OperationRoot = operationRoot,
+            StagingRoot = stagingRoot,
+            StagedProductRoot = stagedProductRoot,
+            OperationLogPath = operationLogPath,
+            UpdatePlanState = plan.State,
+            ArtifactValidation = validation,
+            Preserve = plan.Preserve,
+            Replace = plan.Replace,
+            NextSteps = BuildSteps()
+                .Where(step => step.Order >= 3)
+                .Select(step => NewStep(step.Order, step.Code, step.Message))
+                .ToList(),
+            Blockers = blockers,
+            Warnings = warnings,
+            StagedAt = DateTimeOffset.UtcNow.ToString("O", CultureInfo.InvariantCulture),
+        };
+
+        if (response.Staged)
+        {
+            try
+            {
+                Directory.CreateDirectory(operationRoot);
+                File.WriteAllText(
+                    operationLogPath,
+                    JsonSerializer.Serialize(response, new JsonSerializerOptions
+                    {
+                        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+                        WriteIndented = true,
+                    }));
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                response.Warnings.Add(new TimelineUpdatePlanMessage
+                {
+                    Code = "operation_log_write_failed",
+                    Message = $"Staging completed, but operation log could not be written. {ex.Message}",
+                });
+            }
+        }
+
+        return response;
+    }
+
     private static List<TimelineUpdatePathPlan> BuildPreservePlan(string root, string dataRoot)
     {
         return
@@ -717,6 +876,114 @@ public static class TimelineUpdatePlanService
     private static string NormalizeZipPath(string path)
         => path.Replace('\\', '/').TrimStart('/');
 
+    private static string NormalizeOperationId(string? requested)
+    {
+        var value = string.IsNullOrWhiteSpace(requested)
+            ? "timeline-update-" + DateTimeOffset.UtcNow.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture) + "-" + Guid.NewGuid().ToString("N")[..8]
+            : requested.Trim();
+
+        var normalized = new string(value
+            .Select(ch => char.IsLetterOrDigit(ch) || ch is '-' or '_' or '.' ? ch : '-')
+            .ToArray())
+            .Trim('-', '_', '.');
+        return string.IsNullOrWhiteSpace(normalized)
+            ? "timeline-update-" + Guid.NewGuid().ToString("N")[..8]
+            : normalized;
+    }
+
+    private static void ExtractArtifact(
+        string artifactPath,
+        string artifactRootPrefix,
+        string stagingRoot)
+    {
+        var normalizedRootPrefix = NormalizeZipPath(artifactRootPrefix);
+        if (!string.IsNullOrWhiteSpace(normalizedRootPrefix) && !normalizedRootPrefix.EndsWith('/'))
+        {
+            normalizedRootPrefix += "/";
+        }
+
+        var fullStagingRoot = Path.GetFullPath(stagingRoot);
+        using var archive = ZipFile.OpenRead(artifactPath);
+        foreach (var entry in archive.Entries)
+        {
+            var entryName = NormalizeZipPath(entry.FullName);
+            if (string.IsNullOrWhiteSpace(entryName))
+            {
+                continue;
+            }
+
+            if (!string.IsNullOrWhiteSpace(normalizedRootPrefix)
+                && !entryName.StartsWith(normalizedRootPrefix, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var destinationRelativePath = string.IsNullOrWhiteSpace(normalizedRootPrefix)
+                ? entryName
+                : Path.Combine(
+                    normalizedRootPrefix.TrimEnd('/'),
+                    entryName[normalizedRootPrefix.Length..].Replace('/', Path.DirectorySeparatorChar));
+            if (string.IsNullOrWhiteSpace(destinationRelativePath))
+            {
+                continue;
+            }
+
+            var destinationPath = Path.GetFullPath(Path.Combine(
+                fullStagingRoot,
+                destinationRelativePath.Replace('/', Path.DirectorySeparatorChar)));
+            if (!IsPathUnderRoot(destinationPath, fullStagingRoot))
+            {
+                throw new InvalidDataException($"Artifact entry escapes staging root: {entry.FullName}");
+            }
+
+            if (entryName.EndsWith('/'))
+            {
+                Directory.CreateDirectory(destinationPath);
+                continue;
+            }
+
+            var destinationDirectory = Path.GetDirectoryName(destinationPath);
+            if (!string.IsNullOrWhiteSpace(destinationDirectory))
+            {
+                Directory.CreateDirectory(destinationDirectory);
+            }
+
+            entry.ExtractToFile(destinationPath);
+        }
+    }
+
+    private static bool IsPathUnderRoot(string candidatePath, string rootPath)
+    {
+        var fullCandidate = Path.GetFullPath(candidatePath)
+            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var fullRoot = Path.GetFullPath(rootPath)
+            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        return fullCandidate.Equals(fullRoot, StringComparison.OrdinalIgnoreCase)
+            || fullCandidate.StartsWith(fullRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
+            || fullCandidate.StartsWith(fullRoot + Path.AltDirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static void TryDeleteDirectory(
+        string path,
+        List<TimelineUpdatePlanMessage> warnings)
+    {
+        try
+        {
+            if (Directory.Exists(path))
+            {
+                Directory.Delete(path, recursive: true);
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            warnings.Add(new TimelineUpdatePlanMessage
+            {
+                Code = "staging_cleanup_failed",
+                Message = $"Failed staging directory could not be removed. {ex.Message}",
+            });
+        }
+    }
+
     private static bool IsSameZipPath(string left, string right)
         => NormalizeZipPath(left).TrimEnd('/').Equals(NormalizeZipPath(right).TrimEnd('/'), StringComparison.OrdinalIgnoreCase);
 
@@ -966,6 +1233,75 @@ public sealed class TimelineUpdateArtifactValidationResponse
 
     [JsonPropertyName("generatedAt")]
     public string GeneratedAt { get; set; } = "";
+}
+
+public sealed class TimelineUpdateArtifactStageResponse
+{
+    [JsonPropertyName("productId")]
+    public string ProductId { get; set; } = "";
+
+    [JsonPropertyName("productName")]
+    public string ProductName { get; set; } = "";
+
+    [JsonPropertyName("state")]
+    public string State { get; set; } = "";
+
+    [JsonPropertyName("staged")]
+    public bool Staged { get; set; }
+
+    [JsonPropertyName("canApplyAfterStage")]
+    public bool CanApplyAfterStage { get; set; }
+
+    [JsonPropertyName("operationOwner")]
+    public string OperationOwner { get; set; } = "";
+
+    [JsonPropertyName("mode")]
+    public string Mode { get; set; } = "";
+
+    [JsonPropertyName("timelineRoot")]
+    public string TimelineRoot { get; set; } = "";
+
+    [JsonPropertyName("dataRoot")]
+    public string DataRoot { get; set; } = "";
+
+    [JsonPropertyName("operationId")]
+    public string OperationId { get; set; } = "";
+
+    [JsonPropertyName("operationRoot")]
+    public string OperationRoot { get; set; } = "";
+
+    [JsonPropertyName("stagingRoot")]
+    public string StagingRoot { get; set; } = "";
+
+    [JsonPropertyName("stagedProductRoot")]
+    public string StagedProductRoot { get; set; } = "";
+
+    [JsonPropertyName("operationLogPath")]
+    public string OperationLogPath { get; set; } = "";
+
+    [JsonPropertyName("updatePlanState")]
+    public string UpdatePlanState { get; set; } = "";
+
+    [JsonPropertyName("artifactValidation")]
+    public TimelineUpdateArtifactValidationResponse ArtifactValidation { get; set; } = new();
+
+    [JsonPropertyName("preserve")]
+    public List<TimelineUpdatePathPlan> Preserve { get; set; } = [];
+
+    [JsonPropertyName("replace")]
+    public List<TimelineUpdatePathPlan> Replace { get; set; } = [];
+
+    [JsonPropertyName("nextSteps")]
+    public List<TimelineUpdateStepPlan> NextSteps { get; set; } = [];
+
+    [JsonPropertyName("blockers")]
+    public List<TimelineUpdatePlanMessage> Blockers { get; set; } = [];
+
+    [JsonPropertyName("warnings")]
+    public List<TimelineUpdatePlanMessage> Warnings { get; set; } = [];
+
+    [JsonPropertyName("stagedAt")]
+    public string StagedAt { get; set; } = "";
 }
 
 public sealed class TimelineUpdateRecoveryPlanResponse

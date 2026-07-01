@@ -42,6 +42,14 @@ dotnet run --project .\launcher\Timeline.Launcher.csproj -- update-validate --ar
 dotnet run --project .\launcher\Timeline.Launcher.csproj -- update-validate --artifact <zip-path> --json
 ```
 
+Validated artifacts can also be staged without replacing the current
+installation:
+
+```powershell
+dotnet run --project .\launcher\Timeline.Launcher.csproj -- update-stage --artifact <zip-path>
+dotnet run --project .\launcher\Timeline.Launcher.csproj -- update-stage --artifact <zip-path> --json
+```
+
 Recovery policy can also be inspected without applying an update:
 
 ```powershell
@@ -57,6 +65,7 @@ GET http://127.0.0.1:19001/timeline/update/recovery/plan
 GET http://127.0.0.1:19001/timeline/update/recovery/plan?path=<zip-path>
 GET http://127.0.0.1:19001/timeline/update/artifact/apply-plan?path=<zip-path>
 GET http://127.0.0.1:19001/timeline/update/artifact/validate?path=<zip-path>
+POST http://127.0.0.1:19001/timeline/update/artifact/stage
 ```
 
 The Local API endpoint returns the same plan model as the Launcher command.
@@ -67,6 +76,13 @@ restart Timeline more safely than the Web UI.
 update plan, artifact validation, rollback locations, and failure policy into a
 single read-only response with `canApply`. `update-recovery-plan` remains the
 lower-level failure recovery policy.
+
+`update-stage` is still non-destructive. It validates the ZIP, extracts it under
+`<dataRoot>/work/timeline-updates/<operationId>/artifact/`, and writes a
+`stage.json` operation record. It does not stop Timeline, replace application
+files, touch Docker resources, or delete user data. Developer checkouts may use
+this command to verify built artifacts, but `canApplyAfterStage` remains false
+when the current installation is not itself a built product artifact.
 
 ## States
 

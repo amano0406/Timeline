@@ -31,6 +31,7 @@ try
         "update-apply-plan" => await ShowUpdateApplyPlan(root, options.ArtifactPath, options.JsonOutput),
         "update-recovery-plan" => await ShowUpdateRecoveryPlan(root, options.ArtifactPath, options.JsonOutput),
         "update-validate" => ShowUpdateArtifactValidation(root, options.ArtifactPath, options.JsonOutput),
+        "update-stage" => await StageUpdateArtifact(root, options.ArtifactPath, options.JsonOutput),
         "start" => await RunStart(root, settings, openBrowser: !options.NoOpen),
         "stop" => await RunStop(root, settings),
         "open" => await OpenOrStart(root, settings),
@@ -966,6 +967,57 @@ static int ShowUpdateArtifactValidation(string root, string? artifactPath, bool 
     return result.Valid ? 0 : 1;
 }
 
+static async Task<int> StageUpdateArtifact(string root, string? artifactPath, bool jsonOutput)
+{
+    if (string.IsNullOrWhiteSpace(artifactPath))
+    {
+        Console.Error.WriteLine("Update artifact path is required. Use --artifact <zip-path>.");
+        return 2;
+    }
+
+    var result = await TimelineUpdatePlanService.StageArtifactAsync(
+        root,
+        artifactPath,
+        operationId: null,
+        CancellationToken.None);
+    if (jsonOutput)
+    {
+        Console.WriteLine(JsonSerializer.Serialize(
+            result,
+            new JsonSerializerOptions
+            {
+                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+                WriteIndented = true,
+            }));
+    }
+    else
+    {
+        Console.WriteLine("Timeline update artifact staging");
+        Console.WriteLine($"  state: {result.State}");
+        Console.WriteLine($"  staged: {(result.Staged ? "yes" : "no")}");
+        Console.WriteLine($"  can apply after stage: {(result.CanApplyAfterStage ? "yes" : "no")}");
+        Console.WriteLine($"  update plan state: {result.UpdatePlanState}");
+        Console.WriteLine($"  operation id: {result.OperationId}");
+        Console.WriteLine($"  staging root: {result.StagingRoot}");
+        Console.WriteLine($"  staged product root: {result.StagedProductRoot}");
+        Console.WriteLine($"  operation log: {result.OperationLogPath}");
+        Console.WriteLine($"  artifact: {result.ArtifactValidation.ArtifactPath}");
+        Console.WriteLine($"  artifact version: {EmptyText(result.ArtifactValidation.Version.Version)}");
+        Console.WriteLine($"  artifact runtime: {EmptyText(result.ArtifactValidation.Version.RuntimeIdentifier)}");
+        Console.WriteLine();
+        PrintUpdateMessages("Blockers", result.Blockers);
+        PrintUpdateMessages("Warnings", result.Warnings);
+
+        Console.WriteLine("Next steps:");
+        foreach (var step in result.NextSteps.OrderBy(step => step.Order))
+        {
+            Console.WriteLine($"  {step.Order}. {step.Code}: {step.Message}");
+        }
+    }
+
+    return result.Staged ? 0 : 1;
+}
+
 static async Task<int> RunStart(string root, TimelineSettings settings, bool openBrowser)
 {
     Console.WriteLine("Starting Timeline through the C# launcher runtime...");
@@ -1090,7 +1142,7 @@ static int ShowHelp()
     Console.WriteLine("Timeline Launcher");
     Console.WriteLine();
     Console.WriteLine("Usage:");
-    Console.WriteLine("  TimelineLauncher [open|status|preflight|verify-setup|version|configure-runtime|install-plan|uninstall-plan|update-plan|update-apply-plan|update-recovery-plan|update-validate|start|stop|shortcut-status|shortcut-install|shortcut-remove|uninstall-registration-status|uninstall-registration-install|uninstall-registration-remove|help] [--no-open] [--json]");
+    Console.WriteLine("  TimelineLauncher [open|status|preflight|verify-setup|version|configure-runtime|install-plan|uninstall-plan|update-plan|update-apply-plan|update-recovery-plan|update-validate|update-stage|start|stop|shortcut-status|shortcut-install|shortcut-remove|uninstall-registration-status|uninstall-registration-install|uninstall-registration-remove|help] [--no-open] [--json]");
     Console.WriteLine();
     Console.WriteLine("Commands:");
     Console.WriteLine("  open    Open Timeline. Starts it first when needed.");
@@ -1105,6 +1157,7 @@ static int ShowHelp()
     Console.WriteLine("  update-apply-plan  Show whether a built product artifact can be applied now. Optional: --artifact <path>.");
     Console.WriteLine("  update-recovery-plan  Show rollback and failure recovery policy. Optional: --artifact <path>.");
     Console.WriteLine("  update-validate  Validate a built product artifact ZIP. Use --artifact <path>.");
+    Console.WriteLine("  update-stage  Validate and extract a built product artifact into the Timeline work directory. Use --artifact <path>.");
     Console.WriteLine("  start   Start Timeline.");
     Console.WriteLine("  stop    Stop Timeline.");
     Console.WriteLine("  shortcut-status   Show the OS app entry status.");
