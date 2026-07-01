@@ -7,5 +7,6 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="..\shared\TimelineLauncherShortcutService.cs" Link="TimelineLauncherShortcutService.cs" />
+    <Compile Include="..\shared\TimelineVersionService.cs" Link="TimelineVersionService.cs" />
   </ItemGroup>
 </Project>

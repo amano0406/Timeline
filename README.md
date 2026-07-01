@@ -54,6 +54,18 @@ For Jira evidence or setup support, use structured output:
 dotnet run --project .\launcher\Timeline.Launcher.csproj -- verify-setup --json
 ```
 
+Check the current Timeline version and latest built artifact status:
+
+```powershell
+dotnet run --project .\launcher\Timeline.Launcher.csproj -- version
+```
+
+Structured output is available for update diagnostics:
+
+```powershell
+dotnet run --project .\launcher\Timeline.Launcher.csproj -- version --json
+```
+
 Start without opening a browser tab:
 
 ```powershell

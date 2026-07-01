@@ -226,6 +226,31 @@ The exact file name is not fixed yet. `VERSION` is sufficient for the first
 iteration; a structured JSON manifest can replace or accompany it when update
 implementation starts.
 
+## Version and latest checks
+
+Timeline must distinguish current-version detection from latest-version
+detection.
+
+Current-version detection reads:
+
+- the built artifact's root `VERSION` file when running from a user artifact
+- the Git checkout state when running from a developer checkout
+- assembly metadata only as a last-resort fallback
+
+Latest-version detection uses GitHub Release assets for built Timeline product
+artifacts. GitHub source ZIP/TAR archives are not treated as user-facing update
+targets.
+
+The runtime status must distinguish:
+
+- `ok`: a matching built artifact asset exists for the current runtime
+- `no_release`: no GitHub Release is available yet
+- `asset_missing`: a Release exists, but no matching built artifact exists
+- `request_failed`: the latest-version check could not reach or read GitHub
+
+This split prevents Timeline from telling a user to update to a source archive
+that cannot be launched as a product.
+
 ## Acceptance notes for KAN-44
 
 KAN-44 can be considered complete when:

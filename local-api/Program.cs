@@ -94,6 +94,13 @@ app.MapGet("/timeline/runtime/status", async (
     return TypedResults.Json(await runtime.GetStatusAsync(cancellationToken));
 });
 
+app.MapGet("/timeline/version", async (
+    TimelineLocalApiOptions options,
+    CancellationToken cancellationToken) =>
+{
+    return TypedResults.Json(await TimelineVersionService.GetStatusAsync(options.TimelineProductPath, cancellationToken));
+});
+
 app.MapPost("/timeline/runtime/stop", (TimelineRuntimeControlService runtime) =>
 {
     return TypedResults.Json(runtime.StopTimeline());

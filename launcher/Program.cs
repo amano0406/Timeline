@@ -16,6 +16,7 @@ try
         "status" => await ShowStatus(root, settings),
         "preflight" => await ShowPreflight(root, settings, options.JsonOutput),
         "verify-setup" or "verify" => await VerifySetup(root, settings, options.JsonOutput),
+        "version" => await ShowVersion(root, options.JsonOutput),
         "start" => await RunStart(root, settings, openBrowser: !options.NoOpen),
         "stop" => await RunStop(root, settings),
         "open" => await OpenOrStart(root, settings),
@@ -293,6 +294,45 @@ static async Task<int> ShowStatus(string root, TimelineSettings settings)
     return 2;
 }
 
+static async Task<int> ShowVersion(string root, bool jsonOutput)
+{
+    var status = await TimelineVersionService.GetStatusAsync(root, CancellationToken.None);
+    if (jsonOutput)
+    {
+        Console.WriteLine(JsonSerializer.Serialize(
+            status,
+            new JsonSerializerOptions
+            {
+                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+                WriteIndented = true,
+            }));
+    }
+    else
+    {
+        Console.WriteLine("Timeline version");
+        Console.WriteLine($"  current: {VersionText(status.CurrentVersion, status.CurrentVersionStatus)}");
+        Console.WriteLine($"  commit: {EmptyText(status.CurrentCommit)}");
+        Console.WriteLine($"  channel: {EmptyText(status.Channel)}");
+        Console.WriteLine($"  runtime: {EmptyText(status.RuntimeIdentifier)}");
+        Console.WriteLine($"  artifact: {EmptyText(status.ArtifactKind)}");
+        Console.WriteLine($"  source: {EmptyText(status.VersionSource)}");
+        Console.WriteLine($"  latest: {VersionText(status.LatestVersion, status.LatestVersionStatus)}");
+        if (!string.IsNullOrWhiteSpace(status.LatestVersionMessage))
+        {
+            Console.WriteLine($"  latest status: {status.LatestVersionMessage}");
+        }
+        if (!string.IsNullOrWhiteSpace(status.ReleaseArtifactName))
+        {
+            Console.WriteLine($"  release artifact: {status.ReleaseArtifactName}");
+        }
+        Console.WriteLine($"  update available: {(status.UpdateAvailable ? "yes" : "no")}");
+    }
+
+    return status.CurrentVersionStatus == "ok" && status.LatestVersionStatus is "ok" or "no_release" or "asset_missing"
+        ? 0
+        : 1;
+}
+
 static async Task<int> RunStart(string root, TimelineSettings settings, bool openBrowser)
 {
     Console.WriteLine("Starting Timeline through the C# launcher runtime...");
@@ -350,13 +390,14 @@ static int ShowHelp()
     Console.WriteLine("Timeline Launcher");
     Console.WriteLine();
     Console.WriteLine("Usage:");
-    Console.WriteLine("  TimelineLauncher [open|status|preflight|verify-setup|start|stop|shortcut-status|shortcut-install|shortcut-remove|help] [--no-open] [--json]");
+    Console.WriteLine("  TimelineLauncher [open|status|preflight|verify-setup|version|start|stop|shortcut-status|shortcut-install|shortcut-remove|help] [--no-open] [--json]");
     Console.WriteLine();
     Console.WriteLine("Commands:");
     Console.WriteLine("  open    Open Timeline. Starts it first when needed.");
     Console.WriteLine("  status  Show Timeline runtime status.");
     Console.WriteLine("  preflight  Check local prerequisites before runtime verification. Use --json for Jira evidence.");
     Console.WriteLine("  verify-setup  Verify that Timeline is usable after setup. Use --json for Jira evidence.");
+    Console.WriteLine("  version  Show current Timeline version and latest built artifact status.");
     Console.WriteLine("  start   Start Timeline.");
     Console.WriteLine("  stop    Stop Timeline.");
     Console.WriteLine("  shortcut-status   Show the OS app entry status.");
@@ -1020,6 +1061,19 @@ static string PreflightSeverityLabel(string severity) => severity switch
     "error" => "ERROR",
     _ => "INFO",
 };
+
+static string EmptyText(string? value)
+    => string.IsNullOrWhiteSpace(value) ? "-" : value;
+
+static string VersionText(string? version, string? status)
+{
+    if (!string.IsNullOrWhiteSpace(version))
+    {
+        return version;
+    }
+
+    return string.IsNullOrWhiteSpace(status) ? "unknown" : status;
+}
 
 static PreflightCheck NewOk(string name, string message) => new("ok", name, message);
 
