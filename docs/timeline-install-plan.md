@@ -74,6 +74,40 @@ The settings save path must also treat `legacy_registered` and
 Otherwise a stale registration would remain in place because it is technically
 already registered.
 
+## Windows uninstall registration
+
+Windows also needs an Apps & Features / uninstall-list entry so the product is
+visible as a normal installed application.
+
+The C# Launcher owns the registration surface:
+
+```powershell
+dotnet run --project .\launcher\Timeline.Launcher.csproj -- uninstall-registration-status --json
+dotnet run --project .\launcher\Timeline.Launcher.csproj -- uninstall-registration-install --json
+dotnet run --project .\launcher\Timeline.Launcher.csproj -- uninstall-registration-remove --json
+```
+
+The registration is per-user under:
+
+```text
+HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Uninstall\Timeline
+```
+
+The registration points to the C# Launcher. At this stage the uninstall command
+opens `uninstall-plan`; it does not delete files directly. This is intentional:
+Timeline contains application files, settings, user material, generated data,
+managed sub-products, logs, and Docker resources. Destructive removal should
+only be added after the selectable uninstall levels have a final confirmation
+flow.
+
+The install plan reports this target as `uninstall_entry` so Windows installer
+work can verify:
+
+- whether the entry is registered;
+- which registry key is used;
+- which install location is advertised;
+- which Launcher command would be invoked from Windows.
+
 ## Installer boundary
 
 The install plan is not the installer.

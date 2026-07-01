@@ -180,6 +180,21 @@ app.MapPost("/timeline/launcher-shortcut/remove", (TimelineLocalApiOptions optio
     return TypedResults.Json(TimelineLauncherShortcutService.Remove(options.TimelineProductPath));
 });
 
+app.MapGet("/timeline/uninstall-registration/status", (TimelineLocalApiOptions options) =>
+{
+    return TypedResults.Json(TimelineWindowsUninstallRegistrationService.GetStatus(options.TimelineProductPath));
+});
+
+app.MapPost("/timeline/uninstall-registration/install", (TimelineLocalApiOptions options) =>
+{
+    return TypedResults.Json(TimelineWindowsUninstallRegistrationService.Register(options.TimelineProductPath));
+});
+
+app.MapPost("/timeline/uninstall-registration/remove", (TimelineLocalApiOptions options) =>
+{
+    return TypedResults.Json(TimelineWindowsUninstallRegistrationService.Remove(options.TimelineProductPath));
+});
+
 app.MapGet("/timeline/settings", (TimelineSettingsService settings) =>
 {
     return TypedResults.Json(settings.ReadSettings());

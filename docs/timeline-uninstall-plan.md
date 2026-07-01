@@ -27,6 +27,19 @@ dotnet run --project .\launcher\Timeline.Launcher.csproj -- uninstall-plan --jso
 GET http://127.0.0.1:19001/timeline/uninstall/plan
 ```
 
+Windows uninstall-list registration is tracked separately from deletion
+execution:
+
+```text
+GET  http://127.0.0.1:19001/timeline/uninstall-registration/status
+POST http://127.0.0.1:19001/timeline/uninstall-registration/install
+POST http://127.0.0.1:19001/timeline/uninstall-registration/remove
+```
+
+The registration command currently points Windows to `uninstall-plan`. This
+keeps the OS-level entry safe while the destructive uninstall executor is still
+out of scope.
+
 ## UI
 
 The Timeline settings page shows the read-only plan under the uninstall impact
@@ -71,6 +84,7 @@ For that reason, the current plan returns warnings such as:
 - It does not remove Docker resources.
 - It does not uninstall sub-products.
 - It does not create a Windows or Mac installer.
+- It does not make the Windows uninstall entry destructive.
 - It does not decide Docker Desktop or Ollama ownership.
 
 Those actions should be implemented only after the plan is visible to users and

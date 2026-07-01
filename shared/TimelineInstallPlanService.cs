@@ -14,6 +14,7 @@ public static class TimelineInstallPlanService
         var dataRoot = ResolveDataRoot(root);
         var settingsPath = Path.Combine(root, "settings.json");
         var shortcut = TimelineLauncherShortcutService.GetStatus(root);
+        var uninstallRegistration = TimelineWindowsUninstallRegistrationService.GetStatus(root);
         var launcherExecutable = TimelineLauncherShortcutService.ResolveLauncherTrayExecutable(root);
         var warnings = BuildWarnings(root, dataRoot, settingsPath, shortcut, launcherExecutable);
 
@@ -30,7 +31,7 @@ public static class TimelineInstallPlanService
             SettingsPath = settingsPath,
             LauncherExecutablePath = launcherExecutable,
             AppEntry = BuildAppEntry(shortcut),
-            RegistrationTargets = BuildRegistrationTargets(root, shortcut),
+            RegistrationTargets = BuildRegistrationTargets(root, shortcut, uninstallRegistration),
             ArtifactTargets = BuildArtifactTargets(),
             Preserve = BuildPreserveItems(dataRoot, settingsPath),
             Warnings = warnings,
@@ -56,7 +57,8 @@ public static class TimelineInstallPlanService
 
     private static List<TimelineInstallPlanRegistration> BuildRegistrationTargets(
         string root,
-        TimelineLauncherShortcutStatus shortcut)
+        TimelineLauncherShortcutStatus shortcut,
+        TimelineWindowsUninstallRegistrationStatus uninstallRegistration)
     {
         var appEntry = BuildAppEntry(shortcut);
         return
@@ -80,21 +82,64 @@ public static class TimelineInstallPlanService
                     ? "OS起動時の自動起動登録は、Timeline の設定画面と Local API で扱います。インストーラーは同じ登録先を尊重します。"
                     : "OS起動時の自動起動登録は、今後のOS対応で扱います。",
             },
-            new TimelineInstallPlanRegistration
+            BuildUninstallEntry(root, uninstallRegistration),
+        ];
+    }
+
+    private static TimelineInstallPlanRegistration BuildUninstallEntry(
+        string root,
+        TimelineWindowsUninstallRegistrationStatus uninstallRegistration)
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return new TimelineInstallPlanRegistration
             {
                 Id = "uninstall_entry",
                 Name = "OS標準のアンインストール入口",
-                Kind = GetUninstallKind(),
-                Supported = OperatingSystem.IsWindows() || OperatingSystem.IsMacOS(),
+                Kind = uninstallRegistration.Kind,
+                Supported = uninstallRegistration.Supported,
+                Implemented = uninstallRegistration.Supported,
+                Required = true,
+                State = uninstallRegistration.State,
+                CurrentPath = uninstallRegistration.RegistryKeyPath,
+                TargetPath = uninstallRegistration.InstallLocation,
+                CommandLine = uninstallRegistration.UninstallString,
+                Message = uninstallRegistration.Message + " 現時点のUninstallStringは削除実行ではなく、削除対象を確認するuninstall-planを開きます。",
+            };
+        }
+
+        if (OperatingSystem.IsMacOS())
+        {
+            return new TimelineInstallPlanRegistration
+            {
+                Id = "uninstall_entry",
+                Name = "macOSのアプリ削除入口",
+                Kind = "macos-application-removal-guidance",
+                Supported = true,
                 Implemented = false,
                 Required = true,
                 State = "planned",
                 CurrentPath = "",
                 TargetPath = root,
                 CommandLine = "",
-                Message = "削除時はTimelineのアプリ本体とユーザーデータを分けて扱う必要があります。",
-            },
-        ];
+                Message = "macOSでは.app配置とユーザーデータ削除を分けて扱います。削除対象の選択はuninstall-planで整理します。",
+            };
+        }
+
+        return new TimelineInstallPlanRegistration
+        {
+            Id = "uninstall_entry",
+            Name = "OS標準のアンインストール入口",
+            Kind = "os-uninstall-entry",
+            Supported = false,
+            Implemented = false,
+            Required = true,
+            State = "unsupported",
+            CurrentPath = "",
+            TargetPath = root,
+            CommandLine = "",
+            Message = "このOSでのアンインストール入口は、OS別の配布方式で扱います。",
+        };
     }
 
     private static List<TimelineInstallPlanArtifact> BuildArtifactTargets()
@@ -267,21 +312,6 @@ public static class TimelineInstallPlanService
         }
 
         return "os-startup-registration";
-    }
-
-    private static string GetUninstallKind()
-    {
-        if (OperatingSystem.IsWindows())
-        {
-            return "windows-uninstall-registry-entry";
-        }
-
-        if (OperatingSystem.IsMacOS())
-        {
-            return "macos-application-removal-guidance";
-        }
-
-        return "os-uninstall-entry";
     }
 
     private static string GetPlatformName()

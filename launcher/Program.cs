@@ -37,6 +37,9 @@ try
         "shortcut-status" => ShowShortcutStatus(root, options.JsonOutput),
         "shortcut-install" or "install-shortcut" => InstallShortcut(root, options.JsonOutput),
         "shortcut-remove" or "remove-shortcut" => RemoveShortcut(root, options.JsonOutput),
+        "uninstall-registration-status" => ShowUninstallRegistrationStatus(root, options.JsonOutput),
+        "uninstall-registration-install" => InstallUninstallRegistration(root, options.JsonOutput),
+        "uninstall-registration-remove" => RemoveUninstallRegistration(root, options.JsonOutput),
         "help" => ShowHelp(),
         _ => ShowUnknownCommand(command)
     };
@@ -996,6 +999,27 @@ static int RemoveShortcut(string root, bool jsonOutput)
     return status.State.Equals("failed", StringComparison.OrdinalIgnoreCase) ? 1 : 0;
 }
 
+static int ShowUninstallRegistrationStatus(string root, bool jsonOutput)
+{
+    var status = TimelineWindowsUninstallRegistrationService.GetStatus(root);
+    PrintUninstallRegistrationStatus(status, jsonOutput);
+    return status.State.Equals("failed", StringComparison.OrdinalIgnoreCase) ? 1 : 0;
+}
+
+static int InstallUninstallRegistration(string root, bool jsonOutput)
+{
+    var status = TimelineWindowsUninstallRegistrationService.Register(root);
+    PrintUninstallRegistrationStatus(status, jsonOutput);
+    return status.Registered ? 0 : 1;
+}
+
+static int RemoveUninstallRegistration(string root, bool jsonOutput)
+{
+    var status = TimelineWindowsUninstallRegistrationService.Remove(root);
+    PrintUninstallRegistrationStatus(status, jsonOutput);
+    return status.State.Equals("failed", StringComparison.OrdinalIgnoreCase) ? 1 : 0;
+}
+
 static void PrintShortcutStatus(TimelineLauncherShortcutStatus status, bool jsonOutput)
 {
     if (jsonOutput)
@@ -1027,12 +1051,46 @@ static void PrintShortcutStatus(TimelineLauncherShortcutStatus status, bool json
     }
 }
 
+static void PrintUninstallRegistrationStatus(TimelineWindowsUninstallRegistrationStatus status, bool jsonOutput)
+{
+    if (jsonOutput)
+    {
+        Console.WriteLine(JsonSerializer.Serialize(
+            status,
+            new JsonSerializerOptions
+            {
+                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+                WriteIndented = true,
+            }));
+        return;
+    }
+
+    Console.WriteLine("Timeline uninstall registration");
+    Console.WriteLine($"  {status.Message}");
+    Console.WriteLine($"  platform: {status.Platform}");
+    Console.WriteLine($"  state: {status.State}");
+    Console.WriteLine($"  registered: {status.Registered}");
+    Console.WriteLine($"  kind: {status.Kind}");
+    if (!string.IsNullOrWhiteSpace(status.RegistryKeyPath))
+    {
+        Console.WriteLine($"  registry: {status.RegistryKeyPath}");
+    }
+    if (!string.IsNullOrWhiteSpace(status.InstallLocation))
+    {
+        Console.WriteLine($"  install location: {status.InstallLocation}");
+    }
+    if (!string.IsNullOrWhiteSpace(status.UninstallString))
+    {
+        Console.WriteLine($"  uninstall command: {status.UninstallString}");
+    }
+}
+
 static int ShowHelp()
 {
     Console.WriteLine("Timeline Launcher");
     Console.WriteLine();
     Console.WriteLine("Usage:");
-    Console.WriteLine("  TimelineLauncher [open|status|preflight|verify-setup|version|configure-runtime|install-plan|uninstall-plan|update-plan|update-apply-plan|update-recovery-plan|update-validate|start|stop|shortcut-status|shortcut-install|shortcut-remove|help] [--no-open] [--json]");
+    Console.WriteLine("  TimelineLauncher [open|status|preflight|verify-setup|version|configure-runtime|install-plan|uninstall-plan|update-plan|update-apply-plan|update-recovery-plan|update-validate|start|stop|shortcut-status|shortcut-install|shortcut-remove|uninstall-registration-status|uninstall-registration-install|uninstall-registration-remove|help] [--no-open] [--json]");
     Console.WriteLine();
     Console.WriteLine("Commands:");
     Console.WriteLine("  open    Open Timeline. Starts it first when needed.");
@@ -1052,6 +1110,9 @@ static int ShowHelp()
     Console.WriteLine("  shortcut-status   Show the OS app entry status.");
     Console.WriteLine("  shortcut-install  Create or update the OS app entry.");
     Console.WriteLine("  shortcut-remove   Remove the OS app entry.");
+    Console.WriteLine("  uninstall-registration-status   Show the Windows Apps & Features registration status.");
+    Console.WriteLine("  uninstall-registration-install  Register Timeline in Windows Apps & Features.");
+    Console.WriteLine("  uninstall-registration-remove   Remove Timeline from Windows Apps & Features.");
     Console.WriteLine();
     Console.WriteLine("Runtime configuration options:");
     Console.WriteLine("  --web-port <port>              Set Timeline Web port.");

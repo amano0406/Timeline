@@ -12,6 +12,7 @@
     <Compile Include="..\shared\TimelineUninstallPlanService.cs" Link="TimelineUninstallPlanService.cs" />
     <Compile Include="..\shared\TimelineUpdatePlanService.cs" Link="TimelineUpdatePlanService.cs" />
     <Compile Include="..\shared\TimelineVersionService.cs" Link="TimelineVersionService.cs" />
+    <Compile Include="..\shared\TimelineWindowsUninstallRegistrationService.cs" Link="TimelineWindowsUninstallRegistrationService.cs" />
   </ItemGroup>
   <ItemGroup>
     <Content Remove="data\**;logs\**;to_timeline\**;work\**" />
