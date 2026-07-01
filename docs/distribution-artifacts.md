@@ -251,6 +251,29 @@ The runtime status must distinguish:
 This split prevents Timeline from telling a user to update to a source archive
 that cannot be launched as a product.
 
+## Update plan
+
+KAN-57 adds a read-only update plan before file replacement is implemented.
+
+The plan is available from:
+
+```text
+TimelineLauncher update-plan
+GET /timeline/update/plan
+```
+
+The plan is intentionally conservative:
+
+- developer checkouts are blocked from product updater replacement;
+- GitHub source archives are not update targets;
+- `settings.json` and the configured data root are preserved;
+- Docker volumes and sub-product application directories are preserved;
+- the Launcher remains the orchestration owner for stopping, replacing, and
+  verifying Timeline.
+
+Actual replacement work should use this plan as its contract instead of
+deriving update behavior independently.
+
 ## Acceptance notes for KAN-44
 
 KAN-44 can be considered complete when:

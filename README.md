@@ -66,6 +66,18 @@ Structured output is available for update diagnostics:
 dotnet run --project .\launcher\Timeline.Launcher.csproj -- version --json
 ```
 
+Inspect the safe update plan for the Timeline body and Launcher:
+
+```powershell
+dotnet run --project .\launcher\Timeline.Launcher.csproj -- update-plan
+```
+
+Structured output is available for tooling and Jira evidence:
+
+```powershell
+dotnet run --project .\launcher\Timeline.Launcher.csproj -- update-plan --json
+```
+
 Start without opening a browser tab:
 
 ```powershell
@@ -280,6 +292,8 @@ workspace material.
   built artifact startup checks and failure classification.
 - [docs/runtime-prerequisites.md](docs/runtime-prerequisites.md):
   required external runtime environment for product artifacts.
+- [docs/timeline-update-plan.md](docs/timeline-update-plan.md):
+  Timeline body and Launcher update safety model and plan output.
 - [docs/timeline-product-manifest.md](docs/timeline-product-manifest.md):
   sub-product manifest contract.
 - [docs/SUBPRODUCT_JOB_API.md](docs/SUBPRODUCT_JOB_API.md):

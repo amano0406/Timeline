@@ -17,6 +17,7 @@ try
         "preflight" => await ShowPreflight(root, settings, options.JsonOutput),
         "verify-setup" or "verify" => await VerifySetup(root, settings, options.JsonOutput),
         "version" => await ShowVersion(root, options.JsonOutput),
+        "update-plan" => await ShowUpdatePlan(root, options.JsonOutput),
         "start" => await RunStart(root, settings, openBrowser: !options.NoOpen),
         "stop" => await RunStop(root, settings),
         "open" => await OpenOrStart(root, settings),
@@ -333,6 +334,77 @@ static async Task<int> ShowVersion(string root, bool jsonOutput)
         : 1;
 }
 
+static async Task<int> ShowUpdatePlan(string root, bool jsonOutput)
+{
+    var plan = await TimelineUpdatePlanService.GetPlanAsync(root, CancellationToken.None);
+    if (jsonOutput)
+    {
+        Console.WriteLine(JsonSerializer.Serialize(
+            plan,
+            new JsonSerializerOptions
+            {
+                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+                WriteIndented = true,
+            }));
+    }
+    else
+    {
+        Console.WriteLine("Timeline update plan");
+        Console.WriteLine($"  state: {plan.State}");
+        Console.WriteLine($"  can update: {(plan.CanUpdate ? "yes" : "no")}");
+        Console.WriteLine($"  owner: {plan.OperationOwner}");
+        Console.WriteLine($"  mode: {plan.Mode}");
+        Console.WriteLine($"  current: {VersionText(plan.Version.CurrentVersion, plan.Version.CurrentVersionStatus)}");
+        Console.WriteLine($"  latest: {VersionText(plan.Version.LatestVersion, plan.Version.LatestVersionStatus)}");
+        Console.WriteLine($"  artifact: {EmptyText(plan.Version.ArtifactKind)}");
+        if (!string.IsNullOrWhiteSpace(plan.Version.ReleaseArtifactName))
+        {
+            Console.WriteLine($"  release artifact: {plan.Version.ReleaseArtifactName}");
+        }
+        Console.WriteLine();
+
+        PrintUpdateMessages("Blockers", plan.Blockers);
+        PrintUpdateMessages("Warnings", plan.Warnings);
+
+        Console.WriteLine("Preserve:");
+        foreach (var row in plan.Preserve)
+        {
+            Console.WriteLine($"  - {row.Id}: {row.Path}");
+        }
+
+        Console.WriteLine();
+        Console.WriteLine("Replace:");
+        foreach (var row in plan.Replace)
+        {
+            Console.WriteLine($"  - {row.Id}: {row.Path}");
+        }
+
+        Console.WriteLine();
+        Console.WriteLine("Steps:");
+        foreach (var step in plan.Steps.OrderBy(step => step.Order))
+        {
+            Console.WriteLine($"  {step.Order}. {step.Code}: {step.Message}");
+        }
+    }
+
+    return 0;
+}
+
+static void PrintUpdateMessages(string title, IReadOnlyList<TimelineUpdatePlanMessage> messages)
+{
+    if (messages.Count == 0)
+    {
+        return;
+    }
+
+    Console.WriteLine(title + ":");
+    foreach (var message in messages)
+    {
+        Console.WriteLine($"  - {message.Code}: {message.Message}");
+    }
+    Console.WriteLine();
+}
+
 static async Task<int> RunStart(string root, TimelineSettings settings, bool openBrowser)
 {
     Console.WriteLine("Starting Timeline through the C# launcher runtime...");
@@ -390,7 +462,7 @@ static int ShowHelp()
     Console.WriteLine("Timeline Launcher");
     Console.WriteLine();
     Console.WriteLine("Usage:");
-    Console.WriteLine("  TimelineLauncher [open|status|preflight|verify-setup|version|start|stop|shortcut-status|shortcut-install|shortcut-remove|help] [--no-open] [--json]");
+    Console.WriteLine("  TimelineLauncher [open|status|preflight|verify-setup|version|update-plan|start|stop|shortcut-status|shortcut-install|shortcut-remove|help] [--no-open] [--json]");
     Console.WriteLine();
     Console.WriteLine("Commands:");
     Console.WriteLine("  open    Open Timeline. Starts it first when needed.");
@@ -398,6 +470,7 @@ static int ShowHelp()
     Console.WriteLine("  preflight  Check local prerequisites before runtime verification. Use --json for Jira evidence.");
     Console.WriteLine("  verify-setup  Verify that Timeline is usable after setup. Use --json for Jira evidence.");
     Console.WriteLine("  version  Show current Timeline version and latest built artifact status.");
+    Console.WriteLine("  update-plan  Show the safe Timeline body update plan. Use --json for tooling.");
     Console.WriteLine("  start   Start Timeline.");
     Console.WriteLine("  stop    Stop Timeline.");
     Console.WriteLine("  shortcut-status   Show the OS app entry status.");
