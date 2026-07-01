@@ -92,6 +92,10 @@ static async Task<int> ShowPreflight(string root, TimelineSettings settings, boo
     {
         AddWindowsDockerBackendChecks(checks, root);
     }
+    if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+    {
+        AddMacDockerChecks(checks, docker);
+    }
 
     checks.Add(await IsWebReady(settings.WebHealthUrl)
         ? NewOk("Web health", $"{settings.WebHealthUrl} is responding.")
@@ -418,6 +422,25 @@ static void AddWindowsDockerBackendChecks(List<PreflightCheck> checks, string ro
     checks.Add(ReadWindowsHypervisorStatus(root));
 }
 
+static void AddMacDockerChecks(List<PreflightCheck> checks, string resolvedDockerCommand)
+{
+    var dockerAppPath = "/Applications/Docker.app";
+    checks.Add(Directory.Exists(dockerAppPath)
+        ? NewOk("Mac Docker Desktop", $"{dockerAppPath} was found.")
+        : NewWarning("Mac Docker Desktop", "Docker.app was not found in /Applications. Install Docker Desktop or provide a compatible docker CLI."));
+
+    var dockerDesktopCli = "/Applications/Docker.app/Contents/Resources/bin/docker";
+    if (File.Exists(dockerDesktopCli))
+    {
+        checks.Add(NewOk("Mac Docker CLI", dockerDesktopCli));
+        return;
+    }
+
+    checks.Add(string.IsNullOrWhiteSpace(resolvedDockerCommand)
+        ? NewWarning("Mac Docker CLI", "docker command was not found on PATH and Docker Desktop's internal CLI was not found.")
+        : NewOk("Mac Docker CLI", resolvedDockerCommand));
+}
+
 static PreflightCheck ReadWindowsWslStatus(string root)
 {
     var wsl = ResolveWindowsSystemCommand("wsl.exe");
@@ -669,6 +692,15 @@ static string ResolveDockerCommand()
             "resources",
             "bin",
             "docker.exe");
+        if (File.Exists(dockerDesktopCli))
+        {
+            return dockerDesktopCli;
+        }
+    }
+
+    if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+    {
+        var dockerDesktopCli = "/Applications/Docker.app/Contents/Resources/bin/docker";
         if (File.Exists(dockerDesktopCli))
         {
             return dockerDesktopCli;

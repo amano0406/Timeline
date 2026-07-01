@@ -663,6 +663,15 @@ internal static class TimelineDirectRuntime
             }
         }
 
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+        {
+            var dockerDesktopCli = "/Applications/Docker.app/Contents/Resources/bin/docker";
+            if (File.Exists(dockerDesktopCli))
+            {
+                return dockerDesktopCli;
+            }
+        }
+
         var commandName = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "docker.exe" : "docker";
         return ResolveCommand(commandName) ?? string.Empty;
     }
