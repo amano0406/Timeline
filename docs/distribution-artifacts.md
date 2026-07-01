@@ -202,6 +202,11 @@ and data preservation before a destructive or privileged installer flow exists.
 The Web UI can present update or setup choices, but the Launcher is the safer
 owner for operations that stop or replace Timeline itself.
 
+The resident tray/menu-bar Launcher should call the bundled CLI Launcher
+executable directly when it exists. Falling back to `dotnet` plus a DLL or
+source project is acceptable only for a developer checkout. User-facing
+artifacts should not depend on `dotnet run` or source project paths.
+
 ## Relationship to other epics
 
 | Area | Jira | Relationship |

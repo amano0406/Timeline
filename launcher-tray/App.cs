@@ -159,11 +159,14 @@ internal static class TimelineLauncherProcess
 
     private static ProcessStartInfo BuildStartInfo(string root, IReadOnlyList<string> arguments)
     {
+        var launcherExecutable = ResolveLauncherExecutable(root);
         var launcherDll = ResolveLauncherDll(root);
         var launcherProject = Path.Combine(root, "launcher", "Timeline.Launcher.csproj");
         var startInfo = new ProcessStartInfo
         {
-            FileName = ResolveDotnetCommand(),
+            FileName = string.IsNullOrWhiteSpace(launcherExecutable)
+                ? ResolveDotnetCommand()
+                : launcherExecutable,
             WorkingDirectory = root,
             UseShellExecute = false,
             RedirectStandardOutput = true,
@@ -171,11 +174,11 @@ internal static class TimelineLauncherProcess
             CreateNoWindow = RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
         };
 
-        if (!string.IsNullOrWhiteSpace(launcherDll))
+        if (string.IsNullOrWhiteSpace(launcherExecutable) && !string.IsNullOrWhiteSpace(launcherDll))
         {
             startInfo.ArgumentList.Add(launcherDll);
         }
-        else
+        else if (string.IsNullOrWhiteSpace(launcherExecutable))
         {
             startInfo.ArgumentList.Add("run");
             startInfo.ArgumentList.Add("--project");
@@ -215,11 +218,31 @@ internal static class TimelineLauncherProcess
         return Directory.GetCurrentDirectory();
     }
 
+    private static string ResolveLauncherExecutable(string root)
+    {
+        var executableName = RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
+            ? "Timeline.Launcher.exe"
+            : "Timeline.Launcher";
+        var runtimeIdentifier = RuntimeInformation.RuntimeIdentifier;
+        var candidates = new[]
+        {
+            Path.Combine(root, "launcher", executableName),
+            Path.Combine(root, "launcher", "publish", executableName),
+            Path.Combine(root, "launcher", "bin", "Release", "net10.0", executableName),
+            Path.Combine(root, "launcher", "bin", "Debug", "net10.0", executableName),
+            Path.Combine(root, "launcher", "bin", "Release", "net10.0", runtimeIdentifier, "publish", executableName),
+            Path.Combine(root, "launcher", "bin", "Debug", "net10.0", runtimeIdentifier, "publish", executableName),
+        };
+
+        return candidates.FirstOrDefault(File.Exists) ?? string.Empty;
+    }
+
     private static string ResolveLauncherDll(string root)
     {
         var configuration = IsDebugBuild() ? "Debug" : "Release";
         var candidates = new[]
         {
+            Path.Combine(root, "launcher", "Timeline.Launcher.dll"),
             Path.Combine(root, "launcher", "bin", configuration, "net10.0", "Timeline.Launcher.dll"),
             Path.Combine(root, "launcher", "bin", "Release", "net10.0", "Timeline.Launcher.dll"),
             Path.Combine(root, "launcher", "bin", "Debug", "net10.0", "Timeline.Launcher.dll")
