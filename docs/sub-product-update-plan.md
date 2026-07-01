@@ -213,18 +213,15 @@ settings and rollback data are prepared.
 7. Restart the sub-product if it was running before update.
 8. Check product runtime or API health.
 
-## Important gap
+## Remaining gap
 
-The current actual updater still uses `github-source-archive` when the product
-registry is configured that way.
+Built artifact discovery, validation, staging, and guarded application are now
+present in the Local API. The remaining `KAN-40` / `KAN-60` gaps are:
 
-For a complete `KAN-58`, the next implementation should introduce built
-artifact discovery and validation for sub-products, then either disable or
-demote source archive update for normal users.
-
-Artifact discovery and local artifact validation are now present. The remaining
-gap is a UI flow and release-hosted artifacts. The Local API now has validation,
-staging, and a guarded built-artifact application endpoint.
+- release-hosted runtime artifacts for each sub-product;
+- update-plan confirmation that each product reports `builtArtifactStatus=ok`;
+- a user-facing UI flow that prefers built artifacts over source archives;
+- explicit demotion of source archive updates from the normal user path.
 
 See also:
 

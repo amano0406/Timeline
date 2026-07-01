@@ -143,8 +143,10 @@ ZIP, and verifies that:
 
 - the artifact file exists and is not empty;
 - the ZIP has a single product root directory;
-- the product root contains the required `VERSION` file;
+- the product root contains the required `VERSION` and `timeline-product.json`
+  files;
 - `VERSION` matches the manifest product, version, and runtime;
+- `timeline-product.json` matches the manifest product identity;
 - settings, data directories, logs, temp files, nested ZIPs, runtime caches, and
   other excluded paths are not present.
 

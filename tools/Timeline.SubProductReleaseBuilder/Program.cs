@@ -151,6 +151,7 @@ static SubProductArtifactValidationItem ValidateArtifact(SubProductArtifactBuild
     var artifactName = Path.GetFileName(artifactPath);
     var expectedRoot = $"{artifact.ProductName}/";
     var expectedVersionEntry = $"{expectedRoot}VERSION";
+    var expectedProductEntry = $"{expectedRoot}timeline-product.json";
     long sizeBytes = 0;
     var entryCount = 0;
 
@@ -210,6 +211,12 @@ static SubProductArtifactValidationItem ValidateArtifact(SubProductArtifactBuild
                 ValidateVersionEntry(entry, artifact, metadataBlockers, metadataWarnings);
             }
 
+            if (entryName.Equals(expectedProductEntry, StringComparison.Ordinal))
+            {
+                requiredEntries.Add(entryName);
+                ValidateTimelineProductEntry(entry, artifact, metadataBlockers);
+            }
+
             if (IsForbiddenZipEntry(entryName))
             {
                 forbiddenEntries.Add(entryName);
@@ -229,6 +236,11 @@ static SubProductArtifactValidationItem ValidateArtifact(SubProductArtifactBuild
     if (!requiredEntries.Any(entry => entry.Equals(expectedVersionEntry, StringComparison.Ordinal)))
     {
         blockers.Add($"Required VERSION file was not found: {expectedVersionEntry}");
+    }
+
+    if (!requiredEntries.Any(entry => entry.Equals(expectedProductEntry, StringComparison.Ordinal)))
+    {
+        blockers.Add($"Required timeline-product.json file was not found: {expectedProductEntry}");
     }
 
     if (forbiddenEntries.Count > 0)
@@ -259,7 +271,7 @@ static SubProductArtifactValidationItem ValidateArtifact(SubProductArtifactBuild
             sizeBytes,
             entryCount,
             requiredEntries.Count,
-            1,
+            2,
             valid,
             valid ? "ready" : "invalid",
             blockers,
@@ -293,6 +305,25 @@ static void ValidateVersionEntry(
     catch (Exception ex)
     {
         blockers.Add($"VERSION file could not be parsed as JSON: {ex.Message}");
+    }
+}
+
+static void ValidateTimelineProductEntry(
+    ZipArchiveEntry entry,
+    SubProductArtifactBuildResult artifact,
+    List<string> blockers)
+{
+    try
+    {
+        using var stream = entry.Open();
+        using var document = JsonDocument.Parse(stream);
+        var root = document.RootElement;
+        CompareVersionProperty(root, "productId", artifact.ProductId, blockers);
+        CompareVersionProperty(root, "displayName", artifact.ProductName, blockers);
+    }
+    catch (Exception ex)
+    {
+        blockers.Add($"timeline-product.json could not be parsed as JSON: {ex.Message}");
     }
 }
 
