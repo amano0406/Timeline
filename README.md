@@ -49,6 +49,7 @@ batch file, shell script, or `.command` wrapper.
 The same C# projects are intended to run on macOS as well. The macOS resident
 form is the menu-bar equivalent of the Windows tray. Actual packaging,
 signing, notarization, and installer work are tracked separately.
+Use `docs/mac-runtime-verification.md` when validating the Mac runtime path.
 
 Open:
 
