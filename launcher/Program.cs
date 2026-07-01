@@ -1,9 +1,16 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 
 var options = LauncherOptions.Parse(args);
 var root = TimelinePaths.ResolveRoot(options.Root);
+RuntimeConfigurationUpdate? runtimeConfigurationUpdate = null;
+if (options.HasRuntimeConfigurationOverrides)
+{
+    runtimeConfigurationUpdate = ApplyRuntimeConfigurationOverrides(root, options);
+}
+
 var settings = TimelineSettings.Load(root);
 var command = options.Command;
 
@@ -17,6 +24,7 @@ try
         "preflight" => await ShowPreflight(root, settings, options.JsonOutput),
         "verify-setup" or "verify" => await VerifySetup(root, settings, options.JsonOutput),
         "version" => await ShowVersion(root, options.JsonOutput),
+        "configure-runtime" => ShowRuntimeConfiguration(root, settings, runtimeConfigurationUpdate, options.JsonOutput),
         "install-plan" => ShowInstallPlan(root, options.JsonOutput),
         "uninstall-plan" => ShowUninstallPlan(root, options.JsonOutput),
         "update-plan" => await ShowUpdatePlan(root, options.JsonOutput),
@@ -54,6 +62,233 @@ static async Task<int> ShowPreflight(string root, TimelineSettings settings, boo
     }
 
     return exitCode;
+}
+
+static int ShowRuntimeConfiguration(string root, TimelineSettings settings, RuntimeConfigurationUpdate? update, bool jsonOutput)
+{
+    var settingsPath = Path.Combine(root, "settings.json");
+    update ??= new RuntimeConfigurationUpdate(
+        DateTimeOffset.UtcNow,
+        root,
+        settingsPath,
+        false,
+        []);
+
+    if (jsonOutput)
+    {
+        Console.WriteLine(JsonSerializer.Serialize(
+            new RuntimeConfigurationReport(
+                update.GeneratedAt,
+                update.Changed ? "updated" : "unchanged",
+                root,
+                settingsPath,
+                settings.WebUrl,
+                settings.LocalApiHealthUrl,
+                update.Changed,
+                update.Changes),
+            new JsonSerializerOptions
+            {
+                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+                WriteIndented = true,
+            }));
+        return 0;
+    }
+
+    Console.WriteLine("Timeline runtime configuration");
+    Console.WriteLine($"  state: {(update.Changed ? "updated" : "unchanged")}");
+    Console.WriteLine($"  settings: {settingsPath}");
+    Console.WriteLine($"  web: {settings.WebUrl}");
+    Console.WriteLine($"  local api: {settings.LocalApiHealthUrl}");
+    if (update.Changes.Length > 0)
+    {
+        Console.WriteLine();
+        Console.WriteLine("Changes:");
+        foreach (var change in update.Changes)
+        {
+            Console.WriteLine($"  - {change.Path}: {change.Value}");
+        }
+    }
+
+    return 0;
+}
+
+static RuntimeConfigurationUpdate ApplyRuntimeConfigurationOverrides(string root, LauncherOptions options)
+{
+    if (!Directory.Exists(root))
+    {
+        throw new DirectoryNotFoundException($"Timeline root was not found: {root}");
+    }
+
+    var settingsPath = Path.Combine(root, "settings.json");
+    JsonObject settings;
+    if (File.Exists(settingsPath))
+    {
+        settings = JsonNode.Parse(File.ReadAllText(settingsPath)) as JsonObject ?? [];
+    }
+    else
+    {
+        settings = [];
+    }
+
+    var changes = new List<RuntimeConfigurationChange>();
+    var changed = false;
+
+    if (settings["schemaVersion"] is null)
+    {
+        settings["schemaVersion"] = 1;
+        changes.Add(new RuntimeConfigurationChange("schemaVersion", "1"));
+        changed = true;
+    }
+
+    if (settings["runtime"] is not JsonObject runtime)
+    {
+        runtime = [];
+        settings["runtime"] = runtime;
+        changes.Add(new RuntimeConfigurationChange("runtime", "created"));
+        changed = true;
+    }
+
+    if (!string.IsNullOrWhiteSpace(options.DataRoot))
+    {
+        changed |= SetJsonString(settings, "dataRoot", options.DataRoot!, changes);
+    }
+
+    if (!string.IsNullOrWhiteSpace(options.InstanceName))
+    {
+        changed |= SetJsonString(runtime, "instanceName", options.InstanceName!, changes, "runtime.");
+    }
+
+    if (options.WebPort is not null)
+    {
+        changed |= SetJsonInt(runtime, "webPort", options.WebPort.Value, changes, "runtime.");
+    }
+
+    if (options.LocalApiPort is not null)
+    {
+        changed |= SetJsonInt(runtime, "localApiPortStart", options.LocalApiPort.Value, changes, "runtime.");
+        if (options.LocalApiPortEnd is null)
+        {
+            changed |= SetJsonInt(runtime, "localApiPortEnd", options.LocalApiPort.Value, changes, "runtime.");
+        }
+    }
+
+    if (options.LocalApiPortEnd is not null)
+    {
+        changed |= SetJsonInt(runtime, "localApiPortEnd", options.LocalApiPortEnd.Value, changes, "runtime.");
+    }
+
+    if (options.OllamaPort is not null)
+    {
+        changed |= SetJsonInt(runtime, "ollamaPort", options.OllamaPort.Value, changes, "runtime.");
+    }
+
+    if (options.ShareOllamaVolume is not null)
+    {
+        changed |= SetJsonBool(runtime, "shareOllamaVolume", options.ShareOllamaVolume.Value, changes, "runtime.");
+    }
+
+    if (!string.IsNullOrWhiteSpace(options.OllamaVolumeName))
+    {
+        changed |= SetJsonString(runtime, "ollamaVolumeName", options.OllamaVolumeName!, changes, "runtime.");
+    }
+
+    if (changed)
+    {
+        File.WriteAllText(
+            settingsPath,
+            settings.ToJsonString(new JsonSerializerOptions { WriteIndented = true }) + Environment.NewLine);
+    }
+
+    return new RuntimeConfigurationUpdate(
+        DateTimeOffset.UtcNow,
+        root,
+        settingsPath,
+        changed,
+        changes.ToArray());
+}
+
+static bool SetJsonString(JsonObject target, string propertyName, string value, List<RuntimeConfigurationChange> changes, string pathPrefix = "")
+{
+    if (target[propertyName]?.GetValue<string>() == value)
+    {
+        return false;
+    }
+
+    target[propertyName] = value;
+    changes.Add(new RuntimeConfigurationChange($"{pathPrefix}{propertyName}", value));
+    return true;
+}
+
+static bool SetJsonInt(JsonObject target, string propertyName, int value, List<RuntimeConfigurationChange> changes, string pathPrefix = "")
+{
+    if (JsonNodeIntEquals(target[propertyName], value))
+    {
+        return false;
+    }
+
+    target[propertyName] = value;
+    changes.Add(new RuntimeConfigurationChange($"{pathPrefix}{propertyName}", value.ToString(System.Globalization.CultureInfo.InvariantCulture)));
+    return true;
+}
+
+static bool SetJsonBool(JsonObject target, string propertyName, bool value, List<RuntimeConfigurationChange> changes, string pathPrefix = "")
+{
+    if (JsonNodeBoolEquals(target[propertyName], value))
+    {
+        return false;
+    }
+
+    target[propertyName] = value;
+    changes.Add(new RuntimeConfigurationChange($"{pathPrefix}{propertyName}", value ? "true" : "false"));
+    return true;
+}
+
+static bool JsonNodeIntEquals(JsonNode? node, int expected)
+{
+    if (node is null)
+    {
+        return false;
+    }
+
+    try
+    {
+        return node.GetValue<int>() == expected;
+    }
+    catch
+    {
+        try
+        {
+            return int.TryParse(node.GetValue<string>(), out var parsed) && parsed == expected;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+}
+
+static bool JsonNodeBoolEquals(JsonNode? node, bool expected)
+{
+    if (node is null)
+    {
+        return false;
+    }
+
+    try
+    {
+        return node.GetValue<bool>() == expected;
+    }
+    catch
+    {
+        try
+        {
+            return bool.TryParse(node.GetValue<string>(), out var parsed) && parsed == expected;
+        }
+        catch
+        {
+            return false;
+        }
+    }
 }
 
 static async Task<List<PreflightCheck>> BuildPreflightChecks(string root, TimelineSettings settings)
@@ -797,7 +1032,7 @@ static int ShowHelp()
     Console.WriteLine("Timeline Launcher");
     Console.WriteLine();
     Console.WriteLine("Usage:");
-    Console.WriteLine("  TimelineLauncher [open|status|preflight|verify-setup|version|install-plan|uninstall-plan|update-plan|update-apply-plan|update-recovery-plan|update-validate|start|stop|shortcut-status|shortcut-install|shortcut-remove|help] [--no-open] [--json]");
+    Console.WriteLine("  TimelineLauncher [open|status|preflight|verify-setup|version|configure-runtime|install-plan|uninstall-plan|update-plan|update-apply-plan|update-recovery-plan|update-validate|start|stop|shortcut-status|shortcut-install|shortcut-remove|help] [--no-open] [--json]");
     Console.WriteLine();
     Console.WriteLine("Commands:");
     Console.WriteLine("  open    Open Timeline. Starts it first when needed.");
@@ -805,6 +1040,7 @@ static int ShowHelp()
     Console.WriteLine("  preflight  Check local prerequisites before runtime verification. Use --json for Jira evidence.");
     Console.WriteLine("  verify-setup  Verify that Timeline is usable after setup. Use --json for Jira evidence.");
     Console.WriteLine("  version  Show current Timeline version and latest built artifact status.");
+    Console.WriteLine("  configure-runtime  Write explicit runtime ports and instance settings before isolated verification.");
     Console.WriteLine("  install-plan  Show OS registration and installer targets before future installer execution.");
     Console.WriteLine("  uninstall-plan  Show delete levels and preserved data before future uninstall execution.");
     Console.WriteLine("  update-plan  Show the safe Timeline body update plan. Use --json for tooling.");
@@ -816,6 +1052,16 @@ static int ShowHelp()
     Console.WriteLine("  shortcut-status   Show the OS app entry status.");
     Console.WriteLine("  shortcut-install  Create or update the OS app entry.");
     Console.WriteLine("  shortcut-remove   Remove the OS app entry.");
+    Console.WriteLine();
+    Console.WriteLine("Runtime configuration options:");
+    Console.WriteLine("  --web-port <port>              Set Timeline Web port.");
+    Console.WriteLine("  --local-api-port <port>        Set Timeline Local API port.");
+    Console.WriteLine("  --local-api-port-end <port>    Set Local API scan range end. Defaults to --local-api-port when omitted.");
+    Console.WriteLine("  --ollama-port <port>           Set Timeline Ollama port.");
+    Console.WriteLine("  --instance-name <name>         Set Docker compose/resource instance suffix.");
+    Console.WriteLine("  --data-root <path>             Set Timeline data root.");
+    Console.WriteLine("  --share-ollama-volume <bool>   Share or isolate the Ollama volume.");
+    Console.WriteLine("  --ollama-volume-name <name>    Set explicit Ollama volume name.");
     return 0;
 }
 
@@ -1542,12 +1788,43 @@ static void OpenUrl(string url)
     }
 }
 
-internal sealed record LauncherOptions(string? Root, string Command, bool NoOpen, bool JsonOutput, string? ArtifactPath)
+internal sealed record LauncherOptions(
+    string? Root,
+    string Command,
+    bool NoOpen,
+    bool JsonOutput,
+    string? ArtifactPath,
+    int? WebPort,
+    int? LocalApiPort,
+    int? LocalApiPortEnd,
+    int? OllamaPort,
+    string? InstanceName,
+    string? DataRoot,
+    bool? ShareOllamaVolume,
+    string? OllamaVolumeName)
 {
+    public bool HasRuntimeConfigurationOverrides =>
+        WebPort is not null ||
+        LocalApiPort is not null ||
+        LocalApiPortEnd is not null ||
+        OllamaPort is not null ||
+        !string.IsNullOrWhiteSpace(InstanceName) ||
+        !string.IsNullOrWhiteSpace(DataRoot) ||
+        ShareOllamaVolume is not null ||
+        !string.IsNullOrWhiteSpace(OllamaVolumeName);
+
     public static LauncherOptions Parse(string[] args)
     {
         string? root = null;
         string? artifactPath = null;
+        string? instanceName = null;
+        string? dataRoot = null;
+        string? ollamaVolumeName = null;
+        int? webPort = null;
+        int? localApiPort = null;
+        int? localApiPortEnd = null;
+        int? ollamaPort = null;
+        bool? shareOllamaVolume = null;
         var command = "open";
         var noOpen = false;
         var jsonOutput = false;
@@ -1597,10 +1874,120 @@ internal sealed record LauncherOptions(string? Root, string Command, bool NoOpen
                 continue;
             }
 
+            if (TryReadOptionValue(args, ref index, arg, "--web-port", out var webPortValue))
+            {
+                webPort = ParsePort("--web-port", webPortValue);
+                continue;
+            }
+
+            if (TryReadOptionValue(args, ref index, arg, "--local-api-port", out var localApiPortValue))
+            {
+                localApiPort = ParsePort("--local-api-port", localApiPortValue);
+                continue;
+            }
+
+            if (TryReadOptionValue(args, ref index, arg, "--local-api-port-end", out var localApiPortEndValue))
+            {
+                localApiPortEnd = ParsePort("--local-api-port-end", localApiPortEndValue);
+                continue;
+            }
+
+            if (TryReadOptionValue(args, ref index, arg, "--ollama-port", out var ollamaPortValue))
+            {
+                ollamaPort = ParsePort("--ollama-port", ollamaPortValue);
+                continue;
+            }
+
+            if (TryReadOptionValue(args, ref index, arg, "--instance-name", out var instanceNameValue))
+            {
+                instanceName = instanceNameValue;
+                continue;
+            }
+
+            if (TryReadOptionValue(args, ref index, arg, "--data-root", out var dataRootValue))
+            {
+                dataRoot = dataRootValue;
+                continue;
+            }
+
+            if (TryReadOptionValue(args, ref index, arg, "--share-ollama-volume", out var shareOllamaVolumeValue))
+            {
+                shareOllamaVolume = ParseBool("--share-ollama-volume", shareOllamaVolumeValue);
+                continue;
+            }
+
+            if (TryReadOptionValue(args, ref index, arg, "--ollama-volume-name", out var ollamaVolumeNameValue))
+            {
+                ollamaVolumeName = ollamaVolumeNameValue;
+                continue;
+            }
+
             command = arg.Trim().ToLowerInvariant();
         }
 
-        return new LauncherOptions(root, command, noOpen, jsonOutput, artifactPath);
+        return new LauncherOptions(
+            root,
+            command,
+            noOpen,
+            jsonOutput,
+            artifactPath,
+            webPort,
+            localApiPort,
+            localApiPortEnd,
+            ollamaPort,
+            instanceName,
+            dataRoot,
+            shareOllamaVolume,
+            ollamaVolumeName);
+    }
+
+    private static bool TryReadOptionValue(string[] args, ref int index, string arg, string optionName, out string value)
+    {
+        value = "";
+        if (arg.Equals(optionName, StringComparison.OrdinalIgnoreCase) && index + 1 < args.Length)
+        {
+            value = args[++index];
+            return true;
+        }
+
+        var prefix = optionName + "=";
+        if (arg.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+        {
+            value = arg[prefix.Length..];
+            return true;
+        }
+
+        return false;
+    }
+
+    private static int ParsePort(string optionName, string value)
+    {
+        if (int.TryParse(value, out var port) && port is > 0 and <= 65535)
+        {
+            return port;
+        }
+
+        throw new ArgumentException($"{optionName} must be a TCP port number from 1 to 65535.");
+    }
+
+    private static bool ParseBool(string optionName, string value)
+    {
+        if (bool.TryParse(value, out var result))
+        {
+            return result;
+        }
+
+        if (value is "1" or "yes" or "on")
+        {
+            return true;
+        }
+
+        if (value is "0" or "no" or "off")
+        {
+            return false;
+        }
+
+        throw new ArgumentException($"{optionName} must be true or false.");
     }
 }
 
@@ -1677,6 +2064,25 @@ internal sealed record DockerStatus(bool Available, string State, string Message
 internal sealed record ProcessResult(int ExitCode, string Output, string Error);
 
 internal sealed record PreflightCheck(string Severity, string Name, string Message);
+
+internal sealed record RuntimeConfigurationUpdate(
+    DateTimeOffset GeneratedAt,
+    string Root,
+    string SettingsPath,
+    bool Changed,
+    RuntimeConfigurationChange[] Changes);
+
+internal sealed record RuntimeConfigurationChange(string Path, string Value);
+
+internal sealed record RuntimeConfigurationReport(
+    DateTimeOffset GeneratedAt,
+    string State,
+    string Root,
+    string SettingsPath,
+    string WebUrl,
+    string LocalApiHealthUrl,
+    bool Changed,
+    RuntimeConfigurationChange[] Changes);
 
 internal sealed record SetupVerificationCheck(
     string Severity,

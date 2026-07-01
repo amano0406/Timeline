@@ -64,6 +64,7 @@ dotnet run --project tools/Timeline.ReleaseBuilder -- --runtime win-x64 --versio
 Extract the ZIP and run:
 
 ```text
+Timeline\launcher\Timeline.Launcher.exe configure-runtime --root Timeline --instance-name verify-<id> --web-port 19100 --local-api-port 19101 --ollama-port 19102 --share-ollama-volume false --ollama-volume-name timeline-verify-ollama --data-root data-verification --json
 Timeline\launcher\Timeline.Launcher.exe preflight --json --root Timeline
 Timeline\launcher\Timeline.Launcher.exe start --no-open --root Timeline
 ```
@@ -94,6 +95,7 @@ Timeline-macos-arm64-<version>.zip
 After extraction on Mac, run:
 
 ```text
+./Timeline/launcher/Timeline.Launcher configure-runtime --root ./Timeline --instance-name verify-<id> --web-port 19100 --local-api-port 19101 --ollama-port 19102 --share-ollama-volume false --ollama-volume-name timeline-verify-ollama --data-root data-verification --json
 ./Timeline/launcher/Timeline.Launcher preflight --json --root ./Timeline
 ./Timeline/launcher/Timeline.Launcher start --no-open --root ./Timeline
 ```
@@ -177,6 +179,9 @@ As of KAN-47:
 - Full runtime startup from an extracted artifact still needs an isolated
   verification environment or explicit port configuration, because the
   developer machine can already have Timeline running on the default ports.
+- `configure-runtime` is the C# Launcher entry point for that explicit
+  configuration. It writes the artifact-local `settings.json` without requiring
+  `bat`, `sh`, or `command` wrapper scripts.
 
 ## Relationship to Jira epics
 
