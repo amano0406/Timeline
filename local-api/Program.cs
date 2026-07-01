@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 
@@ -1505,6 +1506,45 @@ app.MapPost("/products/runtime/{productId}/update-artifact/stage", async (
     }
 });
 
+app.MapPost("/products/runtime/{productId}/update-artifact/apply", async (
+    HttpContext context,
+    string productId,
+    TimelineProductRuntimeService runtime,
+    CancellationToken cancellationToken) =>
+{
+    try
+    {
+        var request = await ReadOptionalJsonObjectAsync(context.Request, cancellationToken);
+        var artifactPath = ConvertTimelineText(GetString(request, "path", string.Empty));
+        if (string.IsNullOrWhiteSpace(artifactPath))
+        {
+            artifactPath = ConvertTimelineText(context.Request.Query["path"].FirstOrDefault());
+        }
+
+        if (string.IsNullOrWhiteSpace(artifactPath))
+        {
+            return Results.Json(
+                new { message = "Artifact path is required.", ok = false },
+                statusCode: StatusCodes.Status400BadRequest);
+        }
+
+        var operationId = GetString(request, "operationId", string.Empty);
+        var confirm = GetBool(request, "confirm", false);
+        return Results.Json(await runtime.ApplyProductUpdateArtifactAsync(
+            productId,
+            artifactPath,
+            operationId,
+            confirm,
+            cancellationToken));
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(
+            new { message = ex.Message, ok = false },
+            statusCode: StatusCodes.Status500InternalServerError);
+    }
+});
+
 app.MapPost("/products/runtime/{productId}/uninstall-plan", async (
     HttpContext context,
     string productId,
@@ -1794,6 +1834,41 @@ static string GetString(JsonObject? source, string name, string fallback)
     {
         return ConvertTimelineText(node.ToJsonString());
     }
+}
+
+static bool GetBool(JsonObject? source, string name, bool fallback)
+{
+    if (source is null || !source.TryGetPropertyValue(name, out var node) || node is null)
+    {
+        return fallback;
+    }
+
+    try
+    {
+        return node.GetValueKind() switch
+        {
+            JsonValueKind.True => true,
+            JsonValueKind.False => false,
+            JsonValueKind.Number => node.GetValue<int>() != 0,
+            JsonValueKind.String => ConvertBoolText(node.GetValue<string>(), fallback),
+            _ => fallback,
+        };
+    }
+    catch (InvalidOperationException)
+    {
+        return ConvertBoolText(node.ToJsonString(), fallback);
+    }
+}
+
+static bool ConvertBoolText(string? value, bool fallback)
+{
+    var text = ConvertTimelineText(value).ToLowerInvariant();
+    return text switch
+    {
+        "true" or "1" or "yes" or "on" => true,
+        "false" or "0" or "no" or "off" => false,
+        _ => fallback,
+    };
 }
 
 public sealed record TimelineLocalApiOptions(

@@ -123,6 +123,46 @@ This is the safety boundary before actual replacement. It lets Timeline prove
 that the artifact is structurally usable before any destructive update step is
 introduced.
 
+## Built artifact application
+
+The actual application endpoint is intentionally guarded:
+
+```text
+POST http://127.0.0.1:19001/products/runtime/<productId>/update-artifact/apply
+Content-Type: application/json
+
+{
+  "path": "C:\\apps\\Timeline\\release\\sub-products\\TimelineForAudio-win-x64-v0.4.11.zip",
+  "confirm": true
+}
+```
+
+Without `confirm=true`, the endpoint refuses to run. Even with confirmation,
+the updater still blocks if:
+
+- the product is not installed;
+- required runtime files are missing;
+- the product application path is outside Timeline-managed locations;
+- the current product Git worktree has local changes;
+- artifact validation fails;
+- artifact staging fails.
+
+When all checks pass, the updater:
+
+1. stages the artifact;
+2. stops the sub-product only if it was running;
+3. backs up `settings.json`;
+4. moves the current app directory to a rollback path;
+5. moves the staged product root into the app directory;
+6. restores settings;
+7. records the installed artifact version;
+8. restarts the product if it was running before the update.
+
+The current development layout under `C:\apps` is expected to block because
+those product paths are not Timeline-managed install locations. That is
+intentional. Real application requires the installer or product manager to place
+sub-products in a managed app directory first.
+
 ## Preservation rules
 
 Sub-product update must preserve:
@@ -157,8 +197,8 @@ artifact discovery and validation for sub-products, then either disable or
 demote source archive update for normal users.
 
 Artifact discovery and local artifact validation are now present. The remaining
-gap is actual built-artifact replacement execution. Artifact staging is present
-as the non-destructive step immediately before replacement.
+gap is a UI flow and release-hosted artifacts. The Local API now has validation,
+staging, and a guarded built-artifact application endpoint.
 
 See also:
 

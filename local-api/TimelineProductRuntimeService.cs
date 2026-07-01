@@ -773,6 +773,151 @@ public sealed class TimelineProductRuntimeService
             staged);
     }
 
+    public async Task<ProductRuntimeRowResponse> ApplyProductUpdateArtifactAsync(
+        string productId,
+        string artifactPath,
+        string? operationId,
+        bool confirm,
+        CancellationToken cancellationToken)
+    {
+        if (!confirm)
+        {
+            throw new InvalidOperationException("Built artifact update requires confirm=true.");
+        }
+
+        var definition = GetProductDefinition(productId);
+        var status = await ConvertRuntimeStatusAsync(definition, cancellationToken);
+        if (!status.ProductFound)
+        {
+            throw new InvalidOperationException("Product is not installed.");
+        }
+        if (!status.ComposeFound)
+        {
+            throw new InvalidOperationException("Product is incomplete and cannot be updated safely.");
+        }
+
+        var productPath = Path.GetFullPath(definition.ProductPath);
+        AssertProductAppManagedByTimeline(productPath, "Built artifact update");
+        AssertProductPathDeleteSafe(definition.Id, productPath);
+        if (!await TestProductGitWorktreeCleanAsync(productPath, cancellationToken))
+        {
+            throw new InvalidOperationException("Product has local Git changes. Commit or discard them before updating.");
+        }
+
+        var validation = ValidateProductUpdateArtifact(productId, artifactPath);
+        if (!validation.Valid)
+        {
+            var messages = validation.Blockers.Count == 0
+                ? "Artifact validation failed."
+                : string.Join(" ", validation.Blockers.Select(message => message.Message));
+            throw new InvalidOperationException(messages);
+        }
+
+        var stage = StageProductUpdateArtifact(productId, validation.ArtifactPath, operationId);
+        if (!stage.Staged)
+        {
+            var messages = stage.Blockers.Count == 0
+                ? "Artifact staging failed."
+                : string.Join(" ", stage.Blockers.Select(message => message.Message));
+            throw new InvalidOperationException(messages);
+        }
+
+        var wasRunning = status.Running;
+        if (wasRunning)
+        {
+            _ = await StopProductCoreAsync(
+                definition,
+                _operations.NewOperationId("product-update-stop"),
+                cancellationToken);
+            definition = GetProductDefinition(productId);
+            productPath = Path.GetFullPath(definition.ProductPath);
+        }
+
+        var plan = BuildProductUninstallPlan(
+            definition,
+            new JsonObject
+            {
+                ["keepSettings"] = true,
+                ["removeGeneratedData"] = false,
+            });
+        _ = BackupProductSettingsForUninstall(plan);
+
+        WriteRuntimeState(definition.Id, "updating", message: "Updating product from built artifact.");
+        var oldPath = string.Empty;
+        var newInstalled = false;
+        try
+        {
+            var parent = Path.GetDirectoryName(productPath);
+            if (string.IsNullOrEmpty(parent))
+            {
+                throw new InvalidOperationException("Product parent directory could not be resolved.");
+            }
+
+            oldPath = Path.Combine(
+                parent,
+                "." + Path.GetFileName(productPath) + ".timeline-old-"
+                    + DateTime.Now.ToString("yyyyMMddHHmmss")
+                    + "-"
+                    + Guid.NewGuid().ToString("N").Substring(0, 8));
+            Directory.Move(productPath, oldPath);
+            Directory.Move(stage.ExtractedRootPath, productPath);
+            newInstalled = true;
+            AssertProductPathDeleteSafe(definition.Id, productPath);
+            definition = GetProductDefinition(productId);
+            _ = RestoreProductSettingsBackup(definition);
+            WriteProductInstallState(definition.Id, validation.Version, definition.SourceUrl, validation.ArtifactPath);
+            WriteRuntimeState(definition.Id, "stopped", message: "Product updated from built artifact.");
+
+            if (wasRunning)
+            {
+                _ = await StartProductCoreAsync(
+                    definition,
+                    restart: false,
+                    _operations.NewOperationId("product-update-start"),
+                    cancellationToken);
+            }
+
+            TryDeleteDirectory(oldPath);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+        {
+            if (newInstalled && Directory.Exists(productPath))
+            {
+                TryDeleteDirectory(productPath);
+            }
+            if (!string.IsNullOrEmpty(oldPath)
+                && Directory.Exists(oldPath)
+                && !Directory.Exists(productPath))
+            {
+                try
+                {
+                    Directory.Move(oldPath, productPath);
+                }
+                catch (Exception moveEx) when (moveEx is IOException or UnauthorizedAccessException)
+                {
+                }
+            }
+            WriteRuntimeState(definition.Id, "failed", message: ex.Message);
+            throw new InvalidOperationException($"{definition.DisplayName} built artifact update failed: {ex.Message}", ex);
+        }
+        finally
+        {
+            try
+            {
+                if (Directory.Exists(stage.StagingRoot))
+                {
+                    Directory.Delete(stage.StagingRoot, recursive: true);
+                }
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+            }
+        }
+
+        definition = GetProductDefinition(productId);
+        return await ConvertRuntimeStatusAsync(definition, cancellationToken);
+    }
+
     public ProductUninstallPlanResponse GetProductUninstallPlan(
         string productId,
         JsonObject? request)
