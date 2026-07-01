@@ -250,6 +250,8 @@ workspace material.
   maintenance rules for Timeline work.
 - [docs/launcher-runtime-inventory.md](docs/launcher-runtime-inventory.md):
   launcher, Local API, Docker runtime, and worker repair notes.
+- [docs/distribution-artifacts.md](docs/distribution-artifacts.md):
+  user-facing built product artifact rules and release layout.
 - [docs/timeline-product-manifest.md](docs/timeline-product-manifest.md):
   sub-product manifest contract.
 - [docs/SUBPRODUCT_JOB_API.md](docs/SUBPRODUCT_JOB_API.md):

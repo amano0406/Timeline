@@ -1,0 +1,184 @@
+# Timeline user distribution artifacts
+
+This document defines the product-facing distribution artifacts for Timeline.
+It is the reference for KAN-42 and KAN-44.
+
+## Goal
+
+Timeline users should receive built product artifacts, not GitHub source code
+archives.
+
+The normal user path is:
+
+1. Download the artifact for the user's operating system.
+2. Install or extract it using the documented product flow.
+3. Start Timeline through the C# Launcher.
+4. Let the Launcher check runtime prerequisites and start the local services.
+
+Users should not need to clone the repository, download GitHub source archives,
+build .NET projects, run PowerShell scripts, or understand the internal Docker
+Compose structure before they can try Timeline.
+
+## Artifact classes
+
+Timeline now distinguishes three artifact classes.
+
+| Class | Audience | Purpose | User-facing |
+| --- | --- | --- | --- |
+| Source archive | Developers | Reproduce source at a tag | No |
+| Developer checkout | Developers and maintainers | Local development and debugging | No |
+| Built product artifact | Users | Install, launch, and update Timeline | Yes |
+
+GitHub automatically generated source ZIP/TAR files are not product
+distribution artifacts. They can remain available on GitHub, but Timeline must
+not present them as the recommended user download.
+
+## Initial product artifacts
+
+The first user-facing artifact set should be small and explicit.
+
+| Artifact | Target | Purpose |
+| --- | --- | --- |
+| `Timeline-win-x64-<version>.zip` | Windows x64 | Built Timeline product for Windows validation before a full installer exists |
+| `Timeline-macos-arm64-<version>.zip` | macOS Apple Silicon | Built Timeline product for Mac validation before a full installer exists |
+| `Timeline-macos-x64-<version>.zip` | macOS Intel | Built Timeline product for Mac validation if Intel support is kept |
+
+Installer formats such as `.msi`, `.exe`, `.pkg`, or `.dmg` belong to KAN-41.
+They should consume the same built product layout instead of inventing another
+runtime layout.
+
+## Product layout
+
+Each built product artifact should contain one Timeline application root.
+
+```text
+Timeline/
+  launcher/
+  launcher-tray/
+  local-api/
+  web/
+  worker/
+  runtime/
+  docker/
+  docs/
+  THIRD-PARTY-NOTICES.txt
+  VERSION
+```
+
+The names above describe responsibilities, not necessarily final binary names.
+The exact publish output can differ by runtime identifier, but the user-facing
+root should stay predictable.
+
+### Required contents
+
+The artifact must include:
+
+- C# resident Launcher, which is the normal user entry point.
+- C# CLI Launcher, for diagnostics and controlled launcher operations.
+- Timeline Local API runtime.
+- Timeline Web runtime.
+- Timeline Worker runtime.
+- Docker Compose files needed for Timeline-owned containers.
+- Version metadata for the artifact.
+- Minimal user-facing documentation for launch and troubleshooting.
+
+### Excluded contents
+
+The artifact must not include:
+
+- `.git/`
+- source repository history
+- development-only temporary files
+- `docs-temp/`
+- `scripts-temp/`
+- local `data/`
+- local `settings.json`
+- local logs
+- local backups
+- generated Timeline store exports
+- original user source files
+- Node, NuGet, or Docker build caches
+
+Development fallback scripts can remain in the repository, but they should not
+be the user-facing entry point. If they are included temporarily for migration,
+the Launcher remains the documented product entry.
+
+## Runtime data separation
+
+The product artifact is immutable application content. User data is separate.
+
+| Data | Default ownership | Artifact member |
+| --- | --- | --- |
+| Product binaries | Timeline release | Yes |
+| Runtime settings | Local installation | No |
+| User input files | User | No |
+| Timeline generated store | Local installation | No |
+| Sub-product generated data | Local installation / sub-product | No |
+| Logs | Local installation | No |
+| Docker volumes | Docker runtime | No |
+
+This separation is required for safe uninstall, reinstall, and update flows.
+
+## Launcher as the entry point
+
+The built artifact should expose the resident C# Launcher as the normal user
+entry point.
+
+The Launcher owns:
+
+- opening Timeline
+- starting and stopping Timeline runtime services
+- preflight checks
+- OS startup registration
+- recovery guidance
+- future update orchestration
+
+The Web UI can present update or setup choices, but the Launcher is the safer
+owner for operations that stop or replace Timeline itself.
+
+## Relationship to other epics
+
+| Area | Jira | Relationship |
+| --- | --- | --- |
+| Built artifact shape | KAN-42 / KAN-44 | This document is the starting contract |
+| Windows built artifact | KAN-45 | Consumes this layout |
+| Mac built artifact | KAN-46 | Consumes this layout |
+| Launch validation | KAN-47 | Verifies the artifact can start Timeline |
+| OS installer and uninstaller | KAN-41 | Packages this artifact into OS-native install flows |
+| Runtime prerequisites | KAN-43 | Runs after artifact launch or installer bootstrap |
+| Update | KAN-40 | Downloads and swaps artifacts based on this layout |
+
+## Version metadata
+
+Every built artifact should carry product version metadata that can be read
+without starting the full Web app.
+
+Minimum metadata:
+
+```json
+{
+  "productId": "timeline",
+  "version": "0.0.0",
+  "commit": "",
+  "channel": "dev",
+  "runtimeIdentifier": "win-x64",
+  "createdAt": "2026-07-01T00:00:00Z"
+}
+```
+
+The exact file name is not fixed yet. `VERSION` is sufficient for the first
+iteration; a structured JSON manifest can replace or accompany it when update
+implementation starts.
+
+## Acceptance notes for KAN-44
+
+KAN-44 can be considered complete when:
+
+- The repository documents the distinction between source archives and built
+  product artifacts.
+- The initial Windows and Mac artifact names are defined.
+- The product artifact includes Launcher, Local API, Web, Worker, and runtime
+  metadata at a responsibility level.
+- User data and generated data are explicitly excluded from product artifacts.
+- Downstream epics can refer to this document instead of redefining the layout.
+
