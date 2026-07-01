@@ -72,9 +72,19 @@ static async Task<List<PreflightCheck>> BuildPreflightChecks(string root, Timeli
     AddRequiredPathCheck(checks, root, "local-api", requiredKind: "directory");
     AddRequiredPathCheck(checks, root, "web", requiredKind: "directory");
 
-    checks.Add(File.Exists(settingsPath)
-        ? NewOk("settings.json", $"Loaded from {settingsPath}")
-        : NewWarning("settings.json", "settings.json was not found. Default ports will be used."));
+    var versionPath = Path.Combine(root, "VERSION");
+    if (File.Exists(settingsPath))
+    {
+        checks.Add(NewOk("settings.json", $"Loaded from {settingsPath}"));
+    }
+    else if (File.Exists(versionPath))
+    {
+        checks.Add(NewInfo("settings.json", "settings.json was not found. This is expected before first startup of a built product artifact; default ports will be used until settings are created."));
+    }
+    else
+    {
+        checks.Add(NewWarning("settings.json", "settings.json was not found. Default ports will be used."));
+    }
 
     checks.Add(NewInfo("Configured Web", settings.WebUrl));
     checks.Add(NewInfo("Configured Local API", settings.LocalApiHealthUrl));

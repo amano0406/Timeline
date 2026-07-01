@@ -41,6 +41,11 @@ Built product artifacts currently do require:
 - usable host ports
 - enough disk space for Docker images, volumes, and generated stores
 
+Before first startup, a built product artifact may not have `settings.json` yet.
+That is not a runtime prerequisite failure. The Launcher should treat it as an
+initial-state fact, use default ports for diagnostics, and let startup create
+the local settings file.
+
 ## Core prerequisites
 
 | Dependency | Class | Windows | Mac | Notes |
