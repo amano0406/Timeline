@@ -151,6 +151,9 @@ The plan includes:
 
 This endpoint exists so the UI and Launcher can show the user why an update can
 or cannot start before calling the destructive `apply` endpoint.
+The UI may call this read-only endpoint even for development placements such as
+`C:\apps\TimelineForAudio`. In that case the plan should show the placement
+blocker instead of hiding the diagnosis itself.
 
 ## Built artifact staging
 

@@ -16,7 +16,6 @@ public partial class ProductManagementModal
     private bool CanRequestUpdatePlan(ProductRuntimeRow product) =>
         IsInstalled(product)
         && product.SupportedOnCurrentOperatingSystem
-        && product.AppManagedByTimeline
         && _actionProductId is null
         && !IsBusy(product)
         && !IsUpdatePlanLoading(product);
