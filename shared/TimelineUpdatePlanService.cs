@@ -352,6 +352,45 @@ public static class TimelineUpdatePlanService
         };
     }
 
+    public static async Task<TimelineUpdateApplyPlanResponse> GetApplyPlanAsync(
+        string timelineRoot,
+        string? artifactPath,
+        CancellationToken cancellationToken)
+    {
+        var recovery = await GetRecoveryPlanAsync(timelineRoot, artifactPath, cancellationToken);
+        var artifactSelected = recovery.ArtifactValidation is not null;
+        var artifactValid = recovery.ArtifactValidation?.Valid == true;
+        return new TimelineUpdateApplyPlanResponse
+        {
+            ProductId = recovery.ProductId,
+            ProductName = recovery.ProductName,
+            State = recovery.State,
+            CanApply = recovery.CanPrepareRollback && artifactSelected && artifactValid,
+            RequiresConfirmation = true,
+            ConfirmationParameter = "confirm",
+            OperationOwner = recovery.OperationOwner,
+            Mode = "read_only_apply_plan",
+            TimelineRoot = recovery.TimelineRoot,
+            DataRoot = recovery.DataRoot,
+            OperationId = recovery.OperationId,
+            StagingRoot = recovery.StagingRoot,
+            RollbackRoot = recovery.RollbackRoot,
+            AppBackupRoot = recovery.AppBackupRoot,
+            OperationLogPath = recovery.OperationLogPath,
+            DataLossPolicy = recovery.DataLossPolicy,
+            BackupRetention = recovery.BackupRetention,
+            UpdatePlanState = recovery.UpdatePlanState,
+            ArtifactValidation = recovery.ArtifactValidation,
+            Preserve = recovery.Preserve,
+            BackupItems = recovery.BackupItems,
+            FailurePolicies = recovery.FailurePolicies,
+            Steps = recovery.RecoverySteps,
+            Blockers = recovery.Blockers,
+            Warnings = recovery.Warnings,
+            GeneratedAt = recovery.GeneratedAt,
+        };
+    }
+
     private static List<TimelineUpdatePathPlan> BuildPreservePlan(string root, string dataRoot)
     {
         return
@@ -983,6 +1022,87 @@ public sealed class TimelineUpdateRecoveryPlanResponse
 
     [JsonPropertyName("recoverySteps")]
     public List<TimelineUpdateStepPlan> RecoverySteps { get; set; } = [];
+
+    [JsonPropertyName("blockers")]
+    public List<TimelineUpdatePlanMessage> Blockers { get; set; } = [];
+
+    [JsonPropertyName("warnings")]
+    public List<TimelineUpdatePlanMessage> Warnings { get; set; } = [];
+
+    [JsonPropertyName("generatedAt")]
+    public string GeneratedAt { get; set; } = "";
+}
+
+public sealed class TimelineUpdateApplyPlanResponse
+{
+    [JsonPropertyName("productId")]
+    public string ProductId { get; set; } = "";
+
+    [JsonPropertyName("productName")]
+    public string ProductName { get; set; } = "";
+
+    [JsonPropertyName("state")]
+    public string State { get; set; } = "";
+
+    [JsonPropertyName("canApply")]
+    public bool CanApply { get; set; }
+
+    [JsonPropertyName("requiresConfirmation")]
+    public bool RequiresConfirmation { get; set; }
+
+    [JsonPropertyName("confirmationParameter")]
+    public string ConfirmationParameter { get; set; } = "";
+
+    [JsonPropertyName("operationOwner")]
+    public string OperationOwner { get; set; } = "";
+
+    [JsonPropertyName("mode")]
+    public string Mode { get; set; } = "";
+
+    [JsonPropertyName("timelineRoot")]
+    public string TimelineRoot { get; set; } = "";
+
+    [JsonPropertyName("dataRoot")]
+    public string DataRoot { get; set; } = "";
+
+    [JsonPropertyName("operationId")]
+    public string OperationId { get; set; } = "";
+
+    [JsonPropertyName("stagingRoot")]
+    public string StagingRoot { get; set; } = "";
+
+    [JsonPropertyName("rollbackRoot")]
+    public string RollbackRoot { get; set; } = "";
+
+    [JsonPropertyName("appBackupRoot")]
+    public string AppBackupRoot { get; set; } = "";
+
+    [JsonPropertyName("operationLogPath")]
+    public string OperationLogPath { get; set; } = "";
+
+    [JsonPropertyName("dataLossPolicy")]
+    public string DataLossPolicy { get; set; } = "";
+
+    [JsonPropertyName("backupRetention")]
+    public string BackupRetention { get; set; } = "";
+
+    [JsonPropertyName("updatePlanState")]
+    public string UpdatePlanState { get; set; } = "";
+
+    [JsonPropertyName("artifactValidation")]
+    public TimelineUpdateArtifactValidationResponse? ArtifactValidation { get; set; }
+
+    [JsonPropertyName("preserve")]
+    public List<TimelineUpdatePathPlan> Preserve { get; set; } = [];
+
+    [JsonPropertyName("backupItems")]
+    public List<TimelineUpdateBackupItemPlan> BackupItems { get; set; } = [];
+
+    [JsonPropertyName("failurePolicies")]
+    public List<TimelineUpdateFailurePolicy> FailurePolicies { get; set; } = [];
+
+    [JsonPropertyName("steps")]
+    public List<TimelineUpdateStepPlan> Steps { get; set; } = [];
 
     [JsonPropertyName("blockers")]
     public List<TimelineUpdatePlanMessage> Blockers { get; set; } = [];

@@ -27,6 +27,14 @@ dotnet run --project .\launcher\Timeline.Launcher.csproj -- update-plan
 dotnet run --project .\launcher\Timeline.Launcher.csproj -- update-plan --json
 ```
 
+Before applying a downloaded artifact, the Launcher can show a read-only apply
+plan:
+
+```powershell
+dotnet run --project .\launcher\Timeline.Launcher.csproj -- update-apply-plan --artifact <zip-path>
+dotnet run --project .\launcher\Timeline.Launcher.csproj -- update-apply-plan --artifact <zip-path> --json
+```
+
 Downloaded artifacts can be validated without applying an update:
 
 ```powershell
@@ -47,12 +55,18 @@ dotnet run --project .\launcher\Timeline.Launcher.csproj -- update-recovery-plan
 GET http://127.0.0.1:19001/timeline/update/plan
 GET http://127.0.0.1:19001/timeline/update/recovery/plan
 GET http://127.0.0.1:19001/timeline/update/recovery/plan?path=<zip-path>
+GET http://127.0.0.1:19001/timeline/update/artifact/apply-plan?path=<zip-path>
 GET http://127.0.0.1:19001/timeline/update/artifact/validate?path=<zip-path>
 ```
 
 The Local API endpoint returns the same plan model as the Launcher command.
 The Launcher remains the owner of update orchestration because it can stop and
 restart Timeline more safely than the Web UI.
+
+`update-apply-plan` is the user-facing decision point. It combines the general
+update plan, artifact validation, rollback locations, and failure policy into a
+single read-only response with `canApply`. `update-recovery-plan` remains the
+lower-level failure recovery policy.
 
 ## States
 

@@ -121,6 +121,18 @@ app.MapGet("/timeline/update/recovery/plan", async (
         cancellationToken));
 });
 
+app.MapGet("/timeline/update/artifact/apply-plan", async (
+    string? path,
+    TimelineLocalApiOptions options,
+    CancellationToken cancellationToken) =>
+{
+    var artifactPath = ConvertTimelineText(path);
+    return TypedResults.Json(await TimelineUpdatePlanService.GetApplyPlanAsync(
+        options.TimelineProductPath,
+        string.IsNullOrWhiteSpace(artifactPath) ? null : artifactPath,
+        cancellationToken));
+});
+
 app.MapGet("/timeline/update/artifact/validate", (
     string? path,
     TimelineLocalApiOptions options) =>
