@@ -94,6 +94,35 @@ The validator checks:
 
 Validation does not stop products, modify files, or apply an update.
 
+## Built artifact staging
+
+After validation, a local artifact can be staged before replacement:
+
+```text
+POST http://127.0.0.1:19001/products/runtime/<productId>/update-artifact/stage
+Content-Type: application/json
+
+{
+  "path": "C:\\apps\\Timeline\\release\\sub-products\\TimelineForAudio-win-x64-v0.4.11.zip"
+}
+```
+
+The staging endpoint:
+
+- runs the same artifact validation first;
+- refuses to extract invalid artifacts;
+- extracts only into Timeline's work directory:
+  `work/product-updates/<operationId>/artifact/<ProductName>`;
+- returns the staged root path, validation result, preserved paths, replacement
+  target, and remaining update steps;
+- does not stop the product;
+- does not replace the installed product directory;
+- does not change settings, source files, generated data, or Docker resources.
+
+This is the safety boundary before actual replacement. It lets Timeline prove
+that the artifact is structurally usable before any destructive update step is
+introduced.
+
 ## Preservation rules
 
 Sub-product update must preserve:
@@ -128,7 +157,8 @@ artifact discovery and validation for sub-products, then either disable or
 demote source archive update for normal users.
 
 Artifact discovery and local artifact validation are now present. The remaining
-gap is actual built-artifact replacement execution.
+gap is actual built-artifact replacement execution. Artifact staging is present
+as the non-destructive step immediately before replacement.
 
 See also:
 

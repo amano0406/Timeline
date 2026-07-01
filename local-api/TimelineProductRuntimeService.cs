@@ -674,6 +674,105 @@ public sealed class TimelineProductRuntimeService
             artifactRuntime);
     }
 
+    public ProductUpdateArtifactStageResponse StageProductUpdateArtifact(
+        string productId,
+        string artifactPath,
+        string? operationId)
+    {
+        var definition = GetProductDefinition(productId);
+        var validation = ValidateProductUpdateArtifact(productId, artifactPath);
+        var blockers = validation.Blockers
+            .Select(message => NewProductUpdateMessage(message.Code, message.Message))
+            .ToList();
+        var warnings = validation.Warnings
+            .Select(message => NewProductUpdateMessage(message.Code, message.Message))
+            .ToList();
+        var normalizedOperationId = GetProductUpdateOperationId(definition.Id, operationId);
+        var stagingRoot = Path.GetFullPath(Path.Combine(
+            _settings.GetWorkDirectory(),
+            "product-updates",
+            normalizedOperationId,
+            "artifact"));
+        var extractedRootPath = string.IsNullOrWhiteSpace(validation.ArtifactRootPrefix)
+            ? string.Empty
+            : Path.Combine(stagingRoot, validation.ArtifactRootPrefix.TrimEnd('/', '\\'));
+
+        if (!validation.Valid)
+        {
+            return NewProductUpdateArtifactStageResponse(
+                definition,
+                validation,
+                normalizedOperationId,
+                stagingRoot,
+                extractedRootPath,
+                blockers,
+                warnings,
+                staged: false);
+        }
+
+        if (Directory.Exists(stagingRoot) || File.Exists(stagingRoot))
+        {
+            blockers.Add(NewProductUpdateMessage(
+                "staging_path_exists",
+                $"Staging path already exists: {stagingRoot}"));
+            return NewProductUpdateArtifactStageResponse(
+                definition,
+                validation,
+                normalizedOperationId,
+                stagingRoot,
+                extractedRootPath,
+                blockers,
+                warnings,
+                staged: false);
+        }
+
+        try
+        {
+            Directory.CreateDirectory(stagingRoot);
+            ExtractProductUpdateArtifact(validation.ArtifactPath, validation.ArtifactRootPrefix, stagingRoot);
+        }
+        catch (Exception ex)
+        {
+            try
+            {
+                if (Directory.Exists(stagingRoot))
+                {
+                    Directory.Delete(stagingRoot, recursive: true);
+                }
+            }
+            catch (Exception cleanupEx) when (cleanupEx is IOException or UnauthorizedAccessException)
+            {
+                warnings.Add(NewProductUpdateMessage(
+                    "staging_cleanup_failed",
+                    $"Failed staging directory could not be removed. {cleanupEx.Message}"));
+            }
+
+            blockers.Add(NewProductUpdateMessage(
+                "staging_failed",
+                $"Artifact could not be staged. {ex.Message}"));
+        }
+
+        var staged = blockers.Count == 0
+            && Directory.Exists(extractedRootPath)
+            && File.Exists(Path.Combine(extractedRootPath, "VERSION"));
+        if (!staged && blockers.Count == 0)
+        {
+            blockers.Add(NewProductUpdateMessage(
+                "staging_incomplete",
+                "Artifact was extracted, but the staged product root or VERSION file was not found."));
+        }
+
+        return NewProductUpdateArtifactStageResponse(
+            definition,
+            validation,
+            normalizedOperationId,
+            stagingRoot,
+            extractedRootPath,
+            blockers,
+            warnings,
+            staged);
+    }
+
     public ProductUninstallPlanResponse GetProductUninstallPlan(
         string productId,
         JsonObject? request)
@@ -1340,12 +1439,13 @@ public sealed class TimelineProductRuntimeService
         [
             NewProductUpdateStep(1, "resolve_latest", "Resolve the latest distributable version for the sub-product."),
             NewProductUpdateStep(2, "validate_artifact", "Validate the artifact before changing local files."),
-            NewProductUpdateStep(3, "stop", "Stop the sub-product only if it is currently running."),
-            NewProductUpdateStep(4, "backup", "Back up settings and current application files before replacement."),
-            NewProductUpdateStep(5, "replace", "Replace the sub-product application directory."),
-            NewProductUpdateStep(6, "restore_settings", "Restore product settings after replacement."),
-            NewProductUpdateStep(7, "start", "Restart the sub-product if it was running before update."),
-            NewProductUpdateStep(8, "health", "Check product runtime or API health after update."),
+            NewProductUpdateStep(3, "stage_artifact", "Extract the validated artifact into a Timeline work directory."),
+            NewProductUpdateStep(4, "stop", "Stop the sub-product only if it is currently running."),
+            NewProductUpdateStep(5, "backup", "Back up settings and current application files before replacement."),
+            NewProductUpdateStep(6, "replace", "Replace the sub-product application directory."),
+            NewProductUpdateStep(7, "restore_settings", "Restore product settings after replacement."),
+            NewProductUpdateStep(8, "start", "Restart the sub-product if it was running before update."),
+            NewProductUpdateStep(9, "health", "Check product runtime or API health after update."),
         ];
     }
 
@@ -1403,6 +1503,109 @@ public sealed class TimelineProductRuntimeService
             Warnings = warnings,
             CheckedAt = DateTimeOffset.UtcNow.ToString("O"),
         };
+    }
+
+    private ProductUpdateArtifactStageResponse NewProductUpdateArtifactStageResponse(
+        ProductRuntimeDefinition definition,
+        ProductUpdateArtifactValidationResponse validation,
+        string operationId,
+        string stagingRoot,
+        string extractedRootPath,
+        List<ProductUpdatePlanMessageResponse> blockers,
+        List<ProductUpdatePlanMessageResponse> warnings,
+        bool staged)
+    {
+        return new ProductUpdateArtifactStageResponse
+        {
+            ProductId = definition.Id,
+            DisplayName = definition.DisplayName,
+            OperationId = operationId,
+            ArtifactPath = validation.ArtifactPath,
+            ArtifactRootPrefix = validation.ArtifactRootPrefix,
+            StagingRoot = stagingRoot,
+            ExtractedRootPath = extractedRootPath,
+            State = staged && blockers.Count == 0 ? "staged" : "blocked",
+            Staged = staged && blockers.Count == 0,
+            Validation = validation,
+            Preserve = BuildProductUpdatePreservePlan(definition),
+            Replace = BuildProductUpdateReplacePlan(Path.GetFullPath(definition.ProductPath)),
+            NextSteps = BuildProductUpdateSteps()
+                .Where(step => step.Order >= 4)
+                .Select(step => NewProductUpdateStep(step.Order, step.Code, step.Message))
+                .ToList(),
+            Blockers = blockers,
+            Warnings = warnings,
+            StagedAt = DateTimeOffset.UtcNow.ToString("O"),
+        };
+    }
+
+    private static void ExtractProductUpdateArtifact(
+        string artifactPath,
+        string artifactRootPrefix,
+        string stagingRoot)
+    {
+        if (string.IsNullOrWhiteSpace(artifactRootPrefix))
+        {
+            throw new InvalidOperationException("Artifact root prefix is empty.");
+        }
+
+        var normalizedRootPrefix = artifactRootPrefix.Replace('\\', '/');
+        if (!normalizedRootPrefix.EndsWith('/'))
+        {
+            normalizedRootPrefix += "/";
+        }
+
+        var fullStagingRoot = Path.GetFullPath(stagingRoot);
+        using var archive = ZipFile.OpenRead(artifactPath);
+        foreach (var entry in archive.Entries)
+        {
+            var entryName = entry.FullName.Replace('\\', '/');
+            if (string.IsNullOrWhiteSpace(entryName) ||
+                !entryName.StartsWith(normalizedRootPrefix, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var relativePath = entryName[normalizedRootPrefix.Length..];
+            if (string.IsNullOrWhiteSpace(relativePath))
+            {
+                continue;
+            }
+
+            var destinationPath = Path.GetFullPath(Path.Combine(
+                fullStagingRoot,
+                normalizedRootPrefix.TrimEnd('/'),
+                relativePath.Replace('/', Path.DirectorySeparatorChar)));
+            if (!IsPathUnderRoot(destinationPath, fullStagingRoot))
+            {
+                throw new InvalidDataException($"Artifact entry escapes staging root: {entry.FullName}");
+            }
+
+            if (entryName.EndsWith('/'))
+            {
+                Directory.CreateDirectory(destinationPath);
+                continue;
+            }
+
+            var destinationDirectory = Path.GetDirectoryName(destinationPath);
+            if (!string.IsNullOrWhiteSpace(destinationDirectory))
+            {
+                Directory.CreateDirectory(destinationDirectory);
+            }
+
+            entry.ExtractToFile(destinationPath);
+        }
+    }
+
+    private static string GetProductUpdateOperationId(string productId, string? requested)
+    {
+        var value = string.IsNullOrWhiteSpace(requested)
+            ? $"sub-product-update-{productId}-{DateTimeOffset.UtcNow:yyyyMMddHHmmss}-{Guid.NewGuid():N}"
+            : requested;
+        value = Regex.Replace(value, "[^A-Za-z0-9_.-]+", "-").Trim('-', '.', '_');
+        return string.IsNullOrWhiteSpace(value)
+            ? $"sub-product-update-{productId}-{Guid.NewGuid():N}"
+            : value;
     }
 
     private static ProductUpdatePathPlanResponse NewProductUpdatePath(
@@ -4334,6 +4537,57 @@ public sealed class ProductUpdateArtifactValidationResponse
 
     [JsonPropertyName("checkedAt")]
     public string CheckedAt { get; set; } = "";
+}
+
+public sealed class ProductUpdateArtifactStageResponse
+{
+    [JsonPropertyName("productId")]
+    public string ProductId { get; set; } = "";
+
+    [JsonPropertyName("displayName")]
+    public string DisplayName { get; set; } = "";
+
+    [JsonPropertyName("operationId")]
+    public string OperationId { get; set; } = "";
+
+    [JsonPropertyName("artifactPath")]
+    public string ArtifactPath { get; set; } = "";
+
+    [JsonPropertyName("artifactRootPrefix")]
+    public string ArtifactRootPrefix { get; set; } = "";
+
+    [JsonPropertyName("stagingRoot")]
+    public string StagingRoot { get; set; } = "";
+
+    [JsonPropertyName("extractedRootPath")]
+    public string ExtractedRootPath { get; set; } = "";
+
+    [JsonPropertyName("state")]
+    public string State { get; set; } = "";
+
+    [JsonPropertyName("staged")]
+    public bool Staged { get; set; }
+
+    [JsonPropertyName("validation")]
+    public ProductUpdateArtifactValidationResponse Validation { get; set; } = new();
+
+    [JsonPropertyName("preserve")]
+    public List<ProductUpdatePathPlanResponse> Preserve { get; set; } = [];
+
+    [JsonPropertyName("replace")]
+    public List<ProductUpdatePathPlanResponse> Replace { get; set; } = [];
+
+    [JsonPropertyName("nextSteps")]
+    public List<ProductUpdateStepPlanResponse> NextSteps { get; set; } = [];
+
+    [JsonPropertyName("blockers")]
+    public List<ProductUpdatePlanMessageResponse> Blockers { get; set; } = [];
+
+    [JsonPropertyName("warnings")]
+    public List<ProductUpdatePlanMessageResponse> Warnings { get; set; } = [];
+
+    [JsonPropertyName("stagedAt")]
+    public string StagedAt { get; set; } = "";
 }
 
 public sealed class ProductUpdateArtifactEntryCheckResponse

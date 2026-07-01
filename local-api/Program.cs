@@ -1472,6 +1472,39 @@ app.MapGet("/products/runtime/{productId}/update-artifact/validate", (
     }
 });
 
+app.MapPost("/products/runtime/{productId}/update-artifact/stage", async (
+    HttpContext context,
+    string productId,
+    TimelineProductRuntimeService runtime,
+    CancellationToken cancellationToken) =>
+{
+    try
+    {
+        var request = await ReadOptionalJsonObjectAsync(context.Request, cancellationToken);
+        var artifactPath = ConvertTimelineText(GetString(request, "path", string.Empty));
+        if (string.IsNullOrWhiteSpace(artifactPath))
+        {
+            artifactPath = ConvertTimelineText(context.Request.Query["path"].FirstOrDefault());
+        }
+
+        if (string.IsNullOrWhiteSpace(artifactPath))
+        {
+            return Results.Json(
+                new { message = "Artifact path is required.", ok = false },
+                statusCode: StatusCodes.Status400BadRequest);
+        }
+
+        var operationId = GetString(request, "operationId", string.Empty);
+        return Results.Json(runtime.StageProductUpdateArtifact(productId, artifactPath, operationId));
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(
+            new { message = ex.Message, ok = false },
+            statusCode: StatusCodes.Status500InternalServerError);
+    }
+});
+
 app.MapPost("/products/runtime/{productId}/uninstall-plan", async (
     HttpContext context,
     string productId,
@@ -1744,6 +1777,23 @@ static async Task<JsonObject> ReadOptionalJsonObjectAsync(
     }
 
     return await request.ReadFromJsonAsync<JsonObject>(cancellationToken) ?? new JsonObject();
+}
+
+static string GetString(JsonObject? source, string name, string fallback)
+{
+    if (source is null || !source.TryGetPropertyValue(name, out var node) || node is null)
+    {
+        return fallback;
+    }
+
+    try
+    {
+        return ConvertTimelineText(node.GetValue<string>());
+    }
+    catch (InvalidOperationException)
+    {
+        return ConvertTimelineText(node.ToJsonString());
+    }
 }
 
 public sealed record TimelineLocalApiOptions(
