@@ -254,6 +254,8 @@ workspace material.
   user-facing built product artifact rules and release layout.
 - [docs/product-artifact-verification.md](docs/product-artifact-verification.md):
   built artifact startup checks and failure classification.
+- [docs/runtime-prerequisites.md](docs/runtime-prerequisites.md):
+  required external runtime environment for product artifacts.
 - [docs/timeline-product-manifest.md](docs/timeline-product-manifest.md):
   sub-product manifest contract.
 - [docs/SUBPRODUCT_JOB_API.md](docs/SUBPRODUCT_JOB_API.md):
