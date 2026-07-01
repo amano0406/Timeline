@@ -24,6 +24,7 @@ public sealed class ProductRuntimeRow
     public string LatestVersion { get; set; } = "";
     public string LatestVersionStatus { get; set; } = "";
     public bool UpdateAvailable { get; set; }
+    public bool SourceArchiveUpdateAvailable { get; set; }
     public string ReleaseArchiveUrl { get; set; } = "";
     public bool SettingsBackupAvailable { get; set; }
     public string SettingsBackupPath { get; set; } = "";

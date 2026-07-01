@@ -212,121 +212,8 @@ public sealed class TimelineProductRuntimeService
             throw new InvalidOperationException("Product is incomplete and cannot be updated safely.");
         }
 
-        var productPath = Path.GetFullPath(definition.ProductPath);
-        AssertProductAppManagedByTimeline(productPath, "Update");
-        AssertProductPathDeleteSafe(definition.Id, productPath);
-        if (!await TestProductGitWorktreeCleanAsync(productPath, cancellationToken))
-        {
-            throw new InvalidOperationException("Product has local Git changes. Commit or discard them before updating.");
-        }
-
-        var source = await GetProductSourceInfoAsync(definition, cancellationToken);
-        var installedVersion = await GetProductInstalledVersionAsync(definition, cancellationToken);
-        if (!string.IsNullOrEmpty(installedVersion)
-            && CompareVersionText(installedVersion, source.LatestVersion) >= 0)
-        {
-            return status;
-        }
-
-        var wasRunning = status.Running;
-        if (wasRunning)
-        {
-            _ = await StopProductCoreAsync(
-                definition,
-                _operations.NewOperationId("product-update-stop"),
-                cancellationToken);
-            definition = GetProductDefinition(productId);
-            productPath = Path.GetFullPath(definition.ProductPath);
-        }
-
-        var plan = BuildProductUninstallPlan(
-            definition,
-            new JsonObject
-            {
-                ["keepSettings"] = true,
-                ["removeGeneratedData"] = false,
-            });
-        _ = BackupProductSettingsForUninstall(plan);
-
-        WriteRuntimeState(definition.Id, "updating", message: "Updating product.");
-        ProductSourceArchiveStage? stage = null;
-        var oldPath = string.Empty;
-        var newInstalled = false;
-        try
-        {
-            stage = await NewProductSourceArchiveStageAsync(definition, cancellationToken);
-            var parent = Path.GetDirectoryName(productPath);
-            if (string.IsNullOrEmpty(parent))
-            {
-                throw new InvalidOperationException("Product parent directory could not be resolved.");
-            }
-
-            oldPath = Path.Combine(
-                parent,
-                "." + Path.GetFileName(productPath) + ".timeline-old-"
-                    + DateTime.Now.ToString("yyyyMMddHHmmss")
-                    + "-"
-                    + Guid.NewGuid().ToString("N").Substring(0, 8));
-            Directory.Move(productPath, oldPath);
-            Directory.Move(stage.SourceRoot, productPath);
-            newInstalled = true;
-            AssertProductPathDeleteSafe(definition.Id, productPath);
-            definition = GetProductDefinition(productId);
-            _ = RestoreProductSettingsBackup(definition);
-            WriteProductInstallState(definition.Id, stage.LatestVersion, stage.SourceUrl, stage.ArchiveUrl);
-            WriteRuntimeState(definition.Id, "stopped", message: "Product updated.");
-
-            if (wasRunning)
-            {
-                _ = await StartProductCoreAsync(
-                    definition,
-                    restart: false,
-                    _operations.NewOperationId("product-update-start"),
-                    cancellationToken);
-            }
-
-            if (!string.IsNullOrEmpty(oldPath) && Directory.Exists(oldPath))
-            {
-                Directory.Delete(oldPath, recursive: true);
-            }
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
-        {
-            if (newInstalled && Directory.Exists(productPath))
-            {
-                TryDeleteDirectory(productPath);
-            }
-            if (!string.IsNullOrEmpty(oldPath)
-                && Directory.Exists(oldPath)
-                && !Directory.Exists(productPath))
-            {
-                try
-                {
-                    Directory.Move(oldPath, productPath);
-                }
-                catch (Exception moveEx) when (moveEx is IOException or UnauthorizedAccessException)
-                {
-                }
-            }
-            WriteRuntimeState(definition.Id, "failed", message: ex.Message);
-            throw new InvalidOperationException($"{definition.DisplayName} update failed: {ex.Message}", ex);
-        }
-        finally
-        {
-            try
-            {
-                if (stage is not null && Directory.Exists(stage.StageRoot))
-                {
-                    Directory.Delete(stage.StageRoot, recursive: true);
-                }
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-            {
-            }
-        }
-
-        definition = GetProductDefinition(productId);
-        return await ConvertRuntimeStatusAsync(definition, cancellationToken);
+        throw new InvalidOperationException(
+            "Source archive product updates are disabled. Use a built product artifact update flow.");
     }
 
     public async Task<ProductUpdatePlanResponse> GetProductUpdatePlanAsync(
@@ -429,12 +316,12 @@ public sealed class TimelineProductRuntimeService
                 "Product source URL is not configured."));
         }
 
-        var updateAvailable = source is not null
+        var sourceVersionUpdateAvailable = source is not null
             && (string.IsNullOrEmpty(installedVersion) || CompareVersionText(installedVersion, source.LatestVersion) < 0);
         var builtArtifactUpdateAvailable = builtArtifact is not null
             && builtArtifact.Status.Equals("ok", StringComparison.OrdinalIgnoreCase)
             && (string.IsNullOrEmpty(installedVersion) || CompareVersionText(installedVersion, builtArtifact.LatestVersion) < 0);
-        var sourceArchiveUpdateAvailable = updateAvailable && IsGitHubSourceArchive(definition.SourceType);
+        var sourceArchiveUpdateAvailable = sourceVersionUpdateAvailable && IsGitHubSourceArchive(definition.SourceType);
         if (sourceArchiveUpdateAvailable && !builtArtifactUpdateAvailable)
         {
             warnings.Add(NewProductUpdateMessage(
@@ -464,7 +351,7 @@ public sealed class TimelineProductRuntimeService
             InstalledVersion = installedVersion,
             LatestVersion = source?.LatestVersion ?? string.Empty,
             ArchiveUrl = source?.ArchiveUrl ?? string.Empty,
-            UpdateAvailable = updateAvailable,
+            UpdateAvailable = builtArtifactUpdateAvailable,
             SourceArchiveUpdateAvailable = sourceArchiveUpdateAvailable,
             BuiltArtifactStatus = builtArtifact?.Status ?? string.Empty,
             BuiltArtifactMessage = builtArtifact?.Message ?? string.Empty,
@@ -3541,7 +3428,8 @@ public sealed class TimelineProductRuntimeService
             InstalledVersion = versionInfo.InstalledVersion,
             LatestVersion = versionInfo.LatestVersion,
             LatestVersionStatus = versionInfo.LatestVersionStatus,
-            UpdateAvailable = versionInfo.UpdateAvailable,
+            UpdateAvailable = false,
+            SourceArchiveUpdateAvailable = versionInfo.SourceArchiveUpdateAvailable,
             ReleaseArchiveUrl = versionInfo.ReleaseArchiveUrl,
             SettingsBackupAvailable = settingsBackup.Exists,
             SettingsBackupPath = settingsBackup.Path,
@@ -3677,14 +3565,15 @@ public sealed class TimelineProductRuntimeService
             latestStatus = ex.Message;
         }
 
-        var updateAvailable = false;
+        var sourceArchiveUpdateAvailable = false;
         if (productFound && !string.IsNullOrEmpty(latestVersion))
         {
-            updateAvailable = string.IsNullOrEmpty(installedVersion)
-                || CompareVersionText(installedVersion, latestVersion) < 0;
+            sourceArchiveUpdateAvailable = IsGitHubSourceArchive(definition.SourceType)
+                && (string.IsNullOrEmpty(installedVersion)
+                    || CompareVersionText(installedVersion, latestVersion) < 0);
         }
 
-        return new ProductVersionInfo(installedVersion, latestVersion, latestStatus, updateAvailable, archiveUrl);
+        return new ProductVersionInfo(installedVersion, latestVersion, latestStatus, sourceArchiveUpdateAvailable, archiveUrl);
     }
 
     private async Task<string> GetProductInstalledVersionAsync(
@@ -4462,7 +4351,7 @@ public sealed class TimelineProductRuntimeService
         string InstalledVersion,
         string LatestVersion,
         string LatestVersionStatus,
-        bool UpdateAvailable,
+        bool SourceArchiveUpdateAvailable,
         string ReleaseArchiveUrl);
 
     private sealed record ProductSourceInfo(
@@ -4561,6 +4450,9 @@ public sealed class ProductRuntimeRowResponse
 
     [JsonPropertyName("updateAvailable")]
     public bool UpdateAvailable { get; set; }
+
+    [JsonPropertyName("sourceArchiveUpdateAvailable")]
+    public bool SourceArchiveUpdateAvailable { get; set; }
 
     [JsonPropertyName("releaseArchiveUrl")]
     public string ReleaseArchiveUrl { get; set; } = "";

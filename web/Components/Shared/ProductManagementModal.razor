@@ -220,6 +220,14 @@
                                         <span>更新</span>
                                     </button>
                                 }
+                                else if (product.SourceArchiveUpdateAvailable)
+                                {
+                                    <span class="tfa-status-pill border-amber-200 bg-amber-50 text-amber-900"
+                                          title="GitHub source archive には新しい版がありますが、通常更新にはビルド済み成果物が必要です。">
+                                        <FaIcon Name="circle-info" Class="tfa-icon !h-3 !w-3" />
+                                        <span>配布成果物待ち</span>
+                                    </span>
+                                }
                                 else if (!string.IsNullOrWhiteSpace(product.LatestVersion))
                                 {
                                     <span class="tfa-status-pill border-slate-200 bg-slate-50 text-slate-700">

@@ -85,6 +85,12 @@ update path. `sourceArchiveUpdateAvailable=true` may still be returned as
 diagnostic information, but `canUseCurrentUpdater=false` keeps the old source
 archive updater out of the normal update flow.
 
+The product runtime overview follows the same rule. Its `updateAvailable`
+field is reserved for a normal safe update path, not for a newer source archive.
+When only a newer source archive exists, the overview can expose
+`sourceArchiveUpdateAvailable=true` so the UI can show that a built artifact is
+still required.
+
 ## Built artifact validation
 
 Downloaded or locally generated artifacts can be validated before update:
