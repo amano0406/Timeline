@@ -169,6 +169,35 @@ release tag, existing asset names, and a suggested `gh release create` or
 `gh release upload` command. The suggested command is an execution aid only;
 publishing still requires explicit release approval.
 
+## Publish preflight
+
+Before running the publishing command, run a read-only preflight check:
+
+```powershell
+dotnet run --project .\tools\Timeline.SubProductReleaseBuilder\Timeline.SubProductReleaseBuilder.csproj -- `
+  --publish-preflight `
+  --runtime win-x64 `
+  --output release\sub-products `
+  --github-owner amano0406
+```
+
+The preflight reads `sub-product-artifacts-<runtime>.json` and checks:
+
+- whether `GITHUB_TOKEN` or `GH_TOKEN` is present;
+- whether GitHub API rate-limit information can be read;
+- whether the token can identify the authenticated GitHub user;
+- whether each target sub-product repository can be read.
+
+It writes:
+
+```text
+sub-product-release-publish-preflight-<runtime>.json
+```
+
+This command is read-only. It does not create releases, upload assets, delete
+assets, or change repository settings. `canPublish=true` means the local
+preconditions look ready; it does not replace explicit release approval.
+
 ## Publish execution
 
 Publishing is available as an explicit operation, but it is guarded because it

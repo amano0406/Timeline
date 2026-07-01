@@ -10,6 +10,12 @@ using System.Text.RegularExpressions;
 
 var options = ReleaseOptions.Parse(args);
 
+if (options.WritePublishPreflight)
+{
+    await WritePublishPreflightAsync(options);
+    return;
+}
+
 if (options.PublishReleaseArtifacts)
 {
     await PublishReleaseArtifactsAsync(options);
@@ -84,6 +90,182 @@ static async Task WritePublishPlanAsync(ReleaseOptions options)
     Console.WriteLine($"  Missing releases: {plan.ReleaseMissingCount}");
     Console.WriteLine($"  Release check failed: {plan.ReleaseCheckFailedCount}");
     Console.WriteLine($"  Artifacts not created: {plan.ArtifactNotCreatedCount}");
+}
+
+static async Task WritePublishPreflightAsync(ReleaseOptions options)
+{
+    var outputRoot = Path.GetFullPath(options.OutputDirectory);
+    var runtimeName = ToArtifactRuntimeName(options.RuntimeIdentifier);
+    var (manifest, manifestPath) = await ReadArtifactManifestAsync(options, outputRoot, runtimeName);
+
+    using var client = new HttpClient();
+    client.DefaultRequestHeaders.UserAgent.ParseAdd("Timeline-SubProductReleaseBuilder");
+    client.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json");
+    ApplyGitHubAuthenticationIfAvailable(client, options);
+
+    var tokenSource = ResolveGitHubTokenSource(options);
+    var tokenPresent = !string.IsNullOrWhiteSpace(tokenSource);
+    var rateLimit = await ReadGitHubApiAsync(client, "https://api.github.com/rate_limit");
+    var rateLimitState = rateLimit.Success ? "ok" : "failed";
+    int? rateLimitLimit = null;
+    int? rateLimitRemaining = null;
+    string rateLimitResetAt = string.Empty;
+    if (rateLimit.Success)
+    {
+        using var document = JsonDocument.Parse(rateLimit.Body);
+        if (document.RootElement.TryGetProperty("resources", out var resources) &&
+            resources.TryGetProperty("core", out var core))
+        {
+            rateLimitLimit = TryReadIntProperty(core, "limit");
+            rateLimitRemaining = TryReadIntProperty(core, "remaining");
+            var reset = TryReadIntProperty(core, "reset");
+            if (reset is not null)
+            {
+                rateLimitResetAt = DateTimeOffset.FromUnixTimeSeconds(reset.Value).ToString("O", CultureInfo.InvariantCulture);
+            }
+        }
+    }
+
+    var userState = tokenPresent ? "unchecked" : "skipped_no_token";
+    var userLogin = string.Empty;
+    var userMessage = tokenPresent
+        ? "GitHub token is present, but the authenticated user was not checked yet."
+        : "GitHub token was not found. Publishing cannot run until a token is supplied.";
+    if (tokenPresent)
+    {
+        var userResult = await ReadGitHubApiAsync(client, "https://api.github.com/user");
+        if (userResult.Success)
+        {
+            using var document = JsonDocument.Parse(userResult.Body);
+            userLogin = document.RootElement.TryGetProperty("login", out var loginElement)
+                ? loginElement.GetString() ?? string.Empty
+                : string.Empty;
+            userState = "ok";
+            userMessage = string.IsNullOrWhiteSpace(userLogin)
+                ? "GitHub token is valid, but the login name was not returned."
+                : $"GitHub token is valid for {userLogin}.";
+        }
+        else
+        {
+            userState = "failed";
+            userMessage = userResult.Message;
+        }
+    }
+
+    var items = new List<SubProductPublishPreflightItem>();
+    var skipRepositoryChecksBecauseRateLimited = !tokenPresent && rateLimitRemaining is not null and <= 0;
+    foreach (var artifact in manifest.Artifacts)
+    {
+        if (!artifact.State.Equals("created", StringComparison.OrdinalIgnoreCase))
+        {
+            items.Add(new SubProductPublishPreflightItem(
+                artifact.ProductId,
+                artifact.ProductName,
+                artifact.Version,
+                artifact.RuntimeName,
+                Path.GetFileName(artifact.ArtifactPath),
+                $"https://github.com/{options.GitHubOwner}/{artifact.ProductName}",
+                "skipped_artifact_not_created",
+                0,
+                artifact.Message));
+            continue;
+        }
+
+        if (skipRepositoryChecksBecauseRateLimited)
+        {
+            items.Add(new SubProductPublishPreflightItem(
+                artifact.ProductId,
+                artifact.ProductName,
+                artifact.Version,
+                artifact.RuntimeName,
+                Path.GetFileName(artifact.ArtifactPath),
+                $"https://github.com/{options.GitHubOwner}/{artifact.ProductName}",
+                "skipped_rate_limited",
+                rateLimit.StatusCode,
+                "Repository checks were skipped because the unauthenticated GitHub API rate limit is exhausted. Set GITHUB_TOKEN or GH_TOKEN."));
+            continue;
+        }
+
+        var repoUrl = $"https://api.github.com/repos/{options.GitHubOwner}/{artifact.ProductName}";
+        var repoResult = await ReadGitHubApiAsync(client, repoUrl);
+        var state = repoResult.Success
+            ? "ok"
+            : repoResult.StatusCode == (int)HttpStatusCode.NotFound
+                ? "repo_not_found"
+                : "failed";
+        var message = state switch
+        {
+            "ok" => "Repository can be read.",
+            "repo_not_found" => "Repository was not found or the token cannot access it.",
+            _ => repoResult.Message,
+        };
+
+        items.Add(new SubProductPublishPreflightItem(
+            artifact.ProductId,
+            artifact.ProductName,
+            artifact.Version,
+            artifact.RuntimeName,
+            Path.GetFileName(artifact.ArtifactPath),
+            $"https://github.com/{options.GitHubOwner}/{artifact.ProductName}",
+            state,
+            repoResult.StatusCode,
+            message));
+    }
+
+    var repoFailureCount = items.Count(item => item.State is not "ok" and not "skipped_artifact_not_created" and not "skipped_rate_limited");
+    var artifactNotCreatedCount = items.Count(item => item.State.Equals("skipped_artifact_not_created", StringComparison.OrdinalIgnoreCase));
+    var canPublish = tokenPresent &&
+        rateLimitState.Equals("ok", StringComparison.OrdinalIgnoreCase) &&
+        userState.Equals("ok", StringComparison.OrdinalIgnoreCase) &&
+        repoFailureCount == 0 &&
+        artifactNotCreatedCount == 0;
+    var messageSummary = canPublish
+        ? "Publish prerequisites look ready. External publishing still requires explicit approval and --confirm-publish."
+        : "Publish prerequisites are not complete. Resolve token, API, repository, or artifact issues before publishing.";
+
+    var result = new SubProductPublishPreflightResult(
+        "timeline_sub_product_release_publish_preflight",
+        options.GitHubOwner,
+        manifest.RuntimeIdentifier,
+        manifest.RuntimeName,
+        manifestPath,
+        DateTimeOffset.UtcNow.ToString("O", CultureInfo.InvariantCulture),
+        options.GitHubTokenEnvironmentVariable,
+        tokenSource,
+        tokenPresent,
+        rateLimitState,
+        rateLimit.StatusCode,
+        rateLimit.Message,
+        rateLimitLimit,
+        rateLimitRemaining,
+        rateLimitResetAt,
+        userState,
+        userLogin,
+        userMessage,
+        canPublish,
+        messageSummary,
+        items.Count,
+        items.Count(item => item.State.Equals("ok", StringComparison.OrdinalIgnoreCase)),
+        repoFailureCount,
+        artifactNotCreatedCount,
+        items);
+
+    Directory.CreateDirectory(outputRoot);
+    var resultPath = Path.Combine(outputRoot, $"sub-product-release-publish-preflight-{runtimeName}.json");
+    await File.WriteAllTextAsync(
+        resultPath,
+        JsonSerializer.Serialize(result, new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true }) + Environment.NewLine);
+
+    Console.WriteLine("Sub-product release publish preflight created.");
+    Console.WriteLine($"  Runtime: {result.RuntimeIdentifier}");
+    Console.WriteLine($"  Manifest: {result.ManifestPath}");
+    Console.WriteLine($"  Result: {resultPath}");
+    Console.WriteLine($"  Token present: {result.TokenPresent}");
+    Console.WriteLine($"  API: {result.RateLimitState}");
+    Console.WriteLine($"  User: {result.AuthenticatedUserState}");
+    Console.WriteLine($"  Repositories OK: {result.RepositoryOkCount}");
+    Console.WriteLine($"  Repository failures: {result.RepositoryFailureCount}");
+    Console.WriteLine($"  Can publish: {result.CanPublish}");
 }
 
 static async Task PublishReleaseArtifactsAsync(ReleaseOptions options)
@@ -319,6 +501,16 @@ static string ResolveGitHubToken(ReleaseOptions options)
     return Environment.GetEnvironmentVariable("GH_TOKEN") ?? string.Empty;
 }
 
+static string ResolveGitHubTokenSource(ReleaseOptions options)
+{
+    if (!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(options.GitHubTokenEnvironmentVariable)))
+    {
+        return options.GitHubTokenEnvironmentVariable;
+    }
+
+    return string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("GH_TOKEN")) ? string.Empty : "GH_TOKEN";
+}
+
 static void ApplyGitHubAuthenticationIfAvailable(HttpClient client, ReleaseOptions options)
 {
     var token = ResolveGitHubToken(options);
@@ -453,6 +645,41 @@ static async Task<GitHubReleaseReadResult> ReadReleaseAsync(HttpClient client, s
     {
         return new GitHubReleaseReadResult(false, string.Empty, [], string.Empty, ex.Message);
     }
+}
+
+static async Task<GitHubApiReadResult> ReadGitHubApiAsync(HttpClient client, string url)
+{
+    try
+    {
+        using var response = await client.GetAsync(url);
+        var responseText = await response.Content.ReadAsStringAsync();
+        if (!response.IsSuccessStatusCode)
+        {
+            return new GitHubApiReadResult(
+                false,
+                (int)response.StatusCode,
+                responseText,
+                $"HTTP {(int)response.StatusCode} {response.ReasonPhrase}".Trim());
+        }
+
+        return new GitHubApiReadResult(true, (int)response.StatusCode, responseText, "OK");
+    }
+    catch (Exception ex)
+    {
+        return new GitHubApiReadResult(false, 0, string.Empty, ex.Message);
+    }
+}
+
+static int? TryReadIntProperty(JsonElement element, string name)
+{
+    if (!element.TryGetProperty(name, out var value))
+    {
+        return null;
+    }
+
+    return value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out var number)
+        ? number
+        : null;
 }
 
 static async Task<SubProductArtifactBuildResult> BuildArtifactAsync(ReleaseOptions options)
@@ -781,6 +1008,7 @@ internal sealed record ReleaseOptions(
     string ProductsRoot,
     string ManifestName,
     bool WritePublishPlan,
+    bool WritePublishPreflight,
     bool PublishReleaseArtifacts,
     bool ConfirmPublish,
     string GitHubOwner,
@@ -799,6 +1027,7 @@ internal sealed record ReleaseOptions(
         var productsRoot = Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), ".."));
         var manifestName = string.Empty;
         var writePublishPlan = false;
+        var writePublishPreflight = false;
         var publishReleaseArtifacts = false;
         var confirmPublish = false;
         var gitHubOwner = "amano0406";
@@ -816,6 +1045,12 @@ internal sealed record ReleaseOptions(
             if (arg.Equals("--publish-plan", StringComparison.OrdinalIgnoreCase))
             {
                 writePublishPlan = true;
+                continue;
+            }
+
+            if (arg.Equals("--publish-preflight", StringComparison.OrdinalIgnoreCase))
+            {
+                writePublishPreflight = true;
                 continue;
             }
 
@@ -851,7 +1086,7 @@ internal sealed record ReleaseOptions(
             throw new ArgumentException($"Unknown argument: {arg}");
         }
 
-        if (!buildAll && !writePublishPlan && !publishReleaseArtifacts && string.IsNullOrWhiteSpace(productRoot))
+        if (!buildAll && !writePublishPlan && !writePublishPreflight && !publishReleaseArtifacts && string.IsNullOrWhiteSpace(productRoot))
         {
             throw new ArgumentException("Product root is required. Use --repo <path>.");
         }
@@ -868,6 +1103,7 @@ internal sealed record ReleaseOptions(
             productsRoot,
             manifestName,
             writePublishPlan,
+            writePublishPreflight,
             publishReleaseArtifacts,
             confirmPublish,
             gitHubOwner,
@@ -1026,6 +1262,50 @@ internal sealed record GitHubReleaseMutationResult(
     bool Success,
     string UploadUrl,
     string ReleaseUrl,
+    string Message);
+
+internal sealed record GitHubApiReadResult(
+    bool Success,
+    int StatusCode,
+    string Body,
+    string Message);
+
+internal sealed record SubProductPublishPreflightResult(
+    string ArtifactType,
+    string GitHubOwner,
+    string RuntimeIdentifier,
+    string RuntimeName,
+    string ManifestPath,
+    string CreatedAt,
+    string PrimaryTokenEnvironmentVariable,
+    string TokenSource,
+    bool TokenPresent,
+    string RateLimitState,
+    int RateLimitStatusCode,
+    string RateLimitMessage,
+    int? RateLimitLimit,
+    int? RateLimitRemaining,
+    string RateLimitResetAt,
+    string AuthenticatedUserState,
+    string AuthenticatedUserLogin,
+    string AuthenticatedUserMessage,
+    bool CanPublish,
+    string Message,
+    int TotalCount,
+    int RepositoryOkCount,
+    int RepositoryFailureCount,
+    int ArtifactNotCreatedCount,
+    List<SubProductPublishPreflightItem> Items);
+
+internal sealed record SubProductPublishPreflightItem(
+    string ProductId,
+    string ProductName,
+    string Version,
+    string RuntimeName,
+    string ArtifactName,
+    string RepositoryUrl,
+    string State,
+    int StatusCode,
     string Message);
 
 internal sealed record SubProductPublishRunResult(
