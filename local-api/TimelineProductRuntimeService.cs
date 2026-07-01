@@ -295,6 +295,7 @@ public sealed class TimelineProductRuntimeService
             try
             {
                 builtArtifact = await GetLatestProductReleaseArtifactAsync(definition, cancellationToken);
+                builtArtifact = NormalizeProductReleaseArtifactState(source, builtArtifact);
                 if (!builtArtifact.Status.Equals("ok", StringComparison.OrdinalIgnoreCase))
                 {
                     warnings.Add(NewProductUpdateMessage(
@@ -373,6 +374,41 @@ public sealed class TimelineProductRuntimeService
             Warnings = warnings,
             GeneratedAt = DateTimeOffset.UtcNow.ToString("O"),
         };
+    }
+
+    private static ProductReleaseArtifactInfo NormalizeProductReleaseArtifactState(
+        ProductSourceInfo? source,
+        ProductReleaseArtifactInfo artifact)
+    {
+        if (source is null || string.IsNullOrWhiteSpace(source.LatestVersion))
+        {
+            return artifact;
+        }
+
+        var status = ConvertTimelineText(artifact.Status);
+        if (status.Equals("no_release", StringComparison.OrdinalIgnoreCase))
+        {
+            return artifact with
+            {
+                Status = "release_missing",
+                Message = $"A source tag {source.LatestVersion} exists, but no GitHub Release was found. Publish a Release for that tag and attach a built product artifact for {artifact.RuntimeName}."
+            };
+        }
+
+        if (status.Equals("asset_missing", StringComparison.OrdinalIgnoreCase)
+            && !string.IsNullOrWhiteSpace(artifact.LatestVersion)
+            && CompareVersionText(artifact.LatestVersion, source.LatestVersion) < 0)
+        {
+            return artifact with
+            {
+                Status = "release_missing",
+                LatestVersion = source.LatestVersion,
+                ReleaseUrl = string.Empty,
+                Message = $"A source tag {source.LatestVersion} exists, but the latest GitHub Release is {artifact.LatestVersion}. Publish a Release for {source.LatestVersion} and attach a built product artifact for {artifact.RuntimeName}."
+            };
+        }
+
+        return artifact;
     }
 
     public ProductUpdateArtifactValidationResponse ValidateProductUpdateArtifact(

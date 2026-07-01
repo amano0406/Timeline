@@ -85,6 +85,17 @@ update path. `sourceArchiveUpdateAvailable=true` may still be returned as
 diagnostic information, but `canUseCurrentUpdater=false` keeps the old source
 archive updater out of the normal update flow.
 
+The plan distinguishes two missing-artifact cases:
+
+- `release_missing`: a newer source tag exists, but the matching GitHub Release
+  for that tag has not been published yet.
+- `asset_missing`: the relevant GitHub Release exists, but it does not contain
+  the runtime ZIP expected by Timeline.
+
+This distinction matters operationally. `release_missing` means the next action
+is to publish the Release for the tag; `asset_missing` means the Release exists
+and only the built runtime ZIP needs to be attached or corrected.
+
 The product runtime overview follows the same rule. Its `updateAvailable`
 field is reserved for a normal safe update path, not for a newer source archive.
 When only a newer source archive exists, the overview can expose
