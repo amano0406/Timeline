@@ -182,6 +182,19 @@ As of KAN-47:
 - `configure-runtime` is the C# Launcher entry point for that explicit
   configuration. It writes the artifact-local `settings.json` without requiring
   `bat`, `sh`, or `command` wrapper scripts.
+- `Timeline-win-x64-0.0.0-kan47-runtime-config-3b10152.zip` was created and
+  extracted into an isolated verification root.
+- The bundled Launcher wrote an artifact-local verification `settings.json` for
+  `instanceName=verify-3b10152`, Web `19200`, Local API `19201`, and Ollama
+  `19202`.
+- `Timeline\launcher\Timeline.Launcher.exe start --no-open --root Timeline`
+  completed from the extracted artifact. Docker Compose started `web`,
+  `worker`, and `ollama` under project `timeline-verify-3b10152`.
+- Post-start preflight returned `state=ok`, `errorCount=0`, and
+  `warningCount=0`; Web health and Local API health both responded.
+- `verify-setup` returned `needs_attention` only because sub-products are
+  `not_installed` in the fresh artifact data root. This is a setup coverage
+  item, not a built artifact failure.
 
 ## Relationship to Jira epics
 
