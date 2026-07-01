@@ -63,6 +63,12 @@ executable exists, startup registration points directly to it. Development
 checkout fallback can still use the DLL or project path, but user-facing
 artifacts should not require the .NET SDK or source project execution.
 
+Startup status checks must compare the existing OS registration with the
+expected Launcher command. If a registration exists but points to an old script,
+project path, or different executable, the UI should show it as an update target
+instead of treating it as fully healthy. Saving the startup setting is the
+repair path; status checks do not rewrite OS settings by themselves.
+
 ## Installer boundary
 
 The install plan is not the installer.

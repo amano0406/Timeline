@@ -62,17 +62,21 @@ public sealed class TimelineStartupRegistrationService
     {
         var command = GetWindowsRunValue();
         var legacyScript = GetLegacyWindowsStartupScriptPath();
-        var target = string.IsNullOrWhiteSpace(command) ? BuildLauncherCommandLine().DisplayText : command;
+        var expectedCommand = BuildLauncherCommandLine();
+        var target = string.IsNullOrWhiteSpace(command) ? expectedCommand.DisplayText : command;
 
         if (!string.IsNullOrWhiteSpace(command))
         {
+            var targetMatches = StartupCommandMatches(command, expectedCommand.CommandLine);
             return NewStatus(
                 supported: true,
                 registered: true,
-                state: "registered",
+                state: targetMatches ? "registered" : "registered_with_different_target",
                 kind: "windows-run",
                 target: target,
-                message: "OS起動時にTimeline Launcherを起動する設定が登録されています。");
+                message: targetMatches
+                    ? "OS起動時にTimeline Launcherを起動する設定が登録されています。"
+                    : "OS起動時の自動起動登録はありますが、起動先が現在のC# Launcher構成と異なります。設定を保存し直すとC# Launcherの登録へ更新します。");
         }
 
         if (File.Exists(legacyScript))
@@ -308,6 +312,15 @@ public sealed class TimelineStartupRegistrationService
 
         return commandName;
     }
+
+    private static bool StartupCommandMatches(string actualCommandLine, string expectedCommandLine)
+        => string.Equals(
+            NormalizeCommandLine(actualCommandLine),
+            NormalizeCommandLine(expectedCommandLine),
+            StringComparison.OrdinalIgnoreCase);
+
+    private static string NormalizeCommandLine(string value)
+        => value.Trim();
 
     private static string BuildMacLaunchAgentPlist(IReadOnlyList<string> arguments)
     {

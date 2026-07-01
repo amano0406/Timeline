@@ -931,6 +931,14 @@ else
             {
                 return "確認できません";
             }
+            if (status.State.Equals("legacy_registered", StringComparison.OrdinalIgnoreCase))
+            {
+                return "旧方式";
+            }
+            if (status.State.Equals("registered_with_different_target", StringComparison.OrdinalIgnoreCase))
+            {
+                return "更新が必要";
+            }
 
             return status.Registered ? "OS側に登録済み" : "OS側には未登録";
         }
@@ -944,6 +952,11 @@ else
             if (!status.Supported || status.State.Equals("failed", StringComparison.OrdinalIgnoreCase))
             {
                 return "triangle-exclamation";
+            }
+            if (status.State.Equals("legacy_registered", StringComparison.OrdinalIgnoreCase)
+                || status.State.Equals("registered_with_different_target", StringComparison.OrdinalIgnoreCase))
+            {
+                return "circle-exclamation";
             }
 
             return status.Registered ? "circle-check" : "circle-minus";
@@ -962,6 +975,11 @@ else
             if (status.State.Equals("failed", StringComparison.OrdinalIgnoreCase))
             {
                 return "tfa-status-pill border-red-200 bg-red-50 text-red-800";
+            }
+            if (status.State.Equals("legacy_registered", StringComparison.OrdinalIgnoreCase)
+                || status.State.Equals("registered_with_different_target", StringComparison.OrdinalIgnoreCase))
+            {
+                return "tfa-status-pill border-amber-200 bg-amber-50 text-amber-900";
             }
 
             return status.Registered
@@ -2520,7 +2538,7 @@ else
                     <span>
                         <span class="block font-semibold text-slate-900">OS起動時にTimelineを自動起動する</span>
                         <span class="mt-1 block text-sm text-slate-600">
-                            オンにすると、この端末にサインインしたときにTimelineの起動スクリプトを自動実行します。
+                            オンにすると、この端末にサインインしたときにTimelineのC# Launcherを自動起動します。
                         </span>
                     </span>
                 </label>
