@@ -252,6 +252,8 @@ workspace material.
   launcher, Local API, Docker runtime, and worker repair notes.
 - [docs/distribution-artifacts.md](docs/distribution-artifacts.md):
   user-facing built product artifact rules and release layout.
+- [docs/product-artifact-verification.md](docs/product-artifact-verification.md):
+  built artifact startup checks and failure classification.
 - [docs/timeline-product-manifest.md](docs/timeline-product-manifest.md):
   sub-product manifest contract.
 - [docs/SUBPRODUCT_JOB_API.md](docs/SUBPRODUCT_JOB_API.md):
