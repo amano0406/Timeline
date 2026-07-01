@@ -1775,6 +1775,11 @@ static string DescribeDockerProblem(int exitCode, string details)
 
     if (IsVirtualizationProblem(details))
     {
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+        {
+            return "Docker は macOS の仮想化、Docker Desktop、またはコンテナ実行環境の理由で利用できない可能性があります。";
+        }
+
         return "Docker は Windows の仮想化または Hyper-V 関連の理由で利用できない可能性があります。";
     }
 
@@ -1788,9 +1793,11 @@ static string DescribeDockerProblem(int exitCode, string details)
 
 static string ResolveDockerProblemAction(string state) => state switch
 {
-    "command_missing" => "Docker Desktop をインストールするか、docker.exe に PATH が通っている状態にしてから再実行してください。",
+    "command_missing" when RuntimeInformation.IsOSPlatform(OSPlatform.OSX) => "Docker Desktop をインストールし、/Applications/Docker.app または docker コマンドを利用できる状態にしてから再実行してください。",
+    "command_missing" => "Docker Desktop をインストールし、docker コマンドを利用できる状態にしてから再実行してください。",
     "engine_stopped" => "Docker Desktop を起動してから、TimelineLauncher status または TimelineLauncher open を再実行してください。",
     "wsl_problem" => "Docker Desktop の WSL2 バックエンド設定、WSL2 の状態、Windows の再起動要否を確認してください。",
+    "virtualization_problem" when RuntimeInformation.IsOSPlatform(OSPlatform.OSX) => "macOS の Docker Desktop と仮想化関連の許可状態を確認してください。",
     "virtualization_problem" => "Windows の仮想化、Hyper-V、Virtual Machine Platform の設定を確認してください。",
     "timeout" => "Docker Desktop の起動が完了するまで待ってから、TimelineLauncher status を再実行してください。",
     _ => "Docker Desktop の状態を確認してから、TimelineLauncher status を再実行してください。",

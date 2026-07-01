@@ -111,6 +111,23 @@ Mac diagnostics should distinguish:
 - Gatekeeper / quarantine problem
 - host port already allocated
 
+Current Launcher diagnostics implement the Docker part of this split:
+
+- `preflight` checks `/Applications/Docker.app` on macOS.
+- `preflight` accepts Docker Desktop's internal CLI at
+  `/Applications/Docker.app/Contents/Resources/bin/docker` when it exists.
+- `preflight` also checks the normal `docker` command path.
+- `docker info` is used to distinguish command availability from Engine
+  reachability.
+- Docker command missing, Engine stopped/unreachable, timeout, and
+  virtualization-related failures are surfaced as separate states and actions.
+- Mac-specific actions refer to Docker Desktop / `/Applications/Docker.app`,
+  not Windows-only `docker.exe` or WSL2 paths.
+
+Mac hardware still has to verify executable permission, quarantine, and final
+Docker Desktop behavior. Those are tracked by KAN-3 / KAN-16 / KAN-24 instead
+of being treated as proof from Windows-side diagnostics.
+
 ## Developer-only prerequisites
 
 These are not product artifact requirements:
