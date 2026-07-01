@@ -108,7 +108,7 @@ static async Task<List<PreflightCheck>> BuildPreflightChecks(string root, Timeli
     {
         checks.Add(string.IsNullOrWhiteSpace(dotnet)
             ? NewInfo(".NET command", "Bundled Local API runtime is present. dotnet command is not required for normal startup.")
-            : NewInfo(".NET command", dotnet));
+            : NewInfo(".NET command", $"Bundled Local API runtime is present. dotnet command is not required for normal startup. Developer dotnet was found: {dotnet}"));
     }
 
     var docker = ResolveDockerCommand();
