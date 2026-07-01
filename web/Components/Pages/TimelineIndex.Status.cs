@@ -200,12 +200,12 @@ public partial class TimelineIndex
             var error = (_workerStatus?.Error ?? "").Trim();
             if (!string.IsNullOrWhiteSpace(error))
             {
-                return error;
+                return UserFacingScanFailureCause(error);
             }
 
             return string.IsNullOrWhiteSpace(_error)
                 ? "エラー原因を取得できませんでした。"
-                : _error;
+                : UserFacingScanFailureCause(_error);
         }
     }
 
@@ -233,6 +233,30 @@ public partial class TimelineIndex
 
             return "詳細が必要な場合は、対象サブ製品のログまたは Timeline の操作ログを確認してください。";
         }
+    }
+
+    private static string UserFacingScanFailureCause(string cause)
+    {
+        if (cause.Contains("is not running", StringComparison.OrdinalIgnoreCase))
+        {
+            var productName = ProductNameFromWorkerMessage(cause);
+            return string.IsNullOrWhiteSpace(productName)
+                ? "対象のサブ製品が起動していません。"
+                : $"{productName} が起動していません。";
+        }
+
+        if (cause.Contains("Network is unreachable", StringComparison.OrdinalIgnoreCase))
+        {
+            return "対象のサブ製品 API に接続できません。";
+        }
+
+        if (cause.Contains("The operation was canceled", StringComparison.OrdinalIgnoreCase)
+            || cause.Contains("operation was canceled", StringComparison.OrdinalIgnoreCase))
+        {
+            return "処理が途中で停止されました。";
+        }
+
+        return cause;
     }
 
     private IReadOnlyList<ScanPhaseProgressItem> RemainingScanPhaseItems =>

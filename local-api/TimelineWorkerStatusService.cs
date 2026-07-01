@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -143,8 +144,29 @@ public sealed class TimelineWorkerStatusService
     public TimelineDockerWorkerStatusResponse GetStatus()
     {
         var path = Path.Combine(_settings.GetWorkerDirectory(), "docker-worker-heartbeat.json");
+        var runtime = _settings.ReadSettings().Runtime;
+        var dockerState = TryGetTimelineWorkerContainerState(runtime);
         if (!File.Exists(path))
         {
+            if (IsDockerEngineUnavailable(dockerState.Message))
+            {
+                return new TimelineDockerWorkerStatusResponse
+                {
+                    Available = false,
+                    Worker = "timeline-worker",
+                    State = "docker_unavailable",
+                    UpdatedAt = string.Empty,
+                    WorkDirectory = string.Empty,
+                    StoreDirectory = string.Empty,
+                    StoreAvailable = false,
+                    RebuildId = string.Empty,
+                    CreatedAt = string.Empty,
+                    ItemCount = 0,
+                    EventCount = 0,
+                    Message = "Docker engine is not running.",
+                };
+            }
+
             return new TimelineDockerWorkerStatusResponse
             {
                 Available = false,
@@ -166,40 +188,53 @@ public sealed class TimelineWorkerStatusService
         {
             var payload = JsonNode.Parse(File.ReadAllText(path)) as JsonObject;
             var updatedAt = GetString(payload, "updatedAt", string.Empty);
-            if (IsHeartbeatStale(updatedAt))
+
+            if (!dockerState.Known)
             {
-                return new TimelineDockerWorkerStatusResponse
+                if (IsDockerEngineUnavailable(dockerState.Message))
                 {
-                    Available = false,
-                    Worker = GetString(payload, "worker", "timeline-worker"),
-                    State = "stale",
-                    UpdatedAt = updatedAt,
-                    WorkDirectory = GetString(payload, "workDirectory", string.Empty),
-                    StoreDirectory = GetString(payload, "storeDirectory", string.Empty),
-                    StoreAvailable = GetBool(payload, "storeAvailable", false),
-                    RebuildId = GetString(payload, "rebuildId", string.Empty),
-                    CreatedAt = GetString(payload, "createdAt", string.Empty),
-                    ItemCount = GetInt(payload, "itemCount", 0),
-                    EventCount = GetInt(payload, "eventCount", 0),
-                    Message = "Timeline Docker worker heartbeat is stale.",
-                };
+                    return NewDockerWorkerStatusFromHeartbeat(
+                        payload,
+                        available: false,
+                        state: "docker_unavailable",
+                        message: "Docker engine is not running.");
+                }
+
+                return NewDockerWorkerStatusFromHeartbeat(
+                    payload,
+                    available: false,
+                    state: "unreadable",
+                    message: string.IsNullOrWhiteSpace(dockerState.Message)
+                        ? "Timeline Docker worker state could not be checked."
+                        : dockerState.Message);
             }
 
-            return new TimelineDockerWorkerStatusResponse
+            if (dockerState.Known && !dockerState.Running)
             {
-                Available = true,
-                Worker = GetString(payload, "worker", "timeline-worker"),
-                State = GetString(payload, "state", string.Empty),
-                UpdatedAt = updatedAt,
-                WorkDirectory = GetString(payload, "workDirectory", string.Empty),
-                StoreDirectory = GetString(payload, "storeDirectory", string.Empty),
-                StoreAvailable = GetBool(payload, "storeAvailable", false),
-                RebuildId = GetString(payload, "rebuildId", string.Empty),
-                CreatedAt = GetString(payload, "createdAt", string.Empty),
-                ItemCount = GetInt(payload, "itemCount", 0),
-                EventCount = GetInt(payload, "eventCount", 0),
-                Message = string.Empty,
-            };
+                var state = dockerState.State.Equals("not_found", StringComparison.OrdinalIgnoreCase)
+                    ? "missing"
+                    : "stale";
+                return NewDockerWorkerStatusFromHeartbeat(
+                    payload,
+                    available: false,
+                    state: state,
+                    message: dockerState.Message);
+            }
+
+            if (IsHeartbeatStale(updatedAt))
+            {
+                return NewDockerWorkerStatusFromHeartbeat(
+                    payload,
+                    available: false,
+                    state: "stale",
+                    message: "Timeline Docker worker heartbeat is stale.");
+            }
+
+            return NewDockerWorkerStatusFromHeartbeat(
+                payload,
+                available: true,
+                state: GetString(payload, "state", string.Empty),
+                message: string.Empty);
         }
         catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
         {
@@ -221,6 +256,29 @@ public sealed class TimelineWorkerStatusService
         }
     }
 
+    private static TimelineDockerWorkerStatusResponse NewDockerWorkerStatusFromHeartbeat(
+        JsonObject? payload,
+        bool available,
+        string state,
+        string message)
+    {
+        return new TimelineDockerWorkerStatusResponse
+        {
+            Available = available,
+            Worker = GetString(payload, "worker", "timeline-worker"),
+            State = state,
+            UpdatedAt = GetString(payload, "updatedAt", string.Empty),
+            WorkDirectory = GetString(payload, "workDirectory", string.Empty),
+            StoreDirectory = GetString(payload, "storeDirectory", string.Empty),
+            StoreAvailable = GetBool(payload, "storeAvailable", false),
+            RebuildId = GetString(payload, "rebuildId", string.Empty),
+            CreatedAt = GetString(payload, "createdAt", string.Empty),
+            ItemCount = GetInt(payload, "itemCount", 0),
+            EventCount = GetInt(payload, "eventCount", 0),
+            Message = message,
+        };
+    }
+
     public async Task<JsonObject> RepairDockerWorkerAsync(CancellationToken cancellationToken)
     {
         var operationId = _operations.NewOperationId("web");
@@ -236,18 +294,12 @@ public sealed class TimelineWorkerStatusService
         try
         {
             var root = Path.GetFullPath(_options.TimelineProductPath);
-            var scriptPath = Path.Combine(root, "scripts", "repair-worker.ps1");
-            if (!File.Exists(scriptPath))
-            {
-                throw new InvalidOperationException($"Timeline worker repair script was not found: {scriptPath}");
-            }
-
-            var result = await RunRepairScriptAsync(root, scriptPath, cancellationToken);
+            var result = await RepairDockerWorkerCoreAsync(root, cancellationToken);
             var status = GetStatus();
             var ok = result.ExitCode == 0 && status.Available && status.State.Equals("running", StringComparison.OrdinalIgnoreCase);
             var message = ok
-                ? "Timeline worker を復旧しました。"
-                : "Timeline worker の復旧結果を確認できませんでした。";
+                ? "Timeline worker repair completed."
+                : "Timeline worker repair result could not be confirmed.";
 
             var payload = new JsonObject
             {
@@ -421,46 +473,416 @@ public sealed class TimelineWorkerStatusService
                 null);
     }
 
-    private static async Task<RepairScriptResult> RunRepairScriptAsync(
+    private async Task<RepairScriptResult> RepairDockerWorkerCoreAsync(
         string root,
-        string scriptPath,
         CancellationToken cancellationToken)
     {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(TimeSpan.FromMinutes(5));
 
+        var runtime = _settings.ReadSettings().Runtime;
+        var dataRoot = _settings.GetDataRootDirectory();
+        var workSource = _settings.GetWorkDirectory();
+        var storeSource = _settings.GetStoreDirectory();
+        var workerDirectory = _settings.GetWorkerDirectory();
+        var heartbeatPath = Path.Combine(workerDirectory, "docker-worker-heartbeat.json");
+        Directory.CreateDirectory(dataRoot);
+        Directory.CreateDirectory(workSource);
+        Directory.CreateDirectory(storeSource);
+        Directory.CreateDirectory(workerDirectory);
+
+        var docker = await InitializeDockerEngineAsync(timeout.Token);
+        var repairStartedAt = DateTimeOffset.Now.AddSeconds(-2);
+        var composeProjectName = GetTimelineComposeProjectName(runtime);
+        var imageTag = GetTimelineImageTag(runtime, composeProjectName);
+        var composePath = Path.Combine(root, "docker-compose.yml");
+        if (!File.Exists(composePath))
+        {
+            throw new InvalidOperationException($"Timeline docker-compose.yml was not found: {composePath}");
+        }
+
+        var environment = new Dictionary<string, string>(
+            RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
+                ? StringComparer.OrdinalIgnoreCase
+                : StringComparer.Ordinal)
+        {
+            ["DOCKER_CONFIG"] = GetScopedDockerConfigDir(root),
+            ["TIMELINE_LOCAL_API_PORT"] = runtime.LocalApiPortStart.ToString(),
+            ["TIMELINE_WEB_PORT"] = runtime.WebPort.ToString(),
+            ["TIMELINE_OLLAMA_PORT"] = runtime.OllamaPort.ToString(),
+            ["TIMELINE_IMAGE_TAG"] = imageTag,
+            ["TIMELINE_OLLAMA_VOLUME_NAME"] = runtime.OllamaVolumeName,
+            ["TIMELINE_WORK_SOURCE"] = workSource,
+            ["TIMELINE_STORE_SOURCE"] = storeSource,
+        };
+
+        using var lockStream = await OpenTimelineRepairLockAsync(root, timeout.Token);
+        var result = await RunTimelineProcessAsync(
+            docker,
+            [
+                "compose",
+                "-f",
+                composePath,
+                "-p",
+                composeProjectName,
+                "up",
+                "-d",
+                "--build",
+                "worker",
+            ],
+            root,
+            environment,
+            timeout.Token);
+
+        if (result.ExitCode != 0)
+        {
+            throw new InvalidOperationException(BuildRepairFailureMessage("Timeline worker docker compose repair failed.", result.Stderr));
+        }
+
+        await WaitTimelineRepairWorkerHeartbeatAsync(heartbeatPath, repairStartedAt, timeout.Token);
+        return result;
+    }
+
+    private static async Task<FileStream> OpenTimelineRepairLockAsync(string root, CancellationToken cancellationToken)
+    {
+        var generatedDir = Path.Combine(root, ".docker");
+        Directory.CreateDirectory(generatedDir);
+        var lockPath = Path.Combine(generatedDir, "docker-compose.lock");
+        for (var attempt = 1; attempt <= 300; attempt++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            try
+            {
+                return new FileStream(lockPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+            }
+            catch (IOException)
+            {
+                await Task.Delay(100, cancellationToken);
+            }
+        }
+
+        throw new TimeoutException($"Timed out waiting for lock: {lockPath}");
+    }
+
+    private static async Task WaitTimelineRepairWorkerHeartbeatAsync(
+        string heartbeatPath,
+        DateTimeOffset minimumUpdatedAt,
+        CancellationToken cancellationToken)
+    {
+        for (var attempt = 1; attempt <= 40; attempt++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (File.Exists(heartbeatPath))
+            {
+                try
+                {
+                    var payload = JsonNode.Parse(await File.ReadAllTextAsync(heartbeatPath, cancellationToken)) as JsonObject;
+                    var state = GetString(payload, "state", string.Empty);
+                    var updatedAtText = GetString(payload, "updatedAt", string.Empty);
+                    if (state.Equals("running", StringComparison.OrdinalIgnoreCase)
+                        && DateTimeOffset.TryParse(updatedAtText, out var updatedAt)
+                        && updatedAt >= minimumUpdatedAt)
+                    {
+                        return;
+                    }
+                }
+                catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
+                {
+                }
+            }
+
+            await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
+        }
+
+        throw new TimeoutException("Timeline worker did not write a running heartbeat.");
+    }
+
+    private static async Task<string> InitializeDockerEngineAsync(CancellationToken cancellationToken)
+    {
+        var docker = ResolveDockerCommand();
+        var dockerDesktop = GetDockerDesktopPath();
+        if (string.IsNullOrEmpty(docker))
+        {
+            if (!string.IsNullOrEmpty(dockerDesktop))
+            {
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = dockerDesktop,
+                    UseShellExecute = true,
+                    WindowStyle = ProcessWindowStyle.Hidden,
+                });
+                docker = ResolveDockerCommand();
+            }
+        }
+
+        if (string.IsNullOrEmpty(docker))
+        {
+            throw new InvalidOperationException("Docker command was not found.");
+        }
+
+        if (await TestDockerInfoAsync(docker, cancellationToken))
+        {
+            return docker;
+        }
+
+        if (!string.IsNullOrEmpty(dockerDesktop))
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = dockerDesktop,
+                UseShellExecute = true,
+                WindowStyle = ProcessWindowStyle.Hidden,
+            });
+
+            for (var attempt = 1; attempt <= 60; attempt++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (await TestDockerInfoAsync(docker, cancellationToken))
+                {
+                    return docker;
+                }
+
+                await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
+            }
+        }
+
+        var message = string.IsNullOrEmpty(dockerDesktop)
+            ? "Docker engine is not ready. Start Docker and retry."
+            : "Docker Desktop is installed but the Docker engine is not ready.";
+        throw new InvalidOperationException(message);
+    }
+
+    private static async Task<bool> TestDockerInfoAsync(string docker, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var result = await RunTimelineProcessAsync(docker, ["info"], Directory.GetCurrentDirectory(), null, cancellationToken);
+            return result.ExitCode == 0;
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception or OperationCanceledException)
+        {
+            return false;
+        }
+    }
+
+    private static async Task<RepairScriptResult> RunTimelineProcessAsync(
+        string fileName,
+        IReadOnlyList<string> arguments,
+        string workingDirectory,
+        IReadOnlyDictionary<string, string>? environment,
+        CancellationToken cancellationToken)
+    {
         using var process = new Process();
         process.StartInfo = new ProcessStartInfo
         {
-            FileName = "powershell.exe",
-            Arguments = $"-NoProfile -ExecutionPolicy Bypass -File {QuoteArgument(scriptPath)} -RepoRoot {QuoteArgument(root)}",
-            WorkingDirectory = root,
+            FileName = fileName,
+            WorkingDirectory = workingDirectory,
             CreateNoWindow = true,
             UseShellExecute = false,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
         };
 
+        foreach (var argument in arguments)
+        {
+            process.StartInfo.ArgumentList.Add(argument);
+        }
+
+        if (environment is not null)
+        {
+            foreach (var pair in environment)
+            {
+                process.StartInfo.Environment[pair.Key] = pair.Value;
+            }
+        }
+
         if (!process.Start())
         {
-            throw new InvalidOperationException("Timeline worker repair process could not be started.");
+            throw new InvalidOperationException($"Process could not be started: {fileName}");
         }
 
-        var stdoutTask = process.StandardOutput.ReadToEndAsync(timeout.Token);
-        var stderrTask = process.StandardError.ReadToEndAsync(timeout.Token);
+        var stdoutTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
+        var stderrTask = process.StandardError.ReadToEndAsync(cancellationToken);
         try
         {
-            await process.WaitForExitAsync(timeout.Token);
+            await process.WaitForExitAsync(cancellationToken);
         }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        catch
         {
             TryKillProcess(process);
-            throw new TimeoutException("Timeline worker repair timed out.");
+            throw;
         }
 
-        var stdout = await stdoutTask;
-        var stderr = await stderrTask;
-        return new RepairScriptResult(process.ExitCode, stdout, stderr);
+        return new RepairScriptResult(process.ExitCode, await stdoutTask, await stderrTask);
+    }
+
+    private static DockerContainerState TryGetTimelineWorkerContainerState(TimelineRuntimeSettingsResponse runtime)
+    {
+        var docker = ResolveDockerCommand();
+        if (string.IsNullOrEmpty(docker))
+        {
+            return DockerContainerState.Unknown("Docker command was not found.");
+        }
+
+        var containerName = $"{GetTimelineComposeProjectName(runtime)}-worker-1";
+        using var process = new Process();
+        process.StartInfo = new ProcessStartInfo
+        {
+            FileName = docker,
+            CreateNoWindow = true,
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+        };
+        process.StartInfo.ArgumentList.Add("container");
+        process.StartInfo.ArgumentList.Add("inspect");
+        process.StartInfo.ArgumentList.Add("--format");
+        process.StartInfo.ArgumentList.Add("{{.State.Status}}");
+        process.StartInfo.ArgumentList.Add(containerName);
+
+        try
+        {
+            if (!process.Start())
+            {
+                return DockerContainerState.Unknown("Docker inspect could not be started.");
+            }
+
+            if (!process.WaitForExit(1500))
+            {
+                TryKillProcess(process);
+                return DockerContainerState.Unknown("Docker inspect timed out.");
+            }
+
+            var stdout = process.StandardOutput.ReadToEnd().Trim();
+            var stderr = process.StandardError.ReadToEnd().Trim();
+            if (process.ExitCode != 0)
+            {
+                if (stderr.Contains("No such object", StringComparison.OrdinalIgnoreCase))
+                {
+                    return DockerContainerState.NotRunning(
+                        "not_found",
+                        "Timeline Docker worker container was not found.");
+                }
+
+                return DockerContainerState.Unknown(ConvertTimelineText(stderr));
+            }
+
+            var state = string.IsNullOrWhiteSpace(stdout) ? "unknown" : stdout;
+            return state.Equals("running", StringComparison.OrdinalIgnoreCase)
+                ? DockerContainerState.RunningState(state)
+                : DockerContainerState.NotRunning(
+                    state,
+                    $"Timeline Docker worker container is not running. Docker state: {state}.");
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception or IOException)
+        {
+            return DockerContainerState.Unknown(ex.Message);
+        }
+    }
+
+    private static bool IsDockerEngineUnavailable(string message)
+    {
+        var text = ConvertTimelineText(message);
+        return text.Contains("docker API", StringComparison.OrdinalIgnoreCase)
+            || text.Contains("Docker daemon", StringComparison.OrdinalIgnoreCase)
+            || text.Contains("dockerDesktopLinuxEngine", StringComparison.OrdinalIgnoreCase)
+            || text.Contains("Docker engine is not ready", StringComparison.OrdinalIgnoreCase)
+            || text.Contains("The system cannot find the file specified", StringComparison.OrdinalIgnoreCase)
+            || text.Contains("pipe/docker", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string ResolveDockerCommand()
+    {
+        var dockerCommandName = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "docker.exe" : "docker";
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            var dockerExe = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
+                "Docker",
+                "Docker",
+                "resources",
+                "bin",
+                "docker.exe");
+            if (File.Exists(dockerExe))
+            {
+                return dockerExe;
+            }
+        }
+
+        var path = Environment.GetEnvironmentVariable("PATH") ?? string.Empty;
+        foreach (var entry in path.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var candidate = Path.Combine(entry, dockerCommandName);
+            if (File.Exists(candidate))
+            {
+                return candidate;
+            }
+        }
+
+        return string.Empty;
+    }
+
+    private static string GetDockerDesktopPath()
+    {
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            return string.Empty;
+        }
+
+        var candidates = new[]
+        {
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Docker", "Docker", "Docker Desktop.exe"),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "Docker", "Docker", "Docker Desktop.exe"),
+        };
+        return candidates.FirstOrDefault(File.Exists) ?? string.Empty;
+    }
+
+    private static string GetScopedDockerConfigDir(string root)
+    {
+        var configDir = Path.Combine(root, ".docker", "docker-config");
+        var configPath = Path.Combine(configDir, "config.json");
+        Directory.CreateDirectory(configDir);
+        if (!File.Exists(configPath))
+        {
+            File.WriteAllText(configPath, "{}", Encoding.ASCII);
+        }
+
+        return configDir;
+    }
+
+    private static string GetTimelineComposeProjectName(TimelineRuntimeSettingsResponse runtime)
+    {
+        var instancePart = NormalizeRuntimeNamePart(runtime.InstanceName);
+        return string.IsNullOrEmpty(instancePart) ? "timeline" : $"timeline-{instancePart}";
+    }
+
+    private static string GetTimelineImageTag(TimelineRuntimeSettingsResponse runtime, string composeProjectName)
+    {
+        var imageTag = NormalizeRuntimeResourceName(runtime.ImageTag);
+        if (!string.IsNullOrEmpty(imageTag))
+        {
+            return imageTag;
+        }
+
+        return composeProjectName.Equals("timeline", StringComparison.OrdinalIgnoreCase)
+            ? "latest"
+            : composeProjectName;
+    }
+
+    private static string NormalizeRuntimeNamePart(string value)
+    {
+        var text = ConvertTimelineText(value).ToLowerInvariant();
+        return string.IsNullOrEmpty(text)
+            ? string.Empty
+            : System.Text.RegularExpressions.Regex.Replace(text, "[^a-z0-9]+", "-").Trim('-');
+    }
+
+    private static string NormalizeRuntimeResourceName(string value)
+    {
+        var text = ConvertTimelineText(value).ToLowerInvariant();
+        return string.IsNullOrEmpty(text)
+            ? string.Empty
+            : System.Text.RegularExpressions.Regex.Replace(text, "[^a-z0-9_.-]+", "-").Trim('-');
     }
 
     private static void TryKillProcess(Process process)
@@ -476,9 +898,6 @@ public sealed class TimelineWorkerStatusService
         {
         }
     }
-
-    private static string QuoteArgument(string value)
-        => "\"" + value.Replace("\"", "\\\"", StringComparison.Ordinal) + "\"";
 
     private static string BuildRepairFailureMessage(string message, string detail)
     {
@@ -923,6 +1342,22 @@ public sealed class TimelineWorkerStatusService
         int ExitCode,
         string Stdout,
         string Stderr);
+
+    private sealed record DockerContainerState(
+        bool Known,
+        bool Running,
+        string State,
+        string Message)
+    {
+        public static DockerContainerState RunningState(string state)
+            => new(true, true, state, string.Empty);
+
+        public static DockerContainerState NotRunning(string state, string message)
+            => new(true, false, state, message);
+
+        public static DockerContainerState Unknown(string message)
+            => new(false, false, "unknown", message);
+    }
 }
 
 public sealed class TimelineDockerWorkerStatusResponse

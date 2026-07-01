@@ -20,13 +20,16 @@ public sealed class TimelineImageFileService
 
     private readonly TimelineSettingsService _settings;
     private readonly TimelineOperationLogService _operations;
+    private readonly TimelineLocalApiOptions _options;
 
     public TimelineImageFileService(
         TimelineSettingsService settings,
-        TimelineOperationLogService operations)
+        TimelineOperationLogService operations,
+        TimelineLocalApiOptions options)
     {
         _settings = settings;
         _operations = operations;
+        _options = options;
     }
 
     public JsonObject GetFiles(int page, int pageSize)
@@ -437,9 +440,17 @@ public sealed class TimelineImageFileService
             payload,
             ["outputRoot", "output_root"],
             GetManagedImageDataDirectory());
+        var defaultComputeMode = _settings.GetResolvedCommonAiComputeMode();
+        var computeMode = GetStringAny(payload, ["computeMode", "compute_mode"], string.Empty);
+        if (string.IsNullOrWhiteSpace(computeMode))
+        {
+            computeMode = defaultComputeMode;
+        }
+
         return new JsonObject
         {
             ["settingsPath"] = GetImageSettingsFilePath(),
+            ["computeMode"] = NormalizeImageComputeMode(computeMode, defaultComputeMode),
             ["inputRoots"] = inputRoots,
             ["outputRoot"] = ConvertDirectoryRoot("output", "Output", outputRoot),
             ["issues"] = new JsonArray(),
@@ -500,9 +511,16 @@ public sealed class TimelineImageFileService
         return new JsonObject
         {
             ["schemaVersion"] = 1,
+            ["computeMode"] = _settings.GetResolvedCommonAiComputeMode(),
             ["inputRoots"] = new JsonArray(),
             ["outputRoot"] = GetManagedImageDataDirectory(),
         };
+    }
+
+    private static string NormalizeImageComputeMode(string? value, string fallback)
+    {
+        var mode = value?.Trim().ToLowerInvariant() ?? "";
+        return mode is "auto" or "cpu" or "gpu" ? mode : fallback;
     }
 
     private string GetImageSettingsFilePath()
@@ -1216,20 +1234,7 @@ public sealed class TimelineImageFileService
         }
 
         var productPath = GetProductPath();
-        if (text.Equals("/workspace", StringComparison.OrdinalIgnoreCase))
-        {
-            return productPath;
-        }
-        if (text.StartsWith("/workspace/", StringComparison.OrdinalIgnoreCase))
-        {
-            return Path.Combine(productPath, text["/workspace/".Length..].Replace("/", "\\"));
-        }
-        if (text.StartsWith("/mnt/c/", StringComparison.OrdinalIgnoreCase))
-        {
-            return "C:\\" + text[7..].Replace("/", "\\");
-        }
-
-        return Path.IsPathRooted(text) ? text : Path.Combine(productPath, text);
+        return TimelinePathConverter.ConvertTimelineContainerPath(text, _options, productPath);
     }
 
     private string GetProductPath()

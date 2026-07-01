@@ -1,5 +1,5 @@
 @page "/windows-codex"
-@inject TimelineHelperClient Timeline
+@inject TimelineLocalApiClient Timeline
 @inject IJSRuntime Js
 
 <PageTitle>スレッド一覧 - Timeline</PageTitle>
@@ -101,7 +101,7 @@ else if (_overview is not null)
         }
         else if (Threads.Count == 0)
         {
-            <div class="p-5 text-sm text-slate-600">スレッドはありません。</div>
+            <div class="p-5 text-sm text-slate-600">@EmptyThreadMessage</div>
         }
         else
         {

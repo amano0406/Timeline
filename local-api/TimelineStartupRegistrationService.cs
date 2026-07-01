@@ -20,7 +20,7 @@ public sealed class TimelineStartupRegistrationService
         }
 
         return UnsupportedStatus(
-            "このOSでの自動起動登録はまだ実装されていません。設定モデルはOS共通のため、macOSなどの登録方式を後から追加できます。");
+            "このOSでの自動起動登録はまだ実装されていません。設定項目はOS共通ですが、登録方式は今後追加します。");
     }
 
     public TimelineStartupRegistrationStatusResponse ApplyDesiredState(bool startWithOperatingSystem)
@@ -176,10 +176,12 @@ public sealed class TimelineStartupRegistrationService
         {
             return "Windows";
         }
+
         if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
         {
             return "macOS";
         }
+
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
         {
             return "Linux";
@@ -187,7 +189,6 @@ public sealed class TimelineStartupRegistrationService
 
         return RuntimeInformation.OSDescription;
     }
-
 }
 
 public sealed class TimelineStartupRegistrationStatusResponse

@@ -2,6 +2,7 @@
 .vscode/
 .idea/
 .docker/
+.local/
 .playwright-cli/
 bin/
 obj/
@@ -9,6 +10,8 @@ release/
 output/
 downloads/
 test-results/
+docs-temp/
+scripts-temp/
 web/bin/
 web/obj/
 web/node_modules/

@@ -4,15 +4,15 @@ using Timeline.Web.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Logging.AddFilter("System.Net.Http.HttpClient.TimelineHelperClient", LogLevel.Warning);
-builder.Logging.AddFilter("System.Net.Http.HttpClient.TimelineHelperProxy", LogLevel.Warning);
+builder.Logging.AddFilter("System.Net.Http.HttpClient.TimelineLocalApiClient", LogLevel.Warning);
+builder.Logging.AddFilter("System.Net.Http.HttpClient.TimelineLocalApiProxy", LogLevel.Warning);
 
 builder.Services
     .AddRazorComponents()
     .AddInteractiveServerComponents();
 
-var helperBaseUrl = builder.Configuration["Timeline:HelperBaseUrl"]
-    ?? Environment.GetEnvironmentVariable("TIMELINE_HELPER_BASE_URL")
+var localApiBaseUrl = builder.Configuration["Timeline:LocalApiBaseUrl"]
+    ?? Environment.GetEnvironmentVariable("TIMELINE_LOCAL_API_BASE_URL")
     ?? "http://host.docker.internal:19001";
 var webPort = int.TryParse(
     builder.Configuration["Timeline:WebPort"]
@@ -29,14 +29,14 @@ var windowsCodexProductPath =
     ?? Environment.GetEnvironmentVariable("TIMELINE_WINDOWS_CODEX_PRODUCT_PATH")
     ?? string.Empty;
 
-builder.Services.AddHttpClient<TimelineHelperClient>(client =>
+builder.Services.AddHttpClient<TimelineLocalApiClient>(client =>
 {
-    client.BaseAddress = new Uri(helperBaseUrl);
+    client.BaseAddress = new Uri(localApiBaseUrl);
     client.Timeout = TimeSpan.FromMinutes(15);
 });
-builder.Services.AddHttpClient("TimelineHelperProxy", client =>
+builder.Services.AddHttpClient("TimelineLocalApiProxy", client =>
 {
-    client.BaseAddress = new Uri(helperBaseUrl);
+    client.BaseAddress = new Uri(localApiBaseUrl);
     client.Timeout = TimeSpan.FromMinutes(15);
 });
 builder.Services.AddSingleton(new TimelineLocalApiOptions(

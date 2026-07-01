@@ -1,4 +1,4 @@
-@inject TimelineHelperClient Timeline
+@inject TimelineLocalApiClient Timeline
 @inject IJSRuntime Js
 
 @if (_visible)
@@ -44,6 +44,32 @@
                     </div>
                 }
 
+                <div class="rounded-md border border-line bg-white p-4">
+                    <h3 class="flex items-center gap-2 text-base font-semibold text-slate-900">
+                        <FaIcon Name="list-check" Class="tfa-icon text-accent" />
+                        <span>利用前の確認</span>
+                    </h3>
+                    <div class="mt-3 grid gap-2">
+                        @foreach (var item in SetupPrerequisites)
+                        {
+                            <div class="rounded-md border border-line bg-slate-50 p-3">
+                                <div class="flex flex-wrap items-center gap-2">
+                                    <span class="font-semibold text-slate-900">@item.Name</span>
+                                    <span class="@PrerequisiteStatePillClass(item.State)">@item.Label</span>
+                                </div>
+                                <div class="mt-1 text-sm leading-6 text-slate-600">@item.Message</div>
+                                @if (!string.IsNullOrWhiteSpace(item.NextAction))
+                                {
+                                    <div class="mt-2 rounded-md border border-line bg-white px-3 py-2 text-sm text-slate-700">
+                                        <span class="font-semibold text-slate-900">次の行動</span>
+                                        <span class="ml-2">@item.NextAction</span>
+                                    </div>
+                                }
+                            </div>
+                        }
+                    </div>
+                </div>
+
                 <div class="grid gap-3">
                     @foreach (var product in InstallableProducts)
                     {
@@ -80,6 +106,13 @@
             </div>
 
             <footer class="flex flex-col gap-3 border-t border-line p-5 sm:flex-row sm:justify-end">
+                <button type="button"
+                        class="tfa-button-secondary gap-2"
+                        disabled="@_installing"
+                        @onclick="RefreshAsync">
+                    <FaIcon Name="rotate" Class="tfa-icon" />
+                    <span>状態を再確認</span>
+                </button>
                 <button type="button"
                         class="tfa-button-secondary gap-2"
                         disabled="@_installing"

@@ -12,6 +12,7 @@ public partial class ImageSettings
     private ImageOverview? _overview;
     private readonly List<ImageInputRoot> _inputRoots = [];
     private ImageDirectoryRoot _outputRoot = new() { Id = "output", DisplayName = "Output" };
+    private string _computeMode = "cpu";
     private bool _loading = true;
     private bool _saving;
     private bool _saved;
@@ -25,6 +26,7 @@ public partial class ImageSettings
         _error = null;
         try
         {
+            var settings = await Timeline.GetTimelineSettingsAsync();
             _overview = await Timeline.GetImageOverviewAsync();
             _inputRoots.Clear();
             foreach (var root in _overview.Settings.InputRoots)
@@ -47,6 +49,7 @@ public partial class ImageSettings
             {
                 _outputRoot.DisplayPath = _outputRoot.Path;
             }
+            _computeMode = ComputeModeResolver.ResolveProduct(_overview.Settings.ComputeMode, settings.CommonAi);
 
         }
         finally
@@ -135,6 +138,7 @@ public partial class ImageSettings
             }
             _overview = await Timeline.SaveImageSettingsAsync(new ImageSettingsSaveRequest
             {
+                ComputeMode = ComputeModeResolver.NormalizeProduct(_computeMode),
                 InputRoots = _inputRoots.Select(CloneRoot).ToList(),
                 OutputRoot = CloneRoot(_outputRoot),
                 OutputRootPath = _outputRoot.Path,
@@ -150,6 +154,12 @@ public partial class ImageSettings
         {
             _saving = false;
         }
+    }
+
+    private void OnComputeModeChanged(ChangeEventArgs args)
+    {
+        _computeMode = ComputeModeResolver.NormalizeProduct(args.Value?.ToString());
+        _saved = false;
     }
 
     private string LastInputPath() =>

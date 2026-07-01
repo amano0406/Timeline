@@ -58,8 +58,9 @@ public partial class AudioSettings
         _error = null;
         try
         {
+            var settings = await Timeline.GetTimelineSettingsAsync();
             _overview = await Timeline.GetAudioOverviewAsync();
-            _computeMode = string.IsNullOrWhiteSpace(_overview.ComputeMode) ? "cpu" : _overview.ComputeMode;
+            _computeMode = ComputeModeResolver.ResolveProduct(_overview.ComputeMode, settings.CommonAi);
             _inputRoots.Clear();
             _inputRoots.AddRange(_overview.InputRoots.Select(CloneRoot));
             if (_inputRoots.Count == 0)
@@ -185,7 +186,7 @@ public partial class AudioSettings
             _overview = await Timeline.SaveAudioSettingsAsync(new AudioSettingsSaveRequest
             {
                 Token = _tokenToSave,
-                ComputeMode = _computeMode,
+                ComputeMode = ComputeModeResolver.NormalizeProduct(_computeMode),
                 InputRoots = _inputRoots
                     .Where(root => !string.IsNullOrWhiteSpace(root.Path))
                     .Select(CloneRoot)

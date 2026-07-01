@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json.Nodes;
 
@@ -9,6 +10,8 @@ public sealed class TimelinePickerService
         string? initialPath,
         CancellationToken cancellationToken)
     {
+        ThrowIfNativePickerIsUnsupported();
+
         var command = string.Join(Environment.NewLine, new[]
         {
             "Add-Type -AssemblyName System.Windows.Forms",
@@ -39,6 +42,8 @@ public sealed class TimelinePickerService
         string? filter,
         CancellationToken cancellationToken)
     {
+        ThrowIfNativePickerIsUnsupported();
+
         var command = string.Join(Environment.NewLine, new[]
         {
             "Add-Type -AssemblyName System.Windows.Forms",
@@ -125,6 +130,15 @@ public sealed class TimelinePickerService
         var systemRoot = Environment.GetEnvironmentVariable("SystemRoot") ?? @"C:\Windows";
         var path = Path.Combine(systemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
         return File.Exists(path) ? path : "powershell.exe";
+    }
+
+    private static void ThrowIfNativePickerIsUnsupported()
+    {
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            throw new PlatformNotSupportedException(
+                "The native file picker is only available on Windows. Enter the path manually.");
+        }
     }
 
     private static string QuotePowerShellString(string? value)

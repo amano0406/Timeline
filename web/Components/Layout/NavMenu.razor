@@ -35,6 +35,13 @@
                     <FaIcon Name="arrows-rotate" Class="tfa-icon" />
                     <span class="tfa-sidebar-label">スキャン</span>
                 </a>
+                <a class="@LauncherLinkClass()"
+                   href="timeline/launcher"
+                   title="起動と復旧"
+                   @onclick="NotifyNavigateAsync">
+                    <FaIcon Name="power-off" Class="tfa-icon" />
+                    <span class="tfa-sidebar-label">起動と復旧</span>
+                </a>
             </div>
 
             <div class="grid gap-1">
@@ -134,6 +141,9 @@
 
     private string ProductsLinkClass()
         => LinkClass("timeline/products");
+
+    private string LauncherLinkClass()
+        => LinkClass("timeline/launcher");
 
     private string CollapseButtonText =>
         IsCollapsed ? "メニューを開く" : "メニューを閉じる";

@@ -1,4 +1,4 @@
-@inject TimelineHelperClient Timeline
+@inject TimelineLocalApiClient Timeline
 
 <div class="tfa-product-management">
     @if (!Embedded)
@@ -72,7 +72,7 @@
                             <ul class="space-y-1">
                                 @foreach (var warning in _completion.Warnings)
                                 {
-                                    <li>@warning</li>
+                                    <li>@UninstallWarningText(warning)</li>
                                 }
                             </ul>
                         </div>
@@ -180,7 +180,14 @@
                         </div>
 
                         <div class="tfa-product-actions">
-                            @if (IsInstalled(product))
+                            @if (!product.SupportedOnCurrentOperatingSystem)
+                            {
+                                <span class="tfa-status-pill border-amber-200 bg-amber-50 text-amber-900">
+                                    <FaIcon Name="circle-minus" Class="tfa-icon !h-3 !w-3" />
+                                    <span>未対応</span>
+                                </span>
+                            }
+                            else if (IsInstalled(product))
                             {
                                 <button type="button"
                                         class="tfa-button-primary gap-2"
@@ -282,6 +289,14 @@
                         </div>
                     }
 
+                    <div class="rounded-md border border-line bg-white p-4 text-sm text-slate-700">
+                        <div class="flex flex-wrap items-center gap-2">
+                            <span class="font-semibold text-slate-900">選択中の削除レベル</span>
+                            <span class="@UninstallModePillClass">@UninstallModeTitle</span>
+                        </div>
+                        <p class="mt-2 leading-6">@UninstallModeDescription</p>
+                    </div>
+
                     <div class="grid gap-3 rounded-md border border-line bg-slate-50 p-4">
                         <label class="flex items-center gap-2 text-sm">
                             <input type="checkbox"
@@ -313,6 +328,24 @@
                             </label>
                         </fieldset>
                     </div>
+
+                    @if (UninstallNeedsStrongConfirmation)
+                    {
+                        <div class="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-900">
+                            <div class="mb-2 flex items-center gap-2 font-semibold">
+                                <FaIcon Name="triangle-exclamation" Class="tfa-icon !h-4 !w-4" />
+                                <span>削除範囲が広がっています</span>
+                            </div>
+                            <label class="flex items-start gap-2">
+                                <input type="checkbox"
+                                       class="mt-1 h-4 w-4 rounded border-red-300 text-red-700"
+                                       checked="@_uninstallDangerAccepted"
+                                       @onchange="SetUninstallDangerAccepted"
+                                       disabled="@(_actionProductId is not null || _uninstallPlanLoading)" />
+                                <span>生成済みデータまたは設定が削除対象になることを確認しました。</span>
+                            </label>
+                        </div>
+                    }
 
                     @if (_uninstallPlanLoading)
                     {
@@ -351,6 +384,21 @@
                                     <dd class="font-mono font-semibold">@FormatBytes(_uninstallPlan.TotalDeleteBytes)</dd>
                                 </div>
                             </dl>
+                            @if (_uninstallPlan.Warnings.Count > 0)
+                            {
+                                <div class="mt-4 rounded-md border border-amber-200 bg-amber-50 p-3 text-amber-900">
+                                    <div class="mb-2 flex items-center gap-2 font-semibold">
+                                        <FaIcon Name="triangle-exclamation" Class="tfa-icon !h-4 !w-4" />
+                                        <span>削除前に確認してください</span>
+                                    </div>
+                                    <ul class="grid gap-1">
+                                        @foreach (var warning in _uninstallPlan.Warnings)
+                                        {
+                                            <li>@UninstallWarningText(warning)</li>
+                                        }
+                                    </ul>
+                                </div>
+                            }
                             @if (_uninstallPlan.RuntimeData.Resources.Count > 0)
                             {
                                 <div class="mt-4 rounded-md border border-line bg-slate-50 p-3">

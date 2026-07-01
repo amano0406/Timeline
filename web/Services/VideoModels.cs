@@ -22,7 +22,7 @@ public sealed class VideoSettings
     public string SettingsPath { get; set; } = "";
     public List<VideoInputRoot> InputRoots { get; set; } = [];
     public VideoDirectoryRoot OutputRoot { get; set; } = new();
-    public string ComputeMode { get; set; } = "gpu";
+    public string ComputeMode { get; set; } = "";
     public bool HasToken { get; set; }
     public string TokenPreview { get; set; } = "";
     public List<string> Issues { get; set; } = [];
@@ -54,7 +54,7 @@ public sealed class VideoSettingsSaveRequest
     public string OutputRootPath { get; set; } = "";
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Token { get; set; }
-    public string ComputeMode { get; set; } = "gpu";
+    public string ComputeMode { get; set; } = "";
 }
 
 public sealed class VideoFileListResult

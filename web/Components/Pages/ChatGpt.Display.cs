@@ -16,6 +16,9 @@ public partial class ChatGpt
             ? ""
             : $"最終更新 {_lastLoadedAt.Value:HH:mm:ss}";
     private string ImportedThreadCountLabel => $"{(_overview?.ItemCount ?? 0):N0} 件";
+    private string EmptyThreadMessage => !string.IsNullOrWhiteSpace(_threadListMessage)
+        ? _threadListMessage
+        : "スレッドはありません。";
     private int TotalMessageCount => Threads.Sum(thread => thread.MessageCount);
     private ChatGptJobRow? ActiveJob => _overview?.Jobs.FirstOrDefault(IsActiveJob);
     private bool ShowProcessingProgress => _refreshing || ActiveJob is not null;

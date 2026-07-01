@@ -4,7 +4,16 @@ namespace Timeline.Web.Components.Pages;
 
 public partial class TimelineIndex
 {
+    private const int HighQualityItemSummaryBatchSize = 1;
+
     private bool ItemSummaryActive => IsActiveItemSummary(_itemSummaryStatus);
+
+    private bool CanStartHighQualityItemSummaries =>
+        _overview?.Available == true
+        && !_disposed
+        && !ScanActive
+        && !_loading
+        && !_downloading;
 
     private string ItemSummaryStepState
     {
@@ -55,6 +64,11 @@ public partial class TimelineIndex
             ? "0 / 0 件"
             : $"{ItemSummaryFinishedItems:N0} / {_itemSummaryStatus.TotalItems:N0} 件";
 
+    private static string ItemSummaryModeLabel(TimelineItemSummaryJobStatus? status)
+        => status?.SummaryMode.Equals("llm", StringComparison.OrdinalIgnoreCase) == true
+            ? "高品質素材概要"
+            : "素材概要";
+
     private async Task StartItemSummaryGenerationAsync(bool force = false)
     {
         if (_disposed || ItemSummaryActive || _summarizing)
@@ -68,7 +82,39 @@ public partial class TimelineIndex
         await InvokeAsync(StateHasChanged);
         try
         {
-            _itemSummaryStatus = await Timeline.StartTimelineItemSummariesAsync(force, runAll: true);
+            _itemSummaryStatus = await Timeline.StartTimelineItemSummariesAsync(force, runAll: true, fastMode: !force);
+            SetOperationMessage(ItemSummaryStatusMessage(_itemSummaryStatus), ItemSummaryMessageAutoClearDelay(_itemSummaryStatus));
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _summarizing = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task StartHighQualityItemSummaryGenerationAsync()
+    {
+        if (!CanStartHighQualityItemSummaries)
+        {
+            return;
+        }
+
+        _summarizing = true;
+        _error = null;
+        SetOperationMessage($"高品質素材概要を最大 {HighQualityItemSummaryBatchSize:N0} 件生成しています。CPU環境では時間がかかります。");
+        await InvokeAsync(StateHasChanged);
+        try
+        {
+            _itemSummaryStatus = await Timeline.StartTimelineItemSummariesAsync(
+                force: false,
+                runAll: false,
+                maxItems: HighQualityItemSummaryBatchSize,
+                pendingOnly: true,
+                fastMode: false);
             SetOperationMessage(ItemSummaryStatusMessage(_itemSummaryStatus), ItemSummaryMessageAutoClearDelay(_itemSummaryStatus));
         }
         catch (Exception ex)
@@ -170,17 +216,17 @@ public partial class TimelineIndex
             var current = string.IsNullOrWhiteSpace(status.Current?.Title)
                 ? ""
                 : $" / 処理中: {status.Current.Title}";
-            return $"素材概要を生成しています。{status.CompletedItems:N0} 件生成 / {status.SkippedItems:N0} 件再利用 / {status.FailedItems:N0} 件失敗 / 全 {status.TotalItems:N0} 件{current}";
+            return $"{ItemSummaryModeLabel(status)}を生成しています。{status.CompletedItems:N0} 件生成 / {status.SkippedItems:N0} 件再利用 / {status.FailedItems:N0} 件失敗 / 全 {status.TotalItems:N0} 件{current}";
         }
 
         if (status.State.Equals("completed", StringComparison.OrdinalIgnoreCase))
         {
-            return $"素材概要の生成が完了しました。{status.CompletedItems:N0} 件生成 / {status.SkippedItems:N0} 件再利用。";
+            return $"{ItemSummaryModeLabel(status)}の生成が完了しました。{status.CompletedItems:N0} 件生成 / {status.SkippedItems:N0} 件再利用。";
         }
 
         if (status.State.Equals("completed_with_errors", StringComparison.OrdinalIgnoreCase))
         {
-            return $"素材概要の生成が完了しました。一部失敗があります。生成 {status.CompletedItems:N0} 件 / 再利用 {status.SkippedItems:N0} 件 / 失敗 {status.FailedItems:N0} 件。";
+            return $"{ItemSummaryModeLabel(status)}の生成が完了しました。一部失敗があります。生成 {status.CompletedItems:N0} 件 / 再利用 {status.SkippedItems:N0} 件 / 失敗 {status.FailedItems:N0} 件。";
         }
 
         if (status.State.Equals("canceled", StringComparison.OrdinalIgnoreCase))

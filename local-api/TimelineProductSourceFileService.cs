@@ -357,26 +357,7 @@ public sealed class TimelineProductSourceFileService
             return string.Empty;
         }
 
-        if (text.Equals("/workspace", StringComparison.OrdinalIgnoreCase))
-        {
-            return productPath;
-        }
-        if (text.StartsWith("/workspace/", StringComparison.OrdinalIgnoreCase))
-        {
-            return Path.Combine(productPath, text["/workspace/".Length..].Replace("/", "\\"));
-        }
-        if (text.StartsWith("/mnt/c/", StringComparison.OrdinalIgnoreCase))
-        {
-            return "C:\\" + text[7..].Replace("/", "\\");
-        }
-
-        var converted = TimelinePathConverter.ConvertTimelineWindowsPath(text, _options);
-        if (!string.IsNullOrEmpty(converted))
-        {
-            return converted;
-        }
-
-        return Path.IsPathRooted(text) ? text : Path.Combine(productPath, text);
+        return TimelinePathConverter.ConvertTimelineContainerPath(text, _options, productPath);
     }
 
     private static HashSet<string> GetExtensionSet(

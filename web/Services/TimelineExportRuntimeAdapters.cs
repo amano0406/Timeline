@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
@@ -514,7 +515,13 @@ public sealed class TimelineStoreService
     }
 
     private string GetItemSummaryPath(string product, string itemId)
-        => Path.Combine(GetItemSummaryRoot(), GetSafeSegment(product), GetSafeSegment(itemId) + ".json");
+    {
+        var root = Path.Combine(GetItemSummaryRoot(), GetSafeSegment(product));
+        var highQualityPath = Path.Combine(root, GetSafeSegment(itemId) + ".llm.json");
+        return File.Exists(highQualityPath)
+            ? highQualityPath
+            : Path.Combine(root, GetSafeSegment(itemId) + ".json");
+    }
 
     private static string GetSafeSegment(string value)
     {
@@ -599,36 +606,101 @@ public static class TimelinePathConverter
 
         var storeRoot = Environment.GetEnvironmentVariable("TIMELINE_STORE_DIRECTORY") ?? "/data/store";
         var workRoot = Environment.GetEnvironmentVariable("TIMELINE_WORK_DIRECTORY") ?? "/data/work";
-        var timelineRoot = @"C:\apps\Timeline";
-        var storeWindowsRoot = timelineRoot + @"\data\to_timeline";
-        var workWindowsRoot = timelineRoot + @"\data\work";
-
-        if (text.Equals(storeWindowsRoot, StringComparison.OrdinalIgnoreCase))
+        foreach (var timelineRoot in GetTimelineRootCandidates(options))
         {
-            return storeRoot;
-        }
+            if (TryMapTimelineDataPath(text, timelineRoot, ["data", "to_timeline"], storeRoot, out var mappedStore))
+            {
+                return mappedStore;
+            }
 
-        if (text.StartsWith(storeWindowsRoot + "\\", StringComparison.OrdinalIgnoreCase))
-        {
-            return Path.Combine(storeRoot, text[(storeWindowsRoot.Length + 1)..].Replace('\\', Path.DirectorySeparatorChar));
-        }
-
-        if (text.Equals(workWindowsRoot, StringComparison.OrdinalIgnoreCase))
-        {
-            return workRoot;
-        }
-
-        if (text.StartsWith(workWindowsRoot + "\\", StringComparison.OrdinalIgnoreCase))
-        {
-            return Path.Combine(workRoot, text[(workWindowsRoot.Length + 1)..].Replace('\\', Path.DirectorySeparatorChar));
+            if (TryMapTimelineDataPath(text, timelineRoot, ["data", "work"], workRoot, out var mappedWork))
+            {
+                return mappedWork;
+            }
         }
 
         if (text.StartsWith("/mnt/c/", StringComparison.OrdinalIgnoreCase))
         {
-            return "C:\\" + text[7..].Replace("/", "\\");
+            return RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
+                ? "C:\\" + text[7..].Replace("/", "\\")
+                : text;
         }
 
         return text;
+    }
+
+    private static IEnumerable<string> GetTimelineRootCandidates(TimelineLocalApiOptions options)
+    {
+        var configuredRoot = ConvertTimelineText(options.TimelineProductPath);
+        if (!string.IsNullOrEmpty(configuredRoot))
+        {
+            yield return configuredRoot;
+        }
+
+        yield return @"C:\apps\Timeline";
+    }
+
+    private static bool TryMapTimelineDataPath(
+        string text,
+        string timelineRoot,
+        string[] relativeParts,
+        string mappedRoot,
+        out string mappedPath)
+    {
+        mappedPath = string.Empty;
+        foreach (var sourceRoot in BuildTimelineDataRootCandidates(timelineRoot, relativeParts))
+        {
+            if (TryMapPathPrefix(text, sourceRoot, mappedRoot, out mappedPath))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static IEnumerable<string> BuildTimelineDataRootCandidates(string timelineRoot, string[] relativeParts)
+    {
+        var root = ConvertTimelineText(timelineRoot).TrimEnd('\\', '/');
+        if (string.IsNullOrEmpty(root))
+        {
+            yield break;
+        }
+
+        yield return string.Join('\\', [root, .. relativeParts]);
+        yield return string.Join('/', [root, .. relativeParts]);
+    }
+
+    private static bool TryMapPathPrefix(string text, string sourceRoot, string mappedRoot, out string mappedPath)
+    {
+        mappedPath = string.Empty;
+        var source = ConvertTimelineText(sourceRoot).TrimEnd('\\', '/');
+        if (string.IsNullOrEmpty(source))
+        {
+            return false;
+        }
+
+        if (text.Equals(source, StringComparison.OrdinalIgnoreCase))
+        {
+            mappedPath = mappedRoot;
+            return true;
+        }
+
+        foreach (var separator in new[] { '\\', '/' })
+        {
+            var prefix = source + separator;
+            if (!text.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var relative = text[prefix.Length..]
+                .Split(['\\', '/'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            mappedPath = relative.Length == 0 ? mappedRoot : Path.Combine([mappedRoot, .. relative]);
+            return true;
+        }
+
+        return false;
     }
 
     private static string ConvertTimelineText(object? value)

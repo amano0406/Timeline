@@ -32,7 +32,6 @@ public partial class Index
     private string? _workerRepairMessage;
     private string _dashboardRange = "last90";
     private readonly List<DashboardAlert> _alerts = [];
-    private readonly List<DataSourceSummary> _dataSources = [];
 
     private static readonly DashboardRangeOption[] DashboardRangeOptions =
     [

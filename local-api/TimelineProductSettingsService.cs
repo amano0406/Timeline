@@ -36,8 +36,9 @@ public sealed class TimelineProductSettingsService
                     ["outputPath"],
                     string.Empty);
 
-                var computeMode = GetString(request, "computeMode", GetString(current, "computeMode", "cpu")).ToLowerInvariant();
-                payload["computeMode"] = computeMode is "cpu" or "gpu" ? computeMode : "cpu";
+                var defaultComputeMode = _settings.GetResolvedCommonAiComputeMode();
+                var computeMode = GetString(request, "computeMode", GetString(current, "computeMode", defaultComputeMode)).ToLowerInvariant();
+                payload["computeMode"] = computeMode is "cpu" or "gpu" ? computeMode : defaultComputeMode;
 
                 if (TryGetNode(request, "token", out var tokenNode)
                     || TryGetNode(request, "huggingFaceToken", out tokenNode)
@@ -75,6 +76,10 @@ public sealed class TimelineProductSettingsService
                     ["outputRootPath"],
                     GetManagedProductDataDirectory("image"));
 
+                var defaultComputeMode = _settings.GetResolvedCommonAiComputeMode();
+                var computeMode = GetString(request, "computeMode", GetString(current, "computeMode", defaultComputeMode)).ToLowerInvariant();
+                payload["computeMode"] = computeMode is "auto" or "cpu" or "gpu" ? computeMode : defaultComputeMode;
+
                 WriteSettingsPayload(productPath, payload);
                 CreateDirectoryIfPath(payload["outputRoot"]);
             });
@@ -99,8 +104,9 @@ public sealed class TimelineProductSettingsService
                     ["outputRootPath"],
                     GetManagedProductDataDirectory("video"));
 
-                var computeMode = GetString(request, "computeMode", GetString(current, "computeMode", "gpu")).ToLowerInvariant();
-                payload["computeMode"] = computeMode is "cpu" or "gpu" ? computeMode : "gpu";
+                var defaultComputeMode = _settings.GetResolvedCommonAiComputeMode();
+                var computeMode = GetString(request, "computeMode", GetString(current, "computeMode", defaultComputeMode)).ToLowerInvariant();
+                payload["computeMode"] = computeMode is "cpu" or "gpu" ? computeMode : defaultComputeMode;
 
                 if (TryGetNode(request, "token", out var tokenNode)
                     || TryGetNode(request, "huggingFaceToken", out tokenNode)

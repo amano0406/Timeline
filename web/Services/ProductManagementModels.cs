@@ -28,6 +28,10 @@ public sealed class ProductRuntimeRow
     public bool SettingsBackupAvailable { get; set; }
     public string SettingsBackupPath { get; set; } = "";
     public string SettingsBackupAt { get; set; } = "";
+    public string CurrentOperatingSystem { get; set; } = "";
+    public List<string> SupportedOperatingSystems { get; set; } = [];
+    public bool SupportedOnCurrentOperatingSystem { get; set; } = true;
+    public string UnsupportedOperatingSystemMessage { get; set; } = "";
     public ProductManifestSummary Manifest { get; set; } = new();
     public bool Enabled { get; set; } = true;
     public bool ProductFound { get; set; }

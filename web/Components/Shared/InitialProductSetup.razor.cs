@@ -9,6 +9,8 @@ public partial class InitialProductSetup
     private const string SetupDismissedKey = "timeline.initialProductSetup.dismissedForSession";
 
     private ProductRuntimeOverview? _overview;
+    private TimelineDockerWorkerStatus? _worker;
+    private AudioVerbalizationOllamaStatus? _ollama;
     private bool _initialized;
     private bool _visible;
     private bool _installing;
@@ -28,7 +30,10 @@ public partial class InitialProductSetup
 
     private IReadOnlyList<ProductRuntimeRow> InstallableProducts =>
         Products
-            .Where(product => !IsInstalled(product) && !string.IsNullOrWhiteSpace(product.SourceUrl))
+            .Where(product =>
+                product.SupportedOnCurrentOperatingSystem
+                && !IsInstalled(product)
+                && !string.IsNullOrWhiteSpace(product.SourceUrl))
             .ToList();
 
     private bool HasInstalledProducts => Products.Any(IsInstalled);
@@ -58,7 +63,7 @@ public partial class InitialProductSetup
                 return;
             }
 
-            _overview = await Timeline.GetProductRuntimeOverviewAsync();
+            await LoadSetupStatusAsync();
             if (HasInstalledProducts || InstallableProducts.Count == 0)
             {
                 return;
@@ -77,7 +82,7 @@ public partial class InitialProductSetup
         }
         catch (Exception ex)
         {
-            _error = ex.Message;
+            _error = RuntimeDisplayText.ProductStatusLoadFailure(ex.Message);
             _visible = true;
             StateHasChanged();
         }
@@ -87,6 +92,35 @@ public partial class InitialProductSetup
     {
         await Js.InvokeVoidAsync("sessionStorage.setItem", SetupDismissedKey, "true");
         _visible = false;
+    }
+
+    private async Task RefreshAsync()
+    {
+        _error = null;
+        _message = null;
+
+        try
+        {
+            await LoadSetupStatusAsync();
+            _message = "状態を再確認しました。";
+        }
+        catch (Exception ex)
+        {
+            _error = RuntimeDisplayText.ProductStatusLoadFailure(ex.Message);
+        }
+
+        StateHasChanged();
+    }
+
+    private async Task LoadSetupStatusAsync()
+    {
+        var overviewTask = Timeline.GetProductRuntimeOverviewAsync();
+        var workerTask = Timeline.GetTimelineWorkerStatusAsync();
+        var ollamaTask = Timeline.GetAudioVerbalizationOllamaStatusAsync();
+
+        _overview = await overviewTask;
+        _worker = await workerTask;
+        _ollama = await ollamaTask;
     }
 
     private async Task InstallSelectedAsync()
@@ -122,7 +156,7 @@ public partial class InitialProductSetup
                 catch (Exception ex)
                 {
                     _installStates[product.Id] = "failed";
-                    _error = $"{DisplayName(product)} のインストールに失敗しました。{ex.Message}";
+                    _error = RuntimeDisplayText.ProductActionFailure(DisplayName(product), "インストール", ex.Message);
                     break;
                 }
             }
@@ -168,7 +202,9 @@ public partial class InitialProductSetup
 
     private static bool IsInstalled(ProductRuntimeRow product) =>
         product.ProductFound
-        && (product.ComposeFound || product.Id.Equals("pc", StringComparison.OrdinalIgnoreCase));
+        && (product.ComposeFound
+            || product.Id.Equals("pc", StringComparison.OrdinalIgnoreCase)
+            || !product.SupportedOnCurrentOperatingSystem);
 
     private static string DisplayName(ProductRuntimeRow product) =>
         string.IsNullOrWhiteSpace(product.DisplayName) ? product.Id : product.DisplayName;
@@ -210,4 +246,172 @@ public partial class InitialProductSetup
         "failed" => "tfa-status-pill border-red-200 bg-red-50 text-red-800",
         _ => "tfa-status-pill border-slate-200 bg-slate-50 text-slate-700",
     };
+
+    private IReadOnlyList<SetupPrerequisiteRow> SetupPrerequisites
+    {
+        get
+        {
+            var rows = new List<SetupPrerequisiteRow>
+            {
+                new(
+                    "Timeline 操作機能",
+                    _overview is null ? "確認不可" : "接続済み",
+                    _overview is null ? "failed" : "done",
+                    _overview is null
+                        ? "製品状態を取得できません。Timeline を起動し直してから、もう一度確認してください。"
+                        : "画面から製品状態を確認できます。",
+                    _overview is null
+                        ? "Timeline を起動し直してから、この画面の「状態を再確認」を押してください。"
+                        : "そのまま次の項目を確認してください。"),
+            };
+
+            rows.Add(new(
+                "Docker / 処理基盤",
+                DockerReady ? "利用可能" : "確認が必要",
+                DockerReady ? "done" : "warning",
+                DockerPrerequisiteMessage,
+                DockerReady
+                    ? "そのまま進められます。"
+                    : "Docker Desktop を起動してから、この画面の「状態を再確認」を押してください。"));
+
+            rows.Add(new(
+                "Ollama / AIモデル",
+                OllamaReady ? "利用可能" : "確認が必要",
+                OllamaReady ? "done" : "warning",
+                OllamaPrerequisiteMessage,
+                OllamaReady
+                    ? "そのまま進められます。"
+                    : "Ollama を起動し、設定中のモデルを取得してから「状態を再確認」を押してください。"));
+
+            rows.Add(new(
+                "自動処理",
+                WorkerReady ? "起動中" : "確認が必要",
+                WorkerReady ? "done" : "warning",
+                WorkerReady
+                    ? "スキャンや時間軸作成に使う自動処理が動いています。"
+                    : WorkerPrerequisiteMessage,
+                WorkerReady
+                    ? "そのまま進められます。"
+                    : "状態更新または復旧を実行してから、この画面の「状態を再確認」を押してください。"));
+
+            rows.Add(new(
+                "サブ製品",
+                HasInstalledProducts ? "準備済み" : "未インストール",
+                HasInstalledProducts ? "done" : "warning",
+                HasInstalledProducts
+                    ? "既に使える製品があります。"
+                    : "音声・画像・動画などを扱うには、下の一覧から使う製品をインストールしてください。",
+                HasInstalledProducts
+                    ? "必要に応じて製品管理画面で追加できます。"
+                    : "下の一覧で使う製品を選び、「選択した製品をインストール」を押してください。"));
+
+            return rows;
+        }
+    }
+
+    private bool WorkerReady =>
+        _worker?.Available == true
+        && string.Equals(_worker.State, "running", StringComparison.OrdinalIgnoreCase);
+
+    private bool DockerReady
+    {
+        get
+        {
+            if (_worker is null)
+            {
+                return false;
+            }
+
+            var state = (_worker.State ?? "").Trim();
+            return !state.Equals("docker_unavailable", StringComparison.OrdinalIgnoreCase)
+                && !state.Equals("local_api_unreachable", StringComparison.OrdinalIgnoreCase)
+                && !state.Equals("unreadable", StringComparison.OrdinalIgnoreCase)
+                && !state.Equals("unknown", StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    private bool OllamaReady =>
+        _ollama?.Available == true
+        && _ollama.ModelAvailable;
+
+    private string DockerPrerequisiteMessage
+    {
+        get
+        {
+            if (_worker is null)
+            {
+                return "Docker を使う処理基盤の状態をまだ確認できていません。";
+            }
+
+            var state = (_worker.State ?? "").Trim();
+            if (state.Equals("docker_unavailable", StringComparison.OrdinalIgnoreCase))
+            {
+                return "Docker が起動していません。Docker を起動してから、もう一度状態を確認してください。";
+            }
+
+            if (state.Equals("local_api_unreachable", StringComparison.OrdinalIgnoreCase))
+            {
+                return "Timeline の操作機能に接続できないため、Docker の状態も確認できません。Timeline を起動し直してください。";
+            }
+
+            if (state.Equals("unreadable", StringComparison.OrdinalIgnoreCase)
+                || state.Equals("unknown", StringComparison.OrdinalIgnoreCase))
+            {
+                return "Docker または自動処理の状態を読み取れません。状態更新または復旧を試してください。";
+            }
+
+            return "Docker を使う処理基盤を確認できます。";
+        }
+    }
+
+    private string OllamaPrerequisiteMessage
+    {
+        get
+        {
+            if (_ollama is null)
+            {
+                return "Ollama の状態をまだ確認できていません。AIを使う処理の前に状態を確認してください。";
+            }
+
+            if (_ollama.Available && _ollama.ModelAvailable)
+            {
+                return string.IsNullOrWhiteSpace(_ollama.Model)
+                    ? "Ollama が動いており、設定中のモデルを利用できます。"
+                    : $"Ollama が動いており、{_ollama.Model} を利用できます。";
+            }
+
+            if (_ollama.Available)
+            {
+                return "Ollama は動いていますが、設定中のモデルが見つかりません。設定またはモデル取得を確認してください。";
+            }
+
+            return "Ollama に接続できません。AIを使う文字起こしや概要生成の前に、Ollama の起動を確認してください。";
+        }
+    }
+
+    private string WorkerPrerequisiteMessage
+    {
+        get
+        {
+            var detail = RuntimeDisplayText.WorkerStatusDetail(_worker);
+            return string.IsNullOrWhiteSpace(detail)
+                ? "自動処理の状態を確認できません。状態更新または復旧を試してください。"
+                : detail;
+        }
+    }
+
+    private static string PrerequisiteStatePillClass(string state) => state switch
+    {
+        "done" => "tfa-status-pill border-teal-200 bg-teal-50 text-teal-800",
+        "failed" => "tfa-status-pill border-red-200 bg-red-50 text-red-800",
+        "warning" => "tfa-status-pill border-amber-200 bg-amber-50 text-amber-800",
+        _ => "tfa-status-pill border-slate-200 bg-slate-50 text-slate-700",
+    };
+
+    private sealed record SetupPrerequisiteRow(
+        string Name,
+        string Label,
+        string State,
+        string Message,
+        string NextAction);
 }

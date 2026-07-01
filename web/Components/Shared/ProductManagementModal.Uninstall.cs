@@ -10,6 +10,7 @@ public partial class ProductManagementModal
         _pendingUninstallProductId = product.Id;
         _uninstallKeepSettings = true;
         _uninstallRemoveGeneratedData = false;
+        _uninstallDangerAccepted = false;
         _uninstallPlan = null;
         _uninstallPlanError = null;
         _completion = null;
@@ -27,6 +28,7 @@ public partial class ProductManagementModal
         _uninstallPlan = null;
         _uninstallPlanError = null;
         _uninstallPlanLoading = false;
+        _uninstallDangerAccepted = false;
     }
 
     private async Task ConfirmUninstallAsync(ProductRuntimeRow product)
@@ -56,7 +58,7 @@ public partial class ProductManagementModal
         }
         catch (Exception ex)
         {
-            _error = ex.Message;
+            _error = RuntimeDisplayText.ProductActionFailure(displayName, "アンインストール", ex.Message);
             _message = null;
             _messageIsSuccess = false;
         }
@@ -76,13 +78,22 @@ public partial class ProductManagementModal
     private async Task SetUninstallKeepSettingsAsync(ChangeEventArgs args)
     {
         _uninstallKeepSettings = args.Value is bool value ? value : string.Equals(Convert.ToString(args.Value), "true", StringComparison.OrdinalIgnoreCase);
+        _uninstallDangerAccepted = false;
         await LoadUninstallPlanAsync();
     }
 
     private async Task SetUninstallRemoveGeneratedDataAsync(bool value)
     {
         _uninstallRemoveGeneratedData = value;
+        _uninstallDangerAccepted = false;
         await LoadUninstallPlanAsync();
+    }
+
+    private void SetUninstallDangerAccepted(ChangeEventArgs args)
+    {
+        _uninstallDangerAccepted = args.Value is bool value
+            ? value
+            : string.Equals(Convert.ToString(args.Value), "true", StringComparison.OrdinalIgnoreCase);
     }
 
     private async Task LoadUninstallPlanAsync()
@@ -101,7 +112,7 @@ public partial class ProductManagementModal
         catch (Exception ex)
         {
             _uninstallPlan = null;
-            _uninstallPlanError = ex.Message;
+            _uninstallPlanError = RuntimeDisplayText.ProductStatusLoadFailure(ex.Message);
         }
         finally
         {

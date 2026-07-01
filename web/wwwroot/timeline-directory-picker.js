@@ -1,6 +1,6 @@
 const timelineDirectoryPicker = {
-  helperBaseUrl() {
-    return (window.timelineHelperBaseUrl || "http://127.0.0.1:19001").replace(/\/+$/, "");
+  localApiBaseUrl() {
+    return (window.timelineLocalApiBaseUrl || "http://127.0.0.1:19001").replace(/\/+$/, "");
   },
 
   async pick(title, initialPath) {
@@ -11,12 +11,12 @@ const timelineDirectoryPicker = {
 
     let response;
     try {
-      response = await fetch(`${this.helperBaseUrl()}/pick-directory?${params.toString()}`, {
+      response = await fetch(`${this.localApiBaseUrl()}/pick-directory?${params.toString()}`, {
         method: "GET",
         cache: "no-store",
       });
     } catch {
-      throw new Error("ディレクトリ選択を起動できません。start.bat から Timeline を起動してください。");
+      throw new Error("ディレクトリ選択を起動できません。Timeline Launcher から Timeline を起動してください。");
     }
 
     if (!response.ok) {
@@ -42,12 +42,12 @@ const timelineDirectoryPicker = {
 
     let response;
     try {
-      response = await fetch(`${this.helperBaseUrl()}/pick-file?${params.toString()}`, {
+      response = await fetch(`${this.localApiBaseUrl()}/pick-file?${params.toString()}`, {
         method: "GET",
         cache: "no-store",
       });
     } catch {
-      throw new Error("ファイル選択を起動できません。start.bat から Timeline を起動してください。");
+      throw new Error("ファイル選択を起動できません。Timeline Launcher から Timeline を起動してください。");
     }
 
     if (!response.ok) {

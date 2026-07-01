@@ -36,11 +36,6 @@ public sealed class TimelineDownloadService
             return string.Empty;
         }
 
-        if (text.StartsWith("/mnt/c/", StringComparison.OrdinalIgnoreCase))
-        {
-            return "C:\\" + text[7..].Replace("/", "\\");
-        }
-
         var localPath = TimelinePathConverter.ConvertTimelineWindowsPath(text, _options);
         return string.IsNullOrEmpty(localPath) ? text : localPath;
     }

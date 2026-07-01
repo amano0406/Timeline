@@ -4,6 +4,8 @@ using System.Text.RegularExpressions;
 
 public sealed class TimelineProductActionService
 {
+    private const int ProductJobStartTimeoutSeconds = 300;
+    private const int ProductJobPollTimeoutSeconds = 30;
     private const int MaxProductJobStatusPollFailures = 20;
 
     private readonly TimelineSettingsService _settings;
@@ -482,7 +484,7 @@ public sealed class TimelineProductActionService
                     ["type"] = "refresh",
                     ["options"] = requestBody.DeepClone(),
                 },
-                30,
+                ProductJobStartTimeoutSeconds,
                 operationId,
                 cancellationToken);
             status = ConvertProductJobStatus(payload as JsonObject, "video", "TimelineForVideo");
@@ -511,7 +513,7 @@ public sealed class TimelineProductActionService
                         "video",
                         "TimelineForVideo",
                         "/jobs/" + Uri.EscapeDataString(jobId),
-                        30,
+                        ProductJobPollTimeoutSeconds,
                         operationId,
                         cancellationToken);
                     status = ConvertProductJobStatus(payload as JsonObject, "video", "TimelineForVideo");
@@ -574,7 +576,7 @@ public sealed class TimelineProductActionService
                     ["type"] = "refresh",
                     ["options"] = requestBody.DeepClone(),
                 },
-                30,
+                ProductJobStartTimeoutSeconds,
                 operationId,
                 cancellationToken);
             status = ConvertProductJobStatus(payload as JsonObject, productId, productName);
@@ -608,7 +610,7 @@ public sealed class TimelineProductActionService
                         productId,
                         productName,
                         "/jobs/" + Uri.EscapeDataString(jobId),
-                        30,
+                        ProductJobPollTimeoutSeconds,
                         operationId,
                         cancellationToken);
                     status = ConvertProductJobStatus(payload as JsonObject, productId, productName);
@@ -1132,11 +1134,6 @@ public sealed class TimelineProductActionService
         {
             return string.Empty;
         }
-        if (text.StartsWith("/mnt/c/", StringComparison.OrdinalIgnoreCase))
-        {
-            return "C:\\" + text[7..].Replace("/", "\\");
-        }
-
         var localPath = TimelinePathConverter.ConvertTimelineWindowsPath(text, _options);
         return string.IsNullOrEmpty(localPath) ? text : localPath;
     }
@@ -1148,24 +1145,7 @@ public sealed class TimelineProductActionService
         {
             return string.Empty;
         }
-        if (text.Equals("/workspace", StringComparison.OrdinalIgnoreCase))
-        {
-            return GetProductPath(productId);
-        }
-        if (text.StartsWith("/workspace/", StringComparison.OrdinalIgnoreCase))
-        {
-            return Path.Combine(GetProductPath(productId), text["/workspace/".Length..].Replace("/", "\\"));
-        }
-        if (text.StartsWith("/mnt/c/", StringComparison.OrdinalIgnoreCase))
-        {
-            return "C:\\" + text[7..].Replace("/", "\\");
-        }
-        if (Path.IsPathRooted(text))
-        {
-            return text;
-        }
-
-        return Path.Combine(GetProductPath(productId), text);
+        return TimelinePathConverter.ConvertTimelineContainerPath(text, _options, GetProductPath(productId));
     }
 
     private string GetDownloadRoot()

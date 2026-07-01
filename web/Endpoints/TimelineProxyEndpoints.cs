@@ -6,7 +6,7 @@ namespace Timeline.Web.Endpoints;
 
 internal static class TimelineProxyEndpoints
 {
-    private const string ProxyClientName = "TimelineHelperProxy";
+    private const string ProxyClientName = "TimelineLocalApiProxy";
 
     public static IEndpointRouteBuilder MapTimelineProxyEndpoints(this IEndpointRouteBuilder endpoints)
     {
@@ -33,13 +33,13 @@ internal static class TimelineProxyEndpoints
             return;
         }
 
-        var helperUrl = "products/audio/files/source"
+        var localApiUrl = "products/audio/files/source"
             + $"?sourceId={Uri.EscapeDataString(sourceId)}"
             + $"&path={Uri.EscapeDataString(relativePath)}";
-        await ProxyHelperFileAsync(
+        await ProxyLocalApiFileAsync(
             context,
             httpClientFactory,
-            helperUrl,
+            localApiUrl,
             "Audio source was not found.",
             "application/octet-stream",
             forwardContentDisposition: false,
@@ -58,7 +58,7 @@ internal static class TimelineProxyEndpoints
             return;
         }
 
-        await ProxyHelperFileAsync(
+        await ProxyLocalApiFileAsync(
             context,
             httpClientFactory,
             $"products/image/files/source?path={Uri.EscapeDataString(path)}",
@@ -80,7 +80,7 @@ internal static class TimelineProxyEndpoints
             return;
         }
 
-        await ProxyHelperFileAsync(
+        await ProxyLocalApiFileAsync(
             context,
             httpClientFactory,
             $"products/image/files/artifact?path={Uri.EscapeDataString(path)}",
@@ -102,7 +102,7 @@ internal static class TimelineProxyEndpoints
             return;
         }
 
-        await ProxyHelperFileAsync(
+        await ProxyLocalApiFileAsync(
             context,
             httpClientFactory,
             $"products/video/files/source?path={Uri.EscapeDataString(path)}",
@@ -124,7 +124,7 @@ internal static class TimelineProxyEndpoints
             return;
         }
 
-        await ProxyHelperFileAsync(
+        await ProxyLocalApiFileAsync(
             context,
             httpClientFactory,
             $"products/video/files/artifact?path={Uri.EscapeDataString(path)}",
@@ -153,7 +153,7 @@ internal static class TimelineProxyEndpoints
             return;
         }
 
-        await ProxyHelperFileAsync(
+        await ProxyLocalApiFileAsync(
             context,
             httpClientFactory,
             $"downloads/file?path={Uri.EscapeDataString(path)}",
@@ -239,16 +239,16 @@ internal static class TimelineProxyEndpoints
         await stream.CopyToAsync(context.Response.Body, cancellationToken);
     }
 
-    private static async Task ProxyHelperFileAsync(
+    private static async Task ProxyLocalApiFileAsync(
         HttpContext context,
         IHttpClientFactory httpClientFactory,
-        string helperUrl,
+        string localApiUrl,
         string fallbackNotFoundMessage,
         string defaultContentType,
         bool forwardContentDisposition,
         CancellationToken cancellationToken)
     {
-        using var request = new HttpRequestMessage(HttpMethod.Get, helperUrl);
+        using var request = new HttpRequestMessage(HttpMethod.Get, localApiUrl);
         if (context.Request.Headers.TryGetValue("Range", out var rangeHeader))
         {
             request.Headers.TryAddWithoutValidation("Range", rangeHeader.ToArray());

@@ -335,7 +335,7 @@ Timeline から呼ぶ操作面です。
 - 起動は `start.ps1`
 - 停止は `stop.ps1`
 - 通常操作はローカル API
-- ホスト API ランチャーは廃止対象
+- 旧ホスト API ランチャーは廃止対象
 - Timeline は Docker コンテナへ直接入らない
 - Timeline はサブ製品を操作するとき、API がある場合は API を優先する
 
@@ -509,7 +509,7 @@ timeline-product.json
 - 起動は `start.ps1`
 - 停止は `stop.ps1`
 - API のポートまたは `apiBaseUrl` を settings/runtime から解決できるようにする
-- ホスト API ランチャーを通常操作面に含めない
+- 旧ホスト API ランチャーを通常操作面に含めない
 - ユーザーの元ファイルはアンインストール削除対象にしない
 - 生成データは、ユーザーが明示的に選んだ場合だけ削除対象にする
 - Docker 関連リソース削除の契約が未確定なら `dockerManagedByTimeline` は `false` にする

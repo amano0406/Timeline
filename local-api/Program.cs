@@ -64,6 +64,8 @@ builder.Services.AddHttpClient<TimelineOllamaStatusService>(client =>
 {
     client.Timeout = TimeSpan.FromSeconds(5);
 });
+builder.Services.AddTransient<TimelineRuntimeStatusService>();
+builder.Services.AddTransient<TimelineRuntimeControlService>();
 
 var app = builder.Build();
 
@@ -84,6 +86,18 @@ app.Use(async (context, next) =>
 });
 
 app.MapGet("/health", () => TypedResults.Json(new HealthResponse(true)));
+
+app.MapGet("/timeline/runtime/status", async (
+    TimelineRuntimeStatusService runtime,
+    CancellationToken cancellationToken) =>
+{
+    return TypedResults.Json(await runtime.GetStatusAsync(cancellationToken));
+});
+
+app.MapPost("/timeline/runtime/stop", (TimelineRuntimeControlService runtime) =>
+{
+    return TypedResults.Json(runtime.StopTimeline());
+});
 
 app.MapGet("/timeline/settings", (TimelineSettingsService settings) =>
 {
@@ -296,6 +310,11 @@ app.MapGet("/timeline/item-summaries/targets", (
     var products = ConvertTimelineText(context.Request.Query["products"].ToString());
     var itemId = ConvertTimelineText(context.Request.Query["itemId"].ToString());
     var maxItems = GetQueryInt(context, "maxItems", 0);
+    var includeDiff = ConvertTimelineText(context.Request.Query["includeDiff"].ToString());
+    var diff = ConvertTimelineText(context.Request.Query["diff"].ToString());
+    var includeTargets = ConvertTimelineText(context.Request.Query["includeTargets"].ToString());
+    var fastMode = ConvertTimelineText(context.Request.Query["fastMode"].ToString());
+    var fast = ConvertTimelineText(context.Request.Query["fast"].ToString());
 
     if (!string.IsNullOrEmpty(product))
     {
@@ -315,6 +334,31 @@ app.MapGet("/timeline/item-summaries/targets", (
     if (maxItems > 0)
     {
         request["maxItems"] = maxItems;
+    }
+
+    if (!string.IsNullOrEmpty(includeDiff))
+    {
+        request["includeDiff"] = includeDiff;
+    }
+
+    if (!string.IsNullOrEmpty(diff))
+    {
+        request["diff"] = diff;
+    }
+
+    if (!string.IsNullOrEmpty(includeTargets))
+    {
+        request["includeTargets"] = includeTargets;
+    }
+
+    if (!string.IsNullOrEmpty(fastMode))
+    {
+        request["fastMode"] = fastMode;
+    }
+
+    if (!string.IsNullOrEmpty(fast))
+    {
+        request["fast"] = fast;
     }
 
     return Results.Json(summaries.GetTargets(request));
@@ -1045,12 +1089,13 @@ app.MapGet("/products/windows-codex/threads/{itemId}", async (
 });
 
 app.MapPost("/products/windows-codex/refresh", async (
+    JsonObject? request,
     TimelineThreadProductOverviewService threadProducts,
     CancellationToken cancellationToken) =>
 {
     try
     {
-        return Results.Json(await threadProducts.RefreshWindowsCodexAsync(cancellationToken));
+        return Results.Json(await threadProducts.RefreshWindowsCodexAsync(request, cancellationToken));
     }
     catch (Exception ex)
     {

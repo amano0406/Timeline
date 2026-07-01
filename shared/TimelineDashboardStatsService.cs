@@ -64,7 +64,7 @@ public sealed class TimelineDashboardStatsService
         DashboardRangeSpec rangeSpec)
     {
         var itemRows = LoadItems(itemsPath);
-        var summaryIndex = LoadSummaryIndex(summariesIndexPath);
+        var summaryIndex = LoadSummaryIndex(summariesIndexPath, storeDirectory);
         var filteredRows = itemRows
             .Where(item => IsInRange(GetLocalDate(item.CreatedAt), rangeSpec))
             .ToList();
@@ -328,7 +328,7 @@ public sealed class TimelineDashboardStatsService
         return rows;
     }
 
-    private static Dictionary<string, DashboardSummaryStat> LoadSummaryIndex(string summariesIndexPath)
+    private static Dictionary<string, DashboardSummaryStat> LoadSummaryIndex(string summariesIndexPath, string storeDirectory)
     {
         var summaries = new Dictionary<string, DashboardSummaryStat>(StringComparer.OrdinalIgnoreCase);
         if (!File.Exists(summariesIndexPath))
@@ -363,7 +363,7 @@ public sealed class TimelineDashboardStatsService
                 var completed = state.Equals("completed", StringComparison.OrdinalIgnoreCase)
                     && (!string.IsNullOrWhiteSpace(brief) || !string.IsNullOrWhiteSpace(compressed));
                 var failed = state.Equals("failed", StringComparison.OrdinalIgnoreCase);
-                var sourceChars = completed ? ReadSummarySourceChars(GetString(summary, "path", string.Empty)) : 0;
+                var sourceChars = completed ? ReadSummarySourceChars(GetString(summary, "path", string.Empty), storeDirectory) : 0;
                 var summaryChars = completed ? brief.Length + compressed.Length : 0;
                 summaries[NewSummaryKey(product, itemId)] = new DashboardSummaryStat(
                     completed,
@@ -379,16 +379,17 @@ public sealed class TimelineDashboardStatsService
         return summaries;
     }
 
-    private static long ReadSummarySourceChars(string path)
+    private static long ReadSummarySourceChars(string path, string storeDirectory)
     {
-        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+        var resolvedPath = ResolveSummaryPayloadPath(path, storeDirectory);
+        if (string.IsNullOrWhiteSpace(resolvedPath) || !File.Exists(resolvedPath))
         {
             return 0;
         }
 
         try
         {
-            var payload = JsonNode.Parse(File.ReadAllText(path)) as JsonObject;
+            var payload = JsonNode.Parse(File.ReadAllText(resolvedPath)) as JsonObject;
             var compression = GetObject(payload, "compression");
             var source = GetObject(payload, "source");
             return Math.Max(
@@ -399,6 +400,36 @@ public sealed class TimelineDashboardStatsService
         {
             return 0;
         }
+    }
+
+    private static string ResolveSummaryPayloadPath(string path, string storeDirectory)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return string.Empty;
+        }
+
+        if (File.Exists(path))
+        {
+            return path;
+        }
+
+        var normalized = path.Replace('\\', '/');
+        const string marker = "derived/item_summaries/";
+        var markerIndex = normalized.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+        if (markerIndex < 0 || string.IsNullOrWhiteSpace(storeDirectory))
+        {
+            return path;
+        }
+
+        var relative = normalized[markerIndex..];
+        var segments = relative.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        if (segments.Length == 0)
+        {
+            return path;
+        }
+
+        return Path.Combine([storeDirectory, .. segments]);
     }
 
     private static string BuildCacheKey(string rangeKey, params string[] paths)

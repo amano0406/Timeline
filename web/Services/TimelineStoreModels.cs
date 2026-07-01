@@ -138,6 +138,9 @@ public sealed class TimelineItemSummaryJobStatus
     public int CompletedItems { get; set; }
     public int SkippedItems { get; set; }
     public int FailedItems { get; set; }
+    public int PendingItems { get; set; }
+    public int ReusableItems { get; set; }
+    public string SummaryMode { get; set; } = "";
     public TimelineItemSummaryCurrent? Current { get; set; }
 }
 
@@ -164,6 +167,7 @@ public sealed class TimelineItemSummary
     public string CompressedSummary { get; set; } = "";
     public string SummaryStatus { get; set; } = "";
     public string GenerationMode { get; set; } = "";
+    public string SummaryMode { get; set; } = "";
     public int ChunkCount { get; set; }
     public int RewriteCount { get; set; }
     public string InputSignature { get; set; } = "";

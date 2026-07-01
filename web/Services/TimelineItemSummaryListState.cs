@@ -19,7 +19,7 @@ public sealed class TimelineItemSummaryListState
     }
 
     public async Task LoadAsync(
-        TimelineHelperClient timeline,
+        TimelineLocalApiClient timeline,
         string product,
         IEnumerable<string?> itemIds,
         CancellationToken cancellationToken = default)

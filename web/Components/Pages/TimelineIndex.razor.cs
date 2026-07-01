@@ -19,6 +19,7 @@ public partial class TimelineIndex
     private bool _verbalizing;
     private bool _summarizing;
     private bool _cancelingScan;
+    private bool _repairingWorker;
     private bool _pollingRebuildStatus;
     private bool _pollingAudioVerbalization;
     private bool _pollingItemSummaries;
@@ -36,6 +37,7 @@ public partial class TimelineIndex
     private CancellationTokenSource? _operationMessageAutoClearCts;
 
     private bool Busy => _loading || _rebuilding || _downloading || _verbalizing || _summarizing || _cancelingScan;
+    private string RefreshHref => $"/scan?refresh={DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}";
     private bool ShouldShowOperationMessage => !string.IsNullOrWhiteSpace(_operationMessage);
     private bool CanDownload => _overview?.Available == true;
     private bool ScanActive => _rebuilding || _verbalizing || _summarizing || RebuildActive || AudioVerbalizationActive || ItemSummaryActive;
@@ -58,21 +60,53 @@ public partial class TimelineIndex
     {
         { Available: true, State: "running" } => "稼働中",
         { Available: true, State: "stopping" } => "停止中",
-        { Available: true, State: "stopped" } => "停止",
-        { Available: false, State: "missing" } => "未確認",
-        { State.Length: > 0 } => _dockerWorkerStatus.State,
+        { Available: true, State: "stopped" } => "停止中",
+        { Available: false, State: "local_api_unreachable" } => "操作機能に未接続",
+        { Available: false, State: "docker_unavailable" } => "Docker未起動",
+        { Available: false, State: "missing" } => "未起動",
+        { Available: false, State: "stale" } => "応答なし",
+        { Available: false, State: "unreadable" } => "状態取得失敗",
+        { State: "unknown" } => "未確認",
+        { State.Length: > 0 } => "確認が必要",
         _ => "未確認",
     };
-    private string DockerWorkerStatusIcon => _dockerWorkerStatus?.Available == true && _dockerWorkerStatus.State == "running"
+    private bool DockerWorkerRunning =>
+        _dockerWorkerStatus?.Available == true
+        && _dockerWorkerStatus.State.Equals("running", StringComparison.OrdinalIgnoreCase);
+    private bool LocalApiUnavailable =>
+        _dockerWorkerStatus?.State.Equals("local_api_unreachable", StringComparison.OrdinalIgnoreCase) == true;
+    private bool DockerUnavailable =>
+        _dockerWorkerStatus?.State.Equals("docker_unavailable", StringComparison.OrdinalIgnoreCase) == true;
+    private bool DockerWorkerStatusUnreadable =>
+        _dockerWorkerStatus?.State.Equals("unreadable", StringComparison.OrdinalIgnoreCase) == true;
+    private bool CanRepairDockerWorker =>
+        !DockerWorkerRunning
+        && !LocalApiUnavailable
+        && !_repairingWorker
+        && !ScanActive
+        && !_loading;
+    private string DockerWorkerStatusIcon => DockerWorkerRunning
         ? "circle-check"
-        : "circle-minus";
-    private string DockerWorkerStatusPillClass => _dockerWorkerStatus?.Available == true && _dockerWorkerStatus.State == "running"
+        : _repairingWorker ? "spinner" : "triangle-exclamation";
+    private string DockerWorkerStatusIconSpin => _repairingWorker ? "fa-spin" : "";
+    private string DockerWorkerStatusPillClass => DockerWorkerRunning
         ? "tfa-status-pill border-teal-200 bg-teal-50 text-teal-800"
-        : "tfa-status-pill border-slate-200 bg-slate-50 text-slate-700";
+        : "tfa-status-pill border-amber-200 bg-amber-50 text-amber-900";
     private string DockerWorkerUpdatedLabel => string.IsNullOrWhiteSpace(_dockerWorkerStatus?.UpdatedAt)
         ? "-"
         : UiFormat.ShortDate(_dockerWorkerStatus.UpdatedAt);
     private string DockerWorkerStoreLabel => _dockerWorkerStatus?.StoreAvailable == true ? "利用可能" : "未確認";
+    private string DockerWorkerHelpText => DockerWorkerRunning
+        ? "自動処理は利用できます。"
+        : LocalApiUnavailable
+            ? "Timeline の操作機能に接続できないため、画面から自動処理を復旧できません。Timeline を起動し直してください。"
+            : DockerUnavailable
+                ? "Docker が起動していません。復旧を実行すると、Docker と Timeline の自動処理の起動を試します。"
+                : DockerWorkerStatusUnreadable
+                    ? "Docker または worker の状態を確認できません。復旧を実行すると、Docker と worker の起動を試します。"
+                    : "スキャンに必要な自動処理が確認できません。復旧を実行すると、Timeline の worker だけを起動し直します。";
+    private string DockerWorkerStatusDetail => RuntimeDisplayText.WorkerStatusDetail(_dockerWorkerStatus);
+    private string DockerWorkerRepairLabel => DockerUnavailable ? "Dockerと自動処理を復旧" : "自動処理を復旧";
     private bool RebuildActive => _rebuilding || IsWorkerActive(_workerStatus);
     private string MaterialImportStepLabel => RebuildActive
         ? "処理中"
@@ -116,14 +150,17 @@ public partial class TimelineIndex
             var verbalizationTask = Timeline.GetAudioVerbalizationBulkStatusAsync();
             var summaryTask = Timeline.GetTimelineItemSummaryStatusAsync();
             var runtimeTask = Timeline.GetProductRuntimeOverviewAsync();
+
+            _dockerWorkerStatus = await workerTask;
+            await InvokeAsync(StateHasChanged);
+
             await Task.WhenAll(overviewTask, workerTask, rebuildTask, verbalizationTask, summaryTask, runtimeTask);
             _overview = await overviewTask;
-            _dockerWorkerStatus = await workerTask;
             _workerStatus = await rebuildTask;
             _audioVerbalizationStatus = await verbalizationTask;
             _itemSummaryStatus = await summaryTask;
             _runtime = await runtimeTask;
-            await LoadScanDataSourcesAsync();
+            QueueScanDataSourcesLoad();
             _continueAudioAfterRebuild = IsWorkerActive(_workerStatus);
             if (IsWorkerActive(_workerStatus))
             {
@@ -241,6 +278,40 @@ public partial class TimelineIndex
         finally
         {
             _cancelingScan = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task RepairWorkerAsync()
+    {
+        if (_repairingWorker || ScanActive)
+        {
+            return;
+        }
+
+        _repairingWorker = true;
+        _error = null;
+        SetOperationMessage("自動処理を復旧しています。Docker の起動に少し時間がかかる場合があります。");
+        await InvokeAsync(StateHasChanged);
+
+        try
+        {
+            var result = await Timeline.RepairTimelineWorkerAsync();
+            _dockerWorkerStatus = result.Worker;
+            SetOperationMessage(string.IsNullOrWhiteSpace(result.Message)
+                ? "自動処理の復旧を実行しました。"
+                : result.Message,
+                TimeSpan.FromSeconds(10));
+            _overview = await Timeline.GetTimelineStoreOverviewWithLocalFallbackAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+            SetOperationMessage(null);
+        }
+        finally
+        {
+            _repairingWorker = false;
             await InvokeAsync(StateHasChanged);
         }
     }

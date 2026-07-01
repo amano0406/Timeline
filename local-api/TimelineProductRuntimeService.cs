@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.IO.Compression;
 using System.Net;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -25,15 +26,25 @@ public sealed class TimelineProductRuntimeService
         "pc",
     ];
 
-    private static readonly Dictionary<string, (string DisplayName, string Description, string PagePath)> ProductMetadata =
+    private static readonly Dictionary<string, ProductRuntimeMetadata> ProductMetadata =
         new(StringComparer.OrdinalIgnoreCase)
         {
-            ["audio"] = ("TimelineForAudio", "audio", "audio/files"),
-            ["windows-codex"] = ("TimelineForWindowsCodex", "codex", "windows-codex"),
-            ["chatgpt"] = ("TimelineForChatGPT", "chatgpt", "chatgpt"),
-            ["image"] = ("TimelineForImage", "image", "image"),
-            ["video"] = ("TimelineForVideo", "video", "video"),
-            ["pc"] = ("TimelineForPcInfo", "pc", "pc"),
+            ["audio"] = new("TimelineForAudio", "audio", "audio/files", ["windows", "macos", "linux"]),
+            ["windows-codex"] = new(
+                "TimelineForWindowsCodex",
+                "codex",
+                "windows-codex",
+                ["windows"],
+                "この製品は Windows Codex のローカル履歴を扱うため、このOSでは未対応です。Windows環境で利用してください。"),
+            ["chatgpt"] = new("TimelineForChatGPT", "chatgpt", "chatgpt", ["windows", "macos", "linux"]),
+            ["image"] = new("TimelineForImage", "image", "image", ["windows", "macos", "linux"]),
+            ["video"] = new("TimelineForVideo", "video", "video", ["windows", "macos", "linux"]),
+            ["pc"] = new(
+                "TimelineForPcInfo",
+                "pc",
+                "pc",
+                ["windows"],
+                "この製品は Windows のPC状態を扱うため、このOSでは未対応です。Windows環境で利用してください。"),
         };
 
     private readonly TimelineSettingsService _settings;
@@ -362,7 +373,10 @@ public sealed class TimelineProductRuntimeService
             }
 
             AssertProductGeneratedPathNotSource(row.Path, sourcePaths);
-            AssertProductManagedDeletePathSafe(row.Path, productPath);
+            AssertProductManagedDeletePathSafe(
+                row.Path,
+                productPath,
+                [GetManagedProductDataDirectory(definition.Id)]);
         }
 
         foreach (var resource in plan.RuntimeData.Resources)
@@ -607,24 +621,29 @@ public sealed class TimelineProductRuntimeService
         string parentOperationId,
         CancellationToken cancellationToken)
     {
+        AssertProductSupportedOnCurrentOperatingSystem(definition);
+
         var productPath = definition.ProductPath;
         if (string.IsNullOrEmpty(productPath) || !Directory.Exists(productPath))
         {
             throw new InvalidOperationException($"Product directory was not found: {productPath}");
         }
 
-        if (restart && File.Exists(definition.StopPath))
+        var stopLauncher = ResolveProductLauncher(definition, "stop", required: false);
+        if (restart && stopLauncher is not null)
         {
             WriteRuntimeState(definition.Id, "restarting", message: "Restarting product.");
             await RunLoggedProcessAsync(
                 definition,
-                definition.StopPath,
+                stopLauncher,
                 timeoutSeconds: 180,
                 parentOperationId,
                 cancellationToken);
         }
 
-        if (File.Exists(definition.StartPath))
+        var startLauncher = ResolveProductLauncher(definition, "start", required: true)
+            ?? throw new InvalidOperationException($"Product start launcher was not found: {definition.StartPath}");
+        if (File.Exists(startLauncher.Path))
         {
             if (!restart)
             {
@@ -633,8 +652,8 @@ public sealed class TimelineProductRuntimeService
 
             var result = await RunLoggedProcessAsync(
                 definition,
-                definition.StartPath,
-                timeoutSeconds: 240,
+                startLauncher,
+                timeoutSeconds: 900,
                 parentOperationId,
                 cancellationToken);
             if (result.ExitCode != 0 && !IsProductStartOutputSuccess(result.Stdout + "\n" + result.Stderr))
@@ -660,7 +679,7 @@ public sealed class TimelineProductRuntimeService
                 cancellationToken);
         }
 
-        throw new InvalidOperationException($"Product start script was not found: {definition.StartPath}");
+        throw new InvalidOperationException($"Product start launcher was not found: {startLauncher.Path}");
     }
 
     private async Task<ProductRuntimeRowResponse> StopProductCoreAsync(
@@ -668,20 +687,20 @@ public sealed class TimelineProductRuntimeService
         string parentOperationId,
         CancellationToken cancellationToken)
     {
+        AssertProductSupportedOnCurrentOperatingSystem(definition);
+
         var productPath = definition.ProductPath;
         if (string.IsNullOrEmpty(productPath) || !Directory.Exists(productPath))
         {
             throw new InvalidOperationException($"Product directory was not found: {productPath}");
         }
-        if (!File.Exists(definition.StopPath))
-        {
-            throw new InvalidOperationException($"Product stop script was not found: {definition.StopPath}");
-        }
+        var stopLauncher = ResolveProductLauncher(definition, "stop", required: true)
+            ?? throw new InvalidOperationException($"Product stop launcher was not found: {definition.StopPath}");
 
         WriteRuntimeState(definition.Id, "stopping", message: "Stopping product.");
         var result = await RunLoggedProcessAsync(
             definition,
-            definition.StopPath,
+            stopLauncher,
             timeoutSeconds: 180,
             parentOperationId,
             cancellationToken);
@@ -741,25 +760,14 @@ public sealed class TimelineProductRuntimeService
 
     private async Task<ProcessRunResult> RunLoggedProcessAsync(
         ProductRuntimeDefinition definition,
-        string scriptPath,
+        ProductLauncherScript launcher,
         int timeoutSeconds,
         string parentOperationId,
         CancellationToken cancellationToken)
     {
-        var powershell = GetPowerShellPath();
-        var arguments = new[]
-        {
-            "-NoLogo",
-            "-NoProfile",
-            "-WindowStyle",
-            "Hidden",
-            "-ExecutionPolicy",
-            "Bypass",
-            "-File",
-            scriptPath,
-        };
+        var processCommand = GetLauncherProcessCommand(launcher);
         var operationId = _operations.NewOperationId("launcher");
-        var commandLine = BuildCommandLine(powershell, arguments);
+        var commandLine = BuildCommandLine(processCommand.FileName, processCommand.Arguments);
         var startedAt = DateTimeOffset.Now;
 
         _operations.WriteOperationEvent(
@@ -775,8 +783,8 @@ public sealed class TimelineProductRuntimeService
         try
         {
             var result = await RunProcessAsync(
-                powershell,
-                arguments,
+                processCommand.FileName,
+                processCommand.Arguments,
                 definition.ProductPath,
                 timeoutSeconds,
                 GetChildProcessEnvironment(),
@@ -852,17 +860,14 @@ public sealed class TimelineProductRuntimeService
         {
             await process.WaitForExitAsync(timeout.Token);
         }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            try
-            {
-                process.Kill(entireProcessTree: true);
-                await process.WaitForExitAsync(CancellationToken.None);
-            }
-            catch (Exception ex) when (ex is InvalidOperationException or NotSupportedException)
-            {
-            }
-
+            TryKillProcessTree(process);
+            throw;
+        }
+        catch (OperationCanceledException)
+        {
+            TryKillProcessTree(process);
             throw new TimeoutException($"{fileName} timed out after {timeoutSeconds} seconds.");
         }
 
@@ -870,6 +875,22 @@ public sealed class TimelineProductRuntimeService
             process.ExitCode,
             await stdoutTask,
             await stderrTask);
+    }
+
+    private static void TryKillProcessTree(Process process)
+    {
+        try
+        {
+            if (!process.HasExited)
+            {
+                process.Kill(entireProcessTree: true);
+            }
+
+            process.WaitForExit(5000);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or NotSupportedException)
+        {
+        }
     }
 
     private void WriteRuntimeState(
@@ -1061,6 +1082,7 @@ public sealed class TimelineProductRuntimeService
                     ["inputRoots"] = new JsonArray(GetInitialProductInputDirectory(productId)),
                     ["outputRoot"] = outputRoot.DeepClone(),
                     ["outputRootPath"] = outputDirectory,
+                    ["computeMode"] = computeMode,
                 });
                 break;
             case "video":
@@ -1111,11 +1133,7 @@ public sealed class TimelineProductRuntimeService
     }
 
     private string GetInitialProductComputeMode()
-    {
-        var commonAi = _settings.ReadSettings().CommonAi;
-        var computeMode = ConvertTimelineText(commonAi.ComputeMode).ToLowerInvariant();
-        return computeMode is "cpu" or "gpu" ? computeMode : "gpu";
-    }
+        => _settings.GetResolvedCommonAiComputeMode();
 
     private static JsonObject NewInitialOutputRoot(string path)
     {
@@ -1141,17 +1159,33 @@ public sealed class TimelineProductRuntimeService
             ? string.Empty
             : Path.Combine(GetProductBackupRoot(definition.Id), "settings", "settings.json");
         var generatedPaths = GetProductGeneratedDataPaths(definition);
+        var sourcePaths = GetProductSourceDataPaths(definition);
         var appManagedByTimeline = IsProductAppManagedByTimeline(productPath);
 
         var generatedRows = new List<ProductUninstallPathPlanResponse>();
         long generatedTotalBytes = 0;
+        var warnings = new List<string>();
         foreach (var path in generatedPaths)
         {
             var exists = Directory.Exists(path);
             var sizeBytes = exists ? GetDirectorySizeBytes(path) : 0;
-            if (options.RemoveGeneratedData)
+            var managedGeneratedPath = IsProductGeneratedDataPathManaged(definition.Id, path);
+            var overlapsSourcePath = ProductPathOverlapsAnySource(path, sourcePaths);
+            var willDelete = options.RemoveGeneratedData
+                && exists
+                && managedGeneratedPath
+                && !overlapsSourcePath;
+            if (willDelete)
             {
                 generatedTotalBytes += sizeBytes;
+            }
+            else if (options.RemoveGeneratedData && exists && !managedGeneratedPath)
+            {
+                warnings.Add($"Generated data path is outside Timeline-managed output data and will not be removed: {path}");
+            }
+            else if (options.RemoveGeneratedData && exists && overlapsSourcePath)
+            {
+                warnings.Add($"Generated data path overlaps source input data and will not be removed: {path}");
             }
 
             generatedRows.Add(new ProductUninstallPathPlanResponse
@@ -1159,7 +1193,7 @@ public sealed class TimelineProductRuntimeService
                 Path = path,
                 Exists = exists,
                 SizeBytes = sizeBytes,
-                WillDelete = options.RemoveGeneratedData,
+                WillDelete = willDelete,
             });
         }
 
@@ -1179,7 +1213,6 @@ public sealed class TimelineProductRuntimeService
             totalDeleteBytes += runtimeData.SizeBytes;
         }
 
-        var warnings = new List<string>();
         if (appExists && !appManagedByTimeline)
         {
             warnings.Add("Product app path is outside Timeline-managed products. App uninstall is disabled for this placement.");
@@ -1353,7 +1386,15 @@ public sealed class TimelineProductRuntimeService
         }
 
         var hasKnownLauncher = File.Exists(Path.Combine(fullPath, "start.ps1"))
+            || File.Exists(Path.Combine(fullPath, "start.sh"))
+            || File.Exists(Path.Combine(fullPath, "start.command"))
+            || File.Exists(Path.Combine(fullPath, "start.cmd"))
+            || File.Exists(Path.Combine(fullPath, "start.bat"))
             || File.Exists(Path.Combine(fullPath, "stop.ps1"))
+            || File.Exists(Path.Combine(fullPath, "stop.sh"))
+            || File.Exists(Path.Combine(fullPath, "stop.command"))
+            || File.Exists(Path.Combine(fullPath, "stop.cmd"))
+            || File.Exists(Path.Combine(fullPath, "stop.bat"))
             || File.Exists(Path.Combine(fullPath, "timeline-product.json"));
         var hasGit = Directory.Exists(Path.Combine(fullPath, ".git"));
         if (!hasKnownLauncher && !hasGit)
@@ -1362,7 +1403,10 @@ public sealed class TimelineProductRuntimeService
         }
     }
 
-    private void AssertProductManagedDeletePathSafe(string path, string productPath)
+    private void AssertProductManagedDeletePathSafe(
+        string path,
+        string productPath,
+        IReadOnlyList<string>? additionalAllowedRoots = null)
     {
         var pathText = ConvertTimelineText(path);
         if (string.IsNullOrEmpty(pathText))
@@ -1390,6 +1434,24 @@ public sealed class TimelineProductRuntimeService
                 || IsPathUnderRoot(fullPath, productFullPath))
             {
                 return;
+            }
+        }
+
+        if (additionalAllowedRoots is not null)
+        {
+            foreach (var rootPath in additionalAllowedRoots)
+            {
+                if (string.IsNullOrWhiteSpace(rootPath))
+                {
+                    continue;
+                }
+
+                var fullAllowedRoot = Path.GetFullPath(rootPath);
+                if (fullPath.Equals(fullAllowedRoot, StringComparison.OrdinalIgnoreCase)
+                    || IsPathUnderRoot(fullPath, fullAllowedRoot))
+                {
+                    return;
+                }
             }
         }
 
@@ -1423,6 +1485,62 @@ public sealed class TimelineProductRuntimeService
                 throw new InvalidOperationException($"Generated data path overlaps a source path and cannot be removed: {generatedFullPath}");
             }
         }
+    }
+
+    private bool IsProductGeneratedDataPathManaged(string productId, string generatedPath)
+    {
+        if (string.IsNullOrWhiteSpace(generatedPath))
+        {
+            return false;
+        }
+
+        try
+        {
+            var generatedFullPath = Path.GetFullPath(generatedPath);
+            var managedRoot = Path.GetFullPath(GetManagedProductDataDirectory(productId));
+            return generatedFullPath.Equals(managedRoot, StringComparison.OrdinalIgnoreCase)
+                || IsPathUnderRoot(generatedFullPath, managedRoot);
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            return false;
+        }
+    }
+
+    private static bool ProductPathOverlapsAnySource(
+        string generatedPath,
+        IReadOnlyList<string> sourcePaths)
+    {
+        if (string.IsNullOrWhiteSpace(generatedPath))
+        {
+            return false;
+        }
+
+        try
+        {
+            var generatedFullPath = Path.GetFullPath(generatedPath);
+            foreach (var sourcePath in sourcePaths)
+            {
+                if (string.IsNullOrEmpty(sourcePath))
+                {
+                    continue;
+                }
+
+                var sourceFullPath = Path.GetFullPath(sourcePath);
+                if (generatedFullPath.Equals(sourceFullPath, StringComparison.OrdinalIgnoreCase)
+                    || IsPathUnderRoot(generatedFullPath, sourceFullPath)
+                    || IsPathUnderRoot(sourceFullPath, generatedFullPath))
+                {
+                    return true;
+                }
+            }
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            return true;
+        }
+
+        return false;
     }
 
     private string GetProductSettingsFilePath(ProductRuntimeDefinition definition)
@@ -1853,35 +1971,49 @@ public sealed class TimelineProductRuntimeService
         var currentPath = Environment.GetEnvironmentVariable("PATH", EnvironmentVariableTarget.Process)
             ?? Environment.GetEnvironmentVariable("PATH")
             ?? string.Empty;
-        var systemRoot = Environment.GetEnvironmentVariable("SystemRoot");
-        if (string.IsNullOrWhiteSpace(systemRoot))
+
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
         {
-            systemRoot = Path.GetPathRoot(Environment.SystemDirectory)?.TrimEnd('\\', '/') ?? @"C:\Windows";
+            var systemRoot = Environment.GetEnvironmentVariable("SystemRoot");
+            if (string.IsNullOrWhiteSpace(systemRoot))
+            {
+                systemRoot = Path.GetPathRoot(Environment.SystemDirectory)?.TrimEnd('\\', '/') ?? @"C:\Windows";
+            }
+
+            var dockerBin = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
+                "Docker",
+                "Docker",
+                "resources",
+                "bin");
+            var system32 = Path.Combine(systemRoot, "System32");
+            var powerShellBin = Path.Combine(system32, "WindowsPowerShell", "v1.0");
+
+            if (File.Exists(Path.Combine(dockerBin, "docker.exe")))
+            {
+                currentPath = PrependExistingPath(currentPath, dockerBin);
+            }
+
+            currentPath = PrependExistingPath(currentPath, system32);
+            currentPath = PrependExistingPath(currentPath, powerShellBin);
         }
 
-        var dockerBin = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
-            "Docker",
-            "Docker",
-            "resources",
-            "bin");
-        var system32 = Path.Combine(systemRoot, "System32");
-        var powerShellBin = Path.Combine(system32, "WindowsPowerShell", "v1.0");
-
-        if (File.Exists(Path.Combine(dockerBin, "docker.exe")))
-        {
-            currentPath = PrependExistingPath(currentPath, dockerBin);
-        }
-        currentPath = PrependExistingPath(currentPath, system32);
-        currentPath = PrependExistingPath(currentPath, powerShellBin);
-
-        return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        var environment = new Dictionary<string, string>(
+            RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
+                ? StringComparer.OrdinalIgnoreCase
+                : StringComparer.Ordinal)
         {
             ["PATH"] = currentPath,
-            ["Path"] = currentPath,
-            ["PATHEXT"] = ".COM;.EXE;.BAT;.CMD;.VBS;.VBE;.JS;.JSE;.WSF;.WSH;.MSC;.CPL",
             ["DOCKER_CONFIG"] = GetScopedDockerConfigDir(),
         };
+
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            environment["Path"] = currentPath;
+            environment["PATHEXT"] = ".COM;.EXE;.BAT;.CMD;.VBS;.VBE;.JS;.JSE;.WSF;.WSH;.MSC;.CPL";
+        }
+
+        return environment;
     }
 
     private string GetScopedDockerConfigDir()
@@ -1905,6 +2037,11 @@ public sealed class TimelineProductRuntimeService
 
     private static string GetPowerShellPath()
     {
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            return "pwsh";
+        }
+
         var systemRoot = Environment.GetEnvironmentVariable("SystemRoot");
         if (string.IsNullOrWhiteSpace(systemRoot))
         {
@@ -1913,6 +2050,217 @@ public sealed class TimelineProductRuntimeService
 
         var candidate = Path.Combine(systemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
         return File.Exists(candidate) ? candidate : "powershell.exe";
+    }
+
+    private static string[] GetPowerShellScriptArguments(string scriptPath)
+    {
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            return
+            [
+                "-NoLogo",
+                "-NoProfile",
+                "-File",
+                scriptPath,
+            ];
+        }
+
+        return
+        [
+            "-NoLogo",
+            "-NoProfile",
+            "-WindowStyle",
+            "Hidden",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            scriptPath,
+        ];
+    }
+
+    private static ProductLauncherScript? ResolveProductLauncher(
+        ProductRuntimeDefinition definition,
+        string action,
+        bool required)
+    {
+        foreach (var candidate in GetProductLauncherCandidates(definition.ProductPath, action))
+        {
+            if (File.Exists(candidate.Path))
+            {
+                return candidate;
+            }
+        }
+
+        if (!required)
+        {
+            return null;
+        }
+
+        var expected = string.Join(", ", GetProductLauncherCandidates(definition.ProductPath, action).Select(candidate => candidate.Path));
+        throw new InvalidOperationException(
+            $"Compatible product {action} launcher was not found for {GetOperatingSystemLabel()}: {expected}");
+    }
+
+    private static IEnumerable<ProductLauncherScript> GetProductLauncherCandidates(string productPath, string action)
+    {
+        if (string.IsNullOrWhiteSpace(productPath))
+        {
+            yield break;
+        }
+
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            yield return new ProductLauncherScript(Path.Combine(productPath, $"{action}.ps1"), ProductLauncherKind.PowerShell);
+            yield return new ProductLauncherScript(Path.Combine(productPath, $"{action}.cmd"), ProductLauncherKind.Command);
+            yield return new ProductLauncherScript(Path.Combine(productPath, $"{action}.bat"), ProductLauncherKind.Command);
+            yield break;
+        }
+
+        yield return new ProductLauncherScript(Path.Combine(productPath, $"{action}.sh"), ProductLauncherKind.Shell);
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+        {
+            yield return new ProductLauncherScript(Path.Combine(productPath, $"{action}.command"), ProductLauncherKind.Shell);
+        }
+
+        if (IsCommandAvailable("pwsh"))
+        {
+            yield return new ProductLauncherScript(Path.Combine(productPath, $"{action}.ps1"), ProductLauncherKind.PowerShell);
+        }
+    }
+
+    private static string GetDefaultProductLauncherPath(string productPath, string action)
+    {
+        return GetProductLauncherCandidates(productPath, action).FirstOrDefault()?.Path ?? string.Empty;
+    }
+
+    private static LauncherProcessCommand GetLauncherProcessCommand(ProductLauncherScript launcher)
+    {
+        return launcher.Kind switch
+        {
+            ProductLauncherKind.PowerShell => new LauncherProcessCommand(
+                GetPowerShellPath(),
+                GetPowerShellScriptArguments(launcher.Path)),
+            ProductLauncherKind.Command => new LauncherProcessCommand(
+                GetCommandShellPath(),
+                ["/c", launcher.Path]),
+            ProductLauncherKind.Shell => new LauncherProcessCommand(
+                GetShellPath(),
+                [launcher.Path]),
+            _ => throw new InvalidOperationException($"Unsupported launcher kind: {launcher.Kind}"),
+        };
+    }
+
+    private static string GetShellPath()
+    {
+        return IsCommandAvailable("bash") ? "bash" : "sh";
+    }
+
+    private static string GetCommandShellPath()
+    {
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            return "sh";
+        }
+
+        var systemRoot = Environment.GetEnvironmentVariable("SystemRoot");
+        if (string.IsNullOrWhiteSpace(systemRoot))
+        {
+            systemRoot = Path.GetPathRoot(Environment.SystemDirectory)?.TrimEnd('\\', '/') ?? @"C:\Windows";
+        }
+
+        var candidate = Path.Combine(systemRoot, "System32", "cmd.exe");
+        return File.Exists(candidate) ? candidate : "cmd.exe";
+    }
+
+    private static bool IsCommandAvailable(string commandName)
+    {
+        if (string.IsNullOrWhiteSpace(commandName))
+        {
+            return false;
+        }
+
+        var path = Environment.GetEnvironmentVariable("PATH") ?? string.Empty;
+        foreach (var entry in path.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            if (File.Exists(Path.Combine(entry, commandName)))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static string GetOperatingSystemLabel()
+    {
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            return "Windows";
+        }
+
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+        {
+            return "macOS";
+        }
+
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+        {
+            return "Linux";
+        }
+
+        return RuntimeInformation.OSDescription;
+    }
+
+    private static string GetCurrentOperatingSystemId()
+    {
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            return "windows";
+        }
+
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+        {
+            return "macos";
+        }
+
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+        {
+            return "linux";
+        }
+
+        return "unknown";
+    }
+
+    private static bool IsProductSupportedOnOperatingSystem(ProductRuntimeDefinition definition, string operatingSystem)
+    {
+        if (definition.SupportedOperatingSystems.Count == 0)
+        {
+            return true;
+        }
+
+        return definition.SupportedOperatingSystems.Any(
+            supported => supported.Equals(operatingSystem, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static void AssertProductSupportedOnCurrentOperatingSystem(ProductRuntimeDefinition definition)
+    {
+        if (IsProductSupportedOnOperatingSystem(definition, GetCurrentOperatingSystemId()))
+        {
+            return;
+        }
+
+        throw new InvalidOperationException(GetUnsupportedOperatingSystemMessage(definition));
+    }
+
+    private static string GetUnsupportedOperatingSystemMessage(ProductRuntimeDefinition definition)
+    {
+        if (!string.IsNullOrWhiteSpace(definition.UnsupportedOperatingSystemMessage))
+        {
+            return definition.UnsupportedOperatingSystemMessage;
+        }
+
+        return $"{definition.DisplayName} は {GetOperatingSystemLabel()} では未対応です。対応OS: "
+            + string.Join(", ", definition.SupportedOperatingSystems);
     }
 
     private static bool IsProductStartOutputSuccess(string text)
@@ -1931,15 +2279,18 @@ public sealed class TimelineProductRuntimeService
             return currentPath;
         }
 
+        var comparison = RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
+            ? StringComparison.OrdinalIgnoreCase
+            : StringComparison.Ordinal;
         var parts = currentPath
-            .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .ToList();
-        if (parts.Any(part => part.Equals(candidate, StringComparison.OrdinalIgnoreCase)))
+        if (parts.Any(part => part.Equals(candidate, comparison)))
         {
             return currentPath;
         }
 
-        return string.IsNullOrEmpty(currentPath) ? candidate : candidate + ";" + currentPath;
+        return string.IsNullOrEmpty(currentPath) ? candidate : candidate + Path.PathSeparator + currentPath;
     }
 
     private static string BuildCommandLine(string fileName, IEnumerable<string> arguments)
@@ -1993,8 +2344,10 @@ public sealed class TimelineProductRuntimeService
                 product?.SourceUrl ?? string.Empty,
                 product?.Version ?? string.Empty,
                 product?.Enabled ?? true,
-                string.IsNullOrEmpty(productPath) ? string.Empty : Path.Combine(productPath, "start.ps1"),
-                string.IsNullOrEmpty(productPath) ? string.Empty : Path.Combine(productPath, "stop.ps1")));
+                metadata.SupportedOperatingSystems,
+                metadata.UnsupportedOperatingSystemMessage,
+                GetDefaultProductLauncherPath(productPath, "start"),
+                GetDefaultProductLauncherPath(productPath, "stop")));
         }
 
         return definitions;
@@ -2020,18 +2373,27 @@ public sealed class TimelineProductRuntimeService
         var productPath = definition.ProductPath;
         var appManagedByTimeline = IsProductAppManagedByTimeline(productPath);
         var productFound = Directory.Exists(productPath);
+        var currentOperatingSystem = GetCurrentOperatingSystemId();
+        var supportedOnCurrentOperatingSystem = IsProductSupportedOnOperatingSystem(definition, currentOperatingSystem);
+        var unsupportedReason = supportedOnCurrentOperatingSystem
+            ? string.Empty
+            : GetUnsupportedOperatingSystemMessage(definition);
         var startFound = !string.IsNullOrEmpty(definition.StartPath) && File.Exists(definition.StartPath);
         var stopFound = !string.IsNullOrEmpty(definition.StopPath) && File.Exists(definition.StopPath);
         var launcherFound = startFound || stopFound;
 
-        var state = "not-created";
+        var state = supportedOnCurrentOperatingSystem ? "not-created" : "unsupported";
         var status = string.Empty;
         var running = false;
         var startedAt = string.Empty;
-        var message = string.Empty;
+        var message = unsupportedReason;
         JsonObject? stored = null;
 
-        if (productFound && launcherFound)
+        if (!supportedOnCurrentOperatingSystem)
+        {
+            status = "unsupported";
+        }
+        else if (productFound && launcherFound)
         {
             state = "ready";
             status = "ready";
@@ -2110,6 +2472,10 @@ public sealed class TimelineProductRuntimeService
             SettingsBackupAvailable = settingsBackup.Exists,
             SettingsBackupPath = settingsBackup.Path,
             SettingsBackupAt = settingsBackup.BackedUpAt,
+            CurrentOperatingSystem = currentOperatingSystem,
+            SupportedOperatingSystems = definition.SupportedOperatingSystems.ToList(),
+            SupportedOnCurrentOperatingSystem = supportedOnCurrentOperatingSystem,
+            UnsupportedOperatingSystemMessage = unsupportedReason,
             Enabled = definition.Enabled,
             ProductFound = productFound,
             ComposeFound = launcherFound,
@@ -2841,8 +3207,32 @@ public sealed class TimelineProductRuntimeService
         string SourceUrl,
         string Version,
         bool Enabled,
+        IReadOnlyList<string> SupportedOperatingSystems,
+        string UnsupportedOperatingSystemMessage,
         string StartPath,
         string StopPath);
+
+    private sealed record ProductRuntimeMetadata(
+        string DisplayName,
+        string Description,
+        string PagePath,
+        IReadOnlyList<string> SupportedOperatingSystems,
+        string UnsupportedOperatingSystemMessage = "");
+
+    private sealed record ProductLauncherScript(
+        string Path,
+        ProductLauncherKind Kind);
+
+    private sealed record LauncherProcessCommand(
+        string FileName,
+        IReadOnlyList<string> Arguments);
+
+    private enum ProductLauncherKind
+    {
+        PowerShell,
+        Command,
+        Shell,
+    }
 
     private sealed record ProductActualRuntimeStatus(
         bool Running,
@@ -2956,6 +3346,18 @@ public sealed class ProductRuntimeRowResponse
 
     [JsonPropertyName("settingsBackupAt")]
     public string SettingsBackupAt { get; set; } = "";
+
+    [JsonPropertyName("currentOperatingSystem")]
+    public string CurrentOperatingSystem { get; set; } = "";
+
+    [JsonPropertyName("supportedOperatingSystems")]
+    public List<string> SupportedOperatingSystems { get; set; } = [];
+
+    [JsonPropertyName("supportedOnCurrentOperatingSystem")]
+    public bool SupportedOnCurrentOperatingSystem { get; set; } = true;
+
+    [JsonPropertyName("unsupportedOperatingSystemMessage")]
+    public string UnsupportedOperatingSystemMessage { get; set; } = "";
 
     [JsonPropertyName("enabled")]
     public bool Enabled { get; set; } = true;

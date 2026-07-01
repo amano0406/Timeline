@@ -5,22 +5,25 @@ namespace Timeline.Web.Components.Shared;
 public partial class ProductManagementModal
 {
     private static bool IsInstalled(ProductRuntimeRow product) =>
-        product.ProductFound && product.ComposeFound;
+        product.ProductFound && (product.ComposeFound || !product.SupportedOnCurrentOperatingSystem);
 
     private bool CanStart(ProductRuntimeRow product) =>
         IsActionTarget(product)
+        && product.SupportedOnCurrentOperatingSystem
         && product.StartFound
         && !IsBusy(product)
         && !IsRuntimeStarted(product);
 
     private bool CanStop(ProductRuntimeRow product) =>
         IsActionTarget(product)
+        && product.SupportedOnCurrentOperatingSystem
         && product.StopFound
         && !IsBusy(product)
         && IsRuntimeStarted(product);
 
     private bool CanRestart(ProductRuntimeRow product) =>
         IsActionTarget(product)
+        && product.SupportedOnCurrentOperatingSystem
         && product.StartFound
         && !IsBusy(product)
         && IsRuntimeStarted(product);
@@ -33,12 +36,14 @@ public partial class ProductManagementModal
 
     private bool CanInstall(ProductRuntimeRow product) =>
         !IsInstalled(product)
+        && product.SupportedOnCurrentOperatingSystem
         && product.AppManagedByTimeline
         && _actionProductId is null
         && !string.IsNullOrWhiteSpace(product.SourceUrl);
 
     private bool CanUpdate(ProductRuntimeRow product) =>
         IsInstalled(product)
+        && product.SupportedOnCurrentOperatingSystem
         && CanModifyProductFiles(product)
         && product.UpdateAvailable
         && _actionProductId is null
@@ -55,7 +60,11 @@ public partial class ProductManagementModal
         CanRequestUninstall(product)
         && !_uninstallPlanLoading
         && _uninstallPlan is not null
-        && string.IsNullOrWhiteSpace(_uninstallPlanError);
+        && string.IsNullOrWhiteSpace(_uninstallPlanError)
+        && (!UninstallNeedsStrongConfirmation || _uninstallDangerAccepted);
+
+    private bool UninstallNeedsStrongConfirmation =>
+        _uninstallRemoveGeneratedData || !_uninstallKeepSettings;
 
     private bool IsUninstallPending(ProductRuntimeRow product) =>
         string.Equals(_pendingUninstallProductId, product.Id, StringComparison.OrdinalIgnoreCase);
@@ -71,6 +80,7 @@ public partial class ProductManagementModal
         product.State.Trim().ToLowerInvariant();
 
     private static bool ShowProductMessage(ProductRuntimeRow product) =>
+        !product.SupportedOnCurrentOperatingSystem ||
         !IsInstalled(product) ||
         !product.AppManagedByTimeline ||
         product.DestructiveActionsDisabled ||
@@ -79,6 +89,13 @@ public partial class ProductManagementModal
 
     private static string ProductMessage(ProductRuntimeRow product)
     {
+        if (!product.SupportedOnCurrentOperatingSystem)
+        {
+            return string.IsNullOrWhiteSpace(product.UnsupportedOperatingSystemMessage)
+                ? "このOSでは未対応です。"
+                : product.UnsupportedOperatingSystemMessage;
+        }
+
         if (!product.AppManagedByTimeline)
         {
             if (!product.ProductFound)
@@ -107,11 +124,16 @@ public partial class ProductManagementModal
         {
             return "開発用の配置を参照しています。起動と停止はできますが、更新とアンインストールは無効です。";
         }
-        return product.Message;
+        return RuntimeDisplayText.ProductRuntimeMessage(product);
     }
 
     private static string RuntimeLabel(ProductRuntimeRow product)
     {
+        if (!product.SupportedOnCurrentOperatingSystem || RuntimeState(product) is "unsupported")
+        {
+            return "未対応";
+        }
+
         if (!product.ProductFound)
         {
             return "未インストール";
@@ -127,7 +149,7 @@ public partial class ProductManagementModal
             "starting" => "起動中",
             "running" => "稼働中",
             "stopping" => "停止中",
-            "stopped" => "停止",
+            "stopped" => "停止中",
             "restarting" => "再起動中",
             "uninstalling" => "削除中",
             "failed" => "異常",
@@ -138,6 +160,11 @@ public partial class ProductManagementModal
 
     private static string RuntimePillClass(ProductRuntimeRow product)
     {
+        if (!product.SupportedOnCurrentOperatingSystem || RuntimeState(product) is "unsupported")
+        {
+            return "tfa-status-pill border-amber-200 bg-amber-50 text-amber-900";
+        }
+
         if (!product.ProductFound || !product.ComposeFound)
         {
             return "tfa-status-pill border-red-200 bg-red-50 text-red-800";
@@ -160,6 +187,11 @@ public partial class ProductManagementModal
 
     private static string RuntimeIcon(ProductRuntimeRow product)
     {
+        if (!product.SupportedOnCurrentOperatingSystem || RuntimeState(product) is "unsupported")
+        {
+            return "circle-minus";
+        }
+
         if (!product.ProductFound || !product.ComposeFound)
         {
             return "triangle-exclamation";
@@ -182,6 +214,11 @@ public partial class ProductManagementModal
 
     private static string RuntimeDetailLabel(ProductRuntimeRow product)
     {
+        if (!product.SupportedOnCurrentOperatingSystem || RuntimeState(product) is "unsupported")
+        {
+            return "このOSでは未対応";
+        }
+
         if (!IsInstalled(product))
         {
             return "-";

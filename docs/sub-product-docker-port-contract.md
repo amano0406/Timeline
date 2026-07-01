@@ -19,7 +19,7 @@ As of this check:
 
 | Product | Runtime shape | Docker Compose | Local API port | Ollama dependency |
 | --- | --- | --- | --- | --- |
-| Timeline | parent web, helper, worker, optional Ollama | yes | yes | yes |
+| Timeline | parent web, Local API, worker, optional Ollama | yes | yes | yes |
 | TimelineForAudio | resident Docker worker with worker-hosted API | yes | yes | no |
 | TimelineForWindowsCodex | Docker Compose worker with worker-hosted API | yes | yes | no |
 | TimelineForChatGPT | Docker Compose worker with worker-hosted API | yes | yes | no |
@@ -31,7 +31,7 @@ Current Timeline defaults:
 
 ```text
 Timeline Web:              19000
-Timeline Helper:           19001-19010
+Timeline Local API:        19001-19010
 Timeline-owned Ollama:     11434 when using the Ollama ecosystem default
 ```
 
@@ -73,7 +73,7 @@ Top-level reservations:
 
 | Range | Owner | Purpose |
 | --- | --- | --- |
-| `19000-19099` | Timeline parent product | Parent web UI, helper/control APIs, parent-owned adapters, and parent development ports |
+| `19000-19099` | Timeline parent product | Parent web UI, Local API/control APIs, parent-owned adapters, and parent development ports |
 | `19100-19699` | Default sub-products | One 100-port block per default sub-product |
 | `19700-19899` | Future official products | Future Timeline-family products with stable product ids |
 | `19900-19999` | Local development only | Manual experiments, one-off tests, and non-shipped defaults |
@@ -83,7 +83,7 @@ Parent Timeline reservation:
 | Range | Purpose | Default or rule |
 | --- | --- | --- |
 | `19000` | Timeline Web UI | Current default web port |
-| `19001-19010` | Timeline Helper API | Current helper fallback range |
+| `19001-19010` | Timeline Local API | Current Local API fallback range |
 | `19011-19019` | Future parent control APIs | Reserved; do not assign to sub-products |
 | `19020-19029` | Parent worker or callback endpoints | Reserved; publish only if needed |
 | `19030-19039` | Parent-owned adapter or dependency ports | Use for Timeline-owned adapters when the native external default is not appropriate |
@@ -105,7 +105,7 @@ Within each sub-product block:
 | Offset | Purpose |
 | --- | --- |
 | `+00` | Primary local API or web endpoint |
-| `+01-+09` | Product helper/control APIs |
+| `+01-+09` | Product control APIs |
 | `+10-+19` | Product-owned worker endpoints, if any |
 | `+20-+39` | Product-owned adapters or embedded dependencies |
 | `+40-+59` | Local callbacks, webhooks, or bridge services |
@@ -116,7 +116,7 @@ Examples:
 
 ```text
 TimelineForImage primary API:     19400
-TimelineForImage helper API:      19401
+TimelineForImage control API:     19401
 TimelineForImage local adapter:   19420
 TimelineForVideo primary API:     19500
 TimelineForVideo diagnostics:     19560-19579
@@ -371,6 +371,41 @@ TIMELINE_FOR_IMAGE_API_PORT=19400
 
 Require API port settings for Timeline-managed sub-products that expose the local API.
 
+## Host path mapping for macOS and Linux
+
+Windows and WSL-style paths may continue to use drive mounts such as `/mnt/c`
+and `/mnt/f`. macOS and Linux should not mount the whole host filesystem by
+default.
+
+Recommended non-Windows shape:
+
+```text
+TIMELINE_FOR_<PRODUCT>_HOST_ROOT=$HOME
+TIMELINE_FOR_<PRODUCT>_PATH_MAPPINGS=[{"host":"$HOME","container":"/host"}]
+```
+
+Compose should mount the configured host root to `/host`. Workers should convert
+configured host paths to container paths through the explicit mapping before
+falling back to Windows drive conversion.
+
+Example:
+
+```text
+Host setting:      /Users/amano/TimelineData/input-video
+Container path:    /host/TimelineData/input-video
+```
+
+Rules:
+
+- Prefer a narrow host root such as the user's home directory.
+- Do not mount `/` by default.
+- Allow advanced users to override the host root and mapping environment
+  variables when material lives outside the default root.
+- Keep the original host path in settings. The worker is responsible for
+  converting it at runtime.
+- Continue to support Windows drive paths separately; do not mix Unix mapping
+  logic with `C:\` to `/mnt/c` conversion.
+
 ## Parent connection
 
 Current parent-to-sub-product boundary:
@@ -380,7 +415,7 @@ http://127.0.0.1:<apiPort>
 ```
 
 The parent Timeline product must use the local API for product operations.
-Host launchers should not be invoked for normal refresh, list, download,
+Legacy host launchers should not be invoked for normal refresh, list, download,
 remove, detail, model, or settings operations.
 
 Minimum API shape expected by Timeline:
@@ -451,7 +486,7 @@ For host-only sub-products such as TimelineForPcInfo:
 1. Do not add Docker settings just for consistency.
 2. Keep host execution explicit.
 3. Keep API port settings configurable.
-4. Keep the host API thin. It may collect Windows-only facts and manage the
+4. Keep the local API thin. It may collect Windows-only facts and manage the
    local host process lifecycle, but normal Timeline integration still goes
    through HTTP API routes.
 5. Treat normalization, report rendering, packaging, and other CPU-heavy or

@@ -7,18 +7,46 @@ public partial class Index
     private void BuildDashboard()
     {
         _alerts.Clear();
-        _dataSources.Clear();
 
         AddSystemAlerts();
         AddSettingsAlerts();
         AddProcessingAlerts();
         AddScanUpdateAlerts();
-        AddDataSources();
     }
 
     private void AddSystemAlerts()
     {
-        if (WorkerStatusKnown && !string.Equals(_worker!.State, "running", StringComparison.OrdinalIgnoreCase))
+        if (LocalApiUnavailable)
+        {
+            _alerts.Add(new(
+                "danger",
+                "Timeline の操作機能に接続できません",
+                "状態確認や復旧操作に必要な機能が応答していません。Timeline を起動し直してください。",
+                "スキャンを開く",
+                "scan",
+                "link"));
+        }
+        else if (WorkerDockerUnavailable)
+        {
+            _alerts.Add(new(
+                "danger",
+                "Docker が起動していません",
+                "Timeline の自動処理を動かすための Docker が停止しています。復旧を実行すると、Docker と Timeline の自動処理の起動を試します。",
+                "Dockerと自動処理を復旧",
+                "",
+                "worker-repair"));
+        }
+        else if (WorkerStatusUnreadable)
+        {
+            _alerts.Add(new(
+                "danger",
+                "自動処理の状態を確認できません",
+                "Docker または worker の状態を確認できません。復旧を実行すると、Docker と worker の起動を試します。",
+                "復旧を試す",
+                "",
+                "worker-repair"));
+        }
+        else if (WorkerStatusKnown && !string.Equals(_worker!.State, "running", StringComparison.OrdinalIgnoreCase))
         {
             _alerts.Add(new(
                 "danger",
@@ -37,7 +65,7 @@ public partial class Index
             }
 
             var brokenProducts = _runtime!.Products
-                .Where(product => product.ProductFound && !product.ComposeFound)
+                .Where(IsRuntimeProductBroken)
                 .Select(product => product.DisplayName)
                 .Take(3)
                 .ToList();
@@ -107,7 +135,7 @@ public partial class Index
         }
         else if ((_verbalizationTargets?.TargetCount ?? 0) > 0)
         {
-            _alerts.Add(new("info", "言語化の検証対象があります", "現在は品質確認のため、音声1件・動画1件だけを処理する暫定モードです。", "スキャンを開く", "scan", "link"));
+            _alerts.Add(new("info", "言語化待ちの素材があります", "音声由来イベントをより扱いやすい文字情報に整える対象があります。スキャン画面から言語化を進められます。", "スキャンを開く", "scan", "link"));
         }
     }
 
@@ -211,68 +239,4 @@ public partial class Index
         }
     }
 
-    private void AddDataSources()
-    {
-        if (!HasInstalledProducts)
-        {
-            return;
-        }
-
-        var audioStoreCount = StoreItemCount("audio", _audio?.AudioItemCount ?? 0);
-        var videoStoreCount = StoreItemCount("video", _video?.ItemCount ?? 0);
-        var imageStoreCount = StoreItemCount("image", _image?.ItemCount ?? 0);
-        var chatGptStoreCount = StoreItemCount("chatgpt", _chatGpt?.ItemCount ?? 0);
-        var windowsStoreCount = StoreItemCount("windows-codex", _windowsCodex?.Current.ThreadCount ?? 0);
-        var windowsProcessedCount = WindowsCodexProcessedCount(_windowsCodex);
-        var pcStoreCount = StoreItemCount("pc", _pc?.ItemCount ?? 0);
-
-        _dataSources.Add(new("音声ファイル", "file-audio", "音声の取り込みと言語化候補", SourceState(_audio?.ProductFound == true || RuntimeProductFound("audio"), audioStoreCount), [
-            new("対象", DetailSummaryText(_audio is null, FormatNumber(_audio?.AudioFileCount ?? 0))),
-            new("処理済み", DetailSummaryText(_audio is null, FormatNumber(_audio?.AudioItemCount ?? 0))),
-            new("Timeline", FormatNumber(audioStoreCount)),
-            new("言語化", AudioVerbalizationSummaryText),
-        ]));
-        _dataSources.Add(new("動画ファイル", "video", "動画の取り込みと言語化候補", SourceState(_video?.ProductFound == true || RuntimeProductFound("video"), videoStoreCount), [
-            new("対象", DetailSummaryText(_video is null, FormatNumber(_video?.SourceFileCount ?? 0))),
-            new("処理済み", DetailSummaryText(_video is null, FormatNumber(_video?.ItemCount ?? 0))),
-            new("Timeline", FormatNumber(videoStoreCount)),
-            new("言語化", VideoVerbalizationSummaryText),
-        ]));
-        _dataSources.Add(new("画像ファイル", "image", "画像の取り込みとOCR候補", SourceState(_image?.ProductFound == true || RuntimeProductFound("image"), imageStoreCount), [
-            new("対象", DetailSummaryText(_image is null, FormatNumber(_image?.SourceFileCount ?? 0))),
-            new("処理済み", DetailSummaryText(_image is null, FormatNumber(_image?.ItemCount ?? 0))),
-            new("Timeline", FormatNumber(imageStoreCount)),
-            new("言語化", "対象外"),
-        ]));
-        _dataSources.Add(new("ChatGPT", "comments", "会話スレッドの取り込み", SourceState(_chatGpt?.ProductFound == true || RuntimeProductFound("chatgpt"), chatGptStoreCount), [
-            new("入力候補", DetailSummaryText(_chatGpt is null, FormatNumber(_chatGpt?.ProcessableInputCount ?? 0))),
-            new("処理済み", DetailSummaryText(_chatGpt is null, FormatNumber(_chatGpt?.ItemCount ?? 0))),
-            new("Timeline", FormatNumber(chatGptStoreCount)),
-            new("イベント", FormatNumber(StoreEventCount("chatgpt"))),
-        ]));
-        _dataSources.Add(new("Windows Codex", "terminal", "Codex スレッドの取り込み", SourceState(_windowsCodex?.ProductFound == true || RuntimeProductFound("windows-codex"), windowsStoreCount), [
-            new("スレッド", DetailSummaryText(_windowsCodex is null, FormatNumber(_windowsCodex?.Current.ThreadCount ?? 0))),
-            new("処理済み", DetailSummaryText(_windowsCodex is null, FormatNumber(windowsProcessedCount))),
-            new("Timeline", FormatNumber(windowsStoreCount)),
-            new("イベント", FormatNumber(StoreEventCount("windows-codex"))),
-        ]));
-        _dataSources.Add(new("PC状態", "desktop", "PC状態ログの取り込み", SourceState(_pc?.ProductFound == true || RuntimeProductFound("pc"), pcStoreCount), [
-            new("対象", DetailSummaryText(_pc is null, FormatNumber(_pc?.ItemCount ?? 0))),
-            new("処理済み", DetailSummaryText(_pc is null, FormatNumber(_pc?.ItemCount ?? 0))),
-            new("Timeline", FormatNumber(pcStoreCount)),
-            new("保存先", DetailSummaryText(_pc is null, _pc?.Settings.OutputRootReady == true ? "利用可" : "未設定")),
-        ]));
-    }
-
-    private static int WindowsCodexProcessedCount(WindowsCodexOverview? overview)
-    {
-        if (overview is null)
-        {
-            return 0;
-        }
-
-        return overview.Current.RenderedThreadCount > 0
-            ? overview.Current.RenderedThreadCount
-            : overview.Current.ThreadCount;
-    }
 }

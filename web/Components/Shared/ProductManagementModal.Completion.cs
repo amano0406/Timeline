@@ -10,6 +10,57 @@ public partial class ProductManagementModal
             ? "データも削除してアンインストールする"
             : "アンインストールする";
 
+    private string UninstallModeTitle
+    {
+        get
+        {
+            if (!_uninstallKeepSettings && _uninstallRemoveGeneratedData)
+            {
+                return "この製品をできるだけ削除";
+            }
+
+            if (_uninstallRemoveGeneratedData)
+            {
+                return "生成済みデータも削除";
+            }
+
+            if (!_uninstallKeepSettings)
+            {
+                return "設定を残さず削除";
+            }
+
+            return "アプリだけ削除";
+        }
+    }
+
+    private string UninstallModeDescription
+    {
+        get
+        {
+            if (!_uninstallKeepSettings && _uninstallRemoveGeneratedData)
+            {
+                return "製品アプリ本体、生成済みデータ、設定を削除対象にします。元ファイルは削除しません。";
+            }
+
+            if (_uninstallRemoveGeneratedData)
+            {
+                return "製品アプリ本体に加えて、Timeline が作成した取り込み結果も削除します。元ファイルは削除しません。";
+            }
+
+            if (!_uninstallKeepSettings)
+            {
+                return "製品アプリ本体を削除し、設定は退避せず残しません。生成済みデータは残します。";
+            }
+
+            return "製品アプリ本体だけを削除し、設定は退避、生成済みデータは残します。再インストールしやすい選択です。";
+        }
+    }
+
+    private string UninstallModePillClass =>
+        UninstallNeedsStrongConfirmation
+            ? "tfa-status-pill border-red-200 bg-red-50 text-red-800"
+            : "tfa-status-pill border-teal-200 bg-teal-50 text-teal-800";
+
     private string MessageAlertClass =>
         _messageIsSuccess ? "tfa-alert-info border-teal-200 bg-teal-50 text-teal-800" : "tfa-alert-info";
 
@@ -125,7 +176,43 @@ public partial class ProductManagementModal
         {
             return "実行環境側のデータです。現時点では容量を確認せず、削除もしません。";
         }
-        return resource.Message;
+        return UninstallWarningText(resource.Message);
+    }
+
+    private static string UninstallWarningText(string? warning)
+    {
+        var text = (warning ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return "";
+        }
+
+        if (text.Contains("outside Timeline-managed products", StringComparison.OrdinalIgnoreCase))
+        {
+            return "この製品はTimeline管理外の場所にあるため、アプリ本体の削除は無効です。";
+        }
+
+        if (text.Contains("no explicit management contract", StringComparison.OrdinalIgnoreCase))
+        {
+            return "この製品は実行環境データを使いますが、Timeline側に削除対象を特定する契約がないため、実行環境データは削除しません。";
+        }
+
+        if (text.Contains("Runtime data management is declared, but resource deletion is not implemented", StringComparison.OrdinalIgnoreCase))
+        {
+            return "実行環境データの管理対象であることは分かっていますが、削除処理はまだ実装されていないため、ここでは削除しません。";
+        }
+
+        if (text.Contains("Local paths can be removed; Docker resource deletion is not implemented", StringComparison.OrdinalIgnoreCase))
+        {
+            return "ローカルの実行環境データは削除できますが、Dockerリソースの削除は現時点では未対応です。";
+        }
+
+        if (text.Contains("No runtime resources were resolved", StringComparison.OrdinalIgnoreCase))
+        {
+            return "削除対象の実行環境データを特定できなかったため、実行環境データは削除しません。";
+        }
+
+        return RuntimeDisplayText.ProductRuntimeMessage(text);
     }
 
     private static ProductActionCompletion BuildUninstallCompletion(string displayName, ProductUninstallPlan plan)

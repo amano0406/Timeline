@@ -1,5 +1,5 @@
 @page "/chatgpt"
-@inject TimelineHelperClient Timeline
+@inject TimelineLocalApiClient Timeline
 @inject IJSRuntime Js
 @implements IDisposable
 
@@ -183,7 +183,7 @@ else if (_overview is not null)
         }
         else if (Threads.Count == 0)
         {
-            <div class="p-5 text-sm text-slate-600">スレッドはありません。</div>
+            <div class="p-5 text-sm text-slate-600">@EmptyThreadMessage</div>
         }
         else
         {

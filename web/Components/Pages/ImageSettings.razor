@@ -1,4 +1,4 @@
-@inject TimelineHelperClient Timeline
+@inject TimelineLocalApiClient Timeline
 @inject IJSRuntime Js
 
 @if (!Embedded)
@@ -59,6 +59,20 @@ else
     }
 
     <section class="tfa-card tfa-card-pad">
+        <h2 class="flex items-center gap-2 text-lg font-semibold">
+            <FaIcon Name="microchip" Class="tfa-icon text-accent" />
+            <span>AI処理方法</span>
+        </h2>
+
+        <div class="mt-4 max-w-xl">
+            <select class="tfa-input" value="@_computeMode" @onchange="OnComputeModeChanged" aria-label="AI処理方法">
+                <option value="gpu">GPU</option>
+                <option value="cpu">CPU</option>
+            </select>
+        </div>
+    </section>
+
+    <section class="tfa-card tfa-card-pad mt-5">
         <h2 class="flex items-center gap-2 text-lg font-semibold">
             <FaIcon Name="folder" Class="tfa-icon text-accent" />
             <span>入力ディレクトリ</span>

@@ -1220,7 +1220,8 @@
 }
 
 .tfa-button-primary,
-.tfa-button-secondary {
+.tfa-button-secondary,
+.tfa-button-danger {
   display: inline-flex;
   min-height: 2.125rem;
   align-items: center;
@@ -1250,6 +1251,16 @@
 
 .tfa-button-secondary:hover {
   background: rgb(248 250 252);
+}
+
+.tfa-button-danger {
+  border: 1px solid rgb(220 38 38);
+  background: rgb(185 28 28);
+  color: rgb(255 255 255);
+}
+
+.tfa-button-danger:hover {
+  background: rgb(153 27 27);
 }
 
 .tfa-video-modal-backdrop {

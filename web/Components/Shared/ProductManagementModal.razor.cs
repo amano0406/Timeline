@@ -17,6 +17,7 @@ public partial class ProductManagementModal
     private string? _pendingUninstallProductId;
     private bool _uninstallKeepSettings = true;
     private bool _uninstallRemoveGeneratedData;
+    private bool _uninstallDangerAccepted;
     private bool _uninstallPlanLoading;
     private string? _uninstallPlanError;
     private ProductUninstallPlan? _uninstallPlan;
@@ -52,7 +53,7 @@ public partial class ProductManagementModal
         }
         catch (Exception ex)
         {
-            _error = ex.Message;
+            _error = RuntimeDisplayText.ProductStatusLoadFailure(ex.Message);
         }
         finally
         {

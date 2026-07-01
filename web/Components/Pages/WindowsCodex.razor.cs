@@ -23,6 +23,7 @@ public partial class WindowsCodex
     private DateTime? _lastLoadedAt;
     private int _currentThreadPage = 1;
     private int _threadTotal;
+    private string? _threadListMessage;
     private string? _error;
     private string? _operationMessage;
 
@@ -50,6 +51,7 @@ public partial class WindowsCodex
             _timelineSettings = await settingsTask;
             _threads.Clear();
             _itemSummaryList.Clear();
+            _threadListMessage = null;
             _currentThreadPage = 1;
             await InvokeAsync(StateHasChanged);
             await LoadThreadPageAsync(1, reset: true);
@@ -73,6 +75,7 @@ public partial class WindowsCodex
             _threads.Clear();
             _itemSummaryList.Clear();
         }
+        _threadListMessage = string.IsNullOrWhiteSpace(result.Message) ? null : result.Message;
         _threads.AddRange(result.Threads);
 
         _threadTotal = result.Total > 0 ? result.Total : result.Pagination.TotalItems;

@@ -195,30 +195,32 @@ public partial class Video
     {
         if (!string.IsNullOrWhiteSpace(file.DisplayPath))
         {
-            var normalized = file.DisplayPath.Replace('/', '\\');
-            var index = normalized.LastIndexOf('\\');
-            return index > 0 ? normalized[..index] : "";
+            var index = LastPathSeparatorIndex(file.DisplayPath);
+            return index > 0 ? file.DisplayPath[..index] : "";
         }
 
         var root = (file.RootPath ?? "").Trim().TrimEnd('\\', '/');
         var directory = (file.Directory ?? "").Trim().Trim('\\', '/');
         return string.IsNullOrWhiteSpace(directory)
             ? root
-            : string.IsNullOrWhiteSpace(root) ? directory : $"{root}\\{directory}";
+            : string.IsNullOrWhiteSpace(root) ? directory : $"{root}/{directory}";
     }
 
     private static string FileSortPath(VideoFileRow file) =>
         !string.IsNullOrWhiteSpace(file.DisplayPath)
             ? file.DisplayPath
-            : $"{file.RootPath}\\{file.RelativePath}";
+            : $"{file.RootPath}/{file.RelativePath}";
 
     private static IEnumerable<string> SplitPathParts(string path)
     {
-        var normalized = (path ?? "").Trim().Replace('/', '\\').Trim('\\');
+        var normalized = (path ?? "").Trim().Trim('\\', '/');
         return string.IsNullOrWhiteSpace(normalized)
             ? []
-            : normalized.Split('\\', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            : normalized.Split(['\\', '/'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
     }
+
+    private static int LastPathSeparatorIndex(string? path) =>
+        (path ?? "").LastIndexOfAny(['\\', '/']);
 
     private static string TreeIndentStyle(int depth) =>
         $"--depth:{Math.Max(0, depth)}";

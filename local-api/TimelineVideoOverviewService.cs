@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Globalization;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
@@ -501,7 +502,7 @@ public sealed class TimelineVideoOverviewService
             ["inputRoots"] = new JsonArray(),
             ["outputRoot"] = GetManagedVideoDataDirectory(),
             ["huggingFaceToken"] = string.Empty,
-            ["computeMode"] = "gpu",
+            ["computeMode"] = _settings.GetResolvedCommonAiComputeMode(),
         };
     }
 
@@ -519,10 +520,11 @@ public sealed class TimelineVideoOverviewService
             payload,
             ["outputRoot", "output_root"],
             GetManagedVideoDataDirectory());
-        var computeMode = GetStringAny(payload, ["computeMode", "compute_mode"], "gpu").ToLowerInvariant();
+        var defaultComputeMode = _settings.GetResolvedCommonAiComputeMode();
+        var computeMode = GetStringAny(payload, ["computeMode", "compute_mode"], defaultComputeMode).ToLowerInvariant();
         if (computeMode is not ("cpu" or "gpu"))
         {
-            computeMode = "gpu";
+            computeMode = defaultComputeMode;
         }
 
         var token = GetStringAny(
@@ -1585,6 +1587,11 @@ public sealed class TimelineVideoOverviewService
 
     private static List<string> GetHardwareDeviceNames(string className)
     {
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            return [];
+        }
+
         try
         {
             using var process = Process.Start(new ProcessStartInfo
@@ -1617,7 +1624,7 @@ public sealed class TimelineVideoOverviewService
                 .Distinct(StringComparer.Ordinal)
                 .ToList();
         }
-        catch (Exception ex) when (ex is InvalidOperationException or IOException or UnauthorizedAccessException)
+        catch (Exception ex) when (ex is InvalidOperationException or IOException or UnauthorizedAccessException or PlatformNotSupportedException or NotSupportedException or System.ComponentModel.Win32Exception)
         {
             return [];
         }
@@ -1655,26 +1662,7 @@ public sealed class TimelineVideoOverviewService
         }
 
         var productPath = GetProductPath();
-        if (text.Equals("/workspace", StringComparison.OrdinalIgnoreCase))
-        {
-            return productPath;
-        }
-        if (text.StartsWith("/workspace/", StringComparison.OrdinalIgnoreCase))
-        {
-            return Path.Combine(productPath, text["/workspace/".Length..].Replace("/", "\\"));
-        }
-        if (text.StartsWith("/mnt/c/", StringComparison.OrdinalIgnoreCase))
-        {
-            return "C:\\" + text[7..].Replace("/", "\\");
-        }
-
-        var converted = TimelinePathConverter.ConvertTimelineWindowsPath(text, _options);
-        if (!string.IsNullOrEmpty(converted))
-        {
-            text = converted;
-        }
-
-        return Path.IsPathRooted(text) ? text : Path.Combine(productPath, text);
+        return TimelinePathConverter.ConvertTimelineContainerPath(text, _options, productPath);
     }
 
     private string GetVideoSettingsFilePath()

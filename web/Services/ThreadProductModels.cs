@@ -69,6 +69,7 @@ public sealed class TimelineThreadListResult
     public int Total { get; set; }
     public TimelinePagination Pagination { get; set; } = new();
     public List<TimelineThreadRow> Threads { get; set; } = [];
+    public string Message { get; set; } = "";
 }
 
 public sealed class WindowsCodexSourceRoot

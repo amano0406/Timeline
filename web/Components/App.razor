@@ -22,7 +22,7 @@
 <body>
     <Routes @rendermode="@(new InteractiveServerRenderMode(prerender: false))" />
     <script>
-        window.timelineHelperBaseUrl = @HelperPublicBaseUrlJson;
+        window.timelineLocalApiBaseUrl = @LocalApiPublicBaseUrlJson;
     </script>
     <script src="vendor/tw-elements/tw-elements.umd.min.js"></script>
     <script src="vendor/chart.js/chart.umd.js"></script>
@@ -37,11 +37,11 @@
 </html>
 
 @code {
-    private string HelperPublicBaseUrl =>
-        Configuration["Timeline:HelperPublicBaseUrl"]
-        ?? Environment.GetEnvironmentVariable("TIMELINE_HELPER_PUBLIC_BASE_URL")
+    private string LocalApiPublicBaseUrl =>
+        Configuration["Timeline:LocalApiPublicBaseUrl"]
+        ?? Environment.GetEnvironmentVariable("TIMELINE_LOCAL_API_PUBLIC_BASE_URL")
         ?? "http://127.0.0.1:19001";
 
-    private MarkupString HelperPublicBaseUrlJson =>
-        (MarkupString)JsonSerializer.Serialize(HelperPublicBaseUrl);
+    private MarkupString LocalApiPublicBaseUrlJson =>
+        (MarkupString)JsonSerializer.Serialize(LocalApiPublicBaseUrl);
 }

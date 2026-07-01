@@ -45,8 +45,8 @@ Timeline creates this block when it is missing and generates a stable local
     "instanceName": "local-0123abcd89",
     "imageTag": "",
     "webPort": 19000,
-    "helperPortStart": 19001,
-    "helperPortEnd": 19010,
+    "localApiPortStart": 19001,
+    "localApiPortEnd": 19010,
     "ollamaPort": 11434,
     "ollamaModel": "qwen3.5:9b",
     "shareOllamaVolume": true,
@@ -55,13 +55,16 @@ Timeline creates this block when it is missing and generates a stable local
 }
 ```
 
+`localApiPortStart` and `localApiPortEnd` represent the Timeline Local API port
+range.
+
 The generated `instanceName` is persisted. It must not change on every launch.
 
 If `instanceName` is still empty before initialization:
 
 - Compose project: `timeline`
 - Web: `http://127.0.0.1:19000`
-- Helper: first free port from `19001` through `19010`
+- Local API: first free port from `19001` through `19010`
 - Ollama: `http://127.0.0.1:11434`
 - Local build image tag: `latest`
 - Ollama volume: `timeline-ollama`
@@ -122,8 +125,8 @@ uses Ollama.
 ## Sub-product connection model
 
 The current parent-to-sub-product integration is the sub-product's local API.
-Host API launchers are deprecated and must not be used for normal product
-operations.
+Legacy host API launchers are deprecated and must not be used for normal
+product operations.
 
 Timeline must not start a sub-product as a side effect of reading data or
 serving an API request. Only explicit runtime actions such as
@@ -185,7 +188,7 @@ For developers running multiple copies:
 1. Keep each copy's generated `runtime.instanceName`, or set a unique one
    manually.
 2. Set a unique `runtime.webPort`.
-3. Set a unique helper port range.
+3. Set a unique Local API port range.
 4. Set a unique `runtime.ollamaPort` or point the product at an external Ollama
    service.
 5. Keep `runtime.shareOllamaVolume` enabled when the goal is to avoid repeated

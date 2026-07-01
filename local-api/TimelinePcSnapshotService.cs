@@ -7,15 +7,18 @@ public sealed class TimelinePcSnapshotService
     private readonly TimelineSettingsService _settings;
     private readonly TimelineOperationLogService _operations;
     private readonly TimelineProductApiClient _api;
+    private readonly TimelineLocalApiOptions _options;
 
     public TimelinePcSnapshotService(
         TimelineSettingsService settings,
         TimelineOperationLogService operations,
-        TimelineProductApiClient api)
+        TimelineProductApiClient api,
+        TimelineLocalApiOptions options)
     {
         _settings = settings;
         _operations = operations;
         _api = api;
+        _options = options;
     }
 
     public Task<JsonObject> GetOverviewAsync(CancellationToken cancellationToken)
@@ -332,12 +335,7 @@ public sealed class TimelinePcSnapshotService
             return string.Empty;
         }
 
-        if (text.StartsWith("/mnt/c/", StringComparison.OrdinalIgnoreCase))
-        {
-            return "C:\\" + text[7..].Replace("/", "\\");
-        }
-
-        return Path.IsPathRooted(text) ? text : Path.Combine(GetProductPath(), text);
+        return TimelinePathConverter.ConvertTimelineContainerPath(text, _options, GetProductPath());
     }
 
     private string GetPcSettingsPath()

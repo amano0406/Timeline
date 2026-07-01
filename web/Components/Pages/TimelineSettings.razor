@@ -1,4 +1,4 @@
-@inject TimelineHelperClient Timeline
+@inject TimelineLocalApiClient Timeline
 @inject IJSRuntime Js
 @using Microsoft.AspNetCore.Components.Routing
 
@@ -275,6 +275,14 @@ else
                         <option value="gpu">GPU</option>
                         <option value="cpu">CPU</option>
                     </select>
+                </div>
+                <div class="mt-3 rounded-md border border-line bg-white p-3 text-sm text-slate-700">
+                    <div class="flex flex-wrap items-center gap-2">
+                        <span class="font-medium text-slate-900">現在の実行判定</span>
+                        <span class="@EffectiveCommonComputeModePillClass">@EffectiveCommonComputeModeLabel</span>
+                        <span class="tfa-status-pill border-slate-200 bg-slate-50 text-slate-700">@AiGpuDetectionLabel</span>
+                    </div>
+                    <div class="mt-2">@CommonComputeModeReason</div>
                 </div>
                 <div class="mt-3 grid gap-2 text-sm">
                     @DevicePreview("CPU", "microchip", CpuDevices)
@@ -701,7 +709,11 @@ else
     private bool _startWithOperatingSystem;
     private string _commonComputeMode = "auto";
     private string _audioComputeMode = "cpu";
-    private string _videoComputeMode = "gpu";
+    private string _imageComputeMode = "cpu";
+    private string _videoComputeMode = "cpu";
+    private bool _audioComputeModeKnown;
+    private bool _imageComputeModeKnown;
+    private bool _videoComputeModeKnown;
     private string _selectedProductSettingsId = "audio";
     private TimelineSettingsDraftSnapshot _timelineDraftBaseline = TimelineSettingsDraftSnapshot.Empty;
     private ProductSettingsDraftSnapshot _audioDraftBaseline = ProductSettingsDraftSnapshot.Empty;
@@ -779,6 +791,34 @@ else
         "gpu" => "GPU",
         "cpu" => "CPU",
         _ => "自動",
+    };
+
+    private string EffectiveCommonComputeMode => _commonComputeMode == "auto"
+        ? ResolveAutoComputeMode()
+        : NormalizeProductComputeMode(_commonComputeMode);
+
+    private string EffectiveCommonComputeModeLabel =>
+        EffectiveCommonComputeMode == "gpu" ? "GPUで処理" : "CPUで処理";
+
+    private string EffectiveCommonComputeModePillClass =>
+        EffectiveCommonComputeMode == "gpu"
+            ? "tfa-status-pill border-sky-200 bg-sky-50 text-sky-800"
+            : "tfa-status-pill border-teal-200 bg-teal-50 text-teal-800";
+
+    private string AiGpuDetectionLabel =>
+        HasAiGpuDeviceForDisplay ? "AI向けGPU: 検出" : "AI向けGPU: 未検出";
+
+    private bool HasAiGpuDeviceForDisplay =>
+        _settings?.CommonAi.AiGpuAvailable == true
+        || ComputeModeResolver.HasAiGpuDevice(GpuDevices);
+
+    private string CommonComputeModeReason => _commonComputeMode switch
+    {
+        "gpu" => "手動でGPUを選択しています。対応製品へ適用すると、AI処理はGPU利用を前提に動きます。",
+        "cpu" => "手動でCPUを選択しています。対応製品へ適用すると、GPUがあってもCPU利用を前提に動きます。",
+        _ => EffectiveCommonComputeMode == "gpu"
+            ? "自動判定です。AI向けGPUが検出されているため、現在の環境ではGPU利用に解決されます。CPUで検証したい場合はCPUを明示してください。"
+            : "自動判定です。AI向けGPUが検出されていないため、現在の環境ではCPU利用に解決されます。",
     };
 
     private TimelineStartupStatus StartupStatus => _settings?.Startup.Status ?? new TimelineStartupStatus();
@@ -948,11 +988,15 @@ else
         {
             var productMode = ResolveCommonComputeModeForProduct();
             var names = new List<string>();
-            if (_audioOverview?.ProductFound == true && NormalizeProductComputeMode(_audioComputeMode) != productMode)
+            if (ProductComputeModeNeedsAttention(_audioOverview?.ProductFound == true, _audioComputeModeKnown, _audioComputeMode, productMode))
             {
                 names.Add("TimelineForAudio");
             }
-            if (_videoOverview?.ProductFound == true && NormalizeProductComputeMode(_videoComputeMode) != productMode)
+            if (ProductComputeModeNeedsAttention(_imageOverview?.ProductFound == true, _imageComputeModeKnown, _imageComputeMode, productMode))
+            {
+                names.Add("TimelineForImage");
+            }
+            if (ProductComputeModeNeedsAttention(_videoOverview?.ProductFound == true, _videoComputeModeKnown, _videoComputeMode, productMode))
             {
                 names.Add("TimelineForVideo");
             }
@@ -1038,14 +1082,7 @@ else
         if (_settings is not null && HasInstalledProducts)
         {
             _ = LoadAudioOverviewLaterAsync();
-            if (IsProductRunning("image"))
-            {
-                _ = LoadImageOverviewLaterAsync();
-            }
-            else
-            {
-                _imageSettingsLoading = false;
-            }
+            _ = LoadImageOverviewLaterAsync();
             _ = LoadVideoOverviewLaterAsync();
             _ = LoadModelInventoriesLaterAsync();
         }
@@ -1164,7 +1201,7 @@ else
 
     private void LoadAudioState(TimelineProductOverview? overview)
     {
-        _audioComputeMode = string.IsNullOrWhiteSpace(overview?.ComputeMode) ? "cpu" : overview.ComputeMode;
+        _audioComputeModeKnown = TryResolveProductComputeMode(overview?.ComputeMode, out _audioComputeMode);
         _audioInputRoots.Clear();
         _audioInputRoots.AddRange((overview?.InputRoots ?? []).Select(CloneRoot));
         if (_audioInputRoots.Count == 0)
@@ -1187,6 +1224,7 @@ else
 
     private void LoadImageState(ImageOverview? overview)
     {
+        _imageComputeModeKnown = TryResolveProductComputeMode(overview?.Settings.ComputeMode, out _imageComputeMode);
         _imageInputRoots.Clear();
         foreach (var root in overview?.Settings.InputRoots ?? [])
         {
@@ -1219,9 +1257,7 @@ else
 
     private void LoadVideoState(VideoOverview? overview)
     {
-        _videoComputeMode = overview?.Settings.ComputeMode?.Equals("cpu", StringComparison.OrdinalIgnoreCase) == true
-            ? "cpu"
-            : "gpu";
+        _videoComputeModeKnown = TryResolveProductComputeMode(overview?.Settings.ComputeMode, out _videoComputeMode);
         _videoInputRoots.Clear();
         foreach (var root in overview?.Settings.InputRoots ?? [])
         {
@@ -1267,7 +1303,7 @@ else
     private void CaptureAudioDraftBaseline()
     {
         _audioDraftBaseline = new ProductSettingsDraftSnapshot(
-            NormalizeProductComputeMode(_audioComputeMode),
+            ProductComputeModeBaseline(_audioComputeModeKnown, _audioComputeMode),
             PathListSignature(_audioInputRoots.Select(root => root.Path)),
             NormalizePathForCompare(_audioOutputRoot.Path));
     }
@@ -1275,7 +1311,7 @@ else
     private void CaptureImageDraftBaseline()
     {
         _imageDraftBaseline = new ProductSettingsDraftSnapshot(
-            "",
+            ProductComputeModeBaseline(_imageComputeModeKnown, _imageComputeMode),
             PathListSignature(_imageInputRoots.Select(root => DirectoryDisplay(root))),
             NormalizePathForCompare(_imageOutputRoot.Path));
     }
@@ -1283,7 +1319,7 @@ else
     private void CaptureVideoDraftBaseline()
     {
         _videoDraftBaseline = new ProductSettingsDraftSnapshot(
-            NormalizeProductComputeMode(_videoComputeMode),
+            ProductComputeModeBaseline(_videoComputeModeKnown, _videoComputeMode),
             PathListSignature(_videoInputRoots.Select(root => DirectoryDisplay(root))),
             NormalizePathForCompare(_videoOutputRoot.Path));
     }
@@ -1306,7 +1342,7 @@ else
 
     private ProductSettingsDraftSnapshot CurrentImageDraftSnapshot() =>
         new(
-            "",
+            NormalizeProductComputeMode(_imageComputeMode),
             PathListSignature(_imageInputRoots.Select(root => DirectoryDisplay(root))),
             NormalizePathForCompare(_imageOutputRoot.Path));
 
@@ -1433,6 +1469,7 @@ else
                 SetApplyStepStatus("image", "running", "TimelineForImage の設定を書き込んでいます。");
                 _imageOverview = await Timeline.SaveImageSettingsAsync(new ImageSettingsSaveRequest
                 {
+                    ComputeMode = _imageComputeMode,
                     InputRoots = _imageInputRoots.Select(CloneRoot).ToList(),
                     OutputRoot = CloneRoot(_imageOutputRoot),
                     OutputRootPath = _imageOutputRoot.Path,
@@ -1977,6 +2014,7 @@ else
         {
             AddChange("画像入力ディレクトリ", _imageDraftBaseline.InputRootsSignature, JoinPaths(_imageInputRoots.Select(DirectoryDisplay)));
             AddChange("TimelineForImage 生成データ", _imageDraftBaseline.OutputRootPath, _imageOutputRoot.Path);
+            AddChange("TimelineForImage AI処理方法", ComputeModeLabel(_imageDraftBaseline.ComputeMode), ComputeModeLabel(_imageComputeMode));
         }
 
         if (_videoOverview?.ProductFound == true)
@@ -2116,25 +2154,43 @@ else
 
     private void OnAudioComputeModeChanged(ChangeEventArgs args)
     {
-        _audioComputeMode = args.Value?.ToString() ?? "cpu";
+        _audioComputeMode = NormalizeProductComputeMode(args.Value?.ToString());
+        _audioComputeModeKnown = true;
+        _saved = false;
+    }
+
+    private void OnImageComputeModeChanged(ChangeEventArgs args)
+    {
+        _imageComputeMode = NormalizeProductComputeMode(args.Value?.ToString());
+        _imageComputeModeKnown = true;
         _saved = false;
     }
 
     private void OnVideoComputeModeChanged(ChangeEventArgs args)
     {
         _videoComputeMode = NormalizeProductComputeMode(args.Value?.ToString());
+        _videoComputeModeKnown = true;
         _saved = false;
     }
 
     private void UseBasicComputeForAudio()
     {
         _audioComputeMode = ResolveCommonComputeModeForProduct();
+        _audioComputeModeKnown = true;
+        _saved = false;
+    }
+
+    private void UseBasicComputeForImage()
+    {
+        _imageComputeMode = ResolveCommonComputeModeForProduct();
+        _imageComputeModeKnown = true;
         _saved = false;
     }
 
     private void UseBasicComputeForVideo()
     {
         _videoComputeMode = ResolveCommonComputeModeForProduct();
+        _videoComputeModeKnown = true;
         _saved = false;
     }
 
@@ -2144,10 +2200,17 @@ else
         if (_audioOverview?.ProductFound == true)
         {
             _audioComputeMode = productMode;
+            _audioComputeModeKnown = true;
+        }
+        if (_imageOverview?.ProductFound == true)
+        {
+            _imageComputeMode = productMode;
+            _imageComputeModeKnown = true;
         }
         if (_videoOverview?.ProductFound == true)
         {
             _videoComputeMode = productMode;
+            _videoComputeModeKnown = true;
         }
         _saved = false;
     }
@@ -2517,6 +2580,22 @@ else
     </div>;
 
     private RenderFragment ImageProductSettings() => @<div class="grid gap-4">
+        <div class="rounded-md border border-line bg-slate-50 p-4">
+            <div class="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+                <div class="min-w-0 flex-1">
+                    <h3 class="text-base font-semibold">AI処理方法</h3>
+                    <select class="tfa-input mt-3 max-w-xl" value="@_imageComputeMode" @onchange="OnImageComputeModeChanged" aria-label="TimelineForImage AI処理方法">
+                        <option value="gpu">GPU</option>
+                        <option value="cpu">CPU</option>
+                    </select>
+                </div>
+                <button type="button" class="tfa-button-secondary gap-2" @onclick="UseBasicComputeForImage">
+                    <FaIcon Name="rotate-left" Class="tfa-icon" />
+                    <span>基本設定を使う</span>
+                </button>
+            </div>
+        </div>
+
         @InputRootSection("読み込み場所", _imageInputRoots.Select(DirectoryDisplay).ToList(), "追加", AddImageInputRootAsync, RemoveImageInputRootByDisplay)
         @OutputRootSection("生成データの保存先", _imageOutputRoot.Path, PickImageOutputRootAsync)
     </div>;
@@ -2817,22 +2896,27 @@ else
         (path ?? "").Trim().TrimEnd('\\', '/');
 
     private string ResolveCommonComputeModeForProduct() =>
-        _commonComputeMode == "auto" ? ResolveAutoComputeMode() : NormalizeProductComputeMode(_commonComputeMode);
+        _commonComputeMode == "auto"
+            ? ComputeModeResolver.ResolveAuto(_settings?.CommonAi, GpuDevices)
+            : ComputeModeResolver.NormalizeProduct(_commonComputeMode);
 
     private string ResolveAutoComputeMode() =>
-        GpuDevices.Count > 0 ? "gpu" : "cpu";
+        ComputeModeResolver.ResolveAuto(_settings?.CommonAi, GpuDevices);
 
     private static string NormalizeCommonComputeMode(string? value)
-    {
-        var mode = value?.Trim().ToLowerInvariant() ?? "";
-        return mode is "auto" or "gpu" or "cpu" ? mode : "auto";
-    }
+        => ComputeModeResolver.NormalizeCommon(value);
 
     private static string NormalizeProductComputeMode(string? value)
-    {
-        var mode = value?.Trim().ToLowerInvariant() ?? "";
-        return mode == "gpu" ? "gpu" : "cpu";
-    }
+        => ComputeModeResolver.NormalizeProduct(value);
+
+    private bool TryResolveProductComputeMode(string? value, out string mode)
+        => ComputeModeResolver.TryResolveProduct(value, _settings?.CommonAi, GpuDevices, out mode);
+
+    private static bool ProductComputeModeNeedsAttention(bool productFound, bool known, string mode, string productMode) =>
+        ComputeModeResolver.ProductNeedsAttention(productFound, known, mode, productMode);
+
+    private static string ProductComputeModeBaseline(bool known, string mode) =>
+        ComputeModeResolver.ProductBaseline(known, mode);
 
     private string ModeButtonClass(bool proMode) =>
         _proMode == proMode ? "tfa-button-primary gap-2" : "tfa-button-secondary gap-2";
@@ -2921,7 +3005,9 @@ else
         options.FirstOrDefault(option => option.Id.Equals(id ?? "", StringComparison.OrdinalIgnoreCase))?.Label
         ?? EmptyText(id);
 
-    private static string ComputeModeLabel(string? value) => NormalizeCommonComputeMode(value) switch
+    private static string ComputeModeLabel(string? value) => string.IsNullOrWhiteSpace(value)
+        ? "未確認"
+        : NormalizeCommonComputeMode(value) switch
     {
         "gpu" => "GPU",
         "cpu" => "CPU",

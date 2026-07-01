@@ -16,6 +16,9 @@ public sealed class TimelineItemSummaryService
     private const int MaxCompressedSummaryChars = 2000;
     private const int MaxBriefSummaryChars = 500;
     private const int MaxSummaryRewriteAttempts = 3;
+    private const int MinSummaryNumPredict = 128;
+    private const int DefaultSummaryNumPredict = 384;
+    private const int MaxSummaryNumPredict = 512;
     private const int DefaultSummaryBatchItemLimit = 20;
     private const int MaxSummaryBatchItemLimit = 100;
     private const int MaxChunkedSummarySourceChars = 30000;
@@ -27,6 +30,7 @@ public sealed class TimelineItemSummaryService
         "image",
         "chatgpt",
         "windows-codex",
+        "pc",
     };
 
     private static readonly JsonSerializerOptions FileJsonOptions = new()
@@ -72,7 +76,9 @@ public sealed class TimelineItemSummaryService
 
             var jobId = NewJobId();
             var startedAt = DateTimeOffset.Now.ToString("o", CultureInfo.InvariantCulture);
+            var summaryMode = GetRequestedSummaryMode(request);
             var status = NewStatus(jobId, "queued", "queued", "素材概要の生成ジョブを開始しました。", startedAt);
+            status["summaryMode"] = summaryMode;
             WriteStatus(status);
 
             var cancellation = new CancellationTokenSource();
@@ -234,10 +240,61 @@ public sealed class TimelineItemSummaryService
         }
 
         var targets = LoadTargets(request, applyDefaultBatchLimit: false);
+        var includeDiff = GetBool(request, "includeDiff", false) || GetBool(request, "diff", false);
+        var includeTargets = GetBool(request, "includeTargets", true);
+        var eventsByItem = includeDiff ? LoadEventsForTargets(targets) : new Dictionary<string, List<JsonObject>>(StringComparer.Ordinal);
+        var summarySettings = includeDiff ? GetSummarySettings() : new JsonObject();
+        if (includeDiff)
+        {
+            summarySettings["summaryMode"] = GetRequestedSummaryMode(request);
+        }
         var rows = new JsonArray();
+        var summaryFileCount = 0;
+        var missingSummaryCount = 0;
+        var reusableSummaryCount = 0;
+        var pendingSummaryCount = 0;
         foreach (var target in targets)
         {
-            rows.Add(new JsonObject
+            var summaryPath = includeDiff
+                ? GetSummaryPath(target.Product, target.ItemId, GetRequestedSummaryMode(request))
+                : GetSummaryPath(target.Product, target.ItemId);
+            var hasSummary = File.Exists(summaryPath);
+            if (hasSummary)
+            {
+                summaryFileCount += 1;
+            }
+            else
+            {
+                missingSummaryCount += 1;
+            }
+
+            bool? hasReusableSummary = null;
+            bool? pendingSummary = null;
+            if (includeDiff)
+            {
+                var key = NewTargetKey(target.Product, target.ItemId);
+                eventsByItem.TryGetValue(key, out var events);
+                events ??= [];
+                var sourceText = BuildSourceText(target, events);
+                var inputSignature = ComputeInputSignature(target, sourceText, summarySettings);
+                hasReusableSummary = TryReadReusableSummary(summaryPath, inputSignature);
+                pendingSummary = !hasReusableSummary.Value;
+                if (hasReusableSummary.Value)
+                {
+                    reusableSummaryCount += 1;
+                }
+                else
+                {
+                    pendingSummaryCount += 1;
+                }
+            }
+
+            if (!includeTargets)
+            {
+                continue;
+            }
+
+            var row = new JsonObject
             {
                 ["product"] = target.Product,
                 ["productName"] = target.ProductName,
@@ -245,14 +302,26 @@ public sealed class TimelineItemSummaryService
                 ["itemType"] = target.ItemType,
                 ["title"] = target.Title,
                 ["eventCount"] = target.EventCount,
-                ["hasSummary"] = File.Exists(GetSummaryPath(target.Product, target.ItemId)),
-            });
+                ["hasSummary"] = hasSummary,
+            };
+            if (hasReusableSummary.HasValue)
+            {
+                row["hasReusableSummary"] = hasReusableSummary.Value;
+                row["pendingSummary"] = pendingSummary!.Value;
+            }
+
+            rows.Add(row);
         }
 
         return new JsonObject
         {
             ["available"] = true,
-            ["targetCount"] = rows.Count,
+            ["targetCount"] = targets.Count,
+            ["summaryFileCount"] = summaryFileCount,
+            ["missingSummaryCount"] = missingSummaryCount,
+            ["diffIncluded"] = includeDiff,
+            ["reusableSummaryCount"] = reusableSummaryCount,
+            ["pendingSummaryCount"] = pendingSummaryCount,
             ["targets"] = rows,
             ["message"] = string.Empty,
         };
@@ -268,9 +337,12 @@ public sealed class TimelineItemSummaryService
         var skipped = 0;
         var failed = 0;
         var targets = new List<ItemSummaryTarget>();
+        var summaryMode = GetRequestedSummaryMode(request);
         try
         {
-            WriteStatus(NewStatus(jobId, "running", "preparing", "素材概要の対象を確認しています。", startedAt));
+            var preparing = NewStatus(jobId, "running", "preparing", "素材概要の対象を確認しています。", startedAt);
+            preparing["summaryMode"] = summaryMode;
+            WriteStatus(preparing);
 
             var overview = _store.GetOverview();
             if (!overview.Available)
@@ -280,12 +352,16 @@ public sealed class TimelineItemSummaryService
 
             targets = LoadTargets(request, applyDefaultBatchLimit: true);
             var force = GetBool(request, "force", false);
+            var pendingOnly = GetBool(request, "pendingOnly", true);
             var status = NewStatus(jobId, "running", "loading", "素材ごとの本文を読み込んでいます。", startedAt);
             status["totalItems"] = targets.Count;
+            status["summaryMode"] = summaryMode;
             WriteStatus(status);
 
             var eventsByItem = LoadEventsForTargets(targets);
             var summarySettings = GetSummarySettings();
+            summarySettings["summaryMode"] = summaryMode;
+            var fastSummaryMode = IsFastSummaryMode(summarySettings);
 
             for (var index = 0; index < targets.Count; index++)
             {
@@ -297,25 +373,34 @@ public sealed class TimelineItemSummaryService
 
                 var sourceText = BuildSourceText(target, events);
                 var inputSignature = ComputeInputSignature(target, sourceText, summarySettings);
-                var summaryPath = GetSummaryPath(target.Product, target.ItemId);
+                var summaryPath = GetSummaryPath(target.Product, target.ItemId, summaryMode);
 
-                if (!force && TryReadReusableSummary(summaryPath, inputSignature))
+                if (pendingOnly && !force && TryReadReusableSummary(summaryPath, inputSignature))
                 {
                     skipped += 1;
-                    WriteProgress(jobId, startedAt, "running", "skipping", "既存の素材概要を再利用しています。", targets.Count, completed, skipped, failed, target);
+                    WriteProgress(jobId, startedAt, "running", "skipping", "既存の素材概要を再利用しています。", targets.Count, completed, skipped, failed, target, summaryMode: summaryMode);
                     continue;
                 }
 
-                WriteProgress(jobId, startedAt, "running", "summarizing", "素材概要を生成しています。", targets.Count, completed, skipped, failed, target);
+                WriteProgress(jobId, startedAt, "running", "summarizing", "素材概要を生成しています。", targets.Count, completed, skipped, failed, target, summaryMode: summaryMode);
 
                 try
                 {
-                    var summary = await GenerateSummaryWithFallbackAsync(target, sourceText, summarySettings, cancellationToken);
+                    var summary = fastSummaryMode
+                        ? NewExtractiveFallbackSummary(
+                            target,
+                            sourceText,
+                            NewSummaryLimits(sourceText.Length),
+                            "Fast summary mode was used for differential synchronization.")
+                        : await GenerateSummaryWithFallbackAsync(target, sourceText, summarySettings, cancellationToken);
                     var payload = NewSummaryPayload(target, summary, sourceText, inputSignature, summarySettings);
                     WriteJsonFile(summaryPath, payload);
-                    WriteIndex();
                     completed += 1;
-                    WriteProgress(jobId, startedAt, "running", "summarizing", "素材概要を保存しました。", targets.Count, completed, skipped, failed, target);
+                    if ((completed + failed) % 50 == 0)
+                    {
+                        WriteIndex();
+                    }
+                    WriteProgress(jobId, startedAt, "running", "summarizing", "素材概要を保存しました。", targets.Count, completed, skipped, failed, target, summaryMode: summaryMode);
                 }
                 catch (OperationCanceledException)
                 {
@@ -325,7 +410,7 @@ public sealed class TimelineItemSummaryService
                 {
                     failed += 1;
                     WriteFailureSummary(summaryPath, target, sourceText, inputSignature, summarySettings, ex.Message);
-                    WriteProgress(jobId, startedAt, "running", "summarizing", "素材概要の生成に失敗しました。", targets.Count, completed, skipped, failed, target, ex.Message);
+                    WriteProgress(jobId, startedAt, "running", "summarizing", "素材概要の生成に失敗しました。", targets.Count, completed, skipped, failed, target, ex.Message, summaryMode);
                 }
             }
 
@@ -338,11 +423,16 @@ public sealed class TimelineItemSummaryService
             final["completedItems"] = completed;
             final["skippedItems"] = skipped;
             final["failedItems"] = failed;
+            final["pendingItems"] = completed + failed;
+            final["reusableItems"] = skipped;
+            final["summaryMode"] = summaryMode;
             final["completedAt"] = DateTimeOffset.Now.ToString("o", CultureInfo.InvariantCulture);
             final["result"] = new JsonObject
             {
                 ["summaryRoot"] = GetSummaryRoot(),
                 ["indexPath"] = GetIndexPath(),
+                ["pendingItems"] = completed + failed,
+                ["reusableItems"] = skipped,
             };
             WriteStatus(final);
             WriteIndex();
@@ -360,6 +450,8 @@ public sealed class TimelineItemSummaryService
                     ["completedItems"] = completed,
                     ["skippedItems"] = skipped,
                     ["failedItems"] = failed,
+                    ["pendingItems"] = completed + failed,
+                    ["reusableItems"] = skipped,
                 });
         }
         catch (OperationCanceledException)
@@ -369,6 +461,7 @@ public sealed class TimelineItemSummaryService
             status["completedItems"] = completed;
             status["skippedItems"] = skipped;
             status["failedItems"] = failed;
+            status["summaryMode"] = summaryMode;
             status["completedAt"] = DateTimeOffset.Now.ToString("o", CultureInfo.InvariantCulture);
             WriteStatus(status);
             _operations.WriteOperationEvent(jobId, "llm", "Timeline", "item_summary", "canceled", "Timeline item summary job was canceled.");
@@ -381,6 +474,7 @@ public sealed class TimelineItemSummaryService
             status["completedItems"] = completed;
             status["skippedItems"] = skipped;
             status["failedItems"] = failed;
+            status["summaryMode"] = summaryMode;
             status["completedAt"] = DateTimeOffset.Now.ToString("o", CultureInfo.InvariantCulture);
             WriteStatus(status);
             _operations.WriteOperationEvent(jobId, "llm", "Timeline", "item_summary", "failed", ex.Message, stderr: ex.Message);
@@ -650,13 +744,13 @@ public sealed class TimelineItemSummaryService
     {
         var model = GetString(settings, "model", "qwen3.5:9b");
         var baseUrl = GetString(settings, "ollamaBaseUrl", "http://127.0.0.1:11434");
-        var numPredict = Math.Max(8192, GetInt(settings, "numPredict", 4096));
+        var numPredict = GetSummaryNumPredict(settings);
         var body = new JsonObject
         {
             ["model"] = model,
             ["messages"] = NewOllamaMessages(SummarySystemPrompt, NewSummaryPrompt(target, mode, sourceText, limits)),
-            ["stream"] = false,
-            ["format"] = NewOllamaSummaryJsonSchema(limits.CompressedUpper, NewBriefSummaryLimits(limits.CompressedUpper).Upper),
+            ["stream"] = true,
+            ["format"] = "json",
             ["think"] = false,
             ["options"] = new JsonObject
             {
@@ -803,15 +897,14 @@ public sealed class TimelineItemSummaryService
     {
         var model = GetString(settings, "model", "qwen3.5:9b");
         var baseUrl = GetString(settings, "ollamaBaseUrl", "http://127.0.0.1:11434");
-        var configuredNumPredict = Math.Max(2048, GetInt(settings, "numPredict", 4096));
-        var targetNumPredict = Math.Max(2048, (compressedLimits.CompressedUpper + briefLimits.Upper) * 4 + 512);
-        var numPredict = Math.Min(Math.Max(8192, configuredNumPredict), targetNumPredict);
+        var targetNumPredict = Math.Max(MinSummaryNumPredict, (compressedLimits.CompressedUpper + briefLimits.Upper) * 2 + 256);
+        var numPredict = Math.Min(GetSummaryNumPredict(settings), targetNumPredict);
         var body = new JsonObject
         {
             ["model"] = model,
             ["messages"] = NewOllamaMessages(SummarySystemPrompt, prompt),
-            ["stream"] = false,
-            ["format"] = NewOllamaSummaryJsonSchema(compressedLimits.CompressedUpper, briefLimits.Upper),
+            ["stream"] = true,
+            ["format"] = "json",
             ["think"] = false,
             ["options"] = new JsonObject
             {
@@ -854,12 +947,12 @@ public sealed class TimelineItemSummaryService
     {
         var model = GetString(settings, "model", "qwen3.5:9b");
         var baseUrl = GetString(settings, "ollamaBaseUrl", "http://127.0.0.1:11434");
-        var numPredict = Math.Max(4096, GetInt(settings, "numPredict", 4096));
+        var numPredict = GetSummaryNumPredict(settings);
         var body = new JsonObject
         {
             ["model"] = model,
             ["messages"] = NewOllamaMessages(PlainSummarySystemPrompt, NewPlainSummaryPrompt(target, mode, sourceText, limits)),
-            ["stream"] = false,
+            ["stream"] = true,
             ["think"] = false,
             ["options"] = new JsonObject
             {
@@ -888,14 +981,13 @@ public sealed class TimelineItemSummaryService
     {
         var model = GetString(settings, "model", "qwen3.5:9b");
         var baseUrl = GetString(settings, "ollamaBaseUrl", "http://127.0.0.1:11434");
-        var configuredNumPredict = Math.Max(2048, GetInt(settings, "numPredict", 4096));
-        var targetNumPredict = Math.Max(2048, (compressedLimits.CompressedUpper + briefLimits.Upper) * 4 + 512);
-        var numPredict = Math.Min(Math.Max(4096, configuredNumPredict), targetNumPredict);
+        var targetNumPredict = Math.Max(MinSummaryNumPredict, (compressedLimits.CompressedUpper + briefLimits.Upper) * 2 + 256);
+        var numPredict = Math.Min(GetSummaryNumPredict(settings), targetNumPredict);
         var body = new JsonObject
         {
             ["model"] = model,
             ["messages"] = NewOllamaMessages(PlainSummarySystemPrompt, prompt + Environment.NewLine + Environment.NewLine + PlainSummaryOutputRule),
-            ["stream"] = false,
+            ["stream"] = true,
             ["think"] = false,
             ["options"] = new JsonObject
             {
@@ -960,6 +1052,79 @@ public sealed class TimelineItemSummaryService
         return GetString(GetObject(response, "message"), "content", string.Empty);
     }
 
+    private static async Task<JsonObject> ReadOllamaChatStreamAsync(
+        HttpResponseMessage response,
+        CancellationToken cancellationToken)
+    {
+        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        using var reader = new StreamReader(stream, Encoding.UTF8);
+        var content = new StringBuilder();
+        JsonObject? lastChunk = null;
+
+        while (true)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var line = await reader.ReadLineAsync(cancellationToken);
+            if (line is null)
+            {
+                break;
+            }
+            if (string.IsNullOrWhiteSpace(line))
+            {
+                continue;
+            }
+
+            var chunk = JsonNode.Parse(line) as JsonObject
+                ?? throw new InvalidOperationException("Ollama stream response was not a JSON object.");
+            lastChunk = chunk;
+
+            var error = GetString(chunk, "error", string.Empty);
+            if (!string.IsNullOrWhiteSpace(error))
+            {
+                throw new InvalidOperationException("Ollama stream response contained an error: " + error);
+            }
+
+            var generatedText = GetString(chunk, "response", string.Empty);
+            if (!string.IsNullOrEmpty(generatedText))
+            {
+                content.Append(generatedText);
+            }
+
+            var messageText = GetString(GetObject(chunk, "message"), "content", string.Empty);
+            if (!string.IsNullOrEmpty(messageText))
+            {
+                content.Append(messageText);
+            }
+
+            if (GetBool(chunk, "done", false))
+            {
+                break;
+            }
+        }
+
+        var result = lastChunk?.DeepClone() as JsonObject ?? new JsonObject();
+        var generatedContent = content.ToString();
+        if (!string.IsNullOrEmpty(generatedContent))
+        {
+            result["response"] = generatedContent;
+            var message = GetObject(result, "message");
+            if (message is not null)
+            {
+                message["content"] = generatedContent;
+            }
+            else
+            {
+                result["message"] = new JsonObject
+                {
+                    ["role"] = "assistant",
+                    ["content"] = generatedContent,
+                };
+            }
+        }
+
+        return result;
+    }
+
     private async Task<JsonObject> PostOllamaAsync(
         string baseUrl,
         JsonObject body,
@@ -976,8 +1141,17 @@ public sealed class TimelineItemSummaryService
             try
             {
                 using var content = new StringContent(body.ToJsonString(CompactJsonOptions), Encoding.UTF8, "application/json");
-                using var response = await client.PostAsync(url, content, cancellationToken);
-                var text = await response.Content.ReadAsStringAsync(cancellationToken);
+                using var request = new HttpRequestMessage(HttpMethod.Post, url)
+                {
+                    Content = content,
+                };
+                var completion = GetBool(body, "stream", false)
+                    ? HttpCompletionOption.ResponseHeadersRead
+                    : HttpCompletionOption.ResponseContentRead;
+                using var response = await client.SendAsync(request, completion, cancellationToken);
+                var text = GetBool(body, "stream", false)
+                    ? string.Empty
+                    : await response.Content.ReadAsStringAsync(cancellationToken);
                 if (!response.IsSuccessStatusCode)
                 {
                     lastFailure = $"HTTP {(int)response.StatusCode} {response.ReasonPhrase}".Trim();
@@ -990,8 +1164,18 @@ public sealed class TimelineItemSummaryService
                     throw new InvalidOperationException(NewOllamaRequestFailedMessage(baseUrl, body, lastFailure));
                 }
 
+                if (GetBool(body, "stream", false))
+                {
+                    return await ReadOllamaChatStreamAsync(response, cancellationToken);
+                }
+
                 return JsonNode.Parse(text) as JsonObject
                     ?? throw new InvalidOperationException("Ollama response was not a JSON object.");
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                await TryUnloadOllamaModelAsync(baseUrl, GetString(body, "model", string.Empty));
+                throw;
             }
             catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException)
             {
@@ -1006,6 +1190,33 @@ public sealed class TimelineItemSummaryService
         }
 
         throw new InvalidOperationException(NewOllamaRequestFailedMessage(baseUrl, body, lastFailure), lastException);
+    }
+
+    private async Task TryUnloadOllamaModelAsync(string baseUrl, string model)
+    {
+        if (string.IsNullOrWhiteSpace(model))
+        {
+            return;
+        }
+
+        try
+        {
+            var client = _httpClientFactory.CreateClient();
+            client.Timeout = TimeSpan.FromSeconds(20);
+            var url = baseUrl.TrimEnd('/') + "/api/generate";
+            var body = new JsonObject
+            {
+                ["model"] = model,
+                ["keep_alive"] = 0,
+            };
+            using var content = new StringContent(body.ToJsonString(CompactJsonOptions), Encoding.UTF8, "application/json");
+            using var response = await client.PostAsync(url, content, CancellationToken.None);
+            _ = await response.Content.ReadAsStringAsync(CancellationToken.None);
+        }
+        catch
+        {
+            // Best-effort cleanup. The caller still observes the original cancellation.
+        }
     }
 
     private List<ItemSummaryTarget> LoadTargets(JsonObject? request, bool applyDefaultBatchLimit)
@@ -1207,12 +1418,97 @@ public sealed class TimelineItemSummaryService
                 builder.Append(actorLabel);
                 builder.Append(": ");
             }
-            builder.Append(GetString(content, "value", string.Empty));
+            builder.Append(BuildEventContentTextForSummary(content));
             builder.AppendLine();
         }
 
         return builder.ToString();
     }
+
+    private static string BuildEventContentTextForSummary(JsonObject? content)
+    {
+        var value = GetString(content, "value", string.Empty);
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return string.Empty;
+        }
+
+        if (!TryParseJsonObject(value, out var parsed))
+        {
+            return value;
+        }
+
+        var kind = GetString(content, "kind", string.Empty);
+        if (kind.Equals("image_summary", StringComparison.OrdinalIgnoreCase))
+        {
+            return BuildImageSummaryTextForSummary(parsed);
+        }
+
+        return BuildJsonObjectTextForSummary(parsed);
+    }
+
+    private static string BuildImageSummaryTextForSummary(JsonObject source)
+    {
+        var lines = new List<string>();
+        AddSummaryLine(lines, "image_kind", GetString(source, "image_kind", string.Empty));
+        AddSummaryLine(lines, "content_types", JoinJsonArrayValues(GetArray(source, "content_types")));
+        AddSummaryLine(lines, "has_text", GetString(source, "has_text", string.Empty));
+        AddSummaryLine(lines, "ocr_block_count", GetString(source, "ocr_block_count", string.Empty));
+        AddSummaryLine(lines, "caption", GetString(source, "caption", string.Empty), 600);
+        AddSummaryLine(lines, "scene_summary", GetString(source, "scene_summary", string.Empty), 600);
+        return lines.Count == 0 ? BuildJsonObjectTextForSummary(source) : string.Join(" / ", lines);
+    }
+
+    private static string BuildJsonObjectTextForSummary(JsonObject source)
+    {
+        var lines = new List<string>();
+        foreach (var property in source)
+        {
+            var text = ConvertTimelineText(property.Value);
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                continue;
+            }
+
+            AddSummaryLine(lines, property.Key, text, 400);
+            if (lines.Count >= 12)
+            {
+                break;
+            }
+        }
+
+        return string.Join(" / ", lines);
+    }
+
+    private static bool TryParseJsonObject(string value, out JsonObject source)
+    {
+        source = new JsonObject();
+        try
+        {
+            if (JsonNode.Parse(value) is JsonObject parsed)
+            {
+                source = parsed;
+                return true;
+            }
+        }
+        catch (JsonException)
+        {
+        }
+
+        return false;
+    }
+
+    private static void AddSummaryLine(List<string> lines, string name, string value, int maxChars = 240)
+    {
+        var text = LimitText(value, maxChars);
+        if (!string.IsNullOrWhiteSpace(text))
+        {
+            lines.Add(name + ": " + text);
+        }
+    }
+
+    private static string JoinJsonArrayValues(JsonArray values)
+        => string.Join(", ", values.Select(ConvertTimelineText).Where(value => !string.IsNullOrWhiteSpace(value)));
 
     private JsonObject NewSummaryPayload(
         ItemSummaryTarget target,
@@ -1236,6 +1532,7 @@ public sealed class TimelineItemSummaryService
             ["compressedSummary"] = GetString(summary, "compressedSummary", string.Empty),
             ["summaryStatus"] = GetString(summary, "summaryStatus", "within_limit"),
             ["generationMode"] = GetString(summary, "generationMode", "full"),
+            ["summaryMode"] = GetString(settings, "summaryMode", "llm"),
             ["chunkCount"] = GetInt(summary, "chunkCount", 0),
             ["rewriteCount"] = GetInt(summary, "rewriteCount", 0),
             ["inputSignature"] = inputSignature,
@@ -1285,6 +1582,7 @@ public sealed class TimelineItemSummaryService
             ["promptVersion"] = PromptVersion,
             ["model"] = GetString(settings, "model", string.Empty),
             ["provider"] = GetString(settings, "provider", "ollama"),
+            ["summaryMode"] = GetString(settings, "summaryMode", "llm"),
             ["generatedAt"] = DateTimeOffset.Now.ToString("o", CultureInfo.InvariantCulture),
             ["error"] = message,
             ["source"] = new JsonObject
@@ -1306,13 +1604,18 @@ public sealed class TimelineItemSummaryService
         int skipped,
         int failed,
         ItemSummaryTarget? current,
-        string error = "")
+        string error = "",
+        string summaryMode = "")
     {
         var status = NewStatus(jobId, state, stage, message, startedAt);
         status["totalItems"] = total;
         status["completedItems"] = completed;
         status["skippedItems"] = skipped;
         status["failedItems"] = failed;
+        if (!string.IsNullOrWhiteSpace(summaryMode))
+        {
+            status["summaryMode"] = summaryMode;
+        }
         if (current is not null)
         {
             status["current"] = new JsonObject
@@ -1341,7 +1644,10 @@ public sealed class TimelineItemSummaryService
             ["provider"] = string.IsNullOrWhiteSpace(audio.Provider) ? "ollama" : audio.Provider,
             ["ollamaBaseUrl"] = string.IsNullOrWhiteSpace(audio.OllamaBaseUrl) ? "http://127.0.0.1:11434" : audio.OllamaBaseUrl,
             ["model"] = string.IsNullOrWhiteSpace(audio.Model) ? settings.Runtime.OllamaModel : audio.Model,
-            ["numPredict"] = Math.Max(2048, audio.NumPredict),
+            ["numPredict"] = Math.Clamp(
+                audio.NumPredict > 0 ? audio.NumPredict : DefaultSummaryNumPredict,
+                MinSummaryNumPredict,
+                MaxSummaryNumPredict),
         };
     }
 
@@ -1376,6 +1682,8 @@ public sealed class TimelineItemSummaryService
             + "\n"
             + GetString(settings, "model", string.Empty)
             + "\n"
+            + GetString(settings, "summaryMode", "llm")
+            + "\n"
             + sourceText;
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(text))).ToLowerInvariant();
     }
@@ -1384,7 +1692,7 @@ public sealed class TimelineItemSummaryService
     {
         var root = GetSummaryRoot();
         Directory.CreateDirectory(root);
-        var rows = new List<JsonObject>();
+        var rowsByItem = new Dictionary<string, JsonObject>(StringComparer.Ordinal);
         foreach (var path in Directory.EnumerateFiles(root, "*.json", SearchOption.AllDirectories))
         {
             if (path.Contains(Path.DirectorySeparatorChar + "_jobs" + Path.DirectorySeparatorChar, StringComparison.Ordinal))
@@ -1399,7 +1707,7 @@ public sealed class TimelineItemSummaryService
             try
             {
                 var payload = ReadJsonFile(path);
-                rows.Add(new JsonObject
+                var row = new JsonObject
                 {
                     ["product"] = GetString(payload, "product", string.Empty),
                     ["productName"] = GetString(payload, "productName", string.Empty),
@@ -1410,14 +1718,26 @@ public sealed class TimelineItemSummaryService
                     ["briefSummary"] = GetString(payload, "briefSummary", string.Empty),
                     ["compressedSummary"] = GetString(payload, "compressedSummary", string.Empty),
                     ["summaryStatus"] = GetString(payload, "summaryStatus", string.Empty),
+                    ["generationMode"] = GetString(payload, "generationMode", string.Empty),
+                    ["summaryMode"] = GetSummaryMode(payload),
                     ["generatedAt"] = GetString(payload, "generatedAt", string.Empty),
                     ["path"] = path,
-                });
+                };
+                var key = NewTargetKey(GetString(row, "product", string.Empty), GetString(row, "itemId", string.Empty));
+                if (!rowsByItem.TryGetValue(key, out var existing) || IsPreferredSummaryRow(row, existing))
+                {
+                    rowsByItem[key] = row;
+                }
             }
             catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
             {
             }
         }
+
+        var rows = rowsByItem.Values
+            .OrderBy(row => GetString(row, "product", string.Empty), StringComparer.OrdinalIgnoreCase)
+            .ThenBy(row => GetString(row, "title", string.Empty), StringComparer.OrdinalIgnoreCase)
+            .ToList();
 
         var indexJsonPath = Path.Combine(root, "index.json");
         WriteJsonFile(indexJsonPath, new JsonObject
@@ -1455,10 +1775,53 @@ public sealed class TimelineItemSummaryService
 
     private string GetSummaryPath(string product, string itemId)
     {
-        var path = Path.Combine(GetSummaryRoot(), GetSafeSegment(product), GetSafeSegment(itemId) + ".json");
+        var highQualityPath = GetSummaryPath(product, itemId, "llm");
+        if (File.Exists(highQualityPath))
+        {
+            return highQualityPath;
+        }
+
+        return GetSummaryPath(product, itemId, "extractive");
+    }
+
+    private string GetSummaryPath(string product, string itemId, string summaryMode)
+    {
+        var suffix = IsHighQualitySummaryMode(summaryMode) ? ".llm" : string.Empty;
+        var path = Path.Combine(GetSummaryRoot(), GetSafeSegment(product), GetSafeSegment(itemId) + suffix + ".json");
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         return path;
     }
+
+    private static bool IsPreferredSummaryRow(JsonObject candidate, JsonObject existing)
+    {
+        var candidateScore = IsHighQualitySummaryMode(GetSummaryMode(candidate)) ? 2 : 1;
+        var existingScore = IsHighQualitySummaryMode(GetSummaryMode(existing)) ? 2 : 1;
+        if (candidateScore != existingScore)
+        {
+            return candidateScore > existingScore;
+        }
+
+        var candidateGeneratedAt = GetString(candidate, "generatedAt", string.Empty);
+        var existingGeneratedAt = GetString(existing, "generatedAt", string.Empty);
+        return string.CompareOrdinal(candidateGeneratedAt, existingGeneratedAt) > 0;
+    }
+
+    private static string GetSummaryMode(JsonObject payload)
+    {
+        var mode = GetString(payload, "summaryMode", string.Empty);
+        if (!string.IsNullOrWhiteSpace(mode))
+        {
+            return mode;
+        }
+
+        var generationMode = GetString(payload, "generationMode", string.Empty);
+        return generationMode.Equals("extractive_fallback", StringComparison.OrdinalIgnoreCase)
+            ? "extractive"
+            : "llm";
+    }
+
+    private static bool IsHighQualitySummaryMode(string summaryMode)
+        => summaryMode.Equals("llm", StringComparison.OrdinalIgnoreCase);
 
     private string GetStatusPath(string? jobId)
     {
@@ -1519,6 +1882,7 @@ public sealed class TimelineItemSummaryService
             ["completedItems"] = 0,
             ["skippedItems"] = 0,
             ["failedItems"] = 0,
+            ["summaryMode"] = string.Empty,
         };
 
     private static bool IsActive(JsonObject? status)
@@ -1966,11 +2330,21 @@ public sealed class TimelineItemSummaryService
             + target.Title
             + "」。LLM要約が出力上限に達したため、素材本文から主要な断片だけを抽出しています。内容断片: "
             + joined;
+        compressed = "これは "
+            + target.ProductName
+            + " の「"
+            + target.Title
+            + "」から作成した高速概要です。LLMで全文を再要約せず、素材本文から主要な断片を抽出しています。内容断片: "
+            + joined;
         compressed = LimitText(compressed, Math.Max(80, limits.CompressedUpper));
 
         var briefLimits = NewBriefSummaryLimits(limits.CompressedUpper);
         var brief = LimitText(
             target.Title + " の概要生成は縮退モードです。内容断片: " + joined,
+            Math.Max(40, briefLimits.Upper));
+
+        brief = LimitText(
+            target.Title + " の高速概要。内容断片: " + joined,
             Math.Max(40, briefLimits.Upper));
 
         return new JsonObject
@@ -2065,6 +2439,27 @@ public sealed class TimelineItemSummaryService
         var lower = Math.Min(upper, Math.Min(300, Math.Max(20, (int)Math.Ceiling(compressedChars / 5.0))));
         return new BriefSummaryLimits(lower, upper);
     }
+
+    private static int GetSummaryNumPredict(JsonObject settings)
+    {
+        var configured = GetInt(settings, "numPredict", DefaultSummaryNumPredict);
+        if (configured <= 0)
+        {
+            configured = DefaultSummaryNumPredict;
+        }
+
+        return Math.Clamp(configured, MinSummaryNumPredict, MaxSummaryNumPredict);
+    }
+
+    private static string GetRequestedSummaryMode(JsonObject? request)
+        => GetBool(request, "fastMode", false)
+            || GetBool(request, "fast", false)
+            || GetBool(request, "extractiveOnly", false)
+                ? "extractive"
+                : "llm";
+
+    private static bool IsFastSummaryMode(JsonObject settings)
+        => GetString(settings, "summaryMode", "llm").Equals("extractive", StringComparison.OrdinalIgnoreCase);
 
     private static string NewSummaryPrompt(
         ItemSummaryTarget target,

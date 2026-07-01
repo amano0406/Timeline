@@ -11,7 +11,6 @@ services:
       - type: volume
         source: ollama
         target: /root/.ollama
-    gpus: all
     healthcheck:
       test: ["CMD", "ollama", "list"]
       interval: 10s
@@ -25,8 +24,8 @@ services:
       dockerfile: web/Dockerfile
     environment:
       ASPNETCORE_URLS: http://+:8080
-      Timeline__HelperBaseUrl: http://host.docker.internal:${TIMELINE_HELPER_PORT:-19001}
-      Timeline__HelperPublicBaseUrl: http://127.0.0.1:${TIMELINE_HELPER_PORT:-19001}
+      Timeline__LocalApiBaseUrl: http://host.docker.internal:${TIMELINE_LOCAL_API_PORT:-19001}
+      Timeline__LocalApiPublicBaseUrl: http://127.0.0.1:${TIMELINE_LOCAL_API_PORT:-19001}
       Timeline__WorkDirectory: /data/work
       Timeline__StoreDirectory: /data/store
       TIMELINE_WORK_DIRECTORY: /data/work

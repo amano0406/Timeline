@@ -134,15 +134,15 @@ public partial class Image
 
     private static string FileDirectoryPath(ImageItemRow item)
     {
-        var sourcePath = (item.SourcePath ?? "").Trim().Replace('/', '\\');
+        var sourcePath = (item.SourcePath ?? "").Trim();
         if (!string.IsNullOrWhiteSpace(sourcePath))
         {
-            var index = sourcePath.LastIndexOf('\\');
+            var index = LastPathSeparatorIndex(sourcePath);
             return index > 0 ? sourcePath[..index] : "";
         }
 
-        var relativePath = (item.RelativePath ?? "").Trim().Replace('/', '\\');
-        var relativeIndex = relativePath.LastIndexOf('\\');
+        var relativePath = (item.RelativePath ?? "").Trim();
+        var relativeIndex = LastPathSeparatorIndex(relativePath);
         return relativeIndex > 0 ? relativePath[..relativeIndex] : "";
     }
 
@@ -153,11 +153,14 @@ public partial class Image
 
     private static IEnumerable<string> SplitPathParts(string path)
     {
-        var normalized = (path ?? "").Trim().Replace('/', '\\').Trim('\\');
+        var normalized = (path ?? "").Trim().Trim('\\', '/');
         return string.IsNullOrWhiteSpace(normalized)
             ? []
-            : normalized.Split('\\', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            : normalized.Split(['\\', '/'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
     }
+
+    private static int LastPathSeparatorIndex(string? path) =>
+        (path ?? "").LastIndexOfAny(['\\', '/']);
 
     private static string TreeIndentStyle(int depth) =>
         $"--depth:{Math.Max(0, depth)}";

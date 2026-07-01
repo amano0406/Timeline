@@ -184,6 +184,19 @@ public sealed class TimelineSettingsService
         return Path.GetFullPath(storeDirectory);
     }
 
+    public string GetResolvedCommonAiComputeMode()
+    {
+        var payload = ReadSettingsPayload();
+        var source = GetObject(payload, "commonAi");
+        var computeMode = GetString(source, "computeMode", "auto").ToLowerInvariant();
+        if (computeMode is not ("auto" or "gpu" or "cpu"))
+        {
+            computeMode = "auto";
+        }
+
+        return ResolveCommonAiComputeMode(computeMode, TimelineAiHardwareProbe.HasAiGpuDevice());
+    }
+
     private JsonObject? ReadSettingsPayload()
     {
         var path = GetAppSettingsPath();
@@ -304,11 +317,11 @@ public sealed class TimelineSettingsService
         var instanceName = GetString(source, "instanceName", string.Empty);
         var imageTag = GetString(source, "imageTag", string.Empty);
         var webPort = GetPort(GetNode(source, "webPort"), 19000);
-        var helperPortStart = GetPort(GetNode(source, "helperPortStart"), 19001);
-        var helperPortEnd = GetPort(GetNode(source, "helperPortEnd"), 19010);
-        if (helperPortEnd < helperPortStart)
+        var localApiPortStart = GetPort(GetNode(source, "localApiPortStart"), 19001);
+        var localApiPortEnd = GetPort(GetNode(source, "localApiPortEnd"), 19010);
+        if (localApiPortEnd < localApiPortStart)
         {
-            helperPortEnd = helperPortStart;
+            localApiPortEnd = localApiPortStart;
         }
 
         var ollamaPort = GetPort(GetNode(source, "ollamaPort"), 11434);
@@ -322,7 +335,7 @@ public sealed class TimelineSettingsService
         var instancePart = NormalizeRuntimeNamePart(instanceName);
         var projectName = string.IsNullOrEmpty(instancePart) ? "timeline" : $"timeline-{instancePart}";
         var defaultVolume = shareOllamaVolume ? "timeline-ollama" : $"{projectName}-ollama";
-        var ollamaVolumeName = GetString(source, "ollamaVolumeName", defaultVolume);
+        var ollamaVolumeName = NormalizeRuntimeResourceName(GetString(source, "ollamaVolumeName", string.Empty));
         if (string.IsNullOrWhiteSpace(ollamaVolumeName))
         {
             ollamaVolumeName = defaultVolume;
@@ -333,8 +346,8 @@ public sealed class TimelineSettingsService
             InstanceName = instanceName,
             ImageTag = imageTag,
             WebPort = webPort,
-            HelperPortStart = helperPortStart,
-            HelperPortEnd = helperPortEnd,
+            LocalApiPortStart = localApiPortStart,
+            LocalApiPortEnd = localApiPortEnd,
             OllamaPort = ollamaPort,
             OllamaModel = ollamaModel,
             ShareOllamaVolume = shareOllamaVolume,
@@ -364,13 +377,24 @@ public sealed class TimelineSettingsService
         }
 
         var token = GetStringAny(source, ["huggingFaceToken", "huggingfaceToken", "token"], string.Empty).Trim();
+        var aiGpuAvailable = TimelineAiHardwareProbe.HasAiGpuDevice();
         return new TimelineCommonAiSettingsResponse
         {
             ComputeMode = computeMode,
+            ResolvedComputeMode = ResolveCommonAiComputeMode(computeMode, aiGpuAvailable),
+            AiGpuAvailable = aiGpuAvailable,
             HasHuggingFaceToken = !string.IsNullOrWhiteSpace(token),
             HuggingFaceTokenPreview = GetTimelineTokenPreview(token),
         };
     }
+
+    private static string ResolveCommonAiComputeMode(string computeMode, bool aiGpuAvailable)
+        => computeMode switch
+        {
+            "gpu" => "gpu",
+            "cpu" => "cpu",
+            _ => aiGpuAvailable ? "gpu" : "cpu",
+        };
 
     private static JsonObject ResolveCommonAiSettingsForSave(JsonObject? requestCommonAi, JsonObject? currentCommonAi)
     {
@@ -598,6 +622,17 @@ public sealed class TimelineSettingsService
         return System.Text.RegularExpressions.Regex.Replace(text, "[^a-z0-9]+", "-").Trim('-');
     }
 
+    private static string NormalizeRuntimeResourceName(string value)
+    {
+        var text = ConvertTimelineText(value).ToLowerInvariant();
+        if (string.IsNullOrEmpty(text))
+        {
+            return string.Empty;
+        }
+
+        return System.Text.RegularExpressions.Regex.Replace(text, "[^a-z0-9_.-]+", "-").Trim('-');
+    }
+
     private static JsonNode? GetNode(JsonObject? source, string name)
         => TryGetNode(source, name, out var node) ? node : null;
 
@@ -816,11 +851,11 @@ public sealed class TimelineRuntimeSettingsResponse
     [JsonPropertyName("webPort")]
     public int WebPort { get; set; }
 
-    [JsonPropertyName("helperPortStart")]
-    public int HelperPortStart { get; set; }
+    [JsonPropertyName("localApiPortStart")]
+    public int LocalApiPortStart { get; set; }
 
-    [JsonPropertyName("helperPortEnd")]
-    public int HelperPortEnd { get; set; }
+    [JsonPropertyName("localApiPortEnd")]
+    public int LocalApiPortEnd { get; set; }
 
     [JsonPropertyName("ollamaPort")]
     public int OllamaPort { get; set; }
@@ -848,6 +883,12 @@ public sealed class TimelineCommonAiSettingsResponse
 {
     [JsonPropertyName("computeMode")]
     public string ComputeMode { get; set; } = "";
+
+    [JsonPropertyName("resolvedComputeMode")]
+    public string ResolvedComputeMode { get; set; } = "";
+
+    [JsonPropertyName("aiGpuAvailable")]
+    public bool AiGpuAvailable { get; set; }
 
     [JsonPropertyName("hasHuggingFaceToken")]
     public bool HasHuggingFaceToken { get; set; }

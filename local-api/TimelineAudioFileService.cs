@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Globalization;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
@@ -545,10 +546,11 @@ public sealed class TimelineAudioFileService
             extensions.AddRange(DefaultAudioExtensions);
         }
 
-        var computeMode = GetString(payload, "computeMode", "cpu").ToLowerInvariant();
+        var defaultComputeMode = _settings.GetResolvedCommonAiComputeMode();
+        var computeMode = GetString(payload, "computeMode", defaultComputeMode).ToLowerInvariant();
         if (computeMode is not ("cpu" or "gpu"))
         {
-            computeMode = "cpu";
+            computeMode = defaultComputeMode;
         }
 
         return new AudioSettingsSnapshot(
@@ -569,7 +571,7 @@ public sealed class TimelineAudioFileService
             ["outputRoots"] = new JsonArray(),
             ["audioExtensions"] = NewStringArray(DefaultAudioExtensions),
             ["huggingFaceToken"] = string.Empty,
-            ["computeMode"] = "cpu",
+            ["computeMode"] = _settings.GetResolvedCommonAiComputeMode(),
         };
 
     private List<AudioSourceRow> GetSourceRows(AudioSettingsSnapshot settings)
@@ -1537,6 +1539,11 @@ public sealed class TimelineAudioFileService
 
     private static List<string> GetHardwareDeviceNames(string className)
     {
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            return [];
+        }
+
         try
         {
             using var process = Process.Start(new ProcessStartInfo
@@ -1569,7 +1576,12 @@ public sealed class TimelineAudioFileService
                 .Distinct(StringComparer.Ordinal)
                 .ToList();
         }
-        catch (Exception ex) when (ex is InvalidOperationException or IOException or UnauthorizedAccessException)
+        catch (Exception ex) when (ex is InvalidOperationException
+            or IOException
+            or UnauthorizedAccessException
+            or PlatformNotSupportedException
+            or NotSupportedException
+            or System.ComponentModel.Win32Exception)
         {
             return [];
         }
@@ -1879,26 +1891,7 @@ public sealed class TimelineAudioFileService
         }
 
         var productPath = GetProductPath();
-        if (text.Equals("/workspace", StringComparison.OrdinalIgnoreCase))
-        {
-            return productPath;
-        }
-        if (text.StartsWith("/workspace/", StringComparison.OrdinalIgnoreCase))
-        {
-            return Path.Combine(productPath, text["/workspace/".Length..].Replace("/", "\\"));
-        }
-        if (text.StartsWith("/mnt/c/", StringComparison.OrdinalIgnoreCase))
-        {
-            return "C:\\" + text[7..].Replace("/", "\\");
-        }
-
-        var converted = TimelinePathConverter.ConvertTimelineWindowsPath(text, _options);
-        if (!string.IsNullOrEmpty(converted))
-        {
-            text = converted;
-        }
-
-        return Path.IsPathRooted(text) ? text : Path.Combine(productPath, text);
+        return TimelinePathConverter.ConvertTimelineContainerPath(text, _options, productPath);
     }
 
     private string GetProductPath()

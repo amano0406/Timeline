@@ -8,7 +8,7 @@ public sealed class TimelineProductOverview
     public string ProductPath { get; set; } = "";
     public bool HasToken { get; set; }
     public string TokenPreview { get; set; } = "";
-    public string ComputeMode { get; set; } = "cpu";
+    public string ComputeMode { get; set; } = "";
     public List<string> CpuDevices { get; set; } = [];
     public List<string> GpuDevices { get; set; } = [];
     public List<RootRow> InputRoots { get; set; } = [];
@@ -410,7 +410,7 @@ public sealed class AudioSettingsSaveRequest
 {
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Token { get; set; }
-    public string ComputeMode { get; set; } = "cpu";
+    public string ComputeMode { get; set; } = "";
     public List<RootRow> InputRoots { get; set; } = [];
     public RootRow? OutputRoot { get; set; }
     public string OutputPath { get; set; } = "";

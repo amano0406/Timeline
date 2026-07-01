@@ -17,6 +17,7 @@ public sealed class ImageOverview
 public sealed class ImageSettings
 {
     public string SettingsPath { get; set; } = "";
+    public string ComputeMode { get; set; } = "";
     public List<ImageInputRoot> InputRoots { get; set; } = [];
     public ImageDirectoryRoot OutputRoot { get; set; } = new();
     public List<string> Issues { get; set; } = [];
@@ -216,6 +217,7 @@ public sealed class ImageItemsDownloadResult
 
 public sealed class ImageSettingsSaveRequest
 {
+    public string ComputeMode { get; set; } = "";
     public List<ImageInputRoot> InputRoots { get; set; } = [];
     public ImageDirectoryRoot OutputRoot { get; set; } = new();
     public string OutputRootPath { get; set; } = "";

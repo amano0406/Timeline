@@ -59,7 +59,7 @@ public partial class ProductManagementModal
         }
         catch (Exception ex)
         {
-            _error = ex.Message;
+            _error = RuntimeDisplayText.ProductActionFailure(DisplayName(product), label, ex.Message);
             _message = null;
             _messageIsSuccess = false;
         }

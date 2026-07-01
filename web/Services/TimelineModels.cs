@@ -44,8 +44,8 @@ public sealed class TimelineRuntimeSettings
     public string InstanceName { get; set; } = "";
     public string ImageTag { get; set; } = "";
     public int WebPort { get; set; } = 19000;
-    public int HelperPortStart { get; set; } = 19001;
-    public int HelperPortEnd { get; set; } = 19010;
+    public int LocalApiPortStart { get; set; } = 19001;
+    public int LocalApiPortEnd { get; set; } = 19010;
     public int OllamaPort { get; set; } = 11434;
     public string OllamaModel { get; set; } = "qwen3.5:9b";
     public bool ShareOllamaVolume { get; set; } = true;
@@ -72,6 +72,8 @@ public sealed class TimelineStartupStatus
 public sealed class TimelineCommonAiSettings
 {
     public string ComputeMode { get; set; } = "auto";
+    public string ResolvedComputeMode { get; set; } = "";
+    public bool AiGpuAvailable { get; set; }
     public bool HasHuggingFaceToken { get; set; }
     public string HuggingFaceTokenPreview { get; set; } = "";
     [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
@@ -143,7 +145,7 @@ public sealed class TimelinePagination
     public bool HasNext { get; set; }
 }
 
-public sealed class HelperHealth
+public sealed class LocalApiHealth
 {
     public bool Ok { get; set; }
 }

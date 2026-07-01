@@ -4,14 +4,16 @@ Timeline is the local parent UI, product manager, and cross-product timeline
 store for Timeline sub-products.
 
 Timeline does not contain the conversion engines. Each sub-product remains a
-separate local product with its own public Windows-side entry points such as
+separate local product with its own public host-side entry points such as
 `start.ps1`, `stop.ps1`, and a local product API. Timeline coordinates
-the public product API and launchers, then builds Timeline-owned data for review, scan, download, and later LLM
-workflows.
+the public product API and launchers, then builds Timeline-owned data for
+review, scan, download, and later LLM workflows.
 
 Timeline must not enter or operate a sub-product Docker container directly.
 
 ## Start
+
+Windows:
 
 ```powershell
 cd <Timeline>
@@ -23,6 +25,18 @@ For development checks without opening a browser tab:
 ```powershell
 .\start.ps1 -NoOpen
 ```
+
+macOS / Linux minimal launcher:
+
+```sh
+cd <Timeline>
+./start.sh --no-open
+```
+
+The shell launcher uses default ports unless environment variables are supplied.
+Set `TIMELINE_WEB_PORT`, `TIMELINE_LOCAL_API_PORT`,
+`TIMELINE_OLLAMA_PORT`, or `TIMELINE_COMPOSE_PROJECT` when running more than
+one copy or when a port is already in use.
 
 Open:
 
@@ -42,8 +56,8 @@ different ports.
     "instanceName": "local-0123abcd89",
     "imageTag": "",
     "webPort": 19000,
-    "helperPortStart": 19001,
-    "helperPortEnd": 19010,
+    "localApiPortStart": 19001,
+    "localApiPortEnd": 19010,
     "ollamaPort": 11434,
     "ollamaModel": "qwen3.5:9b",
     "shareOllamaVolume": true,
@@ -52,16 +66,26 @@ different ports.
 }
 ```
 
+`localApiPortStart` and `localApiPortEnd` are the persisted settings keys for
+the Timeline Local API port range.
+
 External base images such as `ollama/ollama:latest` may be shared. Timeline's
 own containers, networks, and local build image tags are scoped from the
 configured instance. Published ports must be changed manually when running more
-than one copy at the same time. See
-[docs/docker-runtime-rulebook.md](docs/docker-runtime-rulebook.md).
+than one copy at the same time.
 
 Stop:
 
+Windows:
+
 ```powershell
 .\stop.ps1
+```
+
+macOS / Linux:
+
+```sh
+./stop.sh
 ```
 
 ## Product Scope
@@ -149,7 +173,7 @@ use while keeping the original product data as the source of truth.
 
 ## Operation Rules
 
-- Use each sub-product's public Windows-side API and start/stop launchers.
+- Use each sub-product's public host-side API and start/stop launchers.
 - Do not call Docker directly for a sub-product from Timeline.
 - Do not start a sub-product as a side effect of a read API call. Stopped
   products must stay stopped until the user runs an explicit start action.
@@ -161,15 +185,28 @@ use while keeping the original product data as the source of truth.
 
 ## Checks
 
+Application build checks:
+
 ```powershell
-.\scripts\check-powershell-ascii.ps1
-.\scripts\check-sub-product-cli-removal.ps1
-.\scripts\smoke-thread-detail-api-bridge.ps1
-.\scripts\smoke-web.ps1
-.\scripts\test-product-uninstall.ps1
+dotnet build .\web\Timeline.Web.csproj
+dotnet build .\local-api\Timeline.LocalApi.csproj
+dotnet build .\worker\Timeline.Worker.csproj
 ```
 
-Web build check:
+PowerShell launcher check:
+
+```powershell
+$files = @('.\start.ps1', '.\stop.ps1')
+foreach ($file in $files) {
+    $text = Get-Content -LiteralPath $file -Raw -Encoding UTF8
+    [void][scriptblock]::Create($text)
+    if ($text -match '[^\x00-\x7F]') {
+        throw "$file contains non-ASCII text."
+    }
+}
+```
+
+Docker web image check:
 
 ```powershell
 docker compose build web
@@ -177,15 +214,28 @@ docker compose build web
 
 ## Detailed Docs
 
-- [docs/MAINTENANCE.md](docs/MAINTENANCE.md): current internal maintenance
-  notes and active non-contract risks.
+Formal documents live under `docs/` only after they are accepted as current
+references. Work-in-progress notes, old mockups, investigation results, and
+one-off design materials are kept out of `docs/` and treated as temporary
+workspace material.
+
+- [docs/jira-operation.md](docs/jira-operation.md): Jira issue structure and
+  maintenance rules for Timeline work.
+- [docs/launcher-runtime-inventory.md](docs/launcher-runtime-inventory.md):
+  launcher, Local API, Docker runtime, and worker repair notes.
 - [docs/timeline-product-manifest.md](docs/timeline-product-manifest.md):
   sub-product manifest contract.
-- [docs/product-uninstall-design.md](docs/product-uninstall-design.md):
-  product uninstall policy and safety model.
+- [docs/SUBPRODUCT_JOB_API.md](docs/SUBPRODUCT_JOB_API.md):
+  long-running sub-product job API contract.
 - [docs/docker-runtime-rulebook.md](docs/docker-runtime-rulebook.md):
   Docker project names, ports, images, volumes, and API connection rules.
 - [docs/sub-product-docker-port-contract.md](docs/sub-product-docker-port-contract.md):
-  Docker project, image, volume, and API port rules for sub-products.
+  Docker and API port rules for Timeline-family products.
+- [docs/product-uninstall-design.md](docs/product-uninstall-design.md):
+  product uninstall policy and safety model.
 - [docs/timeline-llm-data-rules.html](docs/timeline-llm-data-rules.html):
   Timeline master data, LLM input data, and generated result separation.
+- [docs/営業/monetization-direction.md](docs/営業/monetization-direction.md):
+  product positioning and monetization direction.
+- [docs/Dockerを外したい/docker-removal-thoughts.md](docs/Dockerを外したい/docker-removal-thoughts.md):
+  notes on whether Docker should remain part of the runtime.

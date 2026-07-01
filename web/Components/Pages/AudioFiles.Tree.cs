@@ -82,8 +82,8 @@ public partial class AudioFiles
             return file.Directory;
         }
 
-        var relativePath = (file.RelativePath ?? "").Replace('/', '\\');
-        var index = relativePath.LastIndexOf('\\');
+        var relativePath = file.RelativePath ?? "";
+        var index = LastPathSeparatorIndex(relativePath);
         return index > 0 ? relativePath[..index] : "";
     }
 
@@ -91,9 +91,8 @@ public partial class AudioFiles
     {
         if (!string.IsNullOrWhiteSpace(file.DisplayPath))
         {
-            var normalized = file.DisplayPath.Replace('/', '\\');
-            var index = normalized.LastIndexOf('\\');
-            return index > 0 ? normalized[..index] : "";
+            var index = LastPathSeparatorIndex(file.DisplayPath);
+            return index > 0 ? file.DisplayPath[..index] : "";
         }
 
         var root = (file.RootPath ?? "").Trim().TrimEnd('\\', '/');
@@ -103,7 +102,7 @@ public partial class AudioFiles
             return root;
         }
 
-        return string.IsNullOrWhiteSpace(root) ? directory : $"{root}\\{directory}";
+        return string.IsNullOrWhiteSpace(root) ? directory : $"{root}/{directory}";
     }
 
     private static string FileSortPath(AudioFileRow file)
@@ -113,19 +112,22 @@ public partial class AudioFiles
             return file.DisplayPath;
         }
 
-        return $"{file.RootPath}\\{file.RelativePath}";
+        return $"{file.RootPath}/{file.RelativePath}";
     }
 
     private static IEnumerable<string> SplitPathParts(string path)
     {
-        var normalized = (path ?? "").Trim().Replace('/', '\\').Trim('\\');
+        var normalized = (path ?? "").Trim().Trim('\\', '/');
         if (string.IsNullOrWhiteSpace(normalized))
         {
             return [];
         }
 
-        return normalized.Split('\\', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        return normalized.Split(['\\', '/'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
     }
+
+    private static int LastPathSeparatorIndex(string? path) =>
+        (path ?? "").LastIndexOfAny(['\\', '/']);
 
     private static string TreeIndentStyle(int depth) =>
         $"--depth:{Math.Max(0, depth)}";
