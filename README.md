@@ -306,6 +306,8 @@ workspace material.
   required external runtime environment for product artifacts.
 - [docs/timeline-update-plan.md](docs/timeline-update-plan.md):
   Timeline body and Launcher update safety model and plan output.
+- [docs/sub-product-update-plan.md](docs/sub-product-update-plan.md):
+  sub-product update safety model and plan output.
 - [docs/timeline-product-manifest.md](docs/timeline-product-manifest.md):
   sub-product manifest contract.
 - [docs/SUBPRODUCT_JOB_API.md](docs/SUBPRODUCT_JOB_API.md):

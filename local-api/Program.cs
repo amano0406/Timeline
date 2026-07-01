@@ -1430,6 +1430,23 @@ app.MapPost("/products/runtime/{productId}/update", async (
     }
 });
 
+app.MapGet("/products/runtime/{productId}/update-plan", async (
+    string productId,
+    TimelineProductRuntimeService runtime,
+    CancellationToken cancellationToken) =>
+{
+    try
+    {
+        return Results.Json(await runtime.GetProductUpdatePlanAsync(productId, cancellationToken));
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(
+            new { message = ex.Message, ok = false },
+            statusCode: StatusCodes.Status500InternalServerError);
+    }
+});
+
 app.MapPost("/products/runtime/{productId}/uninstall-plan", async (
     HttpContext context,
     string productId,

@@ -328,6 +328,130 @@ public sealed class TimelineProductRuntimeService
         return await ConvertRuntimeStatusAsync(definition, cancellationToken);
     }
 
+    public async Task<ProductUpdatePlanResponse> GetProductUpdatePlanAsync(
+        string productId,
+        CancellationToken cancellationToken)
+    {
+        var definition = GetProductDefinition(productId);
+        var status = await ConvertRuntimeStatusAsync(definition, cancellationToken);
+        var productPath = Path.GetFullPath(definition.ProductPath);
+        var blockers = new List<ProductUpdatePlanMessageResponse>();
+        var warnings = new List<ProductUpdatePlanMessageResponse>();
+        var installedVersion = string.Empty;
+        ProductSourceInfo? source = null;
+
+        if (!status.ProductFound)
+        {
+            blockers.Add(NewProductUpdateMessage(
+                "product_not_installed",
+                "Product is not installed. Install must run before update."));
+        }
+
+        if (!status.ComposeFound)
+        {
+            blockers.Add(NewProductUpdateMessage(
+                "product_incomplete",
+                "Product compose/runtime files were not found, so update cannot be planned safely."));
+        }
+
+        var appManagedByTimeline = IsProductAppManagedByTimeline(productPath);
+        if (!appManagedByTimeline)
+        {
+            blockers.Add(NewProductUpdateMessage(
+                "app_not_managed_by_timeline",
+                "Product app path is outside Timeline-managed product locations."));
+        }
+
+        if (!string.IsNullOrWhiteSpace(definition.SourceType)
+            && IsGitHubSourceArchive(definition.SourceType))
+        {
+            warnings.Add(NewProductUpdateMessage(
+                "legacy_source_archive_mode",
+                "Current implementation updates this sub-product from a GitHub source archive. KAN-58 should move user-facing updates to built product artifacts."));
+        }
+        else if (string.IsNullOrWhiteSpace(definition.SourceType))
+        {
+            warnings.Add(NewProductUpdateMessage(
+                "source_type_missing",
+                "Product source type is not configured."));
+        }
+
+        if (!string.IsNullOrWhiteSpace(definition.ProductPath) && Directory.Exists(productPath))
+        {
+            try
+            {
+                installedVersion = await GetProductInstalledVersionAsync(definition, cancellationToken);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+            {
+                warnings.Add(NewProductUpdateMessage(
+                    "installed_version_unavailable",
+                    $"Installed version could not be read. {ex.Message}"));
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(definition.SourceUrl))
+        {
+            try
+            {
+                source = await GetProductSourceInfoAsync(definition, cancellationToken);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+            {
+                warnings.Add(NewProductUpdateMessage(
+                    "latest_source_unavailable",
+                    $"Latest source version could not be resolved. {ex.Message}"));
+            }
+        }
+        else
+        {
+            warnings.Add(NewProductUpdateMessage(
+                "source_url_missing",
+                "Product source URL is not configured."));
+        }
+
+        var updateAvailable = source is not null
+            && (string.IsNullOrEmpty(installedVersion) || CompareVersionText(installedVersion, source.LatestVersion) < 0);
+        var canUseCurrentUpdater = blockers.Count == 0
+            && updateAvailable
+            && IsGitHubSourceArchive(definition.SourceType);
+        var canUseBuiltArtifactUpdater = false;
+        var state = blockers.Count > 0
+            ? "blocked"
+            : updateAvailable
+                ? "legacy_ready"
+                : "up_to_date";
+
+        return new ProductUpdatePlanResponse
+        {
+            ProductId = definition.Id,
+            DisplayName = definition.DisplayName,
+            State = state,
+            ProductPath = productPath,
+            SourceType = definition.SourceType,
+            SourceUrl = definition.SourceUrl,
+            DistributionMode = IsGitHubSourceArchive(definition.SourceType)
+                ? "legacy_source_archive"
+                : "unknown",
+            InstalledVersion = installedVersion,
+            LatestVersion = source?.LatestVersion ?? string.Empty,
+            ArchiveUrl = source?.ArchiveUrl ?? string.Empty,
+            UpdateAvailable = updateAvailable,
+            CanUseCurrentUpdater = canUseCurrentUpdater,
+            CanUseBuiltArtifactUpdater = canUseBuiltArtifactUpdater,
+            Running = status.Running,
+            ProductFound = status.ProductFound,
+            ComposeFound = status.ComposeFound,
+            AppManagedByTimeline = appManagedByTimeline,
+            Preserve = BuildProductUpdatePreservePlan(definition),
+            Replace = BuildProductUpdateReplacePlan(productPath),
+            Steps = BuildProductUpdateSteps(),
+            Blockers = blockers,
+            Warnings = warnings,
+            GeneratedAt = DateTimeOffset.UtcNow.ToString("O"),
+        };
+    }
+
     public ProductUninstallPlanResponse GetProductUninstallPlan(
         string productId,
         JsonObject? request)
@@ -919,6 +1043,150 @@ public sealed class TimelineProductRuntimeService
             ["state"] = row.State,
             ["message"] = row.Message,
         };
+    }
+
+    private List<ProductUpdatePathPlanResponse> BuildProductUpdatePreservePlan(ProductRuntimeDefinition definition)
+    {
+        var rows = new List<ProductUpdatePathPlanResponse>();
+        var settingsPath = GetProductSettingsFilePath(definition);
+        rows.Add(NewProductUpdatePath(
+            "settings",
+            "file",
+            settingsPath,
+            willPreserve: true,
+            willReplace: false,
+            "Product settings must be copied back after app replacement."));
+
+        var index = 1;
+        foreach (var path in GetProductSourceDataPaths(definition))
+        {
+            rows.Add(NewProductUpdatePath(
+                "source_data_" + index++,
+                "directory",
+                path,
+                willPreserve: true,
+                willReplace: false,
+                "User source data must not be changed by sub-product update."));
+        }
+
+        index = 1;
+        foreach (var path in GetProductGeneratedDataPaths(definition))
+        {
+            rows.Add(NewProductUpdatePath(
+                "generated_data_" + index++,
+                "directory",
+                path,
+                willPreserve: true,
+                willReplace: false,
+                "Generated product data should survive application replacement."));
+        }
+
+        foreach (var resource in GetProductRuntimeDataPlan(definition).Resources)
+        {
+            rows.Add(new ProductUpdatePathPlanResponse
+            {
+                Id = "runtime_" + NormalizeProductUpdateId(resource.Kind + "_" + resource.Name),
+                Kind = resource.Kind,
+                Path = string.IsNullOrWhiteSpace(resource.Path) ? resource.Name : resource.Path,
+                Exists = resource.Exists,
+                WillPreserve = true,
+                WillReplace = false,
+                Reason = "Runtime data and Docker resources are not application files.",
+            });
+        }
+
+        return rows;
+    }
+
+    private static List<ProductUpdatePathPlanResponse> BuildProductUpdateReplacePlan(string productPath)
+    {
+        return
+        [
+            NewProductUpdatePath(
+                "app_directory",
+                "directory",
+                productPath,
+                willPreserve: false,
+                willReplace: true,
+                "Sub-product application files are the update target."),
+        ];
+    }
+
+    private static List<ProductUpdateStepPlanResponse> BuildProductUpdateSteps()
+    {
+        return
+        [
+            NewProductUpdateStep(1, "resolve_latest", "Resolve the latest distributable version for the sub-product."),
+            NewProductUpdateStep(2, "validate_artifact", "Validate the artifact before changing local files."),
+            NewProductUpdateStep(3, "stop", "Stop the sub-product only if it is currently running."),
+            NewProductUpdateStep(4, "backup", "Back up settings and current application files before replacement."),
+            NewProductUpdateStep(5, "replace", "Replace the sub-product application directory."),
+            NewProductUpdateStep(6, "restore_settings", "Restore product settings after replacement."),
+            NewProductUpdateStep(7, "start", "Restart the sub-product if it was running before update."),
+            NewProductUpdateStep(8, "health", "Check product runtime or API health after update."),
+        ];
+    }
+
+    private static ProductUpdatePathPlanResponse NewProductUpdatePath(
+        string id,
+        string kind,
+        string path,
+        bool willPreserve,
+        bool willReplace,
+        string reason)
+    {
+        return new ProductUpdatePathPlanResponse
+        {
+            Id = id,
+            Kind = kind,
+            Path = path,
+            Exists = ProductUpdatePathExists(path, kind),
+            WillPreserve = willPreserve,
+            WillReplace = willReplace,
+            Reason = reason,
+        };
+    }
+
+    private static ProductUpdateStepPlanResponse NewProductUpdateStep(int order, string code, string message)
+    {
+        return new ProductUpdateStepPlanResponse
+        {
+            Order = order,
+            Code = code,
+            Message = message,
+        };
+    }
+
+    private static ProductUpdatePlanMessageResponse NewProductUpdateMessage(string code, string message)
+    {
+        return new ProductUpdatePlanMessageResponse
+        {
+            Code = code,
+            Message = message,
+        };
+    }
+
+    private static bool ProductUpdatePathExists(string path, string kind)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return false;
+        }
+
+        return kind.Equals("file", StringComparison.OrdinalIgnoreCase)
+            ? File.Exists(path)
+            : Directory.Exists(path);
+    }
+
+    private static string NormalizeProductUpdateId(string text)
+    {
+        var value = Regex.Replace(text.ToLowerInvariant(), "[^a-z0-9]+", "_").Trim('_');
+        return string.IsNullOrWhiteSpace(value) ? "resource" : value;
+    }
+
+    private static bool IsGitHubSourceArchive(string sourceType)
+    {
+        return sourceType.Equals("github-source-archive", StringComparison.OrdinalIgnoreCase);
     }
 
     private ProductInstallOptions GetProductInstallOptions(JsonObject? request)
@@ -3402,6 +3670,123 @@ public sealed class ProductRuntimeRowResponse
 
     [JsonPropertyName("exitCode")]
     public int ExitCode { get; set; }
+
+    [JsonPropertyName("message")]
+    public string Message { get; set; } = "";
+}
+
+public sealed class ProductUpdatePlanResponse
+{
+    [JsonPropertyName("productId")]
+    public string ProductId { get; set; } = "";
+
+    [JsonPropertyName("displayName")]
+    public string DisplayName { get; set; } = "";
+
+    [JsonPropertyName("state")]
+    public string State { get; set; } = "";
+
+    [JsonPropertyName("productPath")]
+    public string ProductPath { get; set; } = "";
+
+    [JsonPropertyName("sourceType")]
+    public string SourceType { get; set; } = "";
+
+    [JsonPropertyName("sourceUrl")]
+    public string SourceUrl { get; set; } = "";
+
+    [JsonPropertyName("distributionMode")]
+    public string DistributionMode { get; set; } = "";
+
+    [JsonPropertyName("installedVersion")]
+    public string InstalledVersion { get; set; } = "";
+
+    [JsonPropertyName("latestVersion")]
+    public string LatestVersion { get; set; } = "";
+
+    [JsonPropertyName("archiveUrl")]
+    public string ArchiveUrl { get; set; } = "";
+
+    [JsonPropertyName("updateAvailable")]
+    public bool UpdateAvailable { get; set; }
+
+    [JsonPropertyName("canUseCurrentUpdater")]
+    public bool CanUseCurrentUpdater { get; set; }
+
+    [JsonPropertyName("canUseBuiltArtifactUpdater")]
+    public bool CanUseBuiltArtifactUpdater { get; set; }
+
+    [JsonPropertyName("running")]
+    public bool Running { get; set; }
+
+    [JsonPropertyName("productFound")]
+    public bool ProductFound { get; set; }
+
+    [JsonPropertyName("composeFound")]
+    public bool ComposeFound { get; set; }
+
+    [JsonPropertyName("appManagedByTimeline")]
+    public bool AppManagedByTimeline { get; set; }
+
+    [JsonPropertyName("preserve")]
+    public List<ProductUpdatePathPlanResponse> Preserve { get; set; } = [];
+
+    [JsonPropertyName("replace")]
+    public List<ProductUpdatePathPlanResponse> Replace { get; set; } = [];
+
+    [JsonPropertyName("steps")]
+    public List<ProductUpdateStepPlanResponse> Steps { get; set; } = [];
+
+    [JsonPropertyName("blockers")]
+    public List<ProductUpdatePlanMessageResponse> Blockers { get; set; } = [];
+
+    [JsonPropertyName("warnings")]
+    public List<ProductUpdatePlanMessageResponse> Warnings { get; set; } = [];
+
+    [JsonPropertyName("generatedAt")]
+    public string GeneratedAt { get; set; } = "";
+}
+
+public sealed class ProductUpdatePathPlanResponse
+{
+    [JsonPropertyName("id")]
+    public string Id { get; set; } = "";
+
+    [JsonPropertyName("kind")]
+    public string Kind { get; set; } = "";
+
+    [JsonPropertyName("path")]
+    public string Path { get; set; } = "";
+
+    [JsonPropertyName("exists")]
+    public bool Exists { get; set; }
+
+    [JsonPropertyName("willPreserve")]
+    public bool WillPreserve { get; set; }
+
+    [JsonPropertyName("willReplace")]
+    public bool WillReplace { get; set; }
+
+    [JsonPropertyName("reason")]
+    public string Reason { get; set; } = "";
+}
+
+public sealed class ProductUpdateStepPlanResponse
+{
+    [JsonPropertyName("order")]
+    public int Order { get; set; }
+
+    [JsonPropertyName("code")]
+    public string Code { get; set; } = "";
+
+    [JsonPropertyName("message")]
+    public string Message { get; set; } = "";
+}
+
+public sealed class ProductUpdatePlanMessageResponse
+{
+    [JsonPropertyName("code")]
+    public string Code { get; set; } = "";
 
     [JsonPropertyName("message")]
     public string Message { get; set; } = "";
