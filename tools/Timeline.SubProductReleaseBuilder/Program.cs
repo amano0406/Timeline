@@ -10,6 +10,12 @@ using System.Text.RegularExpressions;
 
 var options = ReleaseOptions.Parse(args);
 
+if (options.ValidateArtifacts)
+{
+    await ValidateArtifactsAsync(options);
+    return;
+}
+
 if (options.WritePublishPreflight)
 {
     await WritePublishPreflightAsync(options);
@@ -90,6 +96,261 @@ static async Task WritePublishPlanAsync(ReleaseOptions options)
     Console.WriteLine($"  Missing releases: {plan.ReleaseMissingCount}");
     Console.WriteLine($"  Release check failed: {plan.ReleaseCheckFailedCount}");
     Console.WriteLine($"  Artifacts not created: {plan.ArtifactNotCreatedCount}");
+}
+
+static async Task ValidateArtifactsAsync(ReleaseOptions options)
+{
+    var outputRoot = Path.GetFullPath(options.OutputDirectory);
+    var runtimeName = ToArtifactRuntimeName(options.RuntimeIdentifier);
+    var (manifest, manifestPath) = await ReadArtifactManifestAsync(options, outputRoot, runtimeName);
+    var items = manifest.Artifacts.Select(ValidateArtifact).ToList();
+    var result = new SubProductArtifactValidationReport(
+        "timeline_sub_product_artifact_validation",
+        manifest.RuntimeIdentifier,
+        manifest.RuntimeName,
+        manifestPath,
+        DateTimeOffset.UtcNow.ToString("O", CultureInfo.InvariantCulture),
+        items.Count,
+        items.Count(item => item.Valid),
+        items.Count(item => !item.Valid),
+        items.Sum(item => item.Blockers.Count),
+        items.Sum(item => item.Warnings.Count),
+        items);
+
+    Directory.CreateDirectory(outputRoot);
+    var resultPath = Path.Combine(outputRoot, $"sub-product-artifacts-validation-{runtimeName}.json");
+    await File.WriteAllTextAsync(
+        resultPath,
+        JsonSerializer.Serialize(result, new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true }) + Environment.NewLine);
+
+    Console.WriteLine("Sub-product artifacts validation finished.");
+    Console.WriteLine($"  Runtime: {result.RuntimeIdentifier}");
+    Console.WriteLine($"  Manifest: {result.ManifestPath}");
+    Console.WriteLine($"  Result: {resultPath}");
+    Console.WriteLine($"  Valid: {result.ValidCount}");
+    Console.WriteLine($"  Invalid: {result.InvalidCount}");
+    Console.WriteLine($"  Blockers: {result.BlockerCount}");
+    Console.WriteLine($"  Warnings: {result.WarningCount}");
+
+    if (result.InvalidCount > 0)
+    {
+        Environment.ExitCode = 2;
+    }
+}
+
+static SubProductArtifactValidationItem ValidateArtifact(SubProductArtifactBuildResult artifact)
+{
+    var blockers = new List<string>();
+    var warnings = new List<string>();
+    var forbiddenEntries = new List<string>();
+    var nestedArchiveEntries = new List<string>();
+    var requiredEntries = new List<string>();
+    var metadataWarnings = new List<string>();
+    var metadataBlockers = new List<string>();
+    var artifactPath = Path.GetFullPath(artifact.ArtifactPath ?? string.Empty);
+    var artifactName = Path.GetFileName(artifactPath);
+    var expectedRoot = $"{artifact.ProductName}/";
+    var expectedVersionEntry = $"{expectedRoot}VERSION";
+    long sizeBytes = 0;
+    var entryCount = 0;
+
+    if (!artifact.State.Equals("created", StringComparison.OrdinalIgnoreCase))
+    {
+        blockers.Add($"Artifact state is not created: {artifact.State}");
+    }
+
+    if (string.IsNullOrWhiteSpace(artifact.ArtifactPath) || !File.Exists(artifactPath))
+    {
+        blockers.Add($"Artifact file was not found: {artifact.ArtifactPath}");
+        return NewArtifactValidationItem();
+    }
+
+    sizeBytes = new FileInfo(artifactPath).Length;
+    if (sizeBytes <= 0)
+    {
+        blockers.Add("Artifact ZIP is empty.");
+    }
+
+    if (artifact.SizeBytes > 0 && artifact.SizeBytes != sizeBytes)
+    {
+        warnings.Add($"Manifest size differs from actual artifact size: manifest={artifact.SizeBytes}, actual={sizeBytes}.");
+    }
+
+    var expectedArtifactName = $"{artifact.ProductName}-{artifact.RuntimeName}-{artifact.Version}.zip";
+    if (!artifactName.Equals(expectedArtifactName, StringComparison.OrdinalIgnoreCase))
+    {
+        warnings.Add($"Artifact name does not match the expected naming rule: expected={expectedArtifactName}, actual={artifactName}.");
+    }
+
+    try
+    {
+        using var archive = ZipFile.OpenRead(artifactPath);
+        foreach (var entry in archive.Entries)
+        {
+            var entryName = NormalizeZipEntryName(entry.FullName);
+            if (string.IsNullOrWhiteSpace(entryName) || entryName.EndsWith("/", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            entryCount++;
+            if (IsUnsafeZipEntryPath(entryName))
+            {
+                blockers.Add($"Unsafe ZIP entry path: {entryName}");
+            }
+
+            if (!entryName.StartsWith(expectedRoot, StringComparison.Ordinal))
+            {
+                blockers.Add($"ZIP entry is outside the product root directory: {entryName}");
+            }
+
+            if (entryName.Equals(expectedVersionEntry, StringComparison.Ordinal))
+            {
+                requiredEntries.Add(entryName);
+                ValidateVersionEntry(entry, artifact, metadataBlockers, metadataWarnings);
+            }
+
+            if (IsForbiddenZipEntry(entryName))
+            {
+                forbiddenEntries.Add(entryName);
+            }
+
+            if (entryName.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+            {
+                nestedArchiveEntries.Add(entryName);
+            }
+        }
+    }
+    catch (Exception ex)
+    {
+        blockers.Add($"Artifact ZIP could not be opened: {ex.Message}");
+    }
+
+    if (!requiredEntries.Any(entry => entry.Equals(expectedVersionEntry, StringComparison.Ordinal)))
+    {
+        blockers.Add($"Required VERSION file was not found: {expectedVersionEntry}");
+    }
+
+    if (forbiddenEntries.Count > 0)
+    {
+        blockers.Add($"Forbidden entries were found: {forbiddenEntries.Count}");
+    }
+
+    if (nestedArchiveEntries.Count > 0)
+    {
+        blockers.Add($"Nested ZIP entries were found: {nestedArchiveEntries.Count}");
+    }
+
+    blockers.AddRange(metadataBlockers);
+    warnings.AddRange(metadataWarnings);
+    return NewArtifactValidationItem();
+
+    SubProductArtifactValidationItem NewArtifactValidationItem()
+    {
+        var valid = blockers.Count == 0;
+        return new SubProductArtifactValidationItem(
+            artifact.ProductId,
+            artifact.ProductName,
+            artifact.Version,
+            artifact.RuntimeIdentifier,
+            artifact.RuntimeName,
+            artifactPath,
+            artifactName,
+            sizeBytes,
+            entryCount,
+            requiredEntries.Count,
+            1,
+            valid,
+            valid ? "ready" : "invalid",
+            blockers,
+            warnings,
+            forbiddenEntries,
+            nestedArchiveEntries);
+    }
+}
+
+static void ValidateVersionEntry(
+    ZipArchiveEntry entry,
+    SubProductArtifactBuildResult artifact,
+    List<string> blockers,
+    List<string> warnings)
+{
+    try
+    {
+        using var stream = entry.Open();
+        using var document = JsonDocument.Parse(stream);
+        var root = document.RootElement;
+        CompareVersionProperty(root, "artifactType", "timeline_sub_product_artifact", blockers);
+        CompareVersionProperty(root, "productId", artifact.ProductId, blockers);
+        CompareVersionProperty(root, "productName", artifact.ProductName, blockers);
+        CompareVersionProperty(root, "version", artifact.Version, blockers);
+        CompareVersionProperty(root, "runtimeIdentifier", artifact.RuntimeIdentifier, blockers);
+        if (!root.TryGetProperty("commit", out var commitElement) || string.IsNullOrWhiteSpace(commitElement.GetString()))
+        {
+            warnings.Add("VERSION does not contain commit.");
+        }
+    }
+    catch (Exception ex)
+    {
+        blockers.Add($"VERSION file could not be parsed as JSON: {ex.Message}");
+    }
+}
+
+static void CompareVersionProperty(JsonElement root, string propertyName, string expectedValue, List<string> blockers)
+{
+    if (!root.TryGetProperty(propertyName, out var element))
+    {
+        blockers.Add($"VERSION does not contain {propertyName}.");
+        return;
+    }
+
+    var actualValue = element.GetString() ?? string.Empty;
+    if (!actualValue.Equals(expectedValue, StringComparison.Ordinal))
+    {
+        blockers.Add($"VERSION {propertyName} mismatch: expected={expectedValue}, actual={actualValue}.");
+    }
+}
+
+static string NormalizeZipEntryName(string entryName)
+    => (entryName ?? string.Empty).Replace('\\', '/').TrimStart('/');
+
+static bool IsUnsafeZipEntryPath(string entryName)
+{
+    if (string.IsNullOrWhiteSpace(entryName) ||
+        entryName.StartsWith("/", StringComparison.Ordinal) ||
+        entryName.Contains(':', StringComparison.Ordinal))
+    {
+        return true;
+    }
+
+    var segments = entryName.Split('/', StringSplitOptions.RemoveEmptyEntries);
+    return segments.Any(segment => segment.Equals("..", StringComparison.Ordinal));
+}
+
+static bool IsForbiddenZipEntry(string entryName)
+{
+    var segments = entryName.Split('/', StringSplitOptions.RemoveEmptyEntries);
+    if (segments.Any(segment => ReleaseExclusionRules.ForbiddenDirectoryNames.Contains(segment)))
+    {
+        return true;
+    }
+
+    var fileName = segments.LastOrDefault() ?? string.Empty;
+    if (ReleaseExclusionRules.ForbiddenFileNames.Contains(fileName))
+    {
+        return true;
+    }
+
+    var extension = Path.GetExtension(fileName);
+    if (ReleaseExclusionRules.ForbiddenFileExtensions.Contains(extension))
+    {
+        return true;
+    }
+
+    return fileName.EndsWith(".log", StringComparison.OrdinalIgnoreCase) ||
+        fileName.EndsWith(".tmp", StringComparison.OrdinalIgnoreCase) ||
+        fileName.EndsWith(".zip", StringComparison.OrdinalIgnoreCase) ||
+        fileName.StartsWith(".env", StringComparison.OrdinalIgnoreCase);
 }
 
 static async Task WritePublishPreflightAsync(ReleaseOptions options)
@@ -1007,6 +1268,7 @@ internal sealed record ReleaseOptions(
     bool BuildAll,
     string ProductsRoot,
     string ManifestName,
+    bool ValidateArtifacts,
     bool WritePublishPlan,
     bool WritePublishPreflight,
     bool PublishReleaseArtifacts,
@@ -1026,6 +1288,7 @@ internal sealed record ReleaseOptions(
         var buildAll = false;
         var productsRoot = Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), ".."));
         var manifestName = string.Empty;
+        var validateArtifacts = false;
         var writePublishPlan = false;
         var writePublishPreflight = false;
         var publishReleaseArtifacts = false;
@@ -1039,6 +1302,13 @@ internal sealed record ReleaseOptions(
             if (arg.Equals("--all", StringComparison.OrdinalIgnoreCase))
             {
                 buildAll = true;
+                continue;
+            }
+
+            if (arg.Equals("--validate-artifacts", StringComparison.OrdinalIgnoreCase) ||
+                arg.Equals("--validate", StringComparison.OrdinalIgnoreCase))
+            {
+                validateArtifacts = true;
                 continue;
             }
 
@@ -1086,7 +1356,7 @@ internal sealed record ReleaseOptions(
             throw new ArgumentException($"Unknown argument: {arg}");
         }
 
-        if (!buildAll && !writePublishPlan && !writePublishPreflight && !publishReleaseArtifacts && string.IsNullOrWhiteSpace(productRoot))
+        if (!buildAll && !validateArtifacts && !writePublishPlan && !writePublishPreflight && !publishReleaseArtifacts && string.IsNullOrWhiteSpace(productRoot))
         {
             throw new ArgumentException("Product root is required. Use --repo <path>.");
         }
@@ -1102,6 +1372,7 @@ internal sealed record ReleaseOptions(
             buildAll,
             productsRoot,
             manifestName,
+            validateArtifacts,
             writePublishPlan,
             writePublishPreflight,
             publishReleaseArtifacts,
@@ -1269,6 +1540,38 @@ internal sealed record GitHubApiReadResult(
     int StatusCode,
     string Body,
     string Message);
+
+internal sealed record SubProductArtifactValidationReport(
+    string ArtifactType,
+    string RuntimeIdentifier,
+    string RuntimeName,
+    string ManifestPath,
+    string CreatedAt,
+    int TotalCount,
+    int ValidCount,
+    int InvalidCount,
+    int BlockerCount,
+    int WarningCount,
+    List<SubProductArtifactValidationItem> Items);
+
+internal sealed record SubProductArtifactValidationItem(
+    string ProductId,
+    string ProductName,
+    string Version,
+    string RuntimeIdentifier,
+    string RuntimeName,
+    string ArtifactPath,
+    string ArtifactName,
+    long SizeBytes,
+    int EntryCount,
+    int RequiredEntriesFoundCount,
+    int RequiredEntriesExpectedCount,
+    bool Valid,
+    string State,
+    List<string> Blockers,
+    List<string> Warnings,
+    List<string> ForbiddenEntries,
+    List<string> NestedArchiveEntries);
 
 internal sealed record SubProductPublishPreflightResult(
     string ArtifactType,

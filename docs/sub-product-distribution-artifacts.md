@@ -127,6 +127,35 @@ The manifest lists each product, source repository path, version, commit,
 artifact path, runtime, size, and creation state. This file is intended as the
 machine-readable handoff to validation, release attachment, and update planning.
 
+## Artifact validation
+
+Before creating a publish plan, validate the generated artifact ZIPs:
+
+```powershell
+dotnet run --project .\tools\Timeline.SubProductReleaseBuilder\Timeline.SubProductReleaseBuilder.csproj -- `
+  --validate-artifacts `
+  --runtime win-x64 `
+  --output release\sub-products
+```
+
+The validation command reads `sub-product-artifacts-<runtime>.json`, opens each
+ZIP, and verifies that:
+
+- the artifact file exists and is not empty;
+- the ZIP has a single product root directory;
+- the product root contains the required `VERSION` file;
+- `VERSION` matches the manifest product, version, and runtime;
+- settings, data directories, logs, temp files, nested ZIPs, runtime caches, and
+  other excluded paths are not present.
+
+It writes:
+
+```text
+sub-product-artifacts-validation-<runtime>.json
+```
+
+This command is read-only. Treat `invalidCount > 0` as a release blocker.
+
 ## Publish plan
 
 Before publishing or attaching artifacts to GitHub Releases, generate a
