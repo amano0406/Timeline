@@ -8,6 +8,12 @@ using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 
+if (ReleaseOptions.IsHelpRequest(args))
+{
+    ReleaseOptions.PrintUsage();
+    return;
+}
+
 var options = ReleaseOptions.Parse(args);
 
 if (options.ValidateArtifacts)
@@ -1307,6 +1313,59 @@ internal sealed record ReleaseOptions(
     string GitHubOwner,
     string GitHubTokenEnvironmentVariable)
 {
+    public static bool IsHelpRequest(string[] args)
+    {
+        return args.Any(arg =>
+            arg.Equals("--help", StringComparison.OrdinalIgnoreCase) ||
+            arg.Equals("-h", StringComparison.OrdinalIgnoreCase) ||
+            arg.Equals("/?", StringComparison.OrdinalIgnoreCase));
+    }
+
+    public static void PrintUsage()
+    {
+        Console.WriteLine("""
+Timeline sub-product artifact builder
+
+Usage:
+  Build all sub-products:
+    dotnet run --project tools/Timeline.SubProductReleaseBuilder/Timeline.SubProductReleaseBuilder.csproj -- --all --products-root <path> --runtime <runtime> --output <dir> [--channel <name>]
+
+  Build one sub-product:
+    dotnet run --project tools/Timeline.SubProductReleaseBuilder/Timeline.SubProductReleaseBuilder.csproj -- --repo <path> --product-name <name> --product-id <id> --runtime <runtime> --output <dir> [--version <tag>] [--channel <name>]
+
+  Validate generated artifacts:
+    dotnet run --project tools/Timeline.SubProductReleaseBuilder/Timeline.SubProductReleaseBuilder.csproj -- --validate-artifacts --runtime <runtime> --output <dir>
+
+  Create a read-only GitHub Release publish plan:
+    dotnet run --project tools/Timeline.SubProductReleaseBuilder/Timeline.SubProductReleaseBuilder.csproj -- --publish-plan --runtime <runtime> --output <dir> [--github-owner <owner>]
+
+  Create a read-only publish preflight:
+    dotnet run --project tools/Timeline.SubProductReleaseBuilder/Timeline.SubProductReleaseBuilder.csproj -- --publish-preflight --runtime <runtime> --output <dir> [--github-owner <owner>]
+
+  Publish artifacts to GitHub Releases:
+    dotnet run --project tools/Timeline.SubProductReleaseBuilder/Timeline.SubProductReleaseBuilder.csproj -- --publish --confirm-publish --runtime <runtime> --output <dir> [--github-owner <owner>]
+
+Options:
+  --all                       Build the built-in sub-product matrix.
+  --repo, --product-root      Sub-product repository path.
+  --product-name              Product name, for example TimelineForAudio.
+  --product-id                Product id, for example audio.
+  --runtime                   Runtime identifier. osx-* is emitted as macos-* in artifact names.
+  --output                    Output directory.
+  --channel                   Artifact channel. Default: dev.
+  --products-root             Parent directory for --all. Default: current directory parent.
+  --manifest                  Manifest file name to read or write.
+  --validate-artifacts        Validate artifacts listed in the manifest.
+  --publish-plan              Read-only GitHub Release asset check.
+  --publish-preflight         Read-only GitHub publishing readiness check.
+  --publish                   Create releases or upload assets. Requires --confirm-publish.
+  --confirm-publish           Required guard for publishing.
+  --github-owner              GitHub owner. Default: amano0406.
+  --github-token-env          Token environment variable. Default: GITHUB_TOKEN.
+  --help, -h, /?              Show this help.
+""");
+    }
+
     public static ReleaseOptions Parse(string[] args)
     {
         var productRoot = string.Empty;

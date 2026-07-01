@@ -84,6 +84,10 @@ content.
 Timeline now includes a common sub-product artifact builder:
 
 ```powershell
+dotnet run --project .\tools\Timeline.SubProductReleaseBuilder\Timeline.SubProductReleaseBuilder.csproj -- --help
+```
+
+```powershell
 dotnet run --project .\tools\Timeline.SubProductReleaseBuilder\Timeline.SubProductReleaseBuilder.csproj -- `
   --repo C:\apps\TimelineForAudio `
   --product-name TimelineForAudio `
