@@ -194,6 +194,12 @@ app.MapGet("/timeline/update/artifact/manifest/validate", (
     return Results.Json(TimelineUpdatePlanService.ValidateArtifactManifest(options.TimelineProductPath, manifestPath));
 });
 
+app.MapGet("/timeline/update/staged-operations", (
+    TimelineLocalApiOptions options) =>
+{
+    return Results.Json(TimelineUpdatePlanService.ListStagedOperations(options.TimelineProductPath));
+});
+
 app.MapPost("/timeline/update/artifact/manifest/stage", async (
     HttpContext context,
     TimelineLocalApiOptions options,

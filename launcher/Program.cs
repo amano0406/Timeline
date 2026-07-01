@@ -35,6 +35,7 @@ try
         "update-manifest-validate" => ShowUpdateArtifactManifestValidation(root, options.ManifestPath, options.JsonOutput),
         "update-stage" => await StageUpdateArtifact(root, options.ArtifactPath, options.JsonOutput),
         "update-manifest-stage" => await StageUpdateArtifactManifest(root, options.ManifestPath, options.JsonOutput),
+        "update-staged-operations" => ShowUpdateStagedOperations(root, options.JsonOutput),
         "start" => await RunStart(root, settings, openBrowser: !options.NoOpen),
         "stop" => await RunStop(root, settings),
         "open" => await OpenOrStart(root, settings),
@@ -1149,6 +1150,47 @@ static async Task<int> StageUpdateArtifactManifest(string root, string? manifest
     return result.Staged ? 0 : 1;
 }
 
+static int ShowUpdateStagedOperations(string root, bool jsonOutput)
+{
+    var result = TimelineUpdatePlanService.ListStagedOperations(root);
+    if (jsonOutput)
+    {
+        Console.WriteLine(JsonSerializer.Serialize(
+            result,
+            new JsonSerializerOptions
+            {
+                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+                WriteIndented = true,
+            }));
+    }
+    else
+    {
+        Console.WriteLine("Timeline staged update operations");
+        Console.WriteLine($"  state: {result.State}");
+        Console.WriteLine($"  work root: {result.WorkRoot}");
+        Console.WriteLine($"  operations: {result.OperationCount}");
+        Console.WriteLine($"  staged: {result.StagedCount}");
+        Console.WriteLine($"  incomplete: {result.IncompleteCount}");
+        Console.WriteLine();
+        PrintUpdateMessages("Warnings", result.Warnings);
+
+        foreach (var operation in result.Operations)
+        {
+            Console.WriteLine($"- {operation.OperationId}: {operation.State}");
+            Console.WriteLine($"  version: {EmptyText(operation.ArtifactVersion)}");
+            Console.WriteLine($"  runtime: {EmptyText(operation.ArtifactRuntimeIdentifier)}");
+            Console.WriteLine($"  staged at: {EmptyText(operation.StagedAt)}");
+            Console.WriteLine($"  can apply after stage: {(operation.CanApplyAfterStage ? "yes" : "no")}");
+            Console.WriteLine($"  operation log: {operation.OperationLogPath}");
+            Console.WriteLine($"  staged product root: {operation.StagedProductRoot}");
+            PrintUpdateMessages("  Blockers", operation.Blockers);
+            PrintUpdateMessages("  Warnings", operation.Warnings);
+        }
+    }
+
+    return result.State.Equals("warning", StringComparison.OrdinalIgnoreCase) ? 1 : 0;
+}
+
 static async Task<int> RunStart(string root, TimelineSettings settings, bool openBrowser)
 {
     Console.WriteLine("Starting Timeline through the C# launcher runtime...");
@@ -1292,6 +1334,7 @@ static int ShowHelp()
     Console.WriteLine("  update-manifest-validate  Validate an artifact manifest and its ZIP. Use --manifest <path>.");
     Console.WriteLine("  update-stage  Validate and extract a built product artifact into the Timeline work directory. Use --artifact <path>.");
     Console.WriteLine("  update-manifest-stage  Validate a manifest and extract its artifact into the Timeline work directory. Use --manifest <path>.");
+    Console.WriteLine("  update-staged-operations  List staged update operation records for diagnostics.");
     Console.WriteLine("  start   Start Timeline.");
     Console.WriteLine("  stop    Stop Timeline.");
     Console.WriteLine("  shortcut-status   Show the OS app entry status.");

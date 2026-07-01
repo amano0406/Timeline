@@ -80,6 +80,7 @@ GET http://127.0.0.1:19001/timeline/update/artifact/validate?path=<zip-path>
 GET http://127.0.0.1:19001/timeline/update/artifact/manifest/validate?path=<json-path>
 POST http://127.0.0.1:19001/timeline/update/artifact/stage
 POST http://127.0.0.1:19001/timeline/update/artifact/manifest/stage
+GET http://127.0.0.1:19001/timeline/update/staged-operations
 ```
 
 The Local API endpoint returns the same plan model as the Launcher command.
@@ -99,6 +100,13 @@ this command to verify built artifacts, but `canApplyAfterStage` remains false
 when the current installation is not itself a built product artifact.
 `update-manifest-stage` performs the same staging through the release manifest
 after confirming the manifest and artifact hash.
+
+`update-staged-operations` and `/timeline/update/staged-operations` are
+read-only diagnostics. They list operation directories under
+`<dataRoot>/work/timeline-updates/`, read each `stage.json`, and classify the
+result as staged, incomplete, or unreadable. This gives the UI and support flow a
+safe way to show what was prepared before a destructive update apply step is
+introduced.
 
 ## States
 

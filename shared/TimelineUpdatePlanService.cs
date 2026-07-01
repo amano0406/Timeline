@@ -901,6 +901,72 @@ public static class TimelineUpdatePlanService
         };
     }
 
+    public static TimelineUpdateStagedOperationsResponse ListStagedOperations(string timelineRoot)
+    {
+        var root = Path.GetFullPath(timelineRoot);
+        var dataRoot = ResolveDataRoot(root);
+        var workRoot = Path.GetFullPath(Path.Combine(dataRoot, "work", "timeline-updates"));
+        var warnings = new List<TimelineUpdatePlanMessage>();
+        var operations = new List<TimelineUpdateStagedOperationInfo>();
+
+        if (!Directory.Exists(workRoot))
+        {
+            return new TimelineUpdateStagedOperationsResponse
+            {
+                ProductId = "timeline",
+                ProductName = "Timeline",
+                State = "empty",
+                TimelineRoot = root,
+                DataRoot = dataRoot,
+                WorkRoot = workRoot,
+                GeneratedAt = DateTimeOffset.UtcNow.ToString("O", CultureInfo.InvariantCulture),
+            };
+        }
+
+        foreach (var operationRoot in Directory.EnumerateDirectories(workRoot))
+        {
+            operations.Add(ReadStagedOperation(operationRoot));
+        }
+
+        var incompleteCount = operations.Count(operation =>
+            !operation.State.Equals("staged", StringComparison.OrdinalIgnoreCase));
+        if (incompleteCount > 0)
+        {
+            warnings.Add(new TimelineUpdatePlanMessage
+            {
+                Code = "incomplete_staged_operations_found",
+                Message = "Some staged update operation directories are incomplete or have unreadable operation logs.",
+            });
+        }
+
+        return new TimelineUpdateStagedOperationsResponse
+        {
+            ProductId = "timeline",
+            ProductName = "Timeline",
+            State = operations.Count == 0
+                ? "empty"
+                : incompleteCount == 0
+                    ? "available"
+                    : "warning",
+            TimelineRoot = root,
+            DataRoot = dataRoot,
+            WorkRoot = workRoot,
+            OperationCount = operations.Count,
+            StagedCount = operations.Count(operation => operation.State.Equals("staged", StringComparison.OrdinalIgnoreCase)),
+            IncompleteCount = incompleteCount,
+            Operations = operations
+                .OrderByDescending(operation => operation.SortTimeUtc)
+                .Select(operation =>
+                {
+                    operation.SortTimeUtc = null;
+                    return operation;
+                })
+                .ToList(),
+            Warnings = warnings,
+            GeneratedAt = DateTimeOffset.UtcNow.ToString("O", CultureInfo.InvariantCulture),
+        };
+    }
+
     private static List<TimelineUpdatePathPlan> BuildPreservePlan(string root, string dataRoot)
     {
         return
@@ -914,6 +980,96 @@ public static class TimelineUpdatePlanService
             NewPathPlan("work", Path.Combine(dataRoot, "work"), "directory", willPreserve: true, willReplace: false,
                 "Runtime work directory. It may contain in-progress or diagnostic data and is not part of the product artifact."),
         ];
+    }
+
+    private static TimelineUpdateStagedOperationInfo ReadStagedOperation(string operationRoot)
+    {
+        var fullOperationRoot = Path.GetFullPath(operationRoot);
+        var operationId = Path.GetFileName(fullOperationRoot);
+        var operationLogPath = Path.Combine(fullOperationRoot, "stage.json");
+        var stagingRoot = Path.Combine(fullOperationRoot, "artifact");
+        var lastWriteTimeUtc = Directory.GetLastWriteTimeUtc(fullOperationRoot);
+        var info = new TimelineUpdateStagedOperationInfo
+        {
+            OperationId = operationId,
+            State = "incomplete",
+            OperationRoot = fullOperationRoot,
+            OperationLogPath = operationLogPath,
+            StagingRoot = stagingRoot,
+            OperationLogExists = File.Exists(operationLogPath),
+            StagingRootExists = Directory.Exists(stagingRoot),
+            LastWriteTime = lastWriteTimeUtc.ToString("O", CultureInfo.InvariantCulture),
+            SortTimeUtc = lastWriteTimeUtc,
+        };
+
+        if (!info.OperationLogExists)
+        {
+            info.Warnings.Add(new TimelineUpdatePlanMessage
+            {
+                Code = "operation_log_missing",
+                Message = "The staged update directory does not contain stage.json.",
+            });
+            return info;
+        }
+
+        try
+        {
+            var stage = JsonSerializer.Deserialize<TimelineUpdateArtifactStageResponse>(
+                File.ReadAllText(operationLogPath),
+                new JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = true,
+                });
+
+            if (stage is null)
+            {
+                info.State = "unreadable";
+                info.Warnings.Add(new TimelineUpdatePlanMessage
+                {
+                    Code = "operation_log_empty",
+                    Message = "stage.json could not be read as a staged update operation.",
+                });
+                return info;
+            }
+
+            info.State = stage.Staged ? "staged" : "blocked";
+            info.CanApplyAfterStage = stage.CanApplyAfterStage;
+            info.UpdatePlanState = stage.UpdatePlanState;
+            info.StagedAt = stage.StagedAt;
+            info.StagedProductRoot = stage.StagedProductRoot;
+            info.StagedProductRootExists = Directory.Exists(stage.StagedProductRoot);
+            info.ArtifactPath = stage.ArtifactValidation.ArtifactPath;
+            info.ArtifactVersion = stage.ArtifactValidation.Version.Version;
+            info.ArtifactRuntimeIdentifier = stage.ArtifactValidation.Version.RuntimeIdentifier;
+            info.Blockers = stage.Blockers;
+            info.Warnings = stage.Warnings;
+
+            if (DateTimeOffset.TryParse(stage.StagedAt, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var stagedAt))
+            {
+                info.SortTimeUtc = stagedAt.UtcDateTime;
+            }
+
+            if (stage.Staged && !info.StagedProductRootExists)
+            {
+                info.State = "incomplete";
+                info.Warnings.Add(new TimelineUpdatePlanMessage
+                {
+                    Code = "staged_product_root_missing",
+                    Message = "stage.json says the operation was staged, but the staged product root no longer exists.",
+                });
+            }
+        }
+        catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
+        {
+            info.State = "unreadable";
+            info.Warnings.Add(new TimelineUpdatePlanMessage
+            {
+                Code = "operation_log_unreadable",
+                Message = $"stage.json could not be read. {ex.Message}",
+            });
+        }
+
+        return info;
     }
 
     private static List<TimelineUpdatePathPlan> BuildReplacePlan(string root)
@@ -1915,6 +2071,105 @@ public sealed class TimelineUpdateArtifactManifestStageResponse
 
     [JsonPropertyName("stagedAt")]
     public string StagedAt { get; set; } = "";
+}
+
+public sealed class TimelineUpdateStagedOperationsResponse
+{
+    [JsonPropertyName("productId")]
+    public string ProductId { get; set; } = "";
+
+    [JsonPropertyName("productName")]
+    public string ProductName { get; set; } = "";
+
+    [JsonPropertyName("state")]
+    public string State { get; set; } = "";
+
+    [JsonPropertyName("timelineRoot")]
+    public string TimelineRoot { get; set; } = "";
+
+    [JsonPropertyName("dataRoot")]
+    public string DataRoot { get; set; } = "";
+
+    [JsonPropertyName("workRoot")]
+    public string WorkRoot { get; set; } = "";
+
+    [JsonPropertyName("operationCount")]
+    public int OperationCount { get; set; }
+
+    [JsonPropertyName("stagedCount")]
+    public int StagedCount { get; set; }
+
+    [JsonPropertyName("incompleteCount")]
+    public int IncompleteCount { get; set; }
+
+    [JsonPropertyName("operations")]
+    public List<TimelineUpdateStagedOperationInfo> Operations { get; set; } = [];
+
+    [JsonPropertyName("warnings")]
+    public List<TimelineUpdatePlanMessage> Warnings { get; set; } = [];
+
+    [JsonPropertyName("generatedAt")]
+    public string GeneratedAt { get; set; } = "";
+}
+
+public sealed class TimelineUpdateStagedOperationInfo
+{
+    [JsonPropertyName("operationId")]
+    public string OperationId { get; set; } = "";
+
+    [JsonPropertyName("state")]
+    public string State { get; set; } = "";
+
+    [JsonPropertyName("canApplyAfterStage")]
+    public bool CanApplyAfterStage { get; set; }
+
+    [JsonPropertyName("updatePlanState")]
+    public string UpdatePlanState { get; set; } = "";
+
+    [JsonPropertyName("operationRoot")]
+    public string OperationRoot { get; set; } = "";
+
+    [JsonPropertyName("operationLogPath")]
+    public string OperationLogPath { get; set; } = "";
+
+    [JsonPropertyName("stagingRoot")]
+    public string StagingRoot { get; set; } = "";
+
+    [JsonPropertyName("stagedProductRoot")]
+    public string StagedProductRoot { get; set; } = "";
+
+    [JsonPropertyName("operationLogExists")]
+    public bool OperationLogExists { get; set; }
+
+    [JsonPropertyName("stagingRootExists")]
+    public bool StagingRootExists { get; set; }
+
+    [JsonPropertyName("stagedProductRootExists")]
+    public bool StagedProductRootExists { get; set; }
+
+    [JsonPropertyName("artifactPath")]
+    public string ArtifactPath { get; set; } = "";
+
+    [JsonPropertyName("artifactVersion")]
+    public string ArtifactVersion { get; set; } = "";
+
+    [JsonPropertyName("artifactRuntimeIdentifier")]
+    public string ArtifactRuntimeIdentifier { get; set; } = "";
+
+    [JsonPropertyName("stagedAt")]
+    public string StagedAt { get; set; } = "";
+
+    [JsonPropertyName("lastWriteTime")]
+    public string LastWriteTime { get; set; } = "";
+
+    [JsonPropertyName("blockers")]
+    public List<TimelineUpdatePlanMessage> Blockers { get; set; } = [];
+
+    [JsonPropertyName("warnings")]
+    public List<TimelineUpdatePlanMessage> Warnings { get; set; } = [];
+
+    [JsonIgnore]
+    public DateTime? SortTimeUtc { get; set; }
 }
 
 public sealed class TimelineUpdateRecoveryPlanResponse
