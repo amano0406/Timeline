@@ -765,6 +765,76 @@ public static class TimelineUpdatePlanService
         return response;
     }
 
+    public static async Task<TimelineUpdateArtifactManifestStageResponse> StageArtifactManifestAsync(
+        string timelineRoot,
+        string manifestPath,
+        string? operationId,
+        CancellationToken cancellationToken)
+    {
+        var root = Path.GetFullPath(timelineRoot);
+        var manifestValidation = ValidateArtifactManifest(root, manifestPath);
+        var blockers = manifestValidation.Blockers
+            .Select(message => new TimelineUpdatePlanMessage
+            {
+                Code = message.Code,
+                Message = message.Message,
+            })
+            .ToList();
+        var warnings = manifestValidation.Warnings
+            .Select(message => new TimelineUpdatePlanMessage
+            {
+                Code = message.Code,
+                Message = message.Message,
+            })
+            .ToList();
+        TimelineUpdateArtifactStageResponse? artifactStage = null;
+
+        if (manifestValidation.Valid)
+        {
+            artifactStage = await StageArtifactAsync(
+                root,
+                manifestValidation.Artifact.Path,
+                operationId,
+                cancellationToken);
+
+            foreach (var blocker in artifactStage.Blockers)
+            {
+                blockers.Add(new TimelineUpdatePlanMessage
+                {
+                    Code = "stage_" + blocker.Code,
+                    Message = blocker.Message,
+                });
+            }
+
+            foreach (var warning in artifactStage.Warnings)
+            {
+                warnings.Add(new TimelineUpdatePlanMessage
+                {
+                    Code = "stage_" + warning.Code,
+                    Message = warning.Message,
+                });
+            }
+        }
+
+        var staged = artifactStage?.Staged == true && blockers.Count == 0;
+        return new TimelineUpdateArtifactManifestStageResponse
+        {
+            ProductId = "timeline",
+            ProductName = "Timeline",
+            State = staged ? "staged" : "blocked",
+            Staged = staged,
+            OperationOwner = "launcher",
+            Mode = "manifest_stage_only",
+            TimelineRoot = root,
+            DataRoot = artifactStage?.DataRoot ?? ResolveDataRoot(root),
+            ManifestValidation = manifestValidation,
+            ArtifactStage = artifactStage,
+            Blockers = blockers,
+            Warnings = warnings,
+            StagedAt = DateTimeOffset.UtcNow.ToString("O", CultureInfo.InvariantCulture),
+        };
+    }
+
     private static List<TimelineUpdatePathPlan> BuildPreservePlan(string root, string dataRoot)
     {
         return
@@ -1728,6 +1798,48 @@ public sealed class TimelineUpdateArtifactStageResponse
 
     [JsonPropertyName("nextSteps")]
     public List<TimelineUpdateStepPlan> NextSteps { get; set; } = [];
+
+    [JsonPropertyName("blockers")]
+    public List<TimelineUpdatePlanMessage> Blockers { get; set; } = [];
+
+    [JsonPropertyName("warnings")]
+    public List<TimelineUpdatePlanMessage> Warnings { get; set; } = [];
+
+    [JsonPropertyName("stagedAt")]
+    public string StagedAt { get; set; } = "";
+}
+
+public sealed class TimelineUpdateArtifactManifestStageResponse
+{
+    [JsonPropertyName("productId")]
+    public string ProductId { get; set; } = "";
+
+    [JsonPropertyName("productName")]
+    public string ProductName { get; set; } = "";
+
+    [JsonPropertyName("state")]
+    public string State { get; set; } = "";
+
+    [JsonPropertyName("staged")]
+    public bool Staged { get; set; }
+
+    [JsonPropertyName("operationOwner")]
+    public string OperationOwner { get; set; } = "";
+
+    [JsonPropertyName("mode")]
+    public string Mode { get; set; } = "";
+
+    [JsonPropertyName("timelineRoot")]
+    public string TimelineRoot { get; set; } = "";
+
+    [JsonPropertyName("dataRoot")]
+    public string DataRoot { get; set; } = "";
+
+    [JsonPropertyName("manifestValidation")]
+    public TimelineUpdateArtifactManifestValidationResponse ManifestValidation { get; set; } = new();
+
+    [JsonPropertyName("artifactStage")]
+    public TimelineUpdateArtifactStageResponse? ArtifactStage { get; set; }
 
     [JsonPropertyName("blockers")]
     public List<TimelineUpdatePlanMessage> Blockers { get; set; } = [];

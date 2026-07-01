@@ -33,6 +33,7 @@ try
         "update-validate" => ShowUpdateArtifactValidation(root, options.ArtifactPath, options.JsonOutput),
         "update-manifest-validate" => ShowUpdateArtifactManifestValidation(root, options.ManifestPath, options.JsonOutput),
         "update-stage" => await StageUpdateArtifact(root, options.ArtifactPath, options.JsonOutput),
+        "update-manifest-stage" => await StageUpdateArtifactManifest(root, options.ManifestPath, options.JsonOutput),
         "start" => await RunStart(root, settings, openBrowser: !options.NoOpen),
         "stop" => await RunStop(root, settings),
         "open" => await OpenOrStart(root, settings),
@@ -1062,6 +1063,54 @@ static async Task<int> StageUpdateArtifact(string root, string? artifactPath, bo
     return result.Staged ? 0 : 1;
 }
 
+static async Task<int> StageUpdateArtifactManifest(string root, string? manifestPath, bool jsonOutput)
+{
+    if (string.IsNullOrWhiteSpace(manifestPath))
+    {
+        Console.Error.WriteLine("Update artifact manifest path is required. Use --manifest <json-path>.");
+        return 2;
+    }
+
+    var result = await TimelineUpdatePlanService.StageArtifactManifestAsync(
+        root,
+        manifestPath,
+        operationId: null,
+        CancellationToken.None);
+    if (jsonOutput)
+    {
+        Console.WriteLine(JsonSerializer.Serialize(
+            result,
+            new JsonSerializerOptions
+            {
+                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+                WriteIndented = true,
+            }));
+    }
+    else
+    {
+        Console.WriteLine("Timeline update artifact manifest staging");
+        Console.WriteLine($"  state: {result.State}");
+        Console.WriteLine($"  staged: {(result.Staged ? "yes" : "no")}");
+        Console.WriteLine($"  manifest: {result.ManifestValidation.ManifestPath}");
+        Console.WriteLine($"  artifact: {result.ManifestValidation.Artifact.Path}");
+        Console.WriteLine($"  manifest version: {EmptyText(result.ManifestValidation.Manifest.Version)}");
+        Console.WriteLine($"  manifest runtime: {EmptyText(result.ManifestValidation.Manifest.RuntimeIdentifier)}");
+        if (result.ArtifactStage is not null)
+        {
+            Console.WriteLine($"  operation id: {result.ArtifactStage.OperationId}");
+            Console.WriteLine($"  staging root: {result.ArtifactStage.StagingRoot}");
+            Console.WriteLine($"  staged product root: {result.ArtifactStage.StagedProductRoot}");
+            Console.WriteLine($"  operation log: {result.ArtifactStage.OperationLogPath}");
+        }
+
+        Console.WriteLine();
+        PrintUpdateMessages("Blockers", result.Blockers);
+        PrintUpdateMessages("Warnings", result.Warnings);
+    }
+
+    return result.Staged ? 0 : 1;
+}
+
 static async Task<int> RunStart(string root, TimelineSettings settings, bool openBrowser)
 {
     Console.WriteLine("Starting Timeline through the C# launcher runtime...");
@@ -1186,7 +1235,7 @@ static int ShowHelp()
     Console.WriteLine("Timeline Launcher");
     Console.WriteLine();
     Console.WriteLine("Usage:");
-    Console.WriteLine("  TimelineLauncher [open|status|preflight|verify-setup|version|configure-runtime|install-plan|uninstall-plan|update-plan|update-apply-plan|update-recovery-plan|update-validate|update-manifest-validate|update-stage|start|stop|shortcut-status|shortcut-install|shortcut-remove|uninstall-registration-status|uninstall-registration-install|uninstall-registration-remove|help] [--no-open] [--json]");
+    Console.WriteLine("  TimelineLauncher [open|status|preflight|verify-setup|version|configure-runtime|install-plan|uninstall-plan|update-plan|update-apply-plan|update-recovery-plan|update-validate|update-manifest-validate|update-stage|update-manifest-stage|start|stop|shortcut-status|shortcut-install|shortcut-remove|uninstall-registration-status|uninstall-registration-install|uninstall-registration-remove|help] [--no-open] [--json]");
     Console.WriteLine();
     Console.WriteLine("Commands:");
     Console.WriteLine("  open    Open Timeline. Starts it first when needed.");
@@ -1203,6 +1252,7 @@ static int ShowHelp()
     Console.WriteLine("  update-validate  Validate a built product artifact ZIP. Use --artifact <path>.");
     Console.WriteLine("  update-manifest-validate  Validate an artifact manifest and its ZIP. Use --manifest <path>.");
     Console.WriteLine("  update-stage  Validate and extract a built product artifact into the Timeline work directory. Use --artifact <path>.");
+    Console.WriteLine("  update-manifest-stage  Validate a manifest and extract its artifact into the Timeline work directory. Use --manifest <path>.");
     Console.WriteLine("  start   Start Timeline.");
     Console.WriteLine("  stop    Stop Timeline.");
     Console.WriteLine("  shortcut-status   Show the OS app entry status.");

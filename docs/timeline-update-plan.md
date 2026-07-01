@@ -57,6 +57,7 @@ installation:
 ```powershell
 dotnet run --project .\launcher\Timeline.Launcher.csproj -- update-stage --artifact <zip-path>
 dotnet run --project .\launcher\Timeline.Launcher.csproj -- update-stage --artifact <zip-path> --json
+dotnet run --project .\launcher\Timeline.Launcher.csproj -- update-manifest-stage --manifest <json-path> --json
 ```
 
 Recovery policy can also be inspected without applying an update:
@@ -76,6 +77,7 @@ GET http://127.0.0.1:19001/timeline/update/artifact/apply-plan?path=<zip-path>
 GET http://127.0.0.1:19001/timeline/update/artifact/validate?path=<zip-path>
 GET http://127.0.0.1:19001/timeline/update/artifact/manifest/validate?path=<json-path>
 POST http://127.0.0.1:19001/timeline/update/artifact/stage
+POST http://127.0.0.1:19001/timeline/update/artifact/manifest/stage
 ```
 
 The Local API endpoint returns the same plan model as the Launcher command.
@@ -93,6 +95,8 @@ lower-level failure recovery policy.
 files, touch Docker resources, or delete user data. Developer checkouts may use
 this command to verify built artifacts, but `canApplyAfterStage` remains false
 when the current installation is not itself a built product artifact.
+`update-manifest-stage` performs the same staging through the release manifest
+after confirming the manifest and artifact hash.
 
 ## States
 

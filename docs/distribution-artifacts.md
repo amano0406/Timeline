@@ -319,6 +319,13 @@ TimelineLauncher update-manifest-validate --manifest <json-path>
 GET /timeline/update/artifact/manifest/validate?path=<json-path>
 ```
 
+The same manifest can be used as the non-destructive staging entrypoint:
+
+```text
+TimelineLauncher update-manifest-stage --manifest <json-path>
+POST /timeline/update/artifact/manifest/stage
+```
+
 The plan is intentionally conservative:
 
 - developer checkouts are blocked from product updater replacement;

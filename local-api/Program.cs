@@ -175,6 +175,42 @@ app.MapGet("/timeline/update/artifact/manifest/validate", (
     return Results.Json(TimelineUpdatePlanService.ValidateArtifactManifest(options.TimelineProductPath, manifestPath));
 });
 
+app.MapPost("/timeline/update/artifact/manifest/stage", async (
+    HttpContext context,
+    TimelineLocalApiOptions options,
+    CancellationToken cancellationToken) =>
+{
+    try
+    {
+        var request = await ReadOptionalJsonObjectAsync(context.Request, cancellationToken);
+        var manifestPath = ConvertTimelineText(GetString(request, "path", string.Empty));
+        if (string.IsNullOrWhiteSpace(manifestPath))
+        {
+            manifestPath = ConvertTimelineText(context.Request.Query["path"].FirstOrDefault());
+        }
+
+        if (string.IsNullOrWhiteSpace(manifestPath))
+        {
+            return Results.Json(
+                new { message = "Artifact manifest path is required.", ok = false },
+                statusCode: StatusCodes.Status400BadRequest);
+        }
+
+        var operationId = GetString(request, "operationId", string.Empty);
+        return Results.Json(await TimelineUpdatePlanService.StageArtifactManifestAsync(
+            options.TimelineProductPath,
+            manifestPath,
+            operationId,
+            cancellationToken));
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(
+            new { message = ex.Message, ok = false },
+            statusCode: StatusCodes.Status500InternalServerError);
+    }
+});
+
 app.MapPost("/timeline/update/artifact/stage", async (
     HttpContext context,
     TimelineLocalApiOptions options,
