@@ -3569,7 +3569,7 @@ public sealed class TimelineProductRuntimeService
             return new ProductActualRuntimeStatus(false, "stopped", "stopped", string.Empty, "Product health API base URL was not resolved.", true);
         }
 
-        if (IsProductHostApiRuntime(productPath))
+        if (IsProductHostApiOwnershipRequired(productPath))
         {
             var ownership = GetProductHostApiOwnership(productPath);
             if (!ownership.Owned)
@@ -3653,11 +3653,13 @@ public sealed class TimelineProductRuntimeService
         return $"http://{hostName}:{port}";
     }
 
-    private static bool IsProductHostApiRuntime(string productPath)
+    private static bool IsProductHostApiOwnershipRequired(string productPath)
     {
         var manifest = ReadJsonObject(Path.Combine(productPath, "timeline-product.json"));
         var runtime = GetObject(manifest, "runtime");
-        return GetBool(GetNodeAny(runtime, ["hostApi", "host_api"]), false);
+        var hostApi = GetBool(GetNodeAny(runtime, ["hostApi", "host_api"]), false);
+        var usesDocker = GetBool(GetNodeAny(runtime, ["usesDocker", "uses_docker"]), false);
+        return hostApi && !usesDocker;
     }
 
     private static (bool Owned, string Message) GetProductHostApiOwnership(string productPath)

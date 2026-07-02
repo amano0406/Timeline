@@ -159,26 +159,20 @@ internal static class TimelineDirectRuntime
 
     private static async Task PrepareLocalApiAsync(string root, TimelineRuntimePaths paths)
     {
+        var bundledRuntimeDirectory = Path.Combine(root, "local-api");
+        var bundledExecutablePath = Path.Combine(bundledRuntimeDirectory, LocalApiExecutableFileName());
+        var bundledDllPath = Path.Combine(bundledRuntimeDirectory, "Timeline.LocalApi.dll");
+        if (File.Exists(bundledExecutablePath) || File.Exists(bundledDllPath))
+        {
+            return;
+        }
+
         var buildDir = paths.LocalApiBuildDirectory;
         if (Directory.Exists(buildDir))
         {
             Directory.Delete(buildDir, recursive: true);
         }
         Directory.CreateDirectory(buildDir);
-
-        var bundledRuntimeDirectory = Path.Combine(root, "local-api");
-        var bundledExecutablePath = Path.Combine(bundledRuntimeDirectory, LocalApiExecutableFileName());
-        var bundledDllPath = Path.Combine(bundledRuntimeDirectory, "Timeline.LocalApi.dll");
-        if (File.Exists(bundledExecutablePath) || File.Exists(bundledDllPath))
-        {
-            CopyDirectory(bundledRuntimeDirectory, buildDir);
-            if (!HasRunnableLocalApi(paths))
-            {
-                throw new FileNotFoundException("Timeline local API bundled runtime was not runnable.", buildDir);
-            }
-
-            return;
-        }
 
         var projectPath = Path.Combine(root, "local-api", "Timeline.LocalApi.csproj");
         if (!File.Exists(projectPath))
@@ -207,31 +201,103 @@ internal static class TimelineDirectRuntime
     {
         StopLocalApi(runtime with { LocalApiPort = port }, paths);
 
-        var executablePath = Path.Combine(paths.LocalApiBuildDirectory, LocalApiExecutableFileName());
-        var runBundledExecutable = File.Exists(executablePath);
-        var startInfo = new ProcessStartInfo
-        {
-            FileName = runBundledExecutable ? executablePath : ResolveDotnetCommand(),
-            WorkingDirectory = root,
-            UseShellExecute = false,
-            CreateNoWindow = RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
-        };
-        if (!runBundledExecutable)
-        {
-            startInfo.ArgumentList.Add(paths.LocalApiDllPath);
-        }
-        startInfo.ArgumentList.Add("--urls");
-        startInfo.ArgumentList.Add($"http://127.0.0.1:{port}");
-        startInfo.ArgumentList.Add($"--Timeline:WebPort={runtime.WebPort}");
-        startInfo.ArgumentList.Add($"--Timeline:ProductPath={root}");
+        var bundledRuntimeDirectory = Path.Combine(root, "local-api");
+        var bundledExecutablePath = Path.Combine(bundledRuntimeDirectory, LocalApiExecutableFileName());
+        var bundledDllPath = Path.Combine(bundledRuntimeDirectory, "Timeline.LocalApi.dll");
+        var executablePath = File.Exists(bundledExecutablePath)
+            ? bundledExecutablePath
+            : Path.Combine(paths.LocalApiBuildDirectory, LocalApiExecutableFileName());
+        var dllPath = File.Exists(bundledDllPath)
+            ? bundledDllPath
+            : paths.LocalApiDllPath;
+        var hasDll = File.Exists(dllPath);
+        var hasExecutable = File.Exists(executablePath);
+        var primaryStartInfo = hasDll
+            ? CreateLocalApiStartInfo(root, runtime, port, ResolveDotnetCommand(), dllPath)
+            : CreateLocalApiStartInfo(root, runtime, port, executablePath, null);
+        var fallbackStartInfo = hasDll && hasExecutable
+            ? CreateLocalApiStartInfo(root, runtime, port, executablePath, null)
+            : !hasDll && File.Exists(paths.LocalApiDllPath)
+                ? CreateLocalApiStartInfo(root, runtime, port, ResolveDotnetCommand(), paths.LocalApiDllPath)
+                : null;
 
-        var process = Process.Start(startInfo);
+        var process = StartLocalApiProcess(primaryStartInfo, fallbackStartInfo, preferDll: hasDll);
+
         if (process is null)
         {
             throw new InvalidOperationException("Failed to start Timeline local API process.");
         }
 
         File.WriteAllText(paths.LocalApiPidPath, process.Id.ToString(CultureInfo.InvariantCulture));
+    }
+
+    private static Process? StartLocalApiProcess(ProcessStartInfo primaryStartInfo, ProcessStartInfo? fallbackStartInfo, bool preferDll)
+    {
+        try
+        {
+            var process = Process.Start(primaryStartInfo);
+            if (preferDll &&
+                process is not null &&
+                process.WaitForExit(milliseconds: 4000) &&
+                fallbackStartInfo is not null)
+            {
+                Console.Error.WriteLine("Timeline local API dotnet DLL launch exited before becoming ready. Falling back to executable launch.");
+                return Process.Start(fallbackStartInfo);
+            }
+
+            return process;
+        }
+        catch (Exception ex) when (fallbackStartInfo is not null && IsLocalApiStartFallbackAllowed(ex))
+        {
+            Console.Error.WriteLine("Timeline local API primary launch failed. Falling back to the alternate launch mode.");
+            return Process.Start(fallbackStartInfo);
+        }
+    }
+
+    private static ProcessStartInfo CreateLocalApiStartInfo(string root, TimelineRuntimeConfiguration runtime, int port, string fileName, string? dllPath)
+    {
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = fileName,
+            WorkingDirectory = root,
+            UseShellExecute = false,
+            CreateNoWindow = RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
+        };
+        if (!string.IsNullOrWhiteSpace(dllPath))
+        {
+            startInfo.ArgumentList.Add(dllPath);
+        }
+        startInfo.ArgumentList.Add("--urls");
+        startInfo.ArgumentList.Add($"http://127.0.0.1:{port}");
+        startInfo.ArgumentList.Add($"--Timeline:WebPort={runtime.WebPort}");
+        startInfo.ArgumentList.Add($"--Timeline:ProductPath={root}");
+        return startInfo;
+    }
+
+    private static bool IsApplicationControlPolicyBlock(Exception ex)
+    {
+        for (var current = ex; current is not null; current = current.InnerException)
+        {
+            if (current.HResult == unchecked((int)0x800711C7) ||
+                current.Message.Contains("Application Control", StringComparison.OrdinalIgnoreCase) ||
+                current.Message.Contains("application control policy", StringComparison.OrdinalIgnoreCase) ||
+                current.Message.Contains("\u5236\u5FA1\u30DD\u30EA\u30B7\u30FC", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool IsLocalApiStartFallbackAllowed(Exception ex)
+    {
+        if (IsApplicationControlPolicyBlock(ex))
+        {
+            return true;
+        }
+
+        return ex is System.ComponentModel.Win32Exception or FileNotFoundException;
     }
 
     private static void StopLocalApi(TimelineRuntimeConfiguration runtime, TimelineRuntimePaths paths)
