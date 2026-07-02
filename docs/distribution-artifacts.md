@@ -164,6 +164,33 @@ In this mode, unsigned or unchecked Windows entry point binaries are blockers.
 Use the normal verifier for internal shape checks, and use the strict verifier
 when deciding whether a Windows setup bundle is ready for users.
 
+To create a signed Windows release candidate, enable signing during the release
+build. The release builder supports either a certificate thumbprint from the
+Windows certificate store or a PFX file. Signing is intentionally opt-in so
+developer artifacts can still be produced without a certificate.
+
+```text
+# Sign with a Windows certificate-store thumbprint.
+dotnet tools/Timeline.ReleaseBuilder/bin/Debug/net10.0/Timeline.ReleaseBuilder.dll --runtime win-x64 --version <version> --windows-installer --windows-sign --windows-sign-cert-thumbprint <thumbprint> --windows-sign-timestamp-url <timestamp-url>
+
+# Sign with a PFX file. The password is read from an environment variable.
+dotnet tools/Timeline.ReleaseBuilder/bin/Debug/net10.0/Timeline.ReleaseBuilder.dll --runtime win-x64 --version <version> --windows-installer --windows-sign --windows-sign-cert-pfx <path-to.pfx> --windows-sign-cert-password-env TIMELINE_SIGNING_PFX_PASSWORD --windows-sign-timestamp-url <timestamp-url>
+```
+
+Signing targets are limited to Windows host-side entry points:
+
+- `Timeline-Setup/installer/Timeline.WindowsInstaller.exe`;
+- `Timeline/launcher/Timeline.Launcher.exe`;
+- `Timeline/launcher/Timeline.Launcher.dll`;
+- `Timeline/launcher-tray/Timeline.Launcher.Tray.exe`;
+- `Timeline/launcher-tray/Timeline.Launcher.Tray.dll`;
+- `Timeline/local-api/Timeline.LocalApi.exe`;
+- `Timeline/local-api/Timeline.LocalApi.dll`.
+
+The Web and Worker outputs run in Docker and are not signed by this step.
+After a signed build, run the strict verifier before treating the setup bundle
+as product-ready.
+
 ### Windows application-control constraint
 
 The current artifacts are not code signed. On Windows environments with Smart

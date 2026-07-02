@@ -62,9 +62,45 @@ Product-ready target:
 - sign `Timeline.Launcher.exe` and related Launcher binaries;
 - sign `Timeline.Launcher.Tray.exe`;
 - sign `Timeline.LocalApi.exe`;
+- run the release builder with an explicit Windows signing option;
 - verify a signed artifact on a Smart App Control / Code Integrity constrained
   Windows machine;
 - publish user-facing guidance for unsupported locked-down environments.
+
+## Signing Entry Point
+
+`KAN-68` adds an optional signing entry point to the release builder. Signing is
+not automatic because it depends on an external code-signing certificate and a
+Windows signing environment.
+
+Product releases can enable signing with either a certificate thumbprint from
+the Windows certificate store:
+
+```text
+dotnet tools/Timeline.ReleaseBuilder/bin/Debug/net10.0/Timeline.ReleaseBuilder.dll --runtime win-x64 --version <version> --windows-installer --windows-sign --windows-sign-cert-thumbprint <thumbprint> --windows-sign-timestamp-url <timestamp-url>
+```
+
+or a PFX file:
+
+```text
+dotnet tools/Timeline.ReleaseBuilder/bin/Debug/net10.0/Timeline.ReleaseBuilder.dll --runtime win-x64 --version <version> --windows-installer --windows-sign --windows-sign-cert-pfx <path-to.pfx> --windows-sign-cert-password-env TIMELINE_SIGNING_PFX_PASSWORD --windows-sign-timestamp-url <timestamp-url>
+```
+
+The builder signs only Windows host-side entry points:
+
+- `Timeline.WindowsInstaller.exe`;
+- `Timeline.Launcher.exe` / `Timeline.Launcher.dll`;
+- `Timeline.Launcher.Tray.exe` / `Timeline.Launcher.Tray.dll`;
+- `Timeline.LocalApi.exe` / `Timeline.LocalApi.dll`.
+
+It does not sign Docker container-side Web or Worker outputs. Those are not the
+local Windows execution surface that Smart App Control or WDAC blocks before
+Timeline starts.
+
+If `--windows-sign` is used without exactly one certificate selector, or if the
+PFX password environment variable is missing, the builder fails before producing
+a release artifact. This keeps unsigned production releases from being confused
+with signed release candidates.
 
 ## Verification Gates
 

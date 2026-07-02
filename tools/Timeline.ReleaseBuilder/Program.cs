@@ -6,7 +6,18 @@ using System.Security.Cryptography.X509Certificates;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 
-var options = ReleaseOptions.Parse(args);
+ReleaseOptions options;
+try
+{
+    options = ReleaseOptions.Parse(args);
+    options.Validate();
+}
+catch (Exception ex) when (ex is ArgumentException or FileNotFoundException)
+{
+    Console.Error.WriteLine($"ReleaseBuilder error: {ex.Message}");
+    Environment.ExitCode = 2;
+    return;
+}
 if (!string.IsNullOrWhiteSpace(options.VerifyWindowsInstallerPath))
 {
     var verification = VerifyWindowsInstallerBundle(
@@ -67,6 +78,8 @@ foreach (var spec in publishSpecs)
     await PublishAsync(repoRoot, productRoot, spec);
 }
 
+await SignWindowsProductBinariesAsync(repoRoot, productRoot, options.WindowsSigning);
+
 CreateMacAppBundle(productRoot, options.HostRuntime, version);
 CopyProductCompose(repoRoot, productRoot, imageTag);
 CopyIfExists(Path.Combine(repoRoot, "docker-compose.gpu.yml"), Path.Combine(productRoot, "docker-compose.gpu.yml"));
@@ -81,7 +94,7 @@ CreateProductZip(stagingParent, zipPath, options.HostRuntime);
 WriteArtifactManifest(outputRoot, options, version, commit, zipPath);
 if (options.WindowsInstaller)
 {
-    CreateWindowsInstallerBundle(repoRoot, outputRoot, options, version, commit, zipPath);
+    await CreateWindowsInstallerBundleAsync(repoRoot, outputRoot, options, version, commit, zipPath);
 }
 
 Console.WriteLine("Timeline product artifact created.");
@@ -126,6 +139,105 @@ static async Task PublishAsync(string repoRoot, string productRoot, PublishSpec 
     {
         throw new InvalidOperationException($"dotnet publish failed for {spec.Name}.{Environment.NewLine}{result.CombinedText}");
     }
+}
+
+static Task SignWindowsProductBinariesAsync(string repoRoot, string productRoot, WindowsSigningOptions signing)
+{
+    var targets = new[]
+    {
+        "launcher/Timeline.Launcher.exe",
+        "launcher/Timeline.Launcher.dll",
+        "launcher-tray/Timeline.Launcher.Tray.exe",
+        "launcher-tray/Timeline.Launcher.Tray.dll",
+        "local-api/Timeline.LocalApi.exe",
+        "local-api/Timeline.LocalApi.dll"
+    };
+
+    return SignWindowsBinariesAsync(repoRoot, productRoot, targets, signing, "Timeline Windows product binary");
+}
+
+static Task SignWindowsInstallerBinariesAsync(string repoRoot, string installerAppRoot, WindowsSigningOptions signing)
+{
+    var targets = new[]
+    {
+        "Timeline.WindowsInstaller.exe"
+    };
+
+    return SignWindowsBinariesAsync(repoRoot, installerAppRoot, targets, signing, "Timeline Windows installer binary");
+}
+
+static async Task SignWindowsBinariesAsync(
+    string repoRoot,
+    string rootDirectory,
+    IReadOnlyList<string> relativePaths,
+    WindowsSigningOptions signing,
+    string label)
+{
+    if (!signing.Enabled)
+    {
+        return;
+    }
+
+    foreach (var relativePath in relativePaths)
+    {
+        var targetPath = Path.Combine(rootDirectory, relativePath.Replace('/', Path.DirectorySeparatorChar));
+        if (!File.Exists(targetPath))
+        {
+            throw new FileNotFoundException($"{label} signing target was not found: {relativePath}", targetPath);
+        }
+
+        Console.WriteLine($"Signing {relativePath}...");
+        var result = await RunCaptureAsync(
+            repoRoot,
+            signing.SignToolPath,
+            BuildSignToolArguments(signing, targetPath),
+            TimeSpan.FromMinutes(2));
+        if (result.ExitCode != 0)
+        {
+            throw new InvalidOperationException($"Windows code signing failed for {relativePath}.{Environment.NewLine}{result.CombinedText}");
+        }
+    }
+}
+
+static IReadOnlyList<string> BuildSignToolArguments(WindowsSigningOptions signing, string targetPath)
+{
+    var arguments = new List<string>
+    {
+        "sign",
+        "/fd",
+        "SHA256"
+    };
+
+    if (!string.IsNullOrWhiteSpace(signing.CertificateThumbprint))
+    {
+        arguments.Add("/sha1");
+        arguments.Add(signing.CertificateThumbprint);
+    }
+    else if (!string.IsNullOrWhiteSpace(signing.CertificatePfxPath))
+    {
+        arguments.Add("/f");
+        arguments.Add(Path.GetFullPath(signing.CertificatePfxPath));
+        if (!string.IsNullOrWhiteSpace(signing.CertificatePasswordEnvironmentVariable))
+        {
+            var password = Environment.GetEnvironmentVariable(signing.CertificatePasswordEnvironmentVariable);
+            if (!string.IsNullOrEmpty(password))
+            {
+                arguments.Add("/p");
+                arguments.Add(password);
+            }
+        }
+    }
+
+    if (!string.IsNullOrWhiteSpace(signing.TimestampUrl))
+    {
+        arguments.Add("/tr");
+        arguments.Add(signing.TimestampUrl);
+        arguments.Add("/td");
+        arguments.Add("SHA256");
+    }
+
+    arguments.Add(targetPath);
+    return arguments;
 }
 
 static void CreateMacAppBundle(string productRoot, string hostRuntime, string version)
@@ -283,7 +395,7 @@ static void WriteArtifactManifest(
         JsonSerializer.Serialize(manifest, new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true }) + Environment.NewLine);
 }
 
-static void CreateWindowsInstallerBundle(
+static async Task CreateWindowsInstallerBundleAsync(
     string repoRoot,
     string outputRoot,
     ReleaseOptions options,
@@ -317,7 +429,7 @@ static void CreateWindowsInstallerBundle(
     Directory.CreateDirectory(artifactsRoot);
 
     Console.WriteLine($"Publishing Windows installer ({options.HostRuntime})...");
-    var publishResult = RunCaptureAsync(
+    var publishResult = await RunCaptureAsync(
         repoRoot,
         ResolveDotnetCommand(),
         [
@@ -335,11 +447,13 @@ static void CreateWindowsInstallerBundle(
             "-o",
             installerAppRoot
         ],
-        TimeSpan.FromMinutes(10)).GetAwaiter().GetResult();
+        TimeSpan.FromMinutes(10));
     if (publishResult.ExitCode != 0)
     {
         throw new InvalidOperationException($"dotnet publish failed for Windows installer.{Environment.NewLine}{publishResult.CombinedText}");
     }
+
+    await SignWindowsInstallerBinariesAsync(repoRoot, installerAppRoot, options.WindowsSigning);
 
     var productZipCopyPath = Path.Combine(artifactsRoot, Path.GetFileName(productZipPath));
     File.Copy(productZipPath, productZipCopyPath, overwrite: true);
@@ -392,6 +506,8 @@ static void WriteWindowsInstallerReadme(string installerRoot, string productZipP
         - Product-ready Timeline releases should use signed Windows binaries.
         - Unsigned installer, Launcher, resident Launcher, or Local API binaries may be blocked by
           Smart App Control, WDAC, or Code Integrity on constrained Windows environments.
+        - ReleaseBuilder can sign Windows entry point binaries when --windows-sign is supplied with
+          either --windows-sign-cert-thumbprint or --windows-sign-cert-pfx.
         - A setup bundle can be structurally valid even when Windows refuses to run an unsigned entry point.
         - For internal validation, run:
             dotnet tools\Timeline.ReleaseBuilder\bin\Debug\net10.0\Timeline.ReleaseBuilder.dll --verify-windows-installer <this-setup.zip> --json
@@ -1134,8 +1250,95 @@ internal sealed record ReleaseOptions(
     bool WindowsInstaller,
     string? VerifyWindowsInstallerPath,
     bool RequireWindowsExecutionTrust,
+    WindowsSigningOptions WindowsSigning,
     bool Json)
 {
+    public void Validate()
+    {
+        if (!WindowsSigning.Enabled)
+        {
+            return;
+        }
+
+        if (!HostRuntime.StartsWith("win-", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException("--windows-sign can be used only with a Windows host runtime.");
+        }
+
+        if (!OperatingSystem.IsWindows())
+        {
+            throw new ArgumentException("--windows-sign requires a Windows host because signtool and Authenticode signing are Windows-specific.");
+        }
+
+        if (string.IsNullOrWhiteSpace(WindowsSigning.SignToolPath))
+        {
+            throw new ArgumentException("--windows-sign-tool must not be empty when --windows-sign is used.");
+        }
+
+        var hasThumbprint = !string.IsNullOrWhiteSpace(WindowsSigning.CertificateThumbprint);
+        var hasPfx = !string.IsNullOrWhiteSpace(WindowsSigning.CertificatePfxPath);
+        if (hasThumbprint == hasPfx)
+        {
+            throw new ArgumentException("--windows-sign requires exactly one certificate selector: --windows-sign-cert-thumbprint or --windows-sign-cert-pfx.");
+        }
+
+        if (!CommandExists(WindowsSigning.SignToolPath))
+        {
+            throw new FileNotFoundException("Windows signing tool was not found. Install the Windows SDK or pass --windows-sign-tool with a signtool path.", WindowsSigning.SignToolPath);
+        }
+
+        if (hasPfx && !File.Exists(Path.GetFullPath(WindowsSigning.CertificatePfxPath!)))
+        {
+            throw new FileNotFoundException("Windows signing PFX certificate was not found.", WindowsSigning.CertificatePfxPath);
+        }
+
+        if (hasPfx &&
+            !string.IsNullOrWhiteSpace(WindowsSigning.CertificatePasswordEnvironmentVariable) &&
+            string.IsNullOrEmpty(Environment.GetEnvironmentVariable(WindowsSigning.CertificatePasswordEnvironmentVariable)))
+        {
+            throw new ArgumentException($"Environment variable '{WindowsSigning.CertificatePasswordEnvironmentVariable}' was not found or empty.");
+        }
+    }
+
+    private static bool CommandExists(string command)
+    {
+        if (Path.IsPathRooted(command) ||
+            command.Contains(Path.DirectorySeparatorChar) ||
+            command.Contains(Path.AltDirectorySeparatorChar))
+        {
+            return File.Exists(command);
+        }
+
+        var path = Environment.GetEnvironmentVariable("PATH");
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return false;
+        }
+
+        var extensions = OperatingSystem.IsWindows()
+            ? (Environment.GetEnvironmentVariable("PATHEXT") ?? ".COM;.EXE;.BAT;.CMD")
+                .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            : [string.Empty];
+        var commandCandidates = new List<string> { command };
+        if (OperatingSystem.IsWindows() && string.IsNullOrWhiteSpace(Path.GetExtension(command)))
+        {
+            commandCandidates.AddRange(extensions.Select(extension => command + extension));
+        }
+
+        foreach (var directory in path.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            foreach (var candidate in commandCandidates)
+            {
+                if (File.Exists(Path.Combine(directory, candidate)))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
     public static ReleaseOptions Parse(string[] args)
     {
         var hostRuntime = "win-x64";
@@ -1146,6 +1349,12 @@ internal sealed record ReleaseOptions(
         var windowsInstaller = false;
         string? verifyWindowsInstallerPath = null;
         var requireWindowsExecutionTrust = false;
+        var windowsSign = false;
+        var windowsSignTool = OperatingSystem.IsWindows() ? "signtool.exe" : "signtool";
+        string? windowsSignCertThumbprint = null;
+        string? windowsSignCertPfx = null;
+        string? windowsSignCertPasswordEnv = null;
+        string? windowsSignTimestampUrl = null;
         var json = false;
 
         for (var index = 0; index < args.Length; index++)
@@ -1156,6 +1365,14 @@ internal sealed record ReleaseOptions(
                 TryReadOption(args, ref index, arg, "--container-runtime", ref containerRuntime) ||
                 TryReadOption(args, ref index, arg, "--output", ref outputDirectory) ||
                 TryReadOption(args, ref index, arg, "--channel", ref channel) ||
+                TryReadOption(args, ref index, arg, "--windows-sign-tool", ref windowsSignTool) ||
+                TryReadNullableOption(args, ref index, arg, "--windows-sign-cert-thumbprint", ref windowsSignCertThumbprint) ||
+                TryReadNullableOption(args, ref index, arg, "--windows-sign-certificate-thumbprint", ref windowsSignCertThumbprint) ||
+                TryReadNullableOption(args, ref index, arg, "--windows-sign-cert-pfx", ref windowsSignCertPfx) ||
+                TryReadNullableOption(args, ref index, arg, "--windows-sign-pfx", ref windowsSignCertPfx) ||
+                TryReadNullableOption(args, ref index, arg, "--windows-sign-cert-password-env", ref windowsSignCertPasswordEnv) ||
+                TryReadNullableOption(args, ref index, arg, "--windows-sign-timestamp-url", ref windowsSignTimestampUrl) ||
+                TryReadNullableOption(args, ref index, arg, "--windows-sign-timestamp", ref windowsSignTimestampUrl) ||
                 TryReadNullableOption(args, ref index, arg, "--verify-windows-installer", ref verifyWindowsInstallerPath) ||
                 TryReadNullableOption(args, ref index, arg, "--version", ref version))
             {
@@ -1172,6 +1389,13 @@ internal sealed record ReleaseOptions(
                 arg.Equals("--require-execution-trust", StringComparison.OrdinalIgnoreCase))
             {
                 requireWindowsExecutionTrust = true;
+                continue;
+            }
+
+            if (arg.Equals("--windows-sign", StringComparison.OrdinalIgnoreCase) ||
+                arg.Equals("--sign-windows", StringComparison.OrdinalIgnoreCase))
+            {
+                windowsSign = true;
                 continue;
             }
 
@@ -1194,6 +1418,13 @@ internal sealed record ReleaseOptions(
             windowsInstaller,
             verifyWindowsInstallerPath,
             requireWindowsExecutionTrust,
+            new WindowsSigningOptions(
+                Enabled: windowsSign,
+                SignToolPath: windowsSignTool,
+                CertificateThumbprint: windowsSignCertThumbprint,
+                CertificatePfxPath: windowsSignCertPfx,
+                CertificatePasswordEnvironmentVariable: windowsSignCertPasswordEnv,
+                TimestampUrl: windowsSignTimestampUrl),
             json);
     }
 
@@ -1226,6 +1457,14 @@ internal sealed record ReleaseOptions(
         return false;
     }
 }
+
+internal sealed record WindowsSigningOptions(
+    bool Enabled,
+    string SignToolPath,
+    string? CertificateThumbprint,
+    string? CertificatePfxPath,
+    string? CertificatePasswordEnvironmentVariable,
+    string? TimestampUrl);
 
 internal sealed record PublishSpec(
     string Name,
