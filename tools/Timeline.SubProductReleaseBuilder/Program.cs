@@ -14,74 +14,99 @@ if (ReleaseOptions.IsHelpRequest(args))
     return;
 }
 
-var options = ReleaseOptions.Parse(args);
-
-if (options.ValidateArtifacts)
+ReleaseOptions options;
+try
 {
-    await ValidateArtifactsAsync(options);
+    options = ReleaseOptions.Parse(args);
+}
+catch (ArgumentException ex)
+{
+    Console.Error.WriteLine($"SubProductReleaseBuilder error: {ex.Message}");
+    Console.Error.WriteLine();
+    ReleaseOptions.PrintUsage();
+    Environment.ExitCode = 2;
     return;
 }
 
-if (options.WritePublishPreflight)
+try
 {
-    await WritePublishPreflightAsync(options);
-    return;
+    await RunAsync(options);
+}
+catch (InvalidOperationException ex)
+{
+    Console.Error.WriteLine($"SubProductReleaseBuilder error: {ex.Message}");
+    Environment.ExitCode = 2;
 }
 
-if (options.PublishReleaseArtifacts)
+static async Task RunAsync(ReleaseOptions options)
 {
-    await PublishReleaseArtifactsAsync(options);
-    return;
-}
-
-if (options.WritePublishPlan)
-{
-    await WritePublishPlanAsync(options);
-    return;
-}
-
-if (options.BuildAll)
-{
-    var productsRoot = Path.GetFullPath(options.ProductsRoot);
-    var results = new List<SubProductArtifactBuildResult>();
-    foreach (var product in ProductBuildSpec.All)
+    if (options.ValidateArtifacts)
     {
-        var productRoot = Path.Combine(productsRoot, product.ProductName);
-        if (!Directory.Exists(productRoot))
-        {
-            results.Add(SubProductArtifactBuildResult.Missing(
-                product.ProductId,
-                product.ProductName,
-                productRoot,
-                options.RuntimeIdentifier,
-                "Product repository was not found."));
-            continue;
-        }
-
-        results.Add(await BuildArtifactAsync(options with
-        {
-            ProductRoot = productRoot,
-            ProductName = product.ProductName,
-            ProductId = product.ProductId,
-            Version = null,
-        }));
+        await ValidateArtifactsAsync(options);
+        return;
     }
 
-    WriteManifest(options, results);
-    Console.WriteLine("Sub-product artifact matrix created.");
-    Console.WriteLine($"  Runtime: {options.RuntimeIdentifier}");
-    Console.WriteLine($"  Output: {Path.GetFullPath(options.OutputDirectory)}");
-    Console.WriteLine($"  Created: {results.Count(row => row.State.Equals("created", StringComparison.OrdinalIgnoreCase))}");
-    Console.WriteLine($"  Missing: {results.Count(row => row.State.Equals("missing", StringComparison.OrdinalIgnoreCase))}");
-    return;
-}
+    if (options.WritePublishPreflight)
+    {
+        await WritePublishPreflightAsync(options);
+        return;
+    }
 
-var result = await BuildArtifactAsync(options);
-Console.WriteLine("Sub-product artifact created.");
-Console.WriteLine($"  Product: {result.ProductName}");
-Console.WriteLine($"  Runtime: {result.RuntimeIdentifier}");
-Console.WriteLine($"  Version: {result.Version}");
-Console.WriteLine($"  Zip: {result.ArtifactPath}");
+    if (options.PublishReleaseArtifacts)
+    {
+        await PublishReleaseArtifactsAsync(options);
+        return;
+    }
+
+    if (options.WritePublishPlan)
+    {
+        await WritePublishPlanAsync(options);
+        return;
+    }
+
+    if (options.BuildAll)
+    {
+        var productsRoot = Path.GetFullPath(options.ProductsRoot);
+        var results = new List<SubProductArtifactBuildResult>();
+        foreach (var product in ProductBuildSpec.All)
+        {
+            var productRoot = Path.Combine(productsRoot, product.ProductName);
+            if (!Directory.Exists(productRoot))
+            {
+                results.Add(SubProductArtifactBuildResult.Missing(
+                    product.ProductId,
+                    product.ProductName,
+                    productRoot,
+                    options.RuntimeIdentifier,
+                    "Product repository was not found."));
+                continue;
+            }
+
+            results.Add(await BuildArtifactAsync(options with
+            {
+                ProductRoot = productRoot,
+                ProductName = product.ProductName,
+                ProductId = product.ProductId,
+                Version = null,
+            }));
+        }
+
+        WriteManifest(options, results);
+        Console.WriteLine("Sub-product artifact matrix created.");
+        Console.WriteLine($"  Runtime: {options.RuntimeIdentifier}");
+        Console.WriteLine($"  Output: {Path.GetFullPath(options.OutputDirectory)}");
+        Console.WriteLine($"  Created: {results.Count(row => row.State.Equals("created", StringComparison.OrdinalIgnoreCase))}");
+        Console.WriteLine($"  Missing: {results.Count(row => row.State.Equals("missing", StringComparison.OrdinalIgnoreCase))}");
+        return;
+    }
+
+    var result = await BuildArtifactAsync(options);
+    Console.WriteLine("Sub-product artifact created.");
+    Console.WriteLine($"  Product: {result.ProductName}");
+    Console.WriteLine($"  Runtime: {result.RuntimeIdentifier}");
+    Console.WriteLine($"  Version: {result.Version}");
+    Console.WriteLine($"  Zip: {result.ArtifactPath}");
+}
 
 static async Task WritePublishPlanAsync(ReleaseOptions options)
 {
