@@ -387,6 +387,16 @@ static void WriteWindowsInstallerReadme(string installerRoot, string productZipP
 
         Existing application files are not replaced unless --force is supplied. User data, settings, logs,
         runtime state, and managed products are preserved when --force is used.
+
+        Windows execution trust:
+        - Product-ready Timeline releases should use signed Windows binaries.
+        - Unsigned installer, Launcher, resident Launcher, or Local API binaries may be blocked by
+          Smart App Control, WDAC, or Code Integrity on constrained Windows environments.
+        - A setup bundle can be structurally valid even when Windows refuses to run an unsigned entry point.
+        - For internal validation, run:
+            dotnet tools\Timeline.ReleaseBuilder\bin\Debug\net10.0\Timeline.ReleaseBuilder.dll --verify-windows-installer <this-setup.zip> --json
+        - For product-ready validation, run:
+            dotnet tools\Timeline.ReleaseBuilder\bin\Debug\net10.0\Timeline.ReleaseBuilder.dll --verify-windows-installer <this-setup.zip> --require-windows-execution-trust --json
         """ + Environment.NewLine);
 }
 
