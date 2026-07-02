@@ -10,6 +10,7 @@ release/
 output/
 downloads/
 test-results/
+logs/
 docs-temp/
 scripts-temp/
 web/bin/

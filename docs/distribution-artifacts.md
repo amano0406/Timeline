@@ -147,6 +147,25 @@ development temporary directories, user data, settings, or script wrappers are
 present. It is intentionally separate from installer execution so release
 validation can run before OS shortcuts or uninstall entries are changed.
 
+### Windows application-control constraint
+
+The current artifacts are not code signed. On Windows environments with Smart
+App Control, WDAC, or stricter Code Integrity policies, an unsigned Launcher
+assembly can be blocked before Timeline starts. This is different from artifact
+shape validation: the ZIP can be structurally valid while the OS still refuses
+to load a specific executable or DLL.
+
+Release validation should therefore track two separate gates:
+
+- artifact integrity: required files, hashes, manifests, and no source or
+  script wrapper content;
+- OS execution trust: whether the user's Windows policy allows the Launcher and
+  installer entry points to run.
+
+Until signing or a trusted native installer format is finalized, Windows
+installer validation must report this as a known execution-risk area rather
+than treating a valid ZIP as proof that the application will start everywhere.
+
 ## Mac artifact build
 
 KAN-46 uses the same release builder for Mac artifacts.

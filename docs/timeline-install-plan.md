@@ -89,6 +89,12 @@ source files, temporary development directories, user data, settings, and
 script wrappers. It is the safe pre-install check for KAN-63 because it does
 not create shortcuts, registry entries, or application files.
 
+This check does not prove that every Windows machine will execute the Launcher.
+Smart App Control, WDAC, or Code Integrity policies can still block unsigned
+Timeline assemblies. Treat setup ZIP verification and OS execution trust as
+separate gates: the first is mechanical artifact integrity, and the second is
+resolved by signing, trusted installer packaging, or explicit user guidance.
+
 The default install directory is:
 
 ```text
