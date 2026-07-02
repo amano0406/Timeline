@@ -471,6 +471,7 @@ static async Task CreateWindowsInstallerBundleAsync(
     var productZipCopyPath = Path.Combine(artifactsRoot, Path.GetFileName(productZipPath));
     File.Copy(productZipPath, productZipCopyPath, overwrite: true);
     WriteWindowsInstallerReadme(installerRoot, productZipCopyPath);
+    WriteWindowsExecutionTrustGuidance(installerRoot);
     WriteWindowsInstallerManifest(installerRoot, options, version, commit, productZipCopyPath);
 
     CreateProductZip(installerStagingParent, setupZipPath, options.HostRuntime);
@@ -502,6 +503,7 @@ static void WriteWindowsInstallerReadme(string installerRoot, string productZipP
         Contents:
         - installer/Timeline.WindowsInstaller.exe
         - artifacts/{productZipName}
+        - WINDOWS-EXECUTION-TRUST.txt
 
         Plan only:
           installer\Timeline.WindowsInstaller.exe --artifact artifacts\{productZipName} --plan
@@ -526,6 +528,35 @@ static void WriteWindowsInstallerReadme(string installerRoot, string productZipP
             dotnet tools\Timeline.ReleaseBuilder\bin\Debug\net10.0\Timeline.ReleaseBuilder.dll --verify-windows-installer <this-setup.zip> --json
         - For product-ready validation, run:
             dotnet tools\Timeline.ReleaseBuilder\bin\Debug\net10.0\Timeline.ReleaseBuilder.dll --verify-windows-installer <this-setup.zip> --require-windows-execution-trust --json
+        """ + Environment.NewLine);
+}
+
+static void WriteWindowsExecutionTrustGuidance(string installerRoot)
+{
+    File.WriteAllText(
+        Path.Combine(installerRoot, "WINDOWS-EXECUTION-TRUST.txt"),
+        """
+        Timeline Windows execution trust guidance
+
+        Windows の保護機能により Timeline を起動できない場合
+
+        この配布物は、現在の Windows 環境で信頼済みアプリとして実行できない可能性があります。
+        署名済みの最新版を入手して再試行してください。
+
+        会社や学校の管理PCを利用している場合は、管理者に Timeline の利用可否を確認してください。
+
+        解決しない場合は、このファイルの内容、表示されたエラー、Timeline のログを添えて報告してください。
+
+        Timeline の通常の案内では、Windows のセキュリティ設定を下げること、手動でブロックを解除すること、
+        PowerShell、bat、sh、command などのスクリプトに切り替えることを推奨しません。
+
+        開発者向け補足:
+
+        - setup ZIP が構造的に正しいことと、Windows が実行を許可することは別の検証です。
+        - 内部検証では次を使います。
+          dotnet tools\Timeline.ReleaseBuilder\bin\Debug\net10.0\Timeline.ReleaseBuilder.dll --verify-windows-installer <this-setup.zip> --json
+        - 製品配布候補では次を使います。
+          dotnet tools\Timeline.ReleaseBuilder\bin\Debug\net10.0\Timeline.ReleaseBuilder.dll --verify-windows-installer <this-setup.zip> --require-windows-execution-trust --json
         """ + Environment.NewLine);
 }
 
@@ -649,7 +680,8 @@ static TimelineWindowsInstallerBundleVerificationResult VerifyWindowsInstallerBu
         {
             "Timeline-Setup/installer/Timeline.WindowsInstaller.exe",
             "Timeline-Setup/installer-manifest.json",
-            "Timeline-Setup/README.txt"
+            "Timeline-Setup/README.txt",
+            WindowsSetupEntries.ExecutionTrustGuidancePath
         })
         {
             if (!setupEntries.Contains(requiredEntry))
@@ -657,6 +689,10 @@ static TimelineWindowsInstallerBundleVerificationResult VerifyWindowsInstallerBu
                 result.Blockers.Add($"Setup artifact is missing required entry: {requiredEntry}");
             }
         }
+
+        result.ExecutionTrustGuidanceEntry = setupEntries.Contains(WindowsSetupEntries.ExecutionTrustGuidancePath)
+            ? WindowsSetupEntries.ExecutionTrustGuidancePath
+            : null;
 
         AddWindowsBinaryExecutionTrustResult(
             setupArchive,
@@ -1664,6 +1700,11 @@ internal sealed record TimelineWindowsInstallerExternalManifest(
     TimelineArtifactManifestItem ProductArtifact,
     TimelineInstallerManifestItem Installer);
 
+internal static class WindowsSetupEntries
+{
+    public const string ExecutionTrustGuidancePath = "Timeline-Setup/WINDOWS-EXECUTION-TRUST.txt";
+}
+
 internal sealed record TimelineWindowsInstallerBundleVerificationResult
 {
     public string State { get; set; } = "";
@@ -1676,6 +1717,7 @@ internal sealed record TimelineWindowsInstallerBundleVerificationResult
     public string? Version { get; set; }
     public string? RuntimeIdentifier { get; set; }
     public string? InstallerEntryPoint { get; set; }
+    public string? ExecutionTrustGuidanceEntry { get; set; }
     public bool ExecutionTrustRequired { get; init; }
     public List<string> Warnings { get; } = [];
     public List<string> Blockers { get; } = [];
