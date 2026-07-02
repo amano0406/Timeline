@@ -3569,6 +3569,21 @@ public sealed class TimelineProductRuntimeService
             return new ProductActualRuntimeStatus(false, "stopped", "stopped", string.Empty, "Product health API base URL was not resolved.", true);
         }
 
+        if (IsProductHostApiRuntime(productPath))
+        {
+            var ownership = GetProductHostApiOwnership(productPath);
+            if (!ownership.Owned)
+            {
+                return new ProductActualRuntimeStatus(
+                    false,
+                    "stopped",
+                    "stopped",
+                    string.Empty,
+                    ownership.Message,
+                    true);
+            }
+        }
+
         try
         {
             using var request = new HttpRequestMessage(HttpMethod.Get, baseUrl.TrimEnd('/') + "/health");
@@ -3636,6 +3651,51 @@ public sealed class TimelineProductRuntimeService
         }
 
         return $"http://{hostName}:{port}";
+    }
+
+    private static bool IsProductHostApiRuntime(string productPath)
+    {
+        var manifest = ReadJsonObject(Path.Combine(productPath, "timeline-product.json"));
+        var runtime = GetObject(manifest, "runtime");
+        return GetBool(GetNodeAny(runtime, ["hostApi", "host_api"]), false);
+    }
+
+    private static (bool Owned, string Message) GetProductHostApiOwnership(string productPath)
+    {
+        var pidPath = Path.Combine(productPath, ".runtime", "health.pid");
+        if (!File.Exists(pidPath))
+        {
+            return (false, "Product host API pid file was not found for this product path.");
+        }
+
+        int processId;
+        try
+        {
+            var text = File.ReadAllText(pidPath).Trim();
+            if (!int.TryParse(text, out processId) || processId <= 0)
+            {
+                return (false, "Product host API pid file was invalid.");
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return (false, "Product host API pid file could not be read.");
+        }
+
+        try
+        {
+            using var process = Process.GetProcessById(processId);
+            if (process.HasExited)
+            {
+                return (false, "Product host API process is not running.");
+            }
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or System.ComponentModel.Win32Exception)
+        {
+            return (false, "Product host API process is not running.");
+        }
+
+        return (true, "Product host API pid file matches this product path.");
     }
 
     private async Task<ProductVersionInfo> GetProductVersionInfoAsync(
