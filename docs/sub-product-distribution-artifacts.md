@@ -233,6 +233,24 @@ This command is read-only. It does not create releases, upload assets, delete
 assets, or change repository settings. `canPublish=true` means the local
 preconditions look ready; it does not replace explicit release approval.
 
+## Command sequencing
+
+Run builder commands for the same .NET project sequentially.
+
+For example, do not start `--publish-plan` and `--publish-preflight` for
+`Timeline.SubProductReleaseBuilder.csproj` at the same time. `dotnet run`
+generates intermediate files under `obj`, and concurrent runs of the same
+project can fail while writing generated assembly metadata files. Treat that as
+a command execution conflict, not as a sub-product artifact failure.
+
+Recommended order for release preparation:
+
+1. Build artifacts with `--all` or `--repo`.
+2. Validate the local artifact manifest with `--validate-artifacts`.
+3. Check GitHub release state with `--publish-plan`.
+4. Check publish readiness with `--publish-preflight`.
+5. Run `--publish --confirm-publish` only after explicit release approval.
+
 ## Publish execution
 
 Publishing is available as an explicit operation, but it is guarded because it
