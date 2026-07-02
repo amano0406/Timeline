@@ -89,6 +89,11 @@ source files, temporary development directories, user data, settings, and
 script wrappers. It is the safe pre-install check for KAN-63 because it does
 not create shortcuts, registry entries, or application files.
 
+The setup verifier and the installer `--plan` output also report unsigned
+Windows binaries as warnings. A warning here means the artifact can be installed
+mechanically, but Windows execution policy may still block the installer,
+Launcher, resident Launcher, or Local API when a user tries to run them.
+
 This check does not prove that every Windows machine will execute the Launcher.
 Smart App Control, WDAC, or Code Integrity policies can still block unsigned
 Timeline assemblies. Treat setup ZIP verification and OS execution trust as

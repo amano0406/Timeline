@@ -11,6 +11,8 @@ still refuse to execute the Launcher.
 Observed on the development machine:
 
 - `Timeline.ReleaseBuilder.dll` runs through `dotnet`.
+- `dotnet run` can be blocked when it launches the generated
+  `Timeline.ReleaseBuilder.exe` apphost.
 - `Timeline.LocalApi.dll` can start.
 - `Timeline.Launcher.Tray.dll` can load.
 - `Timeline.Launcher.dll` and `Timeline.Launcher.exe` are blocked by Windows
@@ -76,6 +78,17 @@ The near-term implementation should keep these gates separate:
 2. Execution trust verification:
    - whether Windows allows Launcher and installer entry points to load;
    - whether failures produce clear guidance instead of silent startup failure.
+
+Current implementation state:
+
+- Windows setup bundle verification reports unsigned installer, Launcher,
+  resident Launcher, and Local API binaries as warnings.
+- Windows installer `--plan` reports unsigned binaries in the embedded product
+  artifact as warnings.
+- These warnings are not blockers because the product can still produce a valid
+  artifact before a signing pipeline exists.
+- A user-facing Windows distribution should still be treated as incomplete until
+  signing or another trusted packaging path is selected.
 
 ## Acceptance Direction
 

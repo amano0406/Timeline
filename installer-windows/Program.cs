@@ -1,5 +1,7 @@
 using System.Globalization;
 using System.IO.Compression;
+using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -158,6 +160,19 @@ static void ValidateArtifactShape(string artifactPath, TimelineWindowsInstallRes
             }
         }
 
+        foreach (var executableEntry in new[]
+        {
+            "Timeline/launcher/Timeline.Launcher.exe",
+            "Timeline/launcher/Timeline.Launcher.dll",
+            "Timeline/launcher-tray/Timeline.Launcher.Tray.exe",
+            "Timeline/launcher-tray/Timeline.Launcher.Tray.dll",
+            "Timeline/local-api/Timeline.LocalApi.exe",
+            "Timeline/local-api/Timeline.LocalApi.dll"
+        })
+        {
+            AddUnsignedWindowsBinaryWarning(archive, executableEntry, result.Warnings);
+        }
+
         if (entries.Any(entry => entry.Contains("/settings.json", StringComparison.OrdinalIgnoreCase)))
         {
             result.Blockers.Add("Artifact must not contain settings.json.");
@@ -193,6 +208,60 @@ static void ValidateArtifactShape(string artifactPath, TimelineWindowsInstallRes
     catch (JsonException ex)
     {
         result.Blockers.Add($"Artifact VERSION metadata could not be parsed. {ex.Message}");
+    }
+}
+
+static void AddUnsignedWindowsBinaryWarning(ZipArchive archive, string entryName, ICollection<string> warnings)
+{
+    var entry = archive.Entries.FirstOrDefault(value =>
+        string.Equals(value.FullName.Replace('\\', '/'), entryName, StringComparison.OrdinalIgnoreCase));
+    if (entry is null || string.IsNullOrWhiteSpace(entry.Name))
+    {
+        return;
+    }
+
+    var tempPath = Path.Combine(
+        Path.GetTempPath(),
+        $"timeline-signature-check-{Guid.NewGuid():N}{Path.GetExtension(entry.Name)}");
+    try
+    {
+        entry.ExtractToFile(tempPath, overwrite: true);
+        if (!HasAuthenticodeSignature(tempPath))
+        {
+            warnings.Add($"{entryName} is not Authenticode-signed. Smart App Control, WDAC, or Code Integrity can block this binary on constrained Windows environments.");
+        }
+    }
+    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or CryptographicException or InvalidDataException)
+    {
+        warnings.Add($"Execution trust could not be checked for {entryName}: {ex.Message}");
+    }
+    finally
+    {
+        try
+        {
+            if (File.Exists(tempPath))
+            {
+                File.Delete(tempPath);
+            }
+        }
+        catch
+        {
+        }
+    }
+}
+
+static bool HasAuthenticodeSignature(string path)
+{
+    try
+    {
+#pragma warning disable SYSLIB0057
+        using var certificate = X509Certificate.CreateFromSignedFile(path);
+#pragma warning restore SYSLIB0057
+        return certificate is not null;
+    }
+    catch (CryptographicException)
+    {
+        return false;
     }
 }
 

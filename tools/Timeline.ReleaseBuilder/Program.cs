@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.IO.Compression;
 using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 
@@ -508,6 +509,12 @@ static TimelineWindowsInstallerBundleVerificationResult VerifyWindowsInstallerBu
             }
         }
 
+        AddUnsignedWindowsBinaryWarning(
+            setupArchive,
+            "Timeline-Setup/installer/Timeline.WindowsInstaller.exe",
+            result.Warnings,
+            "Windows installer");
+
         AddForbiddenContentBlockers(setupEntries, "Setup artifact", result.Blockers);
 
         var productEntries = setupArchive.Entries
@@ -687,6 +694,19 @@ static void ValidateProductArtifact(string productZipPath, TimelineWindowsInstal
         }
     }
 
+    foreach (var executableEntry in new[]
+    {
+        "Timeline/launcher/Timeline.Launcher.exe",
+        "Timeline/launcher/Timeline.Launcher.dll",
+        "Timeline/launcher-tray/Timeline.Launcher.Tray.exe",
+        "Timeline/launcher-tray/Timeline.Launcher.Tray.dll",
+        "Timeline/local-api/Timeline.LocalApi.exe",
+        "Timeline/local-api/Timeline.LocalApi.dll"
+    })
+    {
+        AddUnsignedWindowsBinaryWarning(productArchive, executableEntry, result.Warnings, executableEntry);
+    }
+
     if (entries.Any(entry => entry.Contains("/settings.json", StringComparison.OrdinalIgnoreCase)))
     {
         result.Blockers.Add("Product artifact must not contain settings.json.");
@@ -729,6 +749,69 @@ static void AddForbiddenContentBlockers(IEnumerable<string> entries, string labe
         {
             blockers.Add($"{label} contains development-only or script content: {entry}");
         }
+    }
+}
+
+static void AddUnsignedWindowsBinaryWarning(
+    ZipArchive archive,
+    string entryName,
+    ICollection<string> warnings,
+    string label)
+{
+    if (!OperatingSystem.IsWindows())
+    {
+        return;
+    }
+
+    var entry = archive.Entries.FirstOrDefault(value =>
+        string.Equals(value.FullName.Replace('\\', '/'), entryName, StringComparison.OrdinalIgnoreCase));
+    if (entry is null || string.IsNullOrWhiteSpace(entry.Name))
+    {
+        return;
+    }
+
+    var tempPath = Path.Combine(
+        Path.GetTempPath(),
+        $"timeline-signature-check-{Guid.NewGuid():N}{Path.GetExtension(entry.Name)}");
+    try
+    {
+        entry.ExtractToFile(tempPath, overwrite: true);
+        if (!HasAuthenticodeSignature(tempPath))
+        {
+            warnings.Add($"{label} is not Authenticode-signed. Smart App Control, WDAC, or Code Integrity can block this binary on constrained Windows environments.");
+        }
+    }
+    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or CryptographicException or InvalidDataException)
+    {
+        warnings.Add($"Execution trust could not be checked for {label}: {ex.Message}");
+    }
+    finally
+    {
+        try
+        {
+            if (File.Exists(tempPath))
+            {
+                File.Delete(tempPath);
+            }
+        }
+        catch
+        {
+        }
+    }
+}
+
+static bool HasAuthenticodeSignature(string path)
+{
+    try
+    {
+#pragma warning disable SYSLIB0057
+        using var certificate = X509Certificate.CreateFromSignedFile(path);
+#pragma warning restore SYSLIB0057
+        return certificate is not null;
+    }
+    catch (CryptographicException)
+    {
+        return false;
     }
 }
 
