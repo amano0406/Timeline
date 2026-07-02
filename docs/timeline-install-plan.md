@@ -75,6 +75,11 @@ The setup executable supports a plan-only mode:
 .\installer\Timeline.WindowsInstaller.exe --artifact .\artifacts\Timeline-win-x64-<version>.zip --plan
 ```
 
+Normal execution opens a GUI installer. If no `--artifact` is supplied, the
+installer searches the setup folder and its `artifacts/` directory so a user can
+launch `installer/Timeline.WindowsInstaller.exe` directly from an extracted
+setup bundle.
+
 Before executing the installer, the release builder can verify the setup ZIP
 without changing Windows settings:
 
@@ -88,6 +93,10 @@ manifest consistency, required Launcher / Local API entries, and absence of
 source files, temporary development directories, user data, settings, and
 script wrappers. It is the safe pre-install check for KAN-63 because it does
 not create shortcuts, registry entries, or application files.
+
+Installed Windows builds keep a copy of the installer under
+`Timeline/installer/`. Windows Apps & Features uses that copy for the GUI
+uninstall flow.
 
 The setup verifier and the installer `--plan` output also report unsigned
 Windows binaries as warnings. A warning here means the artifact can be installed

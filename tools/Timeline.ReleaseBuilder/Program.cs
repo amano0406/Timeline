@@ -77,7 +77,7 @@ if (File.Exists(zipPath))
     File.Delete(zipPath);
 }
 
-var publishSpecs = new[]
+var publishSpecs = new List<PublishSpec>
 {
     new PublishSpec("launcher", "launcher/Timeline.Launcher.csproj", "launcher", options.HostRuntime, SelfContained: true, UseAppHost: true),
     new PublishSpec("launcher-tray", "launcher-tray/Timeline.Launcher.Tray.csproj", "launcher-tray", options.HostRuntime, SelfContained: true, UseAppHost: true),
@@ -85,6 +85,10 @@ var publishSpecs = new[]
     new PublishSpec("web", "web/Timeline.Web.csproj", "web", options.ContainerRuntime, SelfContained: false, UseAppHost: false),
     new PublishSpec("worker", "worker/Timeline.Worker.csproj", "worker", options.ContainerRuntime, SelfContained: false, UseAppHost: false),
 };
+if (options.HostRuntime.StartsWith("win-", StringComparison.OrdinalIgnoreCase))
+{
+    publishSpecs.Add(new PublishSpec("installer", "installer-windows/Timeline.WindowsInstaller.csproj", "installer", options.HostRuntime, SelfContained: true, UseAppHost: true));
+}
 
 foreach (var spec in publishSpecs)
 {
@@ -163,7 +167,9 @@ static Task SignWindowsProductBinariesAsync(string repoRoot, string productRoot,
         "launcher-tray/Timeline.Launcher.Tray.exe",
         "launcher-tray/Timeline.Launcher.Tray.dll",
         "local-api/Timeline.LocalApi.exe",
-        "local-api/Timeline.LocalApi.dll"
+        "local-api/Timeline.LocalApi.dll",
+        "installer/Timeline.WindowsInstaller.exe",
+        "installer/Timeline.WindowsInstaller.dll"
     };
 
     return SignWindowsBinariesAsync(repoRoot, productRoot, targets, signing, "Timeline Windows product binary");
@@ -875,6 +881,7 @@ static void ValidateProductArtifact(
         "Timeline/launcher/Timeline.Launcher.exe",
         "Timeline/launcher-tray/Timeline.Launcher.Tray.exe",
         "Timeline/local-api/Timeline.LocalApi.exe",
+        "Timeline/installer/Timeline.WindowsInstaller.exe",
         "Timeline/docker-compose.yml"
     })
     {
@@ -891,7 +898,9 @@ static void ValidateProductArtifact(
         "Timeline/launcher-tray/Timeline.Launcher.Tray.exe",
         "Timeline/launcher-tray/Timeline.Launcher.Tray.dll",
         "Timeline/local-api/Timeline.LocalApi.exe",
-        "Timeline/local-api/Timeline.LocalApi.dll"
+        "Timeline/local-api/Timeline.LocalApi.dll",
+        "Timeline/installer/Timeline.WindowsInstaller.exe",
+        "Timeline/installer/Timeline.WindowsInstaller.dll"
     })
     {
         AddWindowsBinaryExecutionTrustResult(

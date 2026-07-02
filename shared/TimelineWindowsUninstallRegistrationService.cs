@@ -213,6 +213,12 @@ public static class TimelineWindowsUninstallRegistrationService
 
     private static LauncherCommand BuildUninstallCommand(string timelineRoot)
     {
+        var uninstaller = ResolveWindowsInstallerExecutable(timelineRoot);
+        if (!string.IsNullOrWhiteSpace(uninstaller))
+        {
+            return new LauncherCommand(uninstaller, $"--uninstall --install-dir {QuoteArgument(timelineRoot)}");
+        }
+
         var executable = ResolveLauncherExecutable(timelineRoot);
         if (!string.IsNullOrWhiteSpace(executable))
         {
@@ -227,6 +233,22 @@ public static class TimelineWindowsUninstallRegistrationService
 
         var project = Path.Combine(timelineRoot, "launcher", "Timeline.Launcher.csproj");
         return new LauncherCommand(ResolveDotnetCommand(), $"run --project {QuoteArgument(project)} -- uninstall");
+    }
+
+    private static string ResolveWindowsInstallerExecutable(string timelineRoot)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return string.Empty;
+        }
+
+        var candidates = new[]
+        {
+            Path.Combine(timelineRoot, "installer", "Timeline.WindowsInstaller.exe"),
+            Path.Combine(timelineRoot, "installer", "publish", "Timeline.WindowsInstaller.exe"),
+        };
+
+        return candidates.FirstOrDefault(File.Exists) ?? string.Empty;
     }
 
     private static string ResolveLauncherExecutable(string timelineRoot)

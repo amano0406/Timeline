@@ -1,6 +1,7 @@
 # Timeline uninstall plan
 
-This document tracks the first implementation step for `KAN-51`.
+This document tracks the uninstall scope model for `KAN-51` and the Windows
+GUI uninstall path implemented for `KAN-65`.
 
 ## Purpose
 
@@ -9,10 +10,11 @@ application files, local settings, user input material, generated Timeline data,
 sub-product data, logs, and Docker resources. Some runtime resources, such as
 Ollama data, may be shared with other tools.
 
-The first implementation exposes a read-only uninstall plan. It does not delete
-files. The plan exists so the UI, Launcher, future installer, and Jira
-verification can agree on what each uninstall level means before destructive
-execution is added.
+The Timeline settings UI still exposes the uninstall plan as an impact preview.
+Windows installer builds additionally register a GUI uninstall entry. The
+default Windows uninstall action removes replaceable application files only and
+preserves settings, materials, generated data, logs, runtime state, managed
+products, and Docker resources.
 
 ## Command
 
@@ -21,6 +23,15 @@ dotnet run --project .\launcher\Timeline.Launcher.csproj -- uninstall-plan
 dotnet run --project .\launcher\Timeline.Launcher.csproj -- uninstall-plan --json
 dotnet run --project .\launcher\Timeline.Launcher.csproj -- uninstall
 ```
+
+For installed Windows builds, the OS app list points to the bundled installer:
+
+```text
+Timeline/installer/Timeline.WindowsInstaller.exe --uninstall --install-dir <TimelineRoot>
+```
+
+That command opens a GUI confirmation and then runs a temporary worker copy so
+the uninstaller can remove its own installed files safely.
 
 ## Local API
 
@@ -37,10 +48,10 @@ POST http://127.0.0.1:19001/timeline/uninstall-registration/install
 POST http://127.0.0.1:19001/timeline/uninstall-registration/remove
 ```
 
-The registration command points Windows to `uninstall`, not directly to a
-destructive executor. The command starts Timeline when needed and opens the
-settings section where the user can compare uninstall levels. This keeps the
-OS-level entry useful while still preventing silent data deletion.
+When `Timeline/installer/Timeline.WindowsInstaller.exe` exists, the registration
+command points Windows to the GUI uninstaller. Development checkouts or older
+installs without the bundled installer can still fall back to Launcher
+diagnostic commands.
 
 ## UI
 
@@ -55,9 +66,10 @@ area. The UI currently displays:
 - each uninstall level, whether strong confirmation is required, and a short
   preview of affected targets
 
-The UI still does not execute uninstall operations. Destructive execution should
-be added only after the installer/uninstaller flow has a final confirmation
-model.
+The settings page still does not execute full destructive uninstall operations.
+The Windows GUI uninstaller currently executes only the default app-only level.
+Broader deletion levels should require a stronger confirmation model before
+they become executable.
 
 ## Levels
 

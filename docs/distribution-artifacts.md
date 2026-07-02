@@ -127,11 +127,24 @@ Timeline-Setup/
 ```
 
 The setup executable is C# and does not use `bat`, `sh`, or `.command`
-wrappers. It extracts the built product artifact, creates the Windows Start
-Menu shortcut, and registers Timeline in Windows Apps & Features. Existing
-application files are not replaced unless `--force` is supplied. User data,
-settings, logs, runtime state, and managed products are preserved when
-replacement is explicitly requested.
+wrappers. Normal execution opens a Windows GUI installer. It extracts the built
+product artifact, creates the Windows Start Menu shortcut, and registers
+Timeline in Windows Apps & Features. Existing application files are not
+replaced unless the user confirms an update of an existing Timeline directory.
+User data, settings, logs, runtime state, and managed products are preserved
+when replacement is explicitly requested.
+
+Windows product artifacts also include:
+
+```text
+Timeline/installer/Timeline.WindowsInstaller.exe
+```
+
+The installed Windows uninstall entry points to that GUI. The default uninstall
+scope removes application files only and preserves settings, materials,
+generated data, logs, runtime state, managed products, and Docker resources.
+The uninstaller stages a temporary worker copy before deletion so it can remove
+the installed `installer/` directory safely.
 
 The setup ZIP can be verified without installing anything:
 

@@ -66,7 +66,7 @@ Structured output is available for update diagnostics:
 dotnet run --project .\launcher\Timeline.Launcher.csproj -- version --json
 ```
 
-Inspect uninstall levels before any future destructive uninstall execution:
+Inspect uninstall levels and open the Windows uninstall wizard:
 
 ```powershell
 dotnet run --project .\launcher\Timeline.Launcher.csproj -- uninstall-plan
@@ -89,7 +89,11 @@ dotnet run --project .\tools\Timeline.ReleaseBuilder\Timeline.ReleaseBuilder.csp
 ```
 
 The setup bundle contains a C# installer executable and the built Timeline
-artifact. It does not use `bat`, `sh`, or `.command` wrappers.
+artifact. Normal double-click execution opens the installer wizard. The
+installed Windows app entry opens a GUI uninstall flow that removes application
+files while preserving settings, materials, generated data, logs, runtime
+state, managed products, and Docker resources by default. It does not use
+`bat`, `sh`, or `.command` wrappers.
 
 Inspect the safe update plan for the Timeline body and Launcher:
 
