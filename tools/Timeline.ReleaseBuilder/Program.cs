@@ -1476,13 +1476,19 @@ internal sealed record ReleaseOptions(
         string? windowsSignCertPasswordEnv = null;
         string? windowsSignTimestampUrl = null;
         var json = false;
+        var hostRuntimeSpecified = false;
 
         for (var index = 0; index < args.Length; index++)
         {
             var arg = args[index];
             if (TryReadOption(args, ref index, arg, "--runtime", ref hostRuntime) ||
-                TryReadOption(args, ref index, arg, "--host-runtime", ref hostRuntime) ||
-                TryReadOption(args, ref index, arg, "--container-runtime", ref containerRuntime) ||
+                TryReadOption(args, ref index, arg, "--host-runtime", ref hostRuntime))
+            {
+                hostRuntimeSpecified = true;
+                continue;
+            }
+
+            if (TryReadOption(args, ref index, arg, "--container-runtime", ref containerRuntime) ||
                 TryReadOption(args, ref index, arg, "--output", ref outputDirectory) ||
                 TryReadOption(args, ref index, arg, "--channel", ref channel) ||
                 TryReadOption(args, ref index, arg, "--windows-sign-tool", ref windowsSignTool) ||
@@ -1527,6 +1533,11 @@ internal sealed record ReleaseOptions(
             }
 
             throw new ArgumentException($"Unknown argument: {arg}");
+        }
+
+        if (string.IsNullOrWhiteSpace(verifyWindowsInstallerPath) && !hostRuntimeSpecified)
+        {
+            throw new ArgumentException("--runtime is required for artifact builds. Use --help to see supported options.");
         }
 
         return new ReleaseOptions(
