@@ -104,7 +104,7 @@ public static class TimelineInstallPlanService
                 CurrentPath = uninstallRegistration.RegistryKeyPath,
                 TargetPath = uninstallRegistration.InstallLocation,
                 CommandLine = uninstallRegistration.UninstallString,
-                Message = uninstallRegistration.Message + " 現時点のUninstallStringは削除実行ではなく、削除対象を確認するuninstall-planを開きます。",
+                Message = uninstallRegistration.Message + " 現時点のUninstallStringは削除実行ではなく、削除対象を確認するuninstallを開きます。",
             };
         }
 
