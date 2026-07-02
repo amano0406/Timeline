@@ -98,6 +98,20 @@ Unsigned binaries are warnings while the signing pipeline does not exist. They
 become release blockers when the Windows distribution is declared
 product-ready.
 
+The release verifier supports both modes:
+
+```text
+# Internal artifact-shape check. Unsigned Windows binaries are warnings.
+dotnet tools/Timeline.ReleaseBuilder/bin/Debug/net10.0/Timeline.ReleaseBuilder.dll --verify-windows-installer release/Timeline-win-x64-<version>-setup.zip --json
+
+# Product-ready Windows distribution check. Unsigned Windows binaries are blockers.
+dotnet tools/Timeline.ReleaseBuilder/bin/Debug/net10.0/Timeline.ReleaseBuilder.dll --verify-windows-installer release/Timeline-win-x64-<version>-setup.zip --require-windows-execution-trust --json
+```
+
+Until signing is introduced, the strict check is expected to fail. That failure
+is intentional: it prevents a structurally valid but untrusted Windows bundle
+from being treated as ready for normal users.
+
 ## Open Decisions
 
 - Which certificate source will be used for signing?

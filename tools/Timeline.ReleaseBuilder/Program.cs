@@ -9,7 +9,9 @@ using System.Text.RegularExpressions;
 var options = ReleaseOptions.Parse(args);
 if (!string.IsNullOrWhiteSpace(options.VerifyWindowsInstallerPath))
 {
-    var verification = VerifyWindowsInstallerBundle(Path.GetFullPath(options.VerifyWindowsInstallerPath));
+    var verification = VerifyWindowsInstallerBundle(
+        Path.GetFullPath(options.VerifyWindowsInstallerPath),
+        options.RequireWindowsExecutionTrust);
     if (options.Json)
     {
         Console.WriteLine(JsonSerializer.Serialize(verification, new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true }));
@@ -346,7 +348,7 @@ static void CreateWindowsInstallerBundle(
 
     CreateProductZip(installerStagingParent, setupZipPath, options.HostRuntime);
     WriteWindowsInstallerExternalManifest(outputRoot, options, version, commit, setupZipPath, productZipCopyPath);
-    var verification = VerifyWindowsInstallerBundle(setupZipPath);
+    var verification = VerifyWindowsInstallerBundle(setupZipPath, options.RequireWindowsExecutionTrust);
     if (verification.Blockers.Count > 0)
     {
         throw new InvalidOperationException(
@@ -468,13 +470,21 @@ static void WriteWindowsInstallerExternalManifest(
         JsonSerializer.Serialize(manifest, new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true }) + Environment.NewLine);
 }
 
-static TimelineWindowsInstallerBundleVerificationResult VerifyWindowsInstallerBundle(string setupZipPath)
+static TimelineWindowsInstallerBundleVerificationResult VerifyWindowsInstallerBundle(
+    string setupZipPath,
+    bool requireWindowsExecutionTrust = false)
 {
     var result = new TimelineWindowsInstallerBundleVerificationResult
     {
         State = "verifying",
-        SetupArtifactPath = setupZipPath
+        SetupArtifactPath = setupZipPath,
+        ExecutionTrustRequired = requireWindowsExecutionTrust
     };
+
+    if (requireWindowsExecutionTrust && !OperatingSystem.IsWindows())
+    {
+        result.Blockers.Add("Windows execution trust verification requires a Windows host because Authenticode signature state must be checked against Windows binaries.");
+    }
 
     if (!File.Exists(setupZipPath))
     {
@@ -509,10 +519,12 @@ static TimelineWindowsInstallerBundleVerificationResult VerifyWindowsInstallerBu
             }
         }
 
-        AddUnsignedWindowsBinaryWarning(
+        AddWindowsBinaryExecutionTrustResult(
             setupArchive,
             "Timeline-Setup/installer/Timeline.WindowsInstaller.exe",
             result.Warnings,
+            result.Blockers,
+            requireWindowsExecutionTrust,
             "Windows installer");
 
         AddForbiddenContentBlockers(setupEntries, "Setup artifact", result.Blockers);
@@ -556,7 +568,7 @@ static TimelineWindowsInstallerBundleVerificationResult VerifyWindowsInstallerBu
             }
 
             result.ProductArtifactSha256 = ComputeSha256(productArtifactTempPath);
-            ValidateProductArtifact(productArtifactTempPath, result);
+            ValidateProductArtifact(productArtifactTempPath, result, requireWindowsExecutionTrust);
 
             if (manifestRoot is not null)
             {
@@ -671,7 +683,10 @@ static void ValidateProductArtifactAgainstManifest(
     }
 }
 
-static void ValidateProductArtifact(string productZipPath, TimelineWindowsInstallerBundleVerificationResult result)
+static void ValidateProductArtifact(
+    string productZipPath,
+    TimelineWindowsInstallerBundleVerificationResult result,
+    bool requireWindowsExecutionTrust)
 {
     using var productArchive = ZipFile.OpenRead(productZipPath);
     var entries = productArchive.Entries
@@ -704,7 +719,13 @@ static void ValidateProductArtifact(string productZipPath, TimelineWindowsInstal
         "Timeline/local-api/Timeline.LocalApi.dll"
     })
     {
-        AddUnsignedWindowsBinaryWarning(productArchive, executableEntry, result.Warnings, executableEntry);
+        AddWindowsBinaryExecutionTrustResult(
+            productArchive,
+            executableEntry,
+            result.Warnings,
+            result.Blockers,
+            requireWindowsExecutionTrust,
+            executableEntry);
     }
 
     if (entries.Any(entry => entry.Contains("/settings.json", StringComparison.OrdinalIgnoreCase)))
@@ -752,10 +773,12 @@ static void AddForbiddenContentBlockers(IEnumerable<string> entries, string labe
     }
 }
 
-static void AddUnsignedWindowsBinaryWarning(
+static void AddWindowsBinaryExecutionTrustResult(
     ZipArchive archive,
     string entryName,
     ICollection<string> warnings,
+    ICollection<string> blockers,
+    bool requireWindowsExecutionTrust,
     string label)
 {
     if (!OperatingSystem.IsWindows())
@@ -778,12 +801,28 @@ static void AddUnsignedWindowsBinaryWarning(
         entry.ExtractToFile(tempPath, overwrite: true);
         if (!HasAuthenticodeSignature(tempPath))
         {
-            warnings.Add($"{label} is not Authenticode-signed. Smart App Control, WDAC, or Code Integrity can block this binary on constrained Windows environments.");
+            var message = $"{label} is not Authenticode-signed. Smart App Control, WDAC, or Code Integrity can block this binary on constrained Windows environments.";
+            if (requireWindowsExecutionTrust)
+            {
+                blockers.Add(message);
+            }
+            else
+            {
+                warnings.Add(message);
+            }
         }
     }
     catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or CryptographicException or InvalidDataException)
     {
-        warnings.Add($"Execution trust could not be checked for {label}: {ex.Message}");
+        var message = $"Execution trust could not be checked for {label}: {ex.Message}";
+        if (requireWindowsExecutionTrust)
+        {
+            blockers.Add(message);
+        }
+        else
+        {
+            warnings.Add(message);
+        }
     }
     finally
     {
@@ -874,6 +913,7 @@ static void PrintWindowsInstallerVerification(TimelineWindowsInstallerBundleVeri
     Console.WriteLine($"  Runtime: {result.RuntimeIdentifier ?? "-"}");
     Console.WriteLine($"  Product artifact: {result.ProductArtifactFileName ?? "-"}");
     Console.WriteLine($"  Installer entry point: {result.InstallerEntryPoint ?? "-"}");
+    Console.WriteLine($"  Windows execution trust required: {result.ExecutionTrustRequired}");
     foreach (var warning in result.Warnings)
     {
         Console.WriteLine($"  Warning: {warning}");
@@ -1083,6 +1123,7 @@ internal sealed record ReleaseOptions(
     string? Version,
     bool WindowsInstaller,
     string? VerifyWindowsInstallerPath,
+    bool RequireWindowsExecutionTrust,
     bool Json)
 {
     public static ReleaseOptions Parse(string[] args)
@@ -1094,6 +1135,7 @@ internal sealed record ReleaseOptions(
         string? version = null;
         var windowsInstaller = false;
         string? verifyWindowsInstallerPath = null;
+        var requireWindowsExecutionTrust = false;
         var json = false;
 
         for (var index = 0; index < args.Length; index++)
@@ -1116,6 +1158,13 @@ internal sealed record ReleaseOptions(
                 continue;
             }
 
+            if (arg.Equals("--require-windows-execution-trust", StringComparison.OrdinalIgnoreCase) ||
+                arg.Equals("--require-execution-trust", StringComparison.OrdinalIgnoreCase))
+            {
+                requireWindowsExecutionTrust = true;
+                continue;
+            }
+
             if (arg.Equals("--windows-installer", StringComparison.OrdinalIgnoreCase) ||
                 arg.Equals("--include-windows-installer", StringComparison.OrdinalIgnoreCase))
             {
@@ -1126,7 +1175,16 @@ internal sealed record ReleaseOptions(
             throw new ArgumentException($"Unknown argument: {arg}");
         }
 
-        return new ReleaseOptions(hostRuntime, containerRuntime, outputDirectory, channel, version, windowsInstaller, verifyWindowsInstallerPath, json);
+        return new ReleaseOptions(
+            hostRuntime,
+            containerRuntime,
+            outputDirectory,
+            channel,
+            version,
+            windowsInstaller,
+            verifyWindowsInstallerPath,
+            requireWindowsExecutionTrust,
+            json);
     }
 
     private static bool TryReadOption(string[] args, ref int index, string arg, string optionName, ref string value)
@@ -1232,6 +1290,7 @@ internal sealed record TimelineWindowsInstallerBundleVerificationResult
     public string? Version { get; set; }
     public string? RuntimeIdentifier { get; set; }
     public string? InstallerEntryPoint { get; set; }
+    public bool ExecutionTrustRequired { get; init; }
     public List<string> Warnings { get; } = [];
     public List<string> Blockers { get; } = [];
 }

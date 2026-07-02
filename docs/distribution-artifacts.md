@@ -153,6 +153,17 @@ binaries are reported as warnings rather than blockers: the bundle can still be
 mechanically valid, but Smart App Control, WDAC, or Code Integrity may block
 execution on constrained Windows machines.
 
+When validating a Windows artifact as a product-ready distribution candidate,
+require the execution trust gate explicitly:
+
+```text
+dotnet tools/Timeline.ReleaseBuilder/bin/Debug/net10.0/Timeline.ReleaseBuilder.dll --verify-windows-installer release/Timeline-win-x64-<version>-setup.zip --require-windows-execution-trust --json
+```
+
+In this mode, unsigned or unchecked Windows entry point binaries are blockers.
+Use the normal verifier for internal shape checks, and use the strict verifier
+when deciding whether a Windows setup bundle is ready for users.
+
 ### Windows application-control constraint
 
 The current artifacts are not code signed. On Windows environments with Smart
