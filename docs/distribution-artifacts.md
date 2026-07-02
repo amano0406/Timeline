@@ -182,7 +182,10 @@ dotnet tools/Timeline.ReleaseBuilder/bin/Debug/net10.0/Timeline.ReleaseBuilder.d
 This is only a development diagnostic path. It is not the desired user-facing
 distribution answer.
 
-See also: [windows-execution-trust.md](windows-execution-trust.md).
+See also:
+
+- [windows-execution-trust.md](windows-execution-trust.md)
+- [windows-trusted-distribution.md](windows-trusted-distribution.md)
 
 ## Mac artifact build
 

@@ -108,3 +108,6 @@ The Windows distribution path should not be considered product-ready until:
 - `KAN-63`: Windows installer artifact generation
 - `KAN-65`: OS uninstall entry and uninstall scope selection
 - `KAN-66`: Smart App Control blocks unsigned Launcher
+- `KAN-67`: Trusted Windows distribution path
+
+See also: [windows-trusted-distribution.md](windows-trusted-distribution.md).
