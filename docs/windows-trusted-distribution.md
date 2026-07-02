@@ -67,6 +67,37 @@ Product-ready target:
   Windows machine;
 - publish user-facing guidance for unsupported locked-down environments.
 
+## Current Product Decisions
+
+The near-term Windows product artifact remains a setup ZIP. MSI or MSIX can
+become a later packaging layer, but it does not remove the need for signing, so
+the first product gate is signed setup ZIP plus strict execution-trust
+verification.
+
+Unsigned setup ZIPs are internal validation artifacts only. They may prove that
+the bundle shape is correct, but they must not be described as ready for normal
+Windows users.
+
+The minimum Windows validation target is a Windows 11 environment where Smart
+App Control, WDAC, or Code Integrity can block unsigned desktop binaries. A
+release that only works on a permissive developer machine is not enough evidence
+for product readiness.
+
+When execution trust fails, the user-facing guidance should be:
+
+```text
+Windows の保護機能により Timeline を起動できません。
+
+この配布物は現在の Windows 環境で信頼済みアプリとして実行できません。
+署名済みの最新版を入手して再試行してください。
+会社や学校の管理PCを利用している場合は、管理者に Timeline の利用可否を確認してください。
+解決しない場合は、この画面の詳細と Timeline のログを添えて報告してください。
+```
+
+The normal product guidance must not ask the user to weaken Windows security
+policy, run manual unblock commands, or use PowerShell/batch/shell wrappers.
+Those can remain diagnostic paths for development, but not the customer answer.
+
 ## Signing Entry Point
 
 `KAN-68` adds an optional signing entry point to the release builder. Signing is
@@ -155,15 +186,12 @@ Until signing is introduced, the strict check is expected to fail. That failure
 is intentional: it prevents a structurally valid but untrusted Windows bundle
 from being treated as ready for normal users.
 
-## Open Decisions
+## Remaining Open Decisions
 
 - Which certificate source will be used for signing?
-- Will the first production Windows artifact remain a setup ZIP, or move to MSI
-  / MSIX?
 - Where will signing happen: local release machine, CI, or a dedicated release
   workflow?
-- Which Windows policy profile is the minimum supported validation target?
-- What exact user-facing message is shown when execution trust fails?
+- Whether MSI / MSIX is worth adding after signed setup ZIP is working.
 
 ## Related Jira
 

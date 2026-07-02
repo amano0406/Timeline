@@ -102,6 +102,32 @@ The Windows distribution path should not be considered product-ready until:
 - user-facing docs explain what to do if Windows blocks Timeline;
 - Jira issues that depend on OS app entry validation reference this constraint.
 
+## User-Facing Failure Guidance
+
+If Windows blocks Timeline before the Launcher starts, the product should treat
+that as an execution-trust failure, not as a generic startup failure.
+
+Recommended message:
+
+```text
+Windows の保護機能により Timeline を起動できません。
+
+この配布物は現在の Windows 環境で信頼済みアプリとして実行できません。
+署名済みの最新版を入手して再試行してください。
+会社や学校の管理PCを利用している場合は、管理者に Timeline の利用可否を確認してください。
+解決しない場合は、この画面の詳細と Timeline のログを添えて報告してください。
+```
+
+The message intentionally avoids telling users to lower Windows security
+settings, run manual unblock commands, or fall back to PowerShell/batch/shell
+wrappers. Those actions may help development diagnostics, but they are not a
+product-ready recovery path.
+
+For issue tracking, KAN-63 and KAN-65 can pass non-destructive artifact-shape
+validation while KAN-66/KAN-67 remain open. They should not be interpreted as
+proof that a normal Windows user can install, start, and uninstall Timeline on a
+strictly managed machine.
+
 ## Related Jira
 
 - `KAN-41`: Timeline as an OS-installed application

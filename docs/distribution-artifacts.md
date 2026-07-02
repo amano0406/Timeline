@@ -215,6 +215,11 @@ Until signing or a trusted native installer format is finalized, Windows
 installer validation must report this as a known execution-risk area rather
 than treating a valid ZIP as proof that the application will start everywhere.
 
+If Windows blocks Timeline, user-facing guidance should direct the user to a
+signed latest release, a managed-PC administrator check, or log-based support.
+It should not ask normal users to weaken Windows policy, manually unblock files,
+or switch to PowerShell/batch/shell wrappers.
+
 If `dotnet run` itself creates or launches a blocked Windows apphost executable
 during development, run the already-built DLL directly for diagnostics:
 
