@@ -166,6 +166,8 @@ Until signing or a trusted native installer format is finalized, Windows
 installer validation must report this as a known execution-risk area rather
 than treating a valid ZIP as proof that the application will start everywhere.
 
+See also: [windows-execution-trust.md](windows-execution-trust.md).
+
 ## Mac artifact build
 
 KAN-46 uses the same release builder for Mac artifacts.
