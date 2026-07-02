@@ -75,6 +75,20 @@ The setup executable supports a plan-only mode:
 .\installer\Timeline.WindowsInstaller.exe --artifact .\artifacts\Timeline-win-x64-<version>.zip --plan
 ```
 
+Before executing the installer, the release builder can verify the setup ZIP
+without changing Windows settings:
+
+```powershell
+dotnet run --project .\tools\Timeline.ReleaseBuilder\Timeline.ReleaseBuilder.csproj -- --verify-windows-installer .\release\Timeline-win-x64-<version>-setup.zip
+dotnet run --project .\tools\Timeline.ReleaseBuilder\Timeline.ReleaseBuilder.csproj -- --verify-windows-installer .\release\Timeline-win-x64-<version>-setup.zip --json
+```
+
+This verification checks the setup bundle shape, the embedded product artifact,
+manifest consistency, required Launcher / Local API entries, and absence of
+source files, temporary development directories, user data, settings, and
+script wrappers. It is the safe pre-install check for KAN-63 because it does
+not create shortcuts, registry entries, or application files.
+
 The default install directory is:
 
 ```text

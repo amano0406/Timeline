@@ -133,6 +133,20 @@ application files are not replaced unless `--force` is supplied. User data,
 settings, logs, runtime state, and managed products are preserved when
 replacement is explicitly requested.
 
+The setup ZIP can be verified without installing anything:
+
+```text
+dotnet run --project tools/Timeline.ReleaseBuilder -- --verify-windows-installer release/Timeline-win-x64-<version>-setup.zip
+dotnet run --project tools/Timeline.ReleaseBuilder -- --verify-windows-installer release/Timeline-win-x64-<version>-setup.zip --json
+```
+
+This check fails if the setup bundle does not contain the C# installer and one
+built product ZIP, if manifest hashes or sizes do not match, if the embedded
+product artifact is missing required Timeline executables, or if source files,
+development temporary directories, user data, settings, or script wrappers are
+present. It is intentionally separate from installer execution so release
+validation can run before OS shortcuts or uninstall entries are changed.
+
 ## Mac artifact build
 
 KAN-46 uses the same release builder for Mac artifacts.

@@ -6,6 +6,22 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 
 var options = ReleaseOptions.Parse(args);
+if (!string.IsNullOrWhiteSpace(options.VerifyWindowsInstallerPath))
+{
+    var verification = VerifyWindowsInstallerBundle(Path.GetFullPath(options.VerifyWindowsInstallerPath));
+    if (options.Json)
+    {
+        Console.WriteLine(JsonSerializer.Serialize(verification, new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true }));
+    }
+    else
+    {
+        PrintWindowsInstallerVerification(verification);
+    }
+
+    Environment.ExitCode = verification.Blockers.Count == 0 ? 0 : 1;
+    return;
+}
+
 var repoRoot = ResolveRepoRoot(Directory.GetCurrentDirectory());
 var version = string.IsNullOrWhiteSpace(options.Version)
     ? SanitizeVersion((await RunCaptureAsync(repoRoot, "git", ["describe", "--tags", "--dirty", "--always"], TimeSpan.FromSeconds(10))).Output.Trim())
@@ -329,8 +345,17 @@ static void CreateWindowsInstallerBundle(
 
     CreateProductZip(installerStagingParent, setupZipPath, options.HostRuntime);
     WriteWindowsInstallerExternalManifest(outputRoot, options, version, commit, setupZipPath, productZipCopyPath);
+    var verification = VerifyWindowsInstallerBundle(setupZipPath);
+    if (verification.Blockers.Count > 0)
+    {
+        throw new InvalidOperationException(
+            "Windows installer bundle verification failed." +
+            Environment.NewLine +
+            string.Join(Environment.NewLine, verification.Blockers));
+    }
 
     Console.WriteLine("Timeline Windows installer bundle created.");
+    Console.WriteLine("Timeline Windows installer bundle verified.");
     Console.WriteLine($"  Setup: {setupZipPath}");
 }
 
@@ -440,6 +465,341 @@ static void WriteWindowsInstallerExternalManifest(
     File.WriteAllText(
         Path.Combine(outputRoot, $"timeline-installer-{artifactRuntimeName}.json"),
         JsonSerializer.Serialize(manifest, new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true }) + Environment.NewLine);
+}
+
+static TimelineWindowsInstallerBundleVerificationResult VerifyWindowsInstallerBundle(string setupZipPath)
+{
+    var result = new TimelineWindowsInstallerBundleVerificationResult
+    {
+        State = "verifying",
+        SetupArtifactPath = setupZipPath
+    };
+
+    if (!File.Exists(setupZipPath))
+    {
+        result.State = "failed";
+        result.Blockers.Add($"Setup artifact was not found: {setupZipPath}");
+        return result;
+    }
+
+    var setupFile = new FileInfo(setupZipPath);
+    result.SetupArtifactSizeBytes = setupFile.Length;
+    result.SetupArtifactSha256 = ComputeSha256(setupZipPath);
+
+    string? productArtifactTempPath = null;
+    try
+    {
+        using var setupArchive = ZipFile.OpenRead(setupZipPath);
+        var setupEntries = setupArchive.Entries
+            .Where(entry => !string.IsNullOrWhiteSpace(entry.Name))
+            .Select(entry => entry.FullName.Replace('\\', '/'))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var requiredEntry in new[]
+        {
+            "Timeline-Setup/installer/Timeline.WindowsInstaller.exe",
+            "Timeline-Setup/installer-manifest.json",
+            "Timeline-Setup/README.txt"
+        })
+        {
+            if (!setupEntries.Contains(requiredEntry))
+            {
+                result.Blockers.Add($"Setup artifact is missing required entry: {requiredEntry}");
+            }
+        }
+
+        AddForbiddenContentBlockers(setupEntries, "Setup artifact", result.Blockers);
+
+        var productEntries = setupArchive.Entries
+            .Where(entry =>
+                !string.IsNullOrWhiteSpace(entry.Name) &&
+                entry.FullName.Replace('\\', '/').StartsWith("Timeline-Setup/artifacts/", StringComparison.OrdinalIgnoreCase) &&
+                entry.FullName.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+
+        if (productEntries.Length != 1)
+        {
+            result.Blockers.Add($"Setup artifact must contain exactly one built product ZIP under Timeline-Setup/artifacts. Found: {productEntries.Length}");
+        }
+
+        var manifestEntry = setupArchive.GetEntry("Timeline-Setup/installer-manifest.json");
+        JsonElement? manifestRoot = null;
+        if (manifestEntry is null)
+        {
+            result.Blockers.Add("Setup artifact is missing installer manifest.");
+        }
+        else
+        {
+            using var manifestStream = manifestEntry.Open();
+            using var document = JsonDocument.Parse(manifestStream);
+            manifestRoot = document.RootElement.Clone();
+            ValidateWindowsInstallerManifest(manifestRoot.Value, productEntries.FirstOrDefault(), result);
+        }
+
+        var productEntry = productEntries.FirstOrDefault();
+        if (productEntry is not null)
+        {
+            result.ProductArtifactFileName = Path.GetFileName(productEntry.FullName);
+            result.ProductArtifactSizeBytes = productEntry.Length;
+            productArtifactTempPath = Path.Combine(Path.GetTempPath(), $"timeline-product-artifact-{Guid.NewGuid():N}.zip");
+            using (var productInput = productEntry.Open())
+            using (var productOutput = File.Create(productArtifactTempPath))
+            {
+                productInput.CopyTo(productOutput);
+            }
+
+            result.ProductArtifactSha256 = ComputeSha256(productArtifactTempPath);
+            ValidateProductArtifact(productArtifactTempPath, result);
+
+            if (manifestRoot is not null)
+            {
+                ValidateProductArtifactAgainstManifest(manifestRoot.Value, productEntry, result);
+            }
+        }
+    }
+    catch (InvalidDataException ex)
+    {
+        result.Blockers.Add($"Setup artifact is not a valid ZIP archive. {ex.Message}");
+    }
+    catch (JsonException ex)
+    {
+        result.Blockers.Add($"Setup artifact manifest could not be parsed. {ex.Message}");
+    }
+    finally
+    {
+        if (!string.IsNullOrWhiteSpace(productArtifactTempPath) && File.Exists(productArtifactTempPath))
+        {
+            File.Delete(productArtifactTempPath);
+        }
+    }
+
+    result.State = result.Blockers.Count == 0 ? "verified" : "failed";
+    return result;
+}
+
+static void ValidateWindowsInstallerManifest(
+    JsonElement manifest,
+    ZipArchiveEntry? productEntry,
+    TimelineWindowsInstallerBundleVerificationResult result)
+{
+    if (GetString(manifest, "manifestType") != "timeline_windows_installer_bundle_manifest")
+    {
+        result.Blockers.Add("Installer manifest has an unexpected manifestType.");
+    }
+
+    result.RuntimeIdentifier = GetString(manifest, "runtimeIdentifier");
+    if (string.IsNullOrWhiteSpace(result.RuntimeIdentifier) ||
+        !result.RuntimeIdentifier.StartsWith("win-", StringComparison.OrdinalIgnoreCase))
+    {
+        result.Blockers.Add($"Installer manifest runtimeIdentifier is not Windows: {result.RuntimeIdentifier}");
+    }
+
+    var installer = manifest.TryGetProperty("installer", out var installerElement)
+        ? installerElement
+        : default;
+    if (installer.ValueKind == JsonValueKind.Undefined)
+    {
+        result.Blockers.Add("Installer manifest is missing installer metadata.");
+    }
+    else
+    {
+        result.InstallerEntryPoint = GetString(installer, "entryPoint");
+        if (!string.Equals(result.InstallerEntryPoint, "installer/Timeline.WindowsInstaller.exe", StringComparison.OrdinalIgnoreCase))
+        {
+            result.Blockers.Add($"Installer manifest entryPoint is unexpected: {result.InstallerEntryPoint}");
+        }
+
+        if (installer.TryGetProperty("usesBatchOrShellWrapper", out var wrapper) &&
+            wrapper.ValueKind == JsonValueKind.True)
+        {
+            result.Blockers.Add("Installer manifest must not use a batch, shell, or command wrapper.");
+        }
+    }
+
+    if (!manifest.TryGetProperty("productArtifact", out var productArtifact))
+    {
+        result.Blockers.Add("Installer manifest is missing productArtifact metadata.");
+        return;
+    }
+
+    var productArtifactPath = GetString(productArtifact, "path");
+    if (productEntry is not null)
+    {
+        var expectedPath = productEntry.FullName.Replace('\\', '/');
+        var manifestPath = $"Timeline-Setup/{productArtifactPath}";
+        if (!string.Equals(manifestPath, expectedPath, StringComparison.OrdinalIgnoreCase))
+        {
+            result.Blockers.Add($"Installer manifest productArtifact path does not match bundle entry. Manifest: {productArtifactPath}, entry: {expectedPath}");
+        }
+    }
+}
+
+static void ValidateProductArtifactAgainstManifest(
+    JsonElement manifest,
+    ZipArchiveEntry productEntry,
+    TimelineWindowsInstallerBundleVerificationResult result)
+{
+    if (!manifest.TryGetProperty("productArtifact", out var productArtifact))
+    {
+        return;
+    }
+
+    var expectedFileName = GetString(productArtifact, "fileName");
+    if (!string.Equals(expectedFileName, Path.GetFileName(productEntry.FullName), StringComparison.OrdinalIgnoreCase))
+    {
+        result.Blockers.Add($"Installer manifest productArtifact fileName does not match bundle entry: {expectedFileName}");
+    }
+
+    var expectedSize = GetInt64(productArtifact, "sizeBytes");
+    if (expectedSize is not null && result.ProductArtifactSizeBytes is not null && expectedSize.Value != result.ProductArtifactSizeBytes.Value)
+    {
+        result.Blockers.Add($"Installer manifest productArtifact sizeBytes does not match bundle entry. Manifest: {expectedSize}, entry: {result.ProductArtifactSizeBytes}");
+    }
+
+    var expectedSha256 = GetString(productArtifact, "sha256");
+    if (!string.IsNullOrWhiteSpace(expectedSha256) &&
+        !string.Equals(expectedSha256, result.ProductArtifactSha256, StringComparison.OrdinalIgnoreCase))
+    {
+        result.Blockers.Add("Installer manifest productArtifact sha256 does not match the embedded product ZIP.");
+    }
+}
+
+static void ValidateProductArtifact(string productZipPath, TimelineWindowsInstallerBundleVerificationResult result)
+{
+    using var productArchive = ZipFile.OpenRead(productZipPath);
+    var entries = productArchive.Entries
+        .Where(entry => !string.IsNullOrWhiteSpace(entry.Name))
+        .Select(entry => entry.FullName.Replace('\\', '/'))
+        .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+    foreach (var requiredEntry in new[]
+    {
+        "Timeline/VERSION",
+        "Timeline/launcher/Timeline.Launcher.exe",
+        "Timeline/launcher-tray/Timeline.Launcher.Tray.exe",
+        "Timeline/local-api/Timeline.LocalApi.exe",
+        "Timeline/docker-compose.yml"
+    })
+    {
+        if (!entries.Contains(requiredEntry))
+        {
+            result.Blockers.Add($"Product artifact is missing required entry: {requiredEntry}");
+        }
+    }
+
+    if (entries.Any(entry => entry.Contains("/settings.json", StringComparison.OrdinalIgnoreCase)))
+    {
+        result.Blockers.Add("Product artifact must not contain settings.json.");
+    }
+
+    if (entries.Any(entry => entry.StartsWith("Timeline/data/", StringComparison.OrdinalIgnoreCase)))
+    {
+        result.Blockers.Add("Product artifact must not contain Timeline user data.");
+    }
+
+    AddForbiddenContentBlockers(entries, "Product artifact", result.Blockers);
+
+    var versionEntry = productArchive.GetEntry("Timeline/VERSION");
+    if (versionEntry is null)
+    {
+        return;
+    }
+
+    using var versionStream = versionEntry.Open();
+    using var versionDocument = JsonDocument.Parse(versionStream);
+    result.Version = GetString(versionDocument.RootElement, "version");
+    var runtimeIdentifier = GetString(versionDocument.RootElement, "runtimeIdentifier");
+    if (!string.IsNullOrWhiteSpace(runtimeIdentifier))
+    {
+        result.RuntimeIdentifier = runtimeIdentifier;
+    }
+
+    if (string.IsNullOrWhiteSpace(runtimeIdentifier) ||
+        !runtimeIdentifier.StartsWith("win-", StringComparison.OrdinalIgnoreCase))
+    {
+        result.Blockers.Add($"Product artifact runtime is not Windows: {runtimeIdentifier}");
+    }
+}
+
+static void AddForbiddenContentBlockers(IEnumerable<string> entries, string label, ICollection<string> blockers)
+{
+    foreach (var entry in entries.OrderBy(value => value, StringComparer.OrdinalIgnoreCase))
+    {
+        if (IsForbiddenArtifactEntry(entry))
+        {
+            blockers.Add($"{label} contains development-only or script content: {entry}");
+        }
+    }
+}
+
+static bool IsForbiddenArtifactEntry(string relativePath)
+{
+    var normalized = relativePath.Replace('\\', '/');
+    var segments = normalized.Split('/', StringSplitOptions.RemoveEmptyEntries);
+    var forbiddenSegments = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        ".git",
+        "bin",
+        "obj",
+        "docs-temp",
+        "scripts-temp",
+        "node_modules"
+    };
+    if (segments.Any(forbiddenSegments.Contains))
+    {
+        return true;
+    }
+
+    var extension = Path.GetExtension(normalized);
+    var forbiddenExtensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        ".bat",
+        ".cmd",
+        ".command",
+        ".cs",
+        ".csproj",
+        ".fs",
+        ".fsproj",
+        ".ps1",
+        ".sh",
+        ".sln",
+        ".vb",
+        ".vbproj"
+    };
+    return forbiddenExtensions.Contains(extension);
+}
+
+static string? GetString(JsonElement element, string propertyName)
+{
+    return element.TryGetProperty(propertyName, out var property) && property.ValueKind == JsonValueKind.String
+        ? property.GetString()
+        : null;
+}
+
+static long? GetInt64(JsonElement element, string propertyName)
+{
+    return element.TryGetProperty(propertyName, out var property) && property.TryGetInt64(out var value)
+        ? value
+        : null;
+}
+
+static void PrintWindowsInstallerVerification(TimelineWindowsInstallerBundleVerificationResult result)
+{
+    Console.WriteLine($"Timeline Windows installer bundle verification: {result.State}");
+    Console.WriteLine($"  Setup: {result.SetupArtifactPath}");
+    Console.WriteLine($"  Version: {result.Version ?? "-"}");
+    Console.WriteLine($"  Runtime: {result.RuntimeIdentifier ?? "-"}");
+    Console.WriteLine($"  Product artifact: {result.ProductArtifactFileName ?? "-"}");
+    Console.WriteLine($"  Installer entry point: {result.InstallerEntryPoint ?? "-"}");
+    foreach (var warning in result.Warnings)
+    {
+        Console.WriteLine($"  Warning: {warning}");
+    }
+
+    foreach (var blocker in result.Blockers)
+    {
+        Console.WriteLine($"  Blocker: {blocker}");
+    }
 }
 
 static string ComputeSha256(string path)
@@ -638,7 +998,9 @@ internal sealed record ReleaseOptions(
     string OutputDirectory,
     string Channel,
     string? Version,
-    bool WindowsInstaller)
+    bool WindowsInstaller,
+    string? VerifyWindowsInstallerPath,
+    bool Json)
 {
     public static ReleaseOptions Parse(string[] args)
     {
@@ -648,6 +1010,8 @@ internal sealed record ReleaseOptions(
         var channel = "dev";
         string? version = null;
         var windowsInstaller = false;
+        string? verifyWindowsInstallerPath = null;
+        var json = false;
 
         for (var index = 0; index < args.Length; index++)
         {
@@ -657,8 +1021,15 @@ internal sealed record ReleaseOptions(
                 TryReadOption(args, ref index, arg, "--container-runtime", ref containerRuntime) ||
                 TryReadOption(args, ref index, arg, "--output", ref outputDirectory) ||
                 TryReadOption(args, ref index, arg, "--channel", ref channel) ||
+                TryReadNullableOption(args, ref index, arg, "--verify-windows-installer", ref verifyWindowsInstallerPath) ||
                 TryReadNullableOption(args, ref index, arg, "--version", ref version))
             {
+                continue;
+            }
+
+            if (arg.Equals("--json", StringComparison.OrdinalIgnoreCase))
+            {
+                json = true;
                 continue;
             }
 
@@ -672,7 +1043,7 @@ internal sealed record ReleaseOptions(
             throw new ArgumentException($"Unknown argument: {arg}");
         }
 
-        return new ReleaseOptions(hostRuntime, containerRuntime, outputDirectory, channel, version, windowsInstaller);
+        return new ReleaseOptions(hostRuntime, containerRuntime, outputDirectory, channel, version, windowsInstaller, verifyWindowsInstallerPath, json);
     }
 
     private static bool TryReadOption(string[] args, ref int index, string arg, string optionName, ref string value)
@@ -765,6 +1136,22 @@ internal sealed record TimelineWindowsInstallerExternalManifest(
     TimelineArtifactManifestItem SetupArtifact,
     TimelineArtifactManifestItem ProductArtifact,
     TimelineInstallerManifestItem Installer);
+
+internal sealed record TimelineWindowsInstallerBundleVerificationResult
+{
+    public string State { get; set; } = "";
+    public string SetupArtifactPath { get; init; } = "";
+    public long? SetupArtifactSizeBytes { get; set; }
+    public string? SetupArtifactSha256 { get; set; }
+    public string? ProductArtifactFileName { get; set; }
+    public long? ProductArtifactSizeBytes { get; set; }
+    public string? ProductArtifactSha256 { get; set; }
+    public string? Version { get; set; }
+    public string? RuntimeIdentifier { get; set; }
+    public string? InstallerEntryPoint { get; set; }
+    public List<string> Warnings { get; } = [];
+    public List<string> Blockers { get; } = [];
+}
 
 internal sealed record ProcessResult(int ExitCode, string Output, string Error)
 {
