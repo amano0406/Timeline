@@ -115,7 +115,6 @@ static TimelineWindowsInstallResult Install(TimelineWindowsInstallResult plan, W
         }
 
         CopyDirectory(extractedRoot, plan.InstallDirectory);
-        CopyInstallerRuntime(plan.InstallDirectory);
         var shortcut = TimelineLauncherShortcutService.Install(plan.InstallDirectory);
         var uninstall = TimelineWindowsUninstallRegistrationService.Register(plan.InstallDirectory);
 
@@ -828,23 +827,6 @@ static void CopyDirectory(string sourceDirectory, string destinationDirectory)
     }
 }
 
-static void CopyInstallerRuntime(string installDirectory)
-{
-    var sourceDirectory = AppContext.BaseDirectory;
-    var destinationDirectory = Path.Combine(installDirectory, "installer");
-    if (PathsEqual(sourceDirectory, destinationDirectory))
-    {
-        return;
-    }
-
-    if (Directory.Exists(destinationDirectory))
-    {
-        Directory.Delete(destinationDirectory, recursive: true);
-    }
-
-    CopyDirectory(sourceDirectory, destinationDirectory);
-}
-
 static TextBox NewPathTextBox(string text)
     => new()
     {
@@ -1125,14 +1107,6 @@ static string QuoteArgument(string value)
     }
 
     return "\"" + value.Replace("\"", "\\\"", StringComparison.Ordinal) + "\"";
-}
-
-static bool PathsEqual(string left, string right)
-{
-    return string.Equals(
-        Path.GetFullPath(left).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
-        Path.GetFullPath(right).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
-        OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
 }
 
 static bool IsPathUnder(string path, string possibleParent)
