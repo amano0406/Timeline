@@ -9,6 +9,19 @@ using System.Text.RegularExpressions;
 ReleaseOptions options;
 try
 {
+    if (args.Length == 0)
+    {
+        PrintUsage(Console.Error);
+        Environment.ExitCode = 2;
+        return;
+    }
+
+    if (args.Any(IsHelpArgument))
+    {
+        PrintUsage(Console.Out);
+        return;
+    }
+
     options = ReleaseOptions.Parse(args);
     options.Validate();
 }
@@ -1299,6 +1312,53 @@ static string ToArtifactRuntimeName(string runtimeIdentifier)
         "osx-x64" => "macos-x64",
         _ => runtimeIdentifier
     };
+}
+
+static bool IsHelpArgument(string argument)
+{
+    return argument.Equals("--help", StringComparison.OrdinalIgnoreCase) ||
+        argument.Equals("-h", StringComparison.OrdinalIgnoreCase) ||
+        argument.Equals("/?", StringComparison.OrdinalIgnoreCase);
+}
+
+static void PrintUsage(TextWriter writer)
+{
+    writer.WriteLine(
+        """
+        Timeline product artifact builder
+
+        Usage:
+          dotnet run --project tools/Timeline.ReleaseBuilder -- --runtime <host-runtime> [options]
+          dotnet run --project tools/Timeline.ReleaseBuilder -- --verify-windows-installer <setup.zip> [--json]
+          dotnet run --project tools/Timeline.ReleaseBuilder -- --help
+
+        Required for artifact builds:
+          --runtime <rid>                 Host runtime, for example win-x64, osx-arm64, or osx-x64.
+
+        Common options:
+          --container-runtime <rid>       Container runtime for Web and Worker. Default: linux-x64.
+          --version <version>             Artifact version. Defaults to git describe output.
+          --output <directory>            Output directory. Default: release.
+          --channel <channel>             Artifact channel. Default: dev.
+          --windows-installer             Also create the Windows setup ZIP. Windows runtime only.
+
+        Windows signing options:
+          --windows-sign
+          --windows-sign-cert-thumbprint <thumbprint>
+          --windows-sign-cert-pfx <path>
+          --windows-sign-cert-password-env <name>
+          --windows-sign-timestamp-url <url>
+          --windows-sign-tool <path>
+
+        Verification options:
+          --verify-windows-installer <setup.zip>
+          --require-windows-execution-trust
+          --json
+
+        Notes:
+          Source archive ZIP files are not product artifacts.
+          Running without arguments prints this help and does not build artifacts.
+        """);
 }
 
 internal sealed record ReleaseOptions(
