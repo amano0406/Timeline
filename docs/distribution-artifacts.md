@@ -153,6 +153,11 @@ binaries are reported as warnings rather than blockers: the bundle can still be
 mechanically valid, but Smart App Control, WDAC, or Code Integrity may block
 execution on constrained Windows machines.
 
+When the strict execution-trust gate is enabled, the verifier also checks that
+the signing certificate declares Code Signing usage and that its certificate
+chain is trusted by the Windows host running the verifier. A self-signed binary
+is still not product-ready just because an Authenticode signature exists.
+
 When validating a Windows artifact as a product-ready distribution candidate,
 require the execution trust gate explicitly:
 

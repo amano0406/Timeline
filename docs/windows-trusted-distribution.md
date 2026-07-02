@@ -128,11 +128,18 @@ It checks:
 - Launcher signature state;
 - resident Launcher signature state;
 - Local API signature state;
+- whether the signing certificate declares Code Signing usage;
+- whether the certificate chain is trusted by the Windows host running the
+  verifier;
 - observed OS policy failures.
 
 Unsigned binaries are warnings while the signing pipeline does not exist. They
 become release blockers when the Windows distribution is declared
 product-ready.
+
+A binary that is merely signed is not automatically product-ready. In strict
+mode, a self-signed or otherwise untrusted certificate is still treated as an
+execution-trust problem.
 
 The release verifier supports both modes:
 

@@ -925,7 +925,8 @@ static void AddWindowsBinaryExecutionTrustResult(
     try
     {
         entry.ExtractToFile(tempPath, overwrite: true);
-        if (!HasAuthenticodeSignature(tempPath))
+        var trust = GetAuthenticodeTrust(tempPath);
+        if (!trust.IsSigned)
         {
             var message = $"{label} is not Authenticode-signed. Smart App Control, WDAC, or Code Integrity can block this binary on constrained Windows environments.";
             if (requireWindowsExecutionTrust)
@@ -935,6 +936,34 @@ static void AddWindowsBinaryExecutionTrustResult(
             else
             {
                 warnings.Add(message);
+            }
+        }
+        else
+        {
+            if (!trust.HasCodeSigningUsage)
+            {
+                var message = $"{label} is Authenticode-signed, but the signing certificate does not declare Code Signing enhanced key usage.";
+                if (requireWindowsExecutionTrust)
+                {
+                    blockers.Add(message);
+                }
+                else
+                {
+                    warnings.Add(message);
+                }
+            }
+
+            if (!trust.IsChainTrusted)
+            {
+                var message = $"{label} is Authenticode-signed, but its certificate chain is not trusted by this Windows host. {trust.ChainStatusText}";
+                if (requireWindowsExecutionTrust)
+                {
+                    blockers.Add(message);
+                }
+                else
+                {
+                    warnings.Add(message);
+                }
             }
         }
     }
@@ -965,19 +994,50 @@ static void AddWindowsBinaryExecutionTrustResult(
     }
 }
 
-static bool HasAuthenticodeSignature(string path)
+static WindowsAuthenticodeTrustResult GetAuthenticodeTrust(string path)
 {
     try
     {
 #pragma warning disable SYSLIB0057
-        using var certificate = X509Certificate.CreateFromSignedFile(path);
+        using var certificate = new X509Certificate2(X509Certificate.CreateFromSignedFile(path));
 #pragma warning restore SYSLIB0057
-        return certificate is not null;
+        using var chain = new X509Chain();
+        chain.ChainPolicy.RevocationMode = X509RevocationMode.NoCheck;
+        chain.ChainPolicy.VerificationFlags = X509VerificationFlags.NoFlag;
+        var isChainTrusted = chain.Build(certificate);
+        var chainStatusText = string.Join(
+            "; ",
+            chain.ChainStatus
+                .Select(status => $"{status.Status}: {status.StatusInformation.Trim()}")
+                .Where(text => !string.IsNullOrWhiteSpace(text)));
+        return new WindowsAuthenticodeTrustResult(
+            IsSigned: true,
+            HasCodeSigningUsage: HasCodeSigningEnhancedKeyUsage(certificate),
+            IsChainTrusted: isChainTrusted,
+            ChainStatusText: string.IsNullOrWhiteSpace(chainStatusText) ? "No chain errors were reported." : chainStatusText);
     }
     catch (CryptographicException)
     {
+        return new WindowsAuthenticodeTrustResult(
+            IsSigned: false,
+            HasCodeSigningUsage: false,
+            IsChainTrusted: false,
+            ChainStatusText: string.Empty);
+    }
+}
+
+static bool HasCodeSigningEnhancedKeyUsage(X509Certificate2 certificate)
+{
+    const string codeSigningOid = "1.3.6.1.5.5.7.3.3";
+    var ekuExtensions = certificate.Extensions.OfType<X509EnhancedKeyUsageExtension>().ToArray();
+    if (ekuExtensions.Length == 0)
+    {
         return false;
     }
+
+    return ekuExtensions.Any(extension => extension.EnhancedKeyUsages
+        .Cast<Oid>()
+        .Any(oid => string.Equals(oid.Value, codeSigningOid, StringComparison.Ordinal)));
 }
 
 static bool IsForbiddenArtifactEntry(string relativePath)
@@ -1465,6 +1525,12 @@ internal sealed record WindowsSigningOptions(
     string? CertificatePfxPath,
     string? CertificatePasswordEnvironmentVariable,
     string? TimestampUrl);
+
+internal sealed record WindowsAuthenticodeTrustResult(
+    bool IsSigned,
+    bool HasCodeSigningUsage,
+    bool IsChainTrusted,
+    string ChainStatusText);
 
 internal sealed record PublishSpec(
     string Name,
