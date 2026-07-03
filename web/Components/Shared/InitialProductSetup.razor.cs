@@ -64,6 +64,11 @@ public partial class InitialProductSetup
             }
 
             await LoadSetupStatusAsync();
+            if (!CanShowInitialProductInstallSetup)
+            {
+                return;
+            }
+
             if (HasInstalledProducts || InstallableProducts.Count == 0)
             {
                 return;
@@ -333,6 +338,11 @@ public partial class InitialProductSetup
     private bool OllamaReady =>
         _ollama?.Available == true
         && _ollama.ModelAvailable;
+
+    private bool CanShowInitialProductInstallSetup =>
+        _overview is not null
+        && DockerReady
+        && WorkerReady;
 
     private string DockerPrerequisiteMessage
     {

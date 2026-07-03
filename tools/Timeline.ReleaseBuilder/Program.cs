@@ -108,6 +108,7 @@ WriteRuntimeReadme(productRoot);
 RemoveForbiddenArtifactContent(productRoot);
 
 CreateProductZip(stagingParent, zipPath, options.HostRuntime);
+ValidateProductZip(zipPath, options.HostRuntime);
 WriteArtifactManifest(outputRoot, options, version, commit, zipPath);
 if (options.WindowsInstaller)
 {
@@ -481,6 +482,7 @@ static async Task CreateWindowsInstallerBundleAsync(
     WriteWindowsInstallerManifest(installerRoot, options, version, commit, productZipCopyPath);
 
     CreateProductZip(installerStagingParent, setupZipPath, options.HostRuntime);
+    ValidateProductZip(setupZipPath, options.HostRuntime);
     WriteWindowsInstallerExternalManifest(outputRoot, options, version, commit, setupZipPath, productZipCopyPath);
     var verification = VerifyWindowsInstallerBundle(setupZipPath, options.RequireWindowsExecutionTrust);
     if (verification.Blockers.Count > 0)
@@ -1178,19 +1180,57 @@ static string ComputeSha256(string path)
 
 static void CreateProductZip(string sourceDirectory, string zipPath, string hostRuntime)
 {
-    using var archive = ZipFile.Open(zipPath, ZipArchiveMode.Create);
-    foreach (var file in Directory.EnumerateFiles(sourceDirectory, "*", SearchOption.AllDirectories).OrderBy(path => path, StringComparer.Ordinal))
+    using (var archive = ZipFile.Open(zipPath, ZipArchiveMode.Create))
     {
-        var relativePath = Path.GetRelativePath(sourceDirectory, file).Replace('\\', '/');
-        var entry = archive.CreateEntry(relativePath, CompressionLevel.Optimal);
-        if (ShouldMarkExecutable(relativePath, hostRuntime))
+        foreach (var file in Directory.EnumerateFiles(sourceDirectory, "*", SearchOption.AllDirectories).OrderBy(path => path, StringComparer.Ordinal))
         {
-            entry.ExternalAttributes = Convert.ToInt32("100755", 8) << 16;
-        }
+            var relativePath = Path.GetRelativePath(sourceDirectory, file).Replace('\\', '/');
+            var entry = archive.CreateEntry(relativePath, CompressionLevel.Optimal);
+            if (ShouldMarkExecutable(relativePath, hostRuntime))
+            {
+                entry.ExternalAttributes = Convert.ToInt32("100755", 8) << 16;
+            }
 
-        using var input = File.OpenRead(file);
-        using var output = entry.Open();
-        input.CopyTo(output);
+            using var input = File.OpenRead(file);
+            using var output = entry.Open();
+            input.CopyTo(output);
+        }
+    }
+
+    if (hostRuntime.StartsWith("osx-", StringComparison.OrdinalIgnoreCase) ||
+        hostRuntime.StartsWith("linux-", StringComparison.OrdinalIgnoreCase))
+    {
+        MarkUnixExecutableEntries(zipPath, hostRuntime);
+    }
+}
+
+static void ValidateProductZip(string zipPath, string hostRuntime)
+{
+    if (!hostRuntime.StartsWith("osx-", StringComparison.OrdinalIgnoreCase) &&
+        !hostRuntime.StartsWith("linux-", StringComparison.OrdinalIgnoreCase))
+    {
+        return;
+    }
+
+    var executableEntries = ReadZipCentralDirectoryFromPath(zipPath)
+        .Where(entry => ShouldMarkExecutable(entry.Name, hostRuntime))
+        .ToList();
+    if (executableEntries.Count == 0)
+    {
+        throw new InvalidOperationException($"Product artifact is missing Unix executable entries: {zipPath}");
+    }
+
+    var invalidEntries = executableEntries
+        .Where(entry => entry.VersionMadeByHostSystem != ZipMetadata.HostSystemUnix ||
+            (entry.ExternalAttributes >> 16 & 0x1FF) != 0x1ED)
+        .Select(entry => $"{entry.Name} host={entry.VersionMadeByHostSystem} attrs=0x{entry.ExternalAttributes:X8}")
+        .ToList();
+    if (invalidEntries.Count > 0)
+    {
+        throw new InvalidOperationException(
+            "Product artifact executable permissions are not encoded as Unix 0755." +
+            Environment.NewLine +
+            string.Join(Environment.NewLine, invalidEntries));
     }
 }
 
@@ -1204,6 +1244,116 @@ static bool ShouldMarkExecutable(string relativePath, string hostRuntime)
 
     var fileName = Path.GetFileName(relativePath);
     return fileName is "Timeline.Launcher" or "Timeline.Launcher.Tray" or "Timeline.LocalApi";
+}
+
+static void MarkUnixExecutableEntries(string zipPath, string hostRuntime)
+{
+    using var stream = new FileStream(zipPath, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+    foreach (var entry in ReadZipCentralDirectoryFromStream(stream))
+    {
+        if (!ShouldMarkExecutable(entry.Name, hostRuntime))
+        {
+            continue;
+        }
+
+        stream.Position = entry.CentralDirectoryOffset + 5;
+        stream.WriteByte(ZipMetadata.HostSystemUnix);
+
+        stream.Position = entry.CentralDirectoryOffset + 38;
+        var attributes = BitConverter.GetBytes(unchecked((uint)(Convert.ToInt32("100755", 8) << 16)));
+        stream.Write(attributes);
+    }
+}
+
+static IReadOnlyList<ZipCentralDirectoryEntryInfo> ReadZipCentralDirectoryFromPath(string zipPath)
+{
+    using var stream = new FileStream(zipPath, FileMode.Open, FileAccess.Read, FileShare.Read);
+    return ReadZipCentralDirectoryFromStream(stream);
+}
+
+static IReadOnlyList<ZipCentralDirectoryEntryInfo> ReadZipCentralDirectoryFromStream(FileStream stream)
+{
+    var originalPosition = stream.Position;
+    try
+    {
+        var centralDirectoryOffset = FindCentralDirectoryOffset(stream);
+        var entries = new List<ZipCentralDirectoryEntryInfo>();
+        stream.Position = centralDirectoryOffset;
+        while (stream.Position + 46 <= stream.Length)
+        {
+            var entryOffset = stream.Position;
+            if (ReadUInt32(stream) != ZipMetadata.CentralDirectoryHeader)
+            {
+                break;
+            }
+
+            var versionMadeBy = ReadUInt16(stream);
+            var hostSystem = (byte)(versionMadeBy >> 8);
+            stream.Position += 22;
+            var fileNameLength = ReadUInt16(stream);
+            var extraLength = ReadUInt16(stream);
+            var commentLength = ReadUInt16(stream);
+            stream.Position += 4;
+            var externalAttributes = ReadUInt32(stream);
+            stream.Position += 4;
+
+            var nameBytes = new byte[fileNameLength];
+            stream.ReadExactly(nameBytes);
+            var name = System.Text.Encoding.UTF8.GetString(nameBytes).Replace('\\', '/');
+            entries.Add(new ZipCentralDirectoryEntryInfo(name, entryOffset, hostSystem, externalAttributes));
+
+            stream.Position += extraLength + commentLength;
+        }
+
+        return entries;
+    }
+    finally
+    {
+        stream.Position = originalPosition;
+    }
+}
+
+static long FindCentralDirectoryOffset(FileStream stream)
+{
+    var searchLength = (int)Math.Min(stream.Length, ushort.MaxValue + 22L);
+    var buffer = new byte[searchLength];
+    stream.Position = stream.Length - searchLength;
+    stream.ReadExactly(buffer);
+
+    for (var index = buffer.Length - 22; index >= 0; index--)
+    {
+        if (buffer[index] != 0x50 ||
+            buffer[index + 1] != 0x4B ||
+            buffer[index + 2] != 0x05 ||
+            buffer[index + 3] != 0x06)
+        {
+            continue;
+        }
+
+        var signature = BitConverter.ToUInt32(buffer[index..(index + 4)]);
+        if (signature != ZipMetadata.EndOfCentralDirectoryHeader)
+        {
+            continue;
+        }
+
+        return BitConverter.ToUInt32(buffer[(index + 16)..(index + 20)]);
+    }
+
+    throw new InvalidDataException("ZIP end of central directory was not found.");
+}
+
+static ushort ReadUInt16(Stream stream)
+{
+    Span<byte> buffer = stackalloc byte[2];
+    stream.ReadExactly(buffer);
+    return BitConverter.ToUInt16(buffer);
+}
+
+static uint ReadUInt32(Stream stream)
+{
+    Span<byte> buffer = stackalloc byte[4];
+    stream.ReadExactly(buffer);
+    return BitConverter.ToUInt32(buffer);
 }
 
 static void RemoveForbiddenArtifactContent(string productRoot)
@@ -1713,6 +1863,19 @@ internal static class WindowsSetupEntries
 {
     public const string ExecutionTrustGuidancePath = "Timeline-Setup/WINDOWS-EXECUTION-TRUST.txt";
 }
+
+internal static class ZipMetadata
+{
+    public const uint CentralDirectoryHeader = 0x02014B50;
+    public const uint EndOfCentralDirectoryHeader = 0x06054B50;
+    public const byte HostSystemUnix = 3;
+}
+
+internal sealed record ZipCentralDirectoryEntryInfo(
+    string Name,
+    long CentralDirectoryOffset,
+    byte VersionMadeByHostSystem,
+    uint ExternalAttributes);
 
 internal sealed record TimelineWindowsInstallerBundleVerificationResult
 {

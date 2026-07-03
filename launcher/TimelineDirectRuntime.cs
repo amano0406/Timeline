@@ -545,9 +545,8 @@ internal static class TimelineDirectRuntime
         TimelineRuntimeConfiguration runtime,
         TimelineRuntimePaths paths)
     {
-        return new Dictionary<string, string>
+        var environment = new Dictionary<string, string>
         {
-            ["DOCKER_CONFIG"] = paths.DockerConfigDirectory,
             ["TIMELINE_LOCAL_API_PORT"] = runtime.LocalApiPort.ToString(CultureInfo.InvariantCulture),
             ["TIMELINE_WEB_PORT"] = runtime.WebPort.ToString(CultureInfo.InvariantCulture),
             ["TIMELINE_OLLAMA_PORT"] = runtime.OllamaPort.ToString(CultureInfo.InvariantCulture),
@@ -556,6 +555,25 @@ internal static class TimelineDirectRuntime
             ["TIMELINE_WORK_SOURCE"] = paths.WorkSource,
             ["TIMELINE_STORE_SOURCE"] = paths.StoreSource
         };
+
+        if (ShouldUseScopedDockerConfig())
+        {
+            environment["DOCKER_CONFIG"] = paths.DockerConfigDirectory;
+        }
+
+        return environment;
+    }
+
+    private static bool ShouldUseScopedDockerConfig()
+    {
+        if (!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("DOCKER_HOST")) ||
+            !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("DOCKER_CONTEXT")) ||
+            !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("DOCKER_CONFIG")))
+        {
+            return false;
+        }
+
+        return RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
     }
 
     private static async Task WithDockerLockAsync(TimelineRuntimePaths paths, Func<Task> action)
@@ -714,6 +732,9 @@ internal static class TimelineDirectRuntime
 
     private static string ResolveDockerCommand()
     {
+        var commandName = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "docker.exe" : "docker";
+        var pathDocker = ResolveCommand(commandName);
+
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
         {
             var dockerDesktopCli = Path.Combine(
@@ -727,10 +748,17 @@ internal static class TimelineDirectRuntime
             {
                 return dockerDesktopCli;
             }
+
+            return pathDocker ?? string.Empty;
         }
 
         if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
         {
+            if (!string.IsNullOrWhiteSpace(pathDocker))
+            {
+                return pathDocker;
+            }
+
             var dockerDesktopCli = "/Applications/Docker.app/Contents/Resources/bin/docker";
             if (File.Exists(dockerDesktopCli))
             {
@@ -738,8 +766,7 @@ internal static class TimelineDirectRuntime
             }
         }
 
-        var commandName = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "docker.exe" : "docker";
-        return ResolveCommand(commandName) ?? string.Empty;
+        return pathDocker ?? string.Empty;
     }
 
     private static string? ResolveCommand(string commandName)
