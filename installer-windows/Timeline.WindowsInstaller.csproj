@@ -8,6 +8,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="..\shared\TimelineLauncherShortcutService.cs" Link="TimelineLauncherShortcutService.cs" />
+    <Compile Include="..\shared\TimelineUninstallPlanService.cs" Link="TimelineUninstallPlanService.cs" />
     <Compile Include="..\shared\TimelineWindowsUninstallRegistrationService.cs" Link="TimelineWindowsUninstallRegistrationService.cs" />
   </ItemGroup>
 </Project>

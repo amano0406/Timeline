@@ -341,19 +341,22 @@ static int RunUninstallWizard(WindowsInstallerOptions options)
     var installDirectory = ResolveInstallDirectory(options.InstallDirectory);
     if (options.JsonOutput)
     {
-        return StartUninstallWorker(installDirectory, showResultUi: false, jsonOutput: true);
+        return StartUninstallWorker(installDirectory, showResultUi: false, jsonOutput: true, uninstallLevelId: options.UninstallLevelId);
     }
 
     Application.EnableVisualStyles();
     Application.SetCompatibleTextRenderingDefault(false);
+
+    var uninstallPlan = TimelineUninstallPlanService.GetPlan(installDirectory);
+    var selectedLevel = ResolveUninstallLevel(uninstallPlan, options.UninstallLevelId);
 
     var exitCode = 1;
     using var form = new Form
     {
         Text = "Timeline アンインストール",
         StartPosition = FormStartPosition.CenterScreen,
-        MinimumSize = new Size(660, 420),
-        Size = new Size(720, 460),
+        MinimumSize = new Size(760, 560),
+        Size = new Size(820, 620),
         Font = new Font("Yu Gothic UI", 10F),
     };
 
@@ -361,9 +364,10 @@ static int RunUninstallWizard(WindowsInstallerOptions options)
     {
         Dock = DockStyle.Fill,
         ColumnCount = 1,
-        RowCount = 5,
+        RowCount = 6,
         Padding = new Padding(18),
     };
+    root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
     root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
     root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
     root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
@@ -393,6 +397,23 @@ static int RunUninstallWizard(WindowsInstallerOptions options)
         Margin = new Padding(0, 0, 0, 14),
     });
 
+    var levelBox = new GroupBox
+    {
+        Dock = DockStyle.Top,
+        AutoSize = true,
+        Text = "削除範囲",
+        Padding = new Padding(10),
+        Margin = new Padding(0, 0, 0, 12),
+    };
+    var levelList = new FlowLayoutPanel
+    {
+        Dock = DockStyle.Fill,
+        AutoSize = true,
+        FlowDirection = FlowDirection.TopDown,
+        WrapContents = false,
+    };
+    levelBox.Controls.Add(levelList);
+
     var info = new TextBox
     {
         Dock = DockStyle.Fill,
@@ -401,8 +422,37 @@ static int RunUninstallWizard(WindowsInstallerOptions options)
         HideSelection = true,
         BackColor = Color.White,
         BorderStyle = BorderStyle.FixedSingle,
-        Text = FormatUninstallSummary(installDirectory),
+        ScrollBars = ScrollBars.Vertical,
+        Text = FormatUninstallLevelSummary(uninstallPlan, selectedLevel),
     };
+
+    foreach (var level in uninstallPlan.Levels)
+    {
+        var radio = new RadioButton
+        {
+            AutoSize = true,
+            MaximumSize = new Size(720, 0),
+            Text = $"{level.Name}: {level.Description}",
+            Checked = level.Id.Equals(selectedLevel.Id, StringComparison.OrdinalIgnoreCase),
+            Tag = level.Id,
+            Margin = new Padding(0, 0, 0, 6),
+        };
+        radio.CheckedChanged += (_, _) =>
+        {
+            if (!radio.Checked || radio.Tag is not string levelId)
+            {
+                return;
+            }
+
+            selectedLevel = ResolveUninstallLevel(uninstallPlan, levelId);
+            info.Text = FormatUninstallLevelSummary(uninstallPlan, selectedLevel);
+            info.SelectionStart = 0;
+            info.SelectionLength = 0;
+        };
+        levelList.Controls.Add(radio);
+    }
+
+    root.Controls.Add(levelBox);
     root.Controls.Add(info);
 
     var buttons = new FlowLayoutPanel
@@ -427,9 +477,27 @@ static int RunUninstallWizard(WindowsInstallerOptions options)
     };
     uninstallButton.Click += (_, _) =>
     {
+        var confirmationMessage = selectedLevel.RequiresStrongConfirmation
+            ? "選択した削除範囲でアンインストールを実行します。続行しますか？"
+            : "Timeline のアプリ本体を削除します。設定、素材、生成データ、ログ、Docker 関連の実行状態は保持します。続行しますか？";
+        if (selectedLevel.RequiresStrongConfirmation)
+        {
+            var destructiveConfirmation = MessageBox.Show(
+                form,
+                "選択した削除範囲には、設定またはユーザーデータの削除が含まれます。削除後に元へ戻せない可能性があります。続行しますか？",
+                "削除範囲の最終確認",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Warning,
+                MessageBoxDefaultButton.Button2);
+            if (destructiveConfirmation != DialogResult.Yes)
+            {
+                return;
+            }
+        }
+
         var confirmation = MessageBox.Show(
             form,
-            "Timeline 本体を削除します。設定・素材・生成データは保持します。続行しますか？",
+            confirmationMessage,
             "Timeline アンインストール",
             MessageBoxButtons.YesNo,
             MessageBoxIcon.Warning,
@@ -439,7 +507,11 @@ static int RunUninstallWizard(WindowsInstallerOptions options)
             return;
         }
 
-        exitCode = StartUninstallWorker(installDirectory, showResultUi: true, jsonOutput: false);
+        exitCode = StartUninstallWorker(
+            installDirectory,
+            showResultUi: true,
+            jsonOutput: false,
+            uninstallLevelId: selectedLevel.Id);
         form.Close();
     };
 
@@ -451,6 +523,7 @@ static int StartUninstallWorker(
     string installDirectory,
     bool showResultUi,
     bool jsonOutput,
+    string? uninstallLevelId = null,
     bool skipOsRegistration = false,
     string? logPath = null)
 {
@@ -483,6 +556,8 @@ static int StartUninstallWorker(
         QuoteArgument(installDirectory),
         "--parent-pid",
         Environment.ProcessId.ToString(CultureInfo.InvariantCulture),
+        "--uninstall-level",
+        QuoteArgument(string.IsNullOrWhiteSpace(uninstallLevelId) ? "app_only" : uninstallLevelId),
         "--log",
         QuoteArgument(resultPath),
         showResultUi ? "--result-ui" : "",
@@ -523,6 +598,7 @@ static int RunUninstallWorker(WindowsInstallerOptions options)
             installDirectory,
             options.ResultUi,
             options.JsonOutput,
+            options.UninstallLevelId,
             options.SkipOsRegistration,
             options.LogPath);
     }
@@ -536,6 +612,10 @@ static int RunUninstallWorker(WindowsInstallerOptions options)
 
     try
     {
+        var plan = TimelineUninstallPlanService.GetPlan(installDirectory);
+        var level = ResolveUninstallLevel(plan, options.UninstallLevelId);
+        result.UninstallLevelId = level.Id;
+        result.UninstallLevelName = level.Name;
         WaitForParentProcess(options.ParentPid);
         TryStopTimeline(installDirectory, result);
         if (options.SkipOsRegistration)
@@ -548,10 +628,10 @@ static int RunUninstallWorker(WindowsInstallerOptions options)
             result.UninstallRegistration = TimelineWindowsUninstallRegistrationService.Remove(installDirectory);
         }
 
-        DeleteReplaceableApplicationContent(installDirectory);
+        DeleteSelectedUninstallItems(plan, level, result);
         TryDeleteEmptyDirectory(installDirectory);
         result.State = "removed";
-        result.Messages.Add("Timeline application files were removed. User data, settings, logs, runtime state, and managed products were preserved.");
+        result.Messages.Add($"Timeline uninstall completed with delete level '{level.Id}'.");
         result.CompletedAt = DateTimeOffset.UtcNow.ToString("O", CultureInfo.InvariantCulture);
     }
     catch (Exception ex)
@@ -571,15 +651,42 @@ static int RunUninstallWorker(WindowsInstallerOptions options)
     if (options.ResultUi)
     {
         MessageBox.Show(
-            result.State == "removed"
-                ? "Timeline のアンインストールが完了しました。設定・素材・生成データは保持されています。"
-                : $"Timeline のアンインストールに失敗しました。{Environment.NewLine}{result.Error}",
+            BuildUninstallResultMessage(result),
             "Timeline アンインストール",
             MessageBoxButtons.OK,
             result.State == "removed" ? MessageBoxIcon.Information : MessageBoxIcon.Error);
     }
 
     return result.State == "removed" ? 0 : 1;
+}
+
+static string BuildUninstallResultMessage(TimelineWindowsUninstallResult result)
+{
+    if (!result.State.Equals("removed", StringComparison.OrdinalIgnoreCase))
+    {
+        return $"Timeline のアンインストールに失敗しました。{Environment.NewLine}{result.Error}";
+    }
+
+    var lines = new List<string>
+    {
+        "Timeline のアンインストールが完了しました。",
+        $"削除範囲: {result.UninstallLevelName} ({result.UninstallLevelId})",
+        $"削除: {result.DeletedItems.Count} 件 / 保持: {result.PreservedItems.Count} 件 / スキップ: {result.SkippedItems.Count} 件"
+    };
+
+    if (result.SkippedItems.Count > 0)
+    {
+        lines.Add("");
+        lines.Add("残った可能性がある対象:");
+        foreach (var item in result.SkippedItems.Take(5))
+        {
+            lines.Add($" - {item}");
+        }
+    }
+
+    lines.Add("");
+    lines.Add("詳細は runtime\\windows-uninstall-result.json に記録しました。");
+    return string.Join(Environment.NewLine, lines);
 }
 
 static TimelineWindowsInstallResult BuildPlan(string artifactPath, string installDirectory, WindowsInstallerOptions options)
@@ -811,6 +918,125 @@ static void DeleteReplaceableApplicationContent(string installDirectory)
     }
 }
 
+static void DeleteSelectedUninstallItems(
+    TimelineUninstallPlanResponse plan,
+    TimelineUninstallLevel level,
+    TimelineWindowsUninstallResult result)
+{
+    var replaceableApplicationContentDeleted = false;
+    foreach (var item in level.Items
+        .Where(item => item.DefaultDelete)
+        .OrderByDescending(item => item.Path.Length))
+    {
+        if (item.SharedResource)
+        {
+            result.SkippedItems.Add($"{item.Id}: shared resource is preserved ({item.Path})");
+            continue;
+        }
+
+        if (item.Kind.StartsWith("docker-", StringComparison.OrdinalIgnoreCase))
+        {
+            result.SkippedItems.Add($"{item.Id}: Docker/runtime cleanup is not executed by the Windows uninstaller yet ({item.Path})");
+            continue;
+        }
+
+        if (IsReplaceableApplicationItem(plan, item))
+        {
+            if (!replaceableApplicationContentDeleted)
+            {
+                DeleteReplaceableApplicationContent(plan.TimelineRoot);
+                result.DeletedItems.Add($"application_files: replaceable application content under {plan.TimelineRoot}");
+                replaceableApplicationContentDeleted = true;
+            }
+
+            continue;
+        }
+
+        if (!IsAllowedUninstallFileSystemDelete(plan, item))
+        {
+            result.SkippedItems.Add($"{item.Id}: refused to delete outside the selected Timeline scope ({item.Path})");
+            continue;
+        }
+
+        if (item.Kind.Equals("directory", StringComparison.OrdinalIgnoreCase))
+        {
+            if (Directory.Exists(item.Path))
+            {
+                Directory.Delete(item.Path, recursive: true);
+                result.DeletedItems.Add($"{item.Id}: {item.Path}");
+            }
+            else
+            {
+                result.PreservedItems.Add($"{item.Id}: already absent ({item.Path})");
+            }
+
+            continue;
+        }
+
+        if (item.Kind.Equals("file", StringComparison.OrdinalIgnoreCase))
+        {
+            if (File.Exists(item.Path))
+            {
+                File.Delete(item.Path);
+                result.DeletedItems.Add($"{item.Id}: {item.Path}");
+            }
+            else
+            {
+                result.PreservedItems.Add($"{item.Id}: already absent ({item.Path})");
+            }
+
+            continue;
+        }
+
+        result.SkippedItems.Add($"{item.Id}: unsupported uninstall item kind '{item.Kind}' ({item.Path})");
+    }
+
+    foreach (var item in level.Items.Where(item => !item.DefaultDelete))
+    {
+        result.PreservedItems.Add($"{item.Id}: preserved by default ({item.Path})");
+    }
+}
+
+static bool IsReplaceableApplicationItem(TimelineUninstallPlanResponse plan, TimelineUninstallPlanItem item)
+    => !item.UserData
+        && !item.SharedResource
+        && (item.Kind.Equals("directory", StringComparison.OrdinalIgnoreCase)
+            || item.Kind.Equals("file", StringComparison.OrdinalIgnoreCase))
+        && IsPathUnder(item.Path, plan.TimelineRoot);
+
+static bool IsAllowedUninstallFileSystemDelete(
+    TimelineUninstallPlanResponse plan,
+    TimelineUninstallPlanItem item)
+{
+    if (item.SharedResource || string.IsNullOrWhiteSpace(item.Path))
+    {
+        return false;
+    }
+
+    var path = Path.GetFullPath(item.Path);
+    if (IsPathUnder(path, plan.TimelineRoot))
+    {
+        return true;
+    }
+
+    if (!item.UserData)
+    {
+        return false;
+    }
+
+    var dataRoot = Path.GetFullPath(plan.DataRoot);
+    var settingsPath = Path.GetFullPath(plan.SettingsPath);
+    return PathEquals(path, dataRoot)
+        || IsPathUnder(path, dataRoot)
+        || PathEquals(path, settingsPath);
+}
+
+static bool PathEquals(string left, string right)
+    => string.Equals(
+        Path.GetFullPath(left).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
+        Path.GetFullPath(right).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
+        OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
+
 static void CopyDirectory(string sourceDirectory, string destinationDirectory)
 {
     Directory.CreateDirectory(destinationDirectory);
@@ -959,6 +1185,66 @@ static bool IsWindowsExecutionTrustWarning(string warning)
         || warning.Contains("WDAC", StringComparison.OrdinalIgnoreCase)
         || warning.Contains("Code Integrity", StringComparison.OrdinalIgnoreCase);
 
+static string FormatUninstallLevelSummary(TimelineUninstallPlanResponse plan, TimelineUninstallLevel level)
+{
+    var lines = new List<string>
+    {
+        $"削除範囲: {level.Name}",
+        level.Description,
+        "",
+        "削除対象:"
+    };
+
+    foreach (var item in level.Items.Where(item => item.DefaultDelete))
+    {
+        var state = item.Exists ? "存在" : "未検出";
+        var risk = item.UserData ? "ユーザーデータ" : item.SharedResource ? "共有リソース" : "アプリ本体";
+        lines.Add($" - [{state}] {item.Id} / {risk} / {item.Kind}: {item.Path}");
+    }
+
+    var preserved = level.Items.Where(item => !item.DefaultDelete).ToList();
+    if (preserved.Count > 0)
+    {
+        lines.Add("");
+        lines.Add("既定で保持する対象:");
+        foreach (var item in preserved)
+        {
+            lines.Add($" - {item.Id}: {item.Path}");
+        }
+    }
+
+    if (plan.Warnings.Count > 0)
+    {
+        lines.Add("");
+        lines.Add("注意:");
+        foreach (var warning in plan.Warnings)
+        {
+            lines.Add($" - {warning.Message}");
+        }
+    }
+
+    lines.Add("");
+    lines.Add($"対象フォルダー: {plan.TimelineRoot}");
+    lines.Add($"データフォルダー: {plan.DataRoot}");
+    return string.Join(Environment.NewLine, lines);
+}
+
+static TimelineUninstallLevel ResolveUninstallLevel(TimelineUninstallPlanResponse plan, string? levelId)
+{
+    if (!string.IsNullOrWhiteSpace(levelId))
+    {
+        var requested = plan.Levels.FirstOrDefault(level => level.Id.Equals(levelId, StringComparison.OrdinalIgnoreCase));
+        if (requested is not null)
+        {
+            return requested;
+        }
+    }
+
+    return plan.Levels.FirstOrDefault(level => level.RecommendedDefault)
+        ?? plan.Levels.First(level => level.Id.Equals("app_only", StringComparison.OrdinalIgnoreCase));
+}
+
+#pragma warning disable CS8321
 static string FormatUninstallSummary(string installDirectory)
 {
     var plan = TimelineUninstallPlanForWindows(installDirectory);
@@ -982,6 +1268,8 @@ static IEnumerable<string> TimelineUninstallPlanForWindows(string installDirecto
     yield return "";
     yield return $"対象フォルダー: {installDirectory}";
 }
+
+#pragma warning restore CS8321
 
 static void WaitForParentProcess(int? parentPid)
 {
@@ -1261,6 +1549,7 @@ static void PrintHelp()
           --force                Replace existing application files while preserving user data.
           --wizard               Show the installer wizard.
           --uninstall            Show the uninstall wizard and remove application files after confirmation.
+          --uninstall-level <id> Uninstall delete scope. Defaults to app_only.
           --plan                 Show install plan only.
           --dry-run              Alias of --plan.
           --json                 Print machine-readable JSON.
@@ -1318,6 +1607,21 @@ internal sealed class TimelineWindowsUninstallResult
     [JsonPropertyName("completedAt")]
     public string CompletedAt { get; set; } = "";
 
+    [JsonPropertyName("uninstallLevelId")]
+    public string UninstallLevelId { get; set; } = "";
+
+    [JsonPropertyName("uninstallLevelName")]
+    public string UninstallLevelName { get; set; } = "";
+
+    [JsonPropertyName("deletedItems")]
+    public List<string> DeletedItems { get; set; } = [];
+
+    [JsonPropertyName("preservedItems")]
+    public List<string> PreservedItems { get; set; } = [];
+
+    [JsonPropertyName("skippedItems")]
+    public List<string> SkippedItems { get; set; } = [];
+
     [JsonPropertyName("messages")]
     public List<string> Messages { get; set; } = [];
 
@@ -1347,6 +1651,7 @@ internal sealed record WindowsInstallerOptions(
     bool UninstallWorker,
     int? ParentPid,
     string? LogPath,
+    string? UninstallLevelId,
     bool ResultUi,
     bool SkipOsRegistration)
 {
@@ -1355,6 +1660,7 @@ internal sealed record WindowsInstallerOptions(
         string? artifactPath = null;
         string? installDirectory = null;
         string? logPath = null;
+        string? uninstallLevelId = null;
         int? parentPid = null;
         var force = false;
         var planOnly = false;
@@ -1372,7 +1678,8 @@ internal sealed record WindowsInstallerOptions(
             var arg = args[index];
             if (ReadValue(args, ref index, arg, "--artifact", ref artifactPath) ||
                 ReadValue(args, ref index, arg, "--install-dir", ref installDirectory) ||
-                ReadValue(args, ref index, arg, "--log", ref logPath))
+                ReadValue(args, ref index, arg, "--log", ref logPath) ||
+                ReadValue(args, ref index, arg, "--uninstall-level", ref uninstallLevelId))
             {
                 continue;
             }
@@ -1440,6 +1747,7 @@ internal sealed record WindowsInstallerOptions(
             uninstallWorker,
             parentPid,
             logPath,
+            uninstallLevelId,
             resultUi,
             skipOsRegistration);
     }
